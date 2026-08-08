@@ -30,12 +30,13 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.apps.InstalledAppsRepository
+import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
+import com.andreassamitsch.ilauncher.data.tv.WatchNextEnrichmentRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextSourcePreferences
 import com.andreassamitsch.ilauncher.data.update.UpdateManager
 import com.andreassamitsch.ilauncher.data.update.UpdateState
 import com.andreassamitsch.ilauncher.model.InstalledApp
-import com.andreassamitsch.ilauncher.model.WatchNextItem
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import com.andreassamitsch.ilauncher.ui.apps.AppsScreen
@@ -54,6 +55,7 @@ enum class LauncherSection(val label: String) {
 fun LauncherApp(
     installedAppsRepository: InstalledAppsRepository,
     watchNextRepository: WatchNextRepository,
+    watchNextEnrichmentRepository: WatchNextEnrichmentRepository,
     updateManager: UpdateManager,
 ) {
     val context = LocalContext.current
@@ -95,6 +97,18 @@ fun LauncherApp(
             packageName == null || packageName !in hiddenWatchNextPackages
         }
     }
+    var homeWatchNextItems by remember {
+        mutableStateOf<List<EnrichedWatchNextItem>>(emptyList())
+    }
+
+    LaunchedEffect(visibleWatchNextItems, watchNextEnrichmentRepository) {
+        val baseItems = watchNextEnrichmentRepository.base(visibleWatchNextItems)
+        homeWatchNextItems = baseItems
+        if (baseItems.isNotEmpty() && watchNextEnrichmentRepository.isTmdbConfigured) {
+            homeWatchNextItems = watchNextEnrichmentRepository.enrich(baseItems)
+        }
+    }
+
     val apps by produceState<List<InstalledApp>>(
         initialValue = emptyList(),
         key1 = installedAppsRepository,
@@ -134,7 +148,9 @@ fun LauncherApp(
     }
 
     val openApp: (InstalledApp) -> Unit = { app -> installedAppsRepository.launch(app) }
-    val openWatchNext: (WatchNextItem) -> Unit = { item -> watchNextRepository.launch(item) }
+    val openWatchNext: (EnrichedWatchNextItem) -> Unit = { item ->
+        watchNextRepository.launch(item.sourceItem)
+    }
     val updateAttentionLabel = when (updateState) {
         is UpdateState.Available,
         is UpdateState.ReadyToInstall,
@@ -174,7 +190,7 @@ fun LauncherApp(
             when (section) {
                 LauncherSection.Home -> HomeScreen(
                     apps = apps,
-                    watchNextItems = visibleWatchNextItems,
+                    watchNextItems = homeWatchNextItems,
                     watchNextError = watchNextResult.errorMessage,
                     hasTvListingsPermission = hasTvListingsPermission,
                     onRequestTvListingsPermission = requestTvListingsPermission,
@@ -196,6 +212,7 @@ fun LauncherApp(
                     onShowAllWatchNextSources = watchNextSourcePreferences::showAll,
                     hasTvListingsPermission = hasTvListingsPermission,
                     onRequestTvListingsPermission = requestTvListingsPermission,
+                    isTmdbConfigured = watchNextEnrichmentRepository.isTmdbConfigured,
                 )
             }
         }
