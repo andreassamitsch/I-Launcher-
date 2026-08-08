@@ -19,7 +19,7 @@ Die Gradle-Struktur bleibt vorerst bewusst bei einem `app`-Modul. Die Provider-G
 ```text
 app/
   data/apps/       installierte Apps / PackageManager
-  data/tv/         Android TvProvider / Watch Next
+  data/tv/         Android TvProvider / Watch Next / Quellenpräferenzen
   data/update/     Development-Updatekanal
   model/           UI-unabhängige Basismodelle
   system/          Home-Rolle / Accessibility / TvProvider-Berechtigungen
@@ -90,8 +90,6 @@ Sie wird im Manifest deklariert und zur Laufzeit angefordert. Fehlt die Freigabe
 
 `com.android.providers.tv.permission.READ_EPG_DATA` bleibt als kompatible Legacy-Deklaration enthalten, ist in AOSP aber nicht mehr die maßgebliche Berechtigung für den Zugriff auf fremde TV-Listings.
 
-Der Permission-Flow ist im signierten Development-Build `0.1.0-dev.18` (`26000018`) build-validiert; die tatsächliche Freigabe und Datenlieferung muss auf dem TCL-Gerät geprüft werden.
-
 ## Watch Next
 
 Primärquelle ist `TvContract.WatchNextPrograms.CONTENT_URI` des Android TvProvider.
@@ -99,20 +97,28 @@ Primärquelle ist `TvContract.WatchNextPrograms.CONTENT_URI` des Android TvProvi
 Aktuelle Phase-2-Regeln:
 
 - Query erst nach erteilter `READ_TV_LISTINGS`-Berechtigung
-- Query ohne Selection und ohne eigene Sortierung
-- Cursor-Reihenfolge wird 1:1 in `sourceOrder` übernommen
+- keine Selection; alle verfügbaren Watch-Next-Zeilen bleiben für Diagnose zugänglich
+- Sortierung wird bereits im TvProvider-Query mit `last_engagement_time_utc_millis DESC` angefordert
+- `COLUMN_LAST_ENGAGEMENT_TIME_UTC_MILLIS` ist Androids eigener Sortierhinweis für Watch Next; die aktuelle Arc-Launcher-Implementierung verwendet dieselbe DESC-Sortierung
+- die so angeforderte Reihenfolge wird 1:1 in `sourceOrder` übernommen und im Mapper nicht verändert
+- Benutzer können einzelne Quell-Packages für die Home-Reihe ausblenden; die Filterung entfernt nur Zeilen und sortiert die verbleibenden Einträge nicht neu
+- die vollständigen Rohzeilen bleiben unabhängig vom Home-Filter in der Diagnose sichtbar
 - relevante Standardfelder werden auf `WatchNextItem` normalisiert
-- `package_name` bleibt für Diagnose und spätere Quellanzeige erhalten
+- `package_name` bleibt für Diagnose und Quellenfilter erhalten
 - Intent-URI wird nur zum Starten des Inhalts verwendet und nicht vollständig geloggt
 - TvProvider-Änderungen werden per `ContentObserver` beobachtet
 - Zugriffsfehler werden als Diagnosezustand dargestellt statt die App abstürzen zu lassen
 - kein CloudStream-spezifischer Code, solange Android die Einträge liefert
 
-Die Gerätevalidierung vergleicht Anzahl, Reihenfolge, Fortschritt und Deep-Link-Verhalten mit Arc Launcher auf demselben TV.
+Die Gerätevalidierung vergleicht Anzahl, erste Einträge, Reihenfolge, Fortschritt und Deep-Link-Verhalten mit Arc/Projectivy auf demselben TV.
 
 ## Home-Tasten-Fallback
 
-Der Google-TV-/TCL-Home-Fallback basiert auf einem `AccessibilityService`. Die Service-Deklaration ist mit `android.permission.BIND_ACCESSIBILITY_SERVICE` geschützt. Die eigentliche Benutzerfreigabe ist eine Android-Sonderberechtigung und kann nicht durch einen normalen Runtime-Permission-Dialog erteilt werden; I Launcher führt deshalb gezielt in die Bedienungshilfen und zeigt den Aktivierungsstatus in den Einstellungen.
+Der Google-TV-/TCL-Home-Fallback basiert auf einem `AccessibilityService`. Die Service-Deklaration ist mit `android.permission.BIND_ACCESSIBILITY_SERVICE` geschützt und fordert Key-Filterung explizit über `canRequestFilterKeyEvents=true` an.
+
+Die eigentliche Benutzerfreigabe ist eine Android-Sonderberechtigung und kann nicht durch einen normalen Runtime-Permission-Dialog erteilt werden. Bei Android 13+ können lokal oder aus einer heruntergeladenen APK installierte Apps zusätzlich unter `Restricted Settings` fallen. In diesem Fall muss der Benutzer in der App-Info über das Drei-Punkte-Menü zuerst „Eingeschränkte Einstellungen zulassen“ freigeben. I Launcher erfasst dafür die vom System gemeldete Installationsquelle und zeigt die passende Einrichtungsführung an; die Sicherheitsfreigabe selbst wird nicht umgangen.
+
+`MainActivity` besitzt getrennte Intent-Filter für HOME, LEANBACK_LAUNCHER und den normalen LAUNCHER-Einstieg. Der reguläre LAUNCHER-Einstieg dient außerdem als Front-Door-Activity für Systemfunktionen wie „Öffnen“ nach einer APK-Installation.
 
 ## Bilder
 
