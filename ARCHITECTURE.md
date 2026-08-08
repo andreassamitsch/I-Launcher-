@@ -12,18 +12,22 @@
 - lokale Daten zuerst, Netzwerkupdates danach
 - keine app-spezifischen Integrationen, wenn Android-Standardschnittstellen ausreichen
 
-## Aktueller Stand: Phase 1
+## Aktueller Stand: Phase 2
 
-Für den MVP bleibt die Gradle-Struktur bewusst klein:
+Die Gradle-Struktur bleibt vorerst bewusst bei einem `app`-Modul. Die Provider-Grenzen werden aber bereits im Package-Aufbau getrennt:
 
 ```text
 app/
   data/apps/       installierte Apps / PackageManager
-  model/           UI-nahe Basismodelle
-  ui/home/         Home
+  data/tv/         Android TvProvider / Watch Next
+  data/update/     Development-Updatekanal
+  model/           UI-unabhängige Basismodelle
+  system/          Home-Rolle / Accessibility-Fallback
+  ui/home/         Home inklusive Watch-Next-Reihe
   ui/apps/         App-Übersicht
-  ui/settings/     Platzhalter für Einstellungen
-  ui/theme/        TV-Theme
+  ui/settings/     Einstellungen und Diagnose
+  ui/components/   TV-Cards
+  ui/theme/        TV-Material-Theme
 ```
 
 Die logischen Grenzen sind so gewählt, dass spätere Gradle-Module ohne kompletten Umbau möglich bleiben.
@@ -74,7 +78,24 @@ Compose for TV UI
 
 ## Watch Next
 
-Primärquelle ist Android TvProvider. Die Reihenfolge wird ohne explizite Produktentscheidung nicht verändert. CloudStream-spezifischer Code ist nicht vorgesehen, solange die vorhandenen Watch-Next-Einträge über Android verfügbar sind.
+Primärquelle ist `TvContract.WatchNextPrograms.CONTENT_URI` des Android TvProvider.
+
+Aktuelle Phase-2-Regeln:
+
+- Query ohne Selection und ohne eigene Sortierung
+- Cursor-Reihenfolge wird 1:1 in `sourceOrder` übernommen
+- relevante Standardfelder werden auf `WatchNextItem` normalisiert
+- `package_name` bleibt für Diagnose und spätere Quellanzeige erhalten
+- Intent-URI wird nur zum Starten des Inhalts verwendet und nicht vollständig geloggt
+- TvProvider-Änderungen werden per `ContentObserver` beobachtet
+- Zugriffsfehler werden als Diagnosezustand dargestellt statt die App abstürzen zu lassen
+- kein CloudStream-spezifischer Code, solange Android die Einträge liefert
+
+Die erste Gerätevalidierung vergleicht Anzahl, Reihenfolge, Fortschritt und Deep-Link-Verhalten mit Arc Launcher auf demselben TV.
+
+## Bilder
+
+Watch-Next-Quellbilder werden über Coil geladen. Phase 2 verwendet Quellbilder direkt; TMDB-Anreicherung und langfristiges Caching folgen in Phase 3.
 
 ## Gigablue
 
@@ -82,10 +103,10 @@ Direkte OpenWebif-Integration. Keine dreamTV-/TiviMate-Abhängigkeit, sofern Ope
 
 ## Build-Basis
 
-Phase 1 verwendet einen aktuellen stabilen Android-Toolchain-Stand, der gegen offizielle Android-Dokumentation geprüft wird. Versionen werden explizit gepinnt, nicht dynamisch auf `+` gesetzt.
+Der aktuelle stabile Android-Toolchain-Stand wird gegen offizielle Dokumentation geprüft. Versionen werden explizit gepinnt, nicht dynamisch auf `+` gesetzt.
 
 ## Paketkennung
 
-Initiale Application ID: `com.andreassamitsch.ilauncher`.
+Application ID: `com.andreassamitsch.ilauncher`.
 
-Sie soll nach den ersten Gerätetests nicht mehr unnötig geändert werden, damit Updates installierbar bleiben.
+Sie bleibt stabil, damit Updates installierbar bleiben.
