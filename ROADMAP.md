@@ -68,12 +68,22 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 
 ## Phase 3 – TMDB
 
-- [ ] API-Client
-- [ ] gemeinsames Medienmodell
-- [ ] Resolver mit Confidence
-- [ ] Room-Mapping/Cache
-- [ ] Poster, Backdrops, Logos
-- [ ] Serien-/Episodendaten
+- [x] Retrofit/OkHttp API-Client mit extern konfiguriertem Read-Access-Token
+- [x] gemeinsames Medienmodell für Android TV und spätere Provider
+- [x] deterministisches Titel-/Jahr-/Staffel-/Episoden-Parsing
+- [x] Resolver mit konservativer Confidence-Schwelle und Source-Fallback
+- [x] Room-Mapping/Cache inklusive negativer No-Match-Ergebnisse
+- [x] Local-First-Anreicherung: Quelle sofort anzeigen, TMDB danach begrenzt nachladen
+- [x] Android `COLUMN_TYPE` und `COLUMN_RELEASE_DATE` als Resolver-Hinweise übernehmen
+- [x] Poster-/Backdrop-/Logo-/Episode-Still-Infrastruktur über TMDB `/configuration`
+- [x] Serien-/Episodendaten-Unterbau inklusive Episode-Detail-Endpoint
+- [x] Cache-Refresh nach 30 Tagen und harte Löschung nach 180 Tagen
+- [x] Unit-Tests für Parser, Confidence, Android-Mapping und Artwork-Priorität
+- [ ] CI-Build des vollständigen Phase-3-Unterbaus grün
+- [ ] TMDB-Attribution inklusive freigegebenem TMDB-Logo im About/Credits-Bereich
+- [ ] `IL_TMDB_READ_ACCESS_TOKEN` außerhalb des Repositories für signierten Development-Build konfigurieren
+- [ ] realer TCL-Gerätetest der TMDB-Anreicherung und Cache-Nutzung
+- [ ] TMDB-Diagnose für ID, Typ und Confidence ohne Secrets
 - [ ] Detailseite
 
 ## Phase 4 – Trailer
