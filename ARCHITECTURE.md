@@ -27,6 +27,7 @@ app/
   model/           WatchNextItem + gemeinsames MediaItem/MediaSource-Modell
   system/          Home-Rolle / Accessibility / TvProvider-Berechtigungen
   ui/home/         Home inklusive Watch-Next-Reihe
+  ui/details/      provider-neutrale Medien-Detailseite
   ui/apps/         App-Übersicht
   ui/settings/     Einstellungen und Diagnose
   ui/components/   TV-Cards
@@ -103,11 +104,24 @@ Für Phase 3 werden zusätzlich Androids `COLUMN_TYPE` und `COLUMN_RELEASE_DATE`
 
 Die Quellinformation bleibt auch nach TMDB-Anreicherung erhalten.
 
+## Detailnavigation
+
+Die verbindliche Direktstart-Regel für Watch Next bleibt erhalten:
+
+- kurzes `OK` auf einer Watch-Next-Karte startet weiterhin direkt den vorhandenen Source-/Playback-Intent
+- `KEYCODE_INFO` oder lange `OK` öffnet die provider-neutrale Detailseite
+- die Detailseite bietet `Fortsetzen`/`Wiedergeben` über denselben Source-Intent und `Zurück`
+- die Watch-Next- und App-LazyList-States leben oberhalb der Detailansicht und behalten daher ihre Scrollposition beim Zurückkehren
+
+Die tatsächliche Focus-Rückkehr auf dieselbe Karte wird erst nach realem TCL-Gerätetest als verifiziert markiert.
+
 ## TMDB Resolver
 
 Der Resolver verarbeitet zunächst lokal und deterministisch Titel, Jahr, Staffel und Episode. Danach werden TMDB-Kandidaten nach Titelähnlichkeit, Typ und Jahr bewertet. Nur Treffer oberhalb der konservativen Confidence-Schwelle werden übernommen. Andernfalls bleiben die Android-Quelldaten unverändert.
 
 Für Episoden wird zuerst die Serie aufgelöst und bei bekannter Staffel/Episode anschließend der TMDB-Episode-Endpoint verwendet.
+
+Ein gespeichertes Source-Key-Mapping wird nur wiederverwendet, wenn normalisierter Titel, Jahr, Staffel und Episode weiterhin mit der aktuellen Quelle übereinstimmen. Dadurch kann eine vom TvProvider später wiederverwendete Zeilen-ID nicht versehentlich alte TMDB-Metadaten übernehmen.
 
 ## TMDB Netzwerk und Secrets
 
@@ -151,6 +165,12 @@ Coil übernimmt das Laden in Compose.
 ## TMDB Attribution
 
 Vor Aktivierung der Live-TMDB-Nutzung im Development-/Release-Build wird ein About/Credits-Bereich mit einem freigegebenen TMDB-Logo und dem von TMDB geforderten Hinweis ergänzt. Logo/Marke werden nicht verändert oder als I-Launcher-Branding dargestellt.
+
+## Development-Publishing
+
+Der aktive Phase-3-Branch veröffentlicht signierte Regression-Builds über den bestehenden `downloads`-Kanal. Der Publisher verwendet eine branchbezogene GitHub-Actions-Concurrency-Gruppe mit `cancel-in-progress`, damit bei mehreren schnellen Commits nie ein älterer Lauf nach einem neueren APK-Stand veröffentlicht werden kann.
+
+Der aktuelle source-only Regression-Build enthält keinen TMDB-Token; damit kann Phase 3 auf dem TCL auf Regressionen und Detailnavigation geprüft werden, ohne die noch nicht vollständig attribuierte Live-TMDB-Nutzung zu aktivieren.
 
 ## Home-Tasten-Fallback
 
