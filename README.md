@@ -16,7 +16,7 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phase 2 – Android Watch Next ist funktional abgeschlossen. Phase 3 – TMDB ist in Entwicklung.**
+**Phase 2 – Android Watch Next ist funktional abgeschlossen. Phase 3 – TMDB ist aktiv im Gerätetest.**
 
 Der aktuelle Phase-3-Unterbau enthält bereits:
 
@@ -38,9 +38,11 @@ Der aktuelle Phase-3-Unterbau enthält bereits:
 - TMDB-Attribution im Bereich `Über / Credits` mit genehmigtem TMDB-Logo und vorgeschriebenem Hinweis
 - Unit-Tests für Parser, Confidence, Medienmapping und Artwork-Priorität
 
-Der TMDB-Token wird **nicht** im Repository abgelegt. Der Code akzeptiert `IL_TMDB_READ_ACCESS_TOKEN` bzw. die Gradle-Property `tmdbReadAccessToken`. Der signierte Development-Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als GitHub-Secret und veröffentlicht in `update.json` zusätzlich `tmdbConfigured=true/false`. Ohne Token läuft I Launcher weiterhin vollständig mit den Android-Quelldaten wie in Phase 2.
+Der TMDB-Token wird **nicht** im Repository abgelegt. Der Code akzeptiert `IL_TMDB_READ_ACCESS_TOKEN` bzw. die Gradle-Property `tmdbReadAccessToken`. Der signierte Development-Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als GitHub-Secret. Für Phase 3 ist der Publisher jetzt strikt: fehlt das Secret, wird kein source-only Development-Build mehr veröffentlicht. Das veröffentlichte `update.json` enthält nur `tmdbConfigured=true/false`, niemals den Secret-Wert.
 
-TMDB verlangt für API-Nutzung ein genehmigtes Logo in einem About-/Credits-Bereich sowie den Hinweis „This product uses the TMDB API but is not endorsed or certified by TMDB.“ Beides ist vor der Live-Aktivierung umgesetzt.
+TMDB verlangt für API-Nutzung ein genehmigtes Logo in einem About-/Credits-Bereich sowie den Hinweis „This product uses the TMDB API but is not endorsed or certified by TMDB.“ Beides ist umgesetzt.
+
+Aktueller signierter Build mit **aktiver TMDB-Anreicherung**: **`0.1.0-dev.40` (`26000040`)**, `updateCompatible=true`, `tmdbConfigured=true`.
 
 Bereits auf dem TCL grundsätzlich verifiziert:
 
@@ -56,7 +58,7 @@ Bereits auf dem TCL grundsätzlich verifiziert:
 - normales OK auf Watch Next startet direkt die Quelle
 - INFO/lange OK öffnet die Detailseite und Back kehrt zu Home zurück
 
-Beim ersten Detailseiten-Gerätetest ging der Focus nach Back verloren und landete effektiv wieder oben in der Navigation. Die Ursache ist behoben, indem nicht nur der LazyList-State, sondern zusätzlich die stabile Source-ID der geöffneten Karte gespeichert wird. Nach Back wird die Zielkarte zuerst wieder sichtbar gemacht und anschließend im folgenden Compose-Frame explizit fokussiert. Dieser Fix benötigt noch den abschließenden TCL-Retest.
+Beim ersten Detailseiten-Gerätetest ging der Focus nach Back verloren und landete effektiv wieder oben in der Navigation. Die Ursache ist behoben, indem nicht nur der LazyList-State, sondern zusätzlich die stabile Source-ID der geöffneten Karte gespeichert wird. Nach Back wird die Zielkarte zuerst wieder sichtbar gemacht und anschließend im folgenden Compose-Frame explizit fokussiert. Dieser Fix benötigt noch den abschließenden TCL-Retest mit `dev.40`.
 
 Watch Next liefert auf dem Zielgerät unter anderem CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Deshalb bleibt eine CloudStream-spezifische Integration bewusst außen vor.
 
