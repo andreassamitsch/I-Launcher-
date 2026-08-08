@@ -46,6 +46,7 @@ internal data class TmdbMediaDetailsDto(
     @SerializedName("poster_path") val posterPath: String? = null,
     @SerializedName("backdrop_path") val backdropPath: String? = null,
     val images: TmdbImagesDto? = null,
+    val videos: TmdbVideoResponseDto? = null,
     @SerializedName("vote_average") val voteAverage: Double? = null,
     @SerializedName("external_ids") val externalIds: TmdbExternalIdsDto? = null,
 )
@@ -58,6 +59,7 @@ internal data class TmdbEpisodeDetailsDto(
     @SerializedName("still_path") val stillPath: String? = null,
     val runtime: Int? = null,
     @SerializedName("vote_average") val voteAverage: Double? = null,
+    val videos: TmdbVideoResponseDto? = null,
 )
 
 internal data class TmdbImagesDto(
@@ -70,6 +72,21 @@ internal data class TmdbImageDto(
     @SerializedName("file_path") val filePath: String? = null,
     @SerializedName("iso_639_1") val language: String? = null,
     @SerializedName("vote_average") val voteAverage: Double = 0.0,
+)
+
+internal data class TmdbVideoResponseDto(
+    val results: List<TmdbVideoDto> = emptyList(),
+)
+
+internal data class TmdbVideoDto(
+    val id: String = "",
+    val key: String = "",
+    val name: String? = null,
+    val site: String? = null,
+    val type: String? = null,
+    val official: Boolean = false,
+    @SerializedName("iso_639_1") val language: String? = null,
+    @SerializedName("published_at") val publishedAt: String? = null,
 )
 
 internal data class TmdbExternalIdsDto(
