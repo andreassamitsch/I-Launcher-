@@ -26,15 +26,21 @@ Der aktuelle Phase-3-Unterbau enthält bereits:
 - konservativen TMDB-Resolver mit Confidence-Schwelle
 - Retrofit/OkHttp-Client mit Bearer-Read-Access-Token
 - Room-Cache für Mappings, Medien- und Episodendaten einschließlich negativer Treffer
+- Cache-Identitätsprüfung gegen Titel/Jahr/Staffel/Episode vor Wiederverwendung eines Source-Mappings
 - 30-Tage-Refresh und 180-Tage-Hard-Limit für TMDB-Cache
 - TMDB-Bildkonfiguration für Poster, Backdrops, Logos und Episode Stills
 - Local-First-Anreicherung: Watch Next wird sofort mit Android-Quelldaten angezeigt und erst danach begrenzt über TMDB angereichert
 - Beibehaltung von Watch-Next-Reihenfolge, Quellenfilter und Quell-Deep-Link
+- Detailseite: normales OK startet weiterhin direkt die Quelle; INFO bzw. lange OK öffnet Details
+- gespeicherte Watch-Next-Scrollposition beim Wechsel in/aus Details
 - Unit-Tests für Parser, Confidence, Medienmapping und Artwork-Priorität
+- grüner CI-Build für den vollständigen Phase-3-Unterbau inklusive Detailseite
 
 Der TMDB-Token wird **nicht** im Repository abgelegt. Der Code akzeptiert `IL_TMDB_READ_ACCESS_TOKEN` bzw. die Gradle-Property `tmdbReadAccessToken`. Ohne Token läuft I Launcher weiterhin vollständig mit den Android-Quelldaten wie in Phase 2.
 
 Vor Aktivierung der Live-TMDB-Nutzung im signierten Development-Build werden die vorgeschriebene TMDB-Attribution und ein freigegebenes TMDB-Logo im About/Credits-Bereich ergänzt. TMDB verlangt dort außerdem den Hinweis „This product uses the TMDB API but is not endorsed or certified by TMDB.“
+
+Aktueller signierter Phase-3-Regression-Build ohne aktivierten TMDB-Token: **`0.1.0-dev.34` (`26000034`)**, `updateCompatible=true`.
 
 Bereits auf dem TCL grundsätzlich verifiziert:
 
@@ -47,6 +53,8 @@ Bereits auf dem TCL grundsätzlich verifiziert:
 - Watch-Next-Sortierung nach `last_engagement_time_utc_millis DESC`
 - Quellenfilter pro App/Package
 - Deep-Links zurück zur Quell-App
+
+Für den neuen Phase-3-Build ist noch ein TCL-Gerätetest für lange-OK/INFO → Details, Zurück-/Focus-Verhalten und Regressionen erforderlich. Die eigentliche TMDB-Anreicherung wird erst nach Attribution und externer Token-Konfiguration aktiviert.
 
 Watch Next liefert auf dem Zielgerät unter anderem CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Deshalb bleibt eine CloudStream-spezifische Integration bewusst außen vor.
 
