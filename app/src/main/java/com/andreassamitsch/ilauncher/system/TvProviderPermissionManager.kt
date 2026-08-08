@@ -15,13 +15,10 @@ object TvProviderPermissionManager {
     fun hasReadTvListings(context: Context): Boolean =
         context.checkSelfPermission(READ_TV_LISTINGS) == PackageManager.PERMISSION_GRANTED
 
-    fun shouldShowInitialRequest(context: Context): Boolean {
-        if (hasReadTvListings(context)) {
-            return false
-        }
-        return !context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_INITIAL_REQUEST_SHOWN, false)
-    }
+    fun shouldShowInitialRequest(context: Context): Boolean =
+        !hasReadTvListings(context) &&
+            !context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(KEY_INITIAL_REQUEST_SHOWN, false)
 
     fun markInitialRequestShown(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
