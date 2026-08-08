@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.model.InstalledApp
@@ -21,6 +22,8 @@ fun HomeScreen(
     apps: List<InstalledApp>,
     watchNextItems: List<WatchNextItem>,
     watchNextError: String?,
+    hasTvListingsPermission: Boolean,
+    onRequestTvListingsPermission: () -> Unit,
     onOpenApp: (InstalledApp) -> Unit,
     onOpenWatchNext: (WatchNextItem) -> Unit,
     modifier: Modifier = Modifier,
@@ -46,6 +49,19 @@ fun HomeScreen(
         )
 
         when {
+            !hasTvListingsPermission -> {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "I Launcher benötigt Androids Berechtigung „TV-Programme/Kanäle lesen“, um Watch Next und später Preview Channels anderer Apps anzuzeigen.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Button(onClick = onRequestTvListingsPermission) {
+                        Text("TV-Inhalte freigeben")
+                    }
+                }
+            }
+
             watchNextError != null -> {
                 Text(
                     text = watchNextError,
