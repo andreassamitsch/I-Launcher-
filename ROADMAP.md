@@ -41,6 +41,7 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Update-Kanal sperrt automatische Installation, solange keine stabile Development-Signatur vorhanden ist
 - [x] dauerhafter Development-Signing-Key als geschützte GitHub-Secrets hinterlegt (`updateCompatible=true` verifiziert)
 - [x] Development-Downloadkanal auf den aktiven Entwicklungsbranch umstellbar
+- [x] Publisher-Concurrency verhindert, dass ältere parallele CI-Läufe einen neueren Development-Build überschreiben
 - [ ] realen Update-von-Version-A-auf-Version-B-Gerätetest als eigener Distributionstest dokumentieren
 
 ## Phase 2 – Watch Next
@@ -73,18 +74,22 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] deterministisches Titel-/Jahr-/Staffel-/Episoden-Parsing
 - [x] Resolver mit konservativer Confidence-Schwelle und Source-Fallback
 - [x] Room-Mapping/Cache inklusive negativer No-Match-Ergebnisse
+- [x] Cache-Mapping nur wiederverwenden, wenn Titel/Jahr/Staffel/Episode weiterhin zur Quellidentität passen
 - [x] Local-First-Anreicherung: Quelle sofort anzeigen, TMDB danach begrenzt nachladen
 - [x] Android `COLUMN_TYPE` und `COLUMN_RELEASE_DATE` als Resolver-Hinweise übernehmen
 - [x] Poster-/Backdrop-/Logo-/Episode-Still-Infrastruktur über TMDB `/configuration`
 - [x] Serien-/Episodendaten-Unterbau inklusive Episode-Detail-Endpoint
 - [x] Cache-Refresh nach 30 Tagen und harte Löschung nach 180 Tagen
 - [x] Unit-Tests für Parser, Confidence, Android-Mapping und Artwork-Priorität
-- [ ] CI-Build des vollständigen Phase-3-Unterbaus grün
+- [x] CI-Build des vollständigen Phase-3-Unterbaus inklusive Detailseite grün
+- [x] Detailseite implementiert, ohne den normalen Watch-Next-Direktstart zu ersetzen: OK = Wiedergabe, INFO/lange OK = Details
+- [x] Home-Scrollposition beim Wechsel in/aus Details im Compose-State erhalten
+- [x] signierter source-only Regression-Build `0.1.0-dev.34` (`26000034`) veröffentlicht, `updateCompatible=true`
+- [ ] realen TCL-Gerätetest für lange-OK/INFO, Back-Navigation und Focus-Rückkehr durchführen
 - [ ] TMDB-Attribution inklusive freigegebenem TMDB-Logo im About/Credits-Bereich
 - [ ] `IL_TMDB_READ_ACCESS_TOKEN` außerhalb des Repositories für signierten Development-Build konfigurieren
-- [ ] realer TCL-Gerätetest der TMDB-Anreicherung und Cache-Nutzung
+- [ ] realen TCL-Gerätetest der TMDB-Anreicherung und Cache-Nutzung
 - [ ] TMDB-Diagnose für ID, Typ und Confidence ohne Secrets
-- [ ] Detailseite
 
 ## Phase 4 – Trailer
 
