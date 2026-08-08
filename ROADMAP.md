@@ -90,7 +90,9 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [ ] Focus-Rückgabe auf exakt dieselbe Watch-Next-Karte auf TCL erneut verifizieren
 - [x] TMDB-Attribution im Bereich `Über / Credits` mit genehmigtem TMDB-Logo und vorgeschriebenem Hinweis implementiert
 - [x] signierter Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als geschütztes GitHub-Secret und veröffentlicht `tmdbConfigured=true/false` zur Diagnose
-- [ ] `IL_TMDB_READ_ACCESS_TOKEN` im Repository als Secret tatsächlich vorhanden/verifiziert (`tmdbConfigured=true`)
+- [x] `IL_TMDB_READ_ACCESS_TOKEN` im Repository als Secret vorhanden und über harten CI-Prüfschritt verifiziert
+- [x] Publisher veröffentlicht ab aktiver Phase 3 keinen source-only Build mehr, wenn das TMDB-Secret fehlt
+- [x] signierter Live-TMDB-Build `0.1.0-dev.40` (`26000040`) veröffentlicht; `updateCompatible=true`, `tmdbConfigured=true`
 - [x] TMDB-Diagnose für Build-Aktivierung, aufgelöste ID, Typ und Confidence ohne Secret/URLs implementiert
 - [ ] realen TCL-Gerätetest der aktiven TMDB-Anreicherung und Cache-Nutzung
 
