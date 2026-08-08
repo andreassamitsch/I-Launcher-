@@ -1,9 +1,7 @@
 name: Publish Development APK
 
 on:
-  push:
-    branches:
-      - agent/phase-1-launcher-mvp
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -48,4 +46,4 @@ jobs:
             --prerelease \
             --target "$GITHUB_SHA" \
             --title "I Launcher Development" \
-            --notes "Automatisch erzeugte Testversion aus agent/phase-1-launcher-mvp. Nicht als finaler Release gedacht."
+            --notes "Manuell veröffentlichte Testversion. Vor automatischen Updates wird ein dauerhafter Signing-Key eingerichtet."
