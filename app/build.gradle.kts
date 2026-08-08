@@ -107,6 +107,7 @@ dependencies {
 
     implementation("io.coil-kt.coil3:coil-compose:3.5.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.5.0")
+    implementation("io.coil-kt.coil3:coil-svg:3.5.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
