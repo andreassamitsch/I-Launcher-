@@ -17,6 +17,7 @@ data class TmdbMetadata(
     val imdbId: String?,
     val tvdbId: Int?,
     val wikidataId: String?,
+    val trailerYoutubeId: String? = null,
     val episode: TmdbEpisodeMetadata? = null,
     val confidence: Float,
 )
@@ -31,4 +32,5 @@ data class TmdbEpisodeMetadata(
     val runtimeMinutes: Int?,
     val stillUri: String?,
     val voteAverage: Double?,
+    val trailerYoutubeId: String? = null,
 )
