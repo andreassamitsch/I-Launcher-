@@ -29,7 +29,9 @@ Der aktuelle Phase-3-Unterbau enthält bereits:
 - Cache-Identitätsprüfung gegen Titel/Jahr/Staffel/Episode vor Wiederverwendung eines Source-Mappings
 - 30-Tage-Refresh und 180-Tage-Hard-Limit für TMDB-Cache
 - TMDB-Bildkonfiguration für Poster, Backdrops, Logos und Episode Stills
-- Local-First-Anreicherung: Watch Next wird sofort mit Android-Quelldaten angezeigt und erst danach begrenzt über TMDB angereichert
+- Local-First-Anreicherung: Watch Next wird sofort mit Android-Quelldaten angezeigt und danach progressiv über TMDB angereichert
+- keine feste Begrenzung der TMDB-Anreicherung auf die ersten Watch-Next-Einträge; alle sichtbaren Quellen werden in kleinen Batches verarbeitet
+- einmaliger Retry für nach dem ersten Durchlauf noch nicht angereicherte Einträge, wobei negative No-Match-Caches unnötige erneute Netzwerkanfragen verhindern
 - Beibehaltung von Watch-Next-Reihenfolge, Quellenfilter und Quell-Deep-Link
 - Detailseite: normales OK startet weiterhin direkt die Quelle; INFO bzw. lange OK öffnet Details
 - gespeicherte Watch-Next-Scrollposition beim Wechsel in/aus Details
@@ -38,11 +40,11 @@ Der aktuelle Phase-3-Unterbau enthält bereits:
 - TMDB-Attribution im Bereich `Über / Credits` mit genehmigtem TMDB-Logo und vorgeschriebenem Hinweis
 - Unit-Tests für Parser, Confidence, Medienmapping und Artwork-Priorität
 
-Der TMDB-Token wird **nicht** im Repository abgelegt. Der Code akzeptiert `IL_TMDB_READ_ACCESS_TOKEN` bzw. die Gradle-Property `tmdbReadAccessToken`. Der signierte Development-Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als GitHub-Secret. Für Phase 3 ist der Publisher jetzt strikt: fehlt das Secret, wird kein source-only Development-Build mehr veröffentlicht. Das veröffentlichte `update.json` enthält nur `tmdbConfigured=true/false`, niemals den Secret-Wert.
+Der TMDB-Token wird **nicht** im Repository abgelegt. Der Code akzeptiert `IL_TMDB_READ_ACCESS_TOKEN` bzw. die Gradle-Property `tmdbReadAccessToken`. Der signierte Development-Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als GitHub-Secret. Für Phase 3 ist der Publisher strikt: fehlt das Secret, wird kein source-only Development-Build veröffentlicht. Das veröffentlichte `update.json` enthält nur `tmdbConfigured=true/false`, niemals den Secret-Wert.
 
 TMDB verlangt für API-Nutzung ein genehmigtes Logo in einem About-/Credits-Bereich sowie den Hinweis „This product uses the TMDB API but is not endorsed or certified by TMDB.“ Beides ist umgesetzt.
 
-Aktueller signierter Build mit **aktiver TMDB-Anreicherung**: **`0.1.0-dev.40` (`26000040`)**, `updateCompatible=true`, `tmdbConfigured=true`.
+Aktueller signierter Build mit **aktiver TMDB-Anreicherung**: **`0.1.0-dev.45` (`26000045`)**, `updateCompatible=true`, `tmdbConfigured=true`.
 
 Bereits auf dem TCL grundsätzlich verifiziert:
 
@@ -58,10 +60,13 @@ Bereits auf dem TCL grundsätzlich verifiziert:
 - normales OK auf Watch Next startet direkt die Quelle
 - INFO/lange OK öffnet die Detailseite und Back kehrt zu Home zurück
 - `dev.40`: Focus kehrt nach Back aus Details auf exakt dieselbe Watch-Next-Karte zurück
+- aktive TMDB-Anreicherung funktioniert grundsätzlich für Filme und viele Serien/Episoden
 
 Der Focus-Fehler des ersten Detailseiten-Gerätetests ist damit behoben und auf realer TCL-Hardware bestätigt.
 
-Für `dev.40` sind nur noch die aktive TMDB-Anreicherung, Serien-/Episodenauflösung, Artwork-Auswahl und Room-Cache-Nutzung auf realer Hardware zu verifizieren. Erst danach gilt Phase 3 als abgeschlossen.
+Im Gerätetest zeigte sich anschließend, dass nicht alle grundsätzlich auflösbaren Serien angereichert wurden. Die Ursache war kein weiteres Titel-Formatproblem, sondern eine feste Begrenzung auf die ersten 12 Watch-Next-Einträge sowie ein erst nach Abschluss der gesamten Gruppe sichtbares Ergebnis. `dev.45` entfernt diese Begrenzung, verarbeitet alle Einträge progressiv in kleinen Batches und versucht nach einem kurzen Abstand einmalig noch ungelöste Einträge erneut.
+
+Für `dev.45` ist noch der reale TCL-Retest der vollständigen progressiven TMDB-Anreicherung, Serien-/Episodenauflösung, Artwork-Auswahl und Room-Cache-Nutzung erforderlich. Erst danach gilt Phase 3 als abgeschlossen.
 
 Watch Next liefert auf dem Zielgerät unter anderem CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Deshalb bleibt eine CloudStream-spezifische Integration bewusst außen vor.
 
