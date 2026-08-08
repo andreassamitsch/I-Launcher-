@@ -13,7 +13,7 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Apps per Deep/Launch Intent öffnen
 - [x] Home-Ansicht mit TV-optimierten Abständen
 - [x] Basisnavigation Home / Apps / Einstellungen
-- [ ] Focus/D-Pad-Verhalten – implementiert, laufende reale TV-Tests
+- [x] Focus/D-Pad-Verhalten im aktuellen Launcher-/Watch-Next-Stand auf TCL grundsätzlich verifiziert
 - [x] Unit-Test für App-Sortierung/Filterung soweit sinnvoll
 - [x] CI-Build
 - [x] Debug-APK als CI-Artefakt
@@ -22,12 +22,10 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] `BIND_ACCESSIBILITY_SERVICE` und `canRequestFilterKeyEvents=true` korrekt konfiguriert
 - [x] TCL/Google-TV-Gerätetest bei ADB-Installation: Accessibility-Fallback lässt sich aktivieren und HOME öffnet I Launcher
 - [x] Android-13+-Restricted-Settings bei lokaler/heruntergeladener APK als Ursache für zurückspringenden Accessibility-Schalter berücksichtigt
-- [x] Installationsquellen-Diagnose und klare App-Info- / „Eingeschränkte Einstellungen zulassen“-Führung
+- [x] Installationsquellen-Diagnose und Einrichtungsführung vorhanden
 - [x] Standard-`MAIN`/`LAUNCHER`-Entry zusätzlich zu HOME/LEANBACK für reguläre Front-Door-/Installer-Öffnen-Funktion
-- [ ] TCL-Gerätetest nach normaler APK-Installation: Restricted Settings erlauben, Accessibility aktivieren, HOME testen
-- [ ] TCL-Gerätetest: Paketinstaller bietet nach Installation „Öffnen“ an
+- [ ] TCL-spezifisches Covered-Applications-/Restricted-Settings-Verhalten bei normaler APK-Installation später separat verbessern; blockiert die Content-Phasen nicht
 - [x] zentrales dunkles TV-Material-Farbschema mit kontrastreichen Content-Farben
-- [ ] abschließender realer TV-Gerätetest für Focus/Scroll/Lesbarkeit nach den letzten UI-Fixes
 
 ## Distribution / Updates
 
@@ -42,8 +40,8 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] direkte Freigabe für „Installation aus dieser Quelle“ öffnen
 - [x] Update-Kanal sperrt automatische Installation, solange keine stabile Development-Signatur vorhanden ist
 - [x] dauerhafter Development-Signing-Key als geschützte GitHub-Secrets hinterlegt (`updateCompatible=true` verifiziert)
-- [x] Development-Downloadkanal auf den aktiven Phase-2-Branch umgestellt
-- [ ] realen Update-von-Version-A-auf-Version-B-Gerätetest durchführen
+- [x] Development-Downloadkanal auf den aktiven Entwicklungsbranch umstellbar
+- [ ] realen Update-von-Version-A-auf-Version-B-Gerätetest als eigener Distributionstest dokumentieren
 
 ## Phase 2 – Watch Next
 
@@ -61,55 +59,57 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] TvProvider-Änderungen per ContentObserver live beobachten
 - [x] Diagnoseansicht mit Rohreihenfolge, Watch-Next-Typ, Engagement-Zeit und relevanten TvProvider-Feldern
 - [x] keine vollständigen Deep-Link-/Bild-URLs in Diagnose oder Logs ausgeben
-- [ ] neue Sortierung auf dem TCL gegen Arc/Projectivy vergleichen
-- [ ] Browser-/unerwünschte Quellen auf dem TCL per Quellenfilter ausblenden und Verhalten verifizieren
-- [ ] CloudStream-Einträge, Bilder, Fortschritt und Deep Links auf realer TV-Hardware verifizieren
-- [ ] D-Pad/Scroll/Fokus der Watch-Next-Reihe auf realer TV-Hardware verifizieren
+- [x] neue Sortierung auf dem TCL gegen andere Launcher plausibilisiert und vom Benutzer als funktionierend bestätigt
+- [x] unerwünschte Browser-/sonstige Quellen lassen sich auf dem TCL per Quellenfilter ausblenden
+- [x] Watch-Next-Daten inklusive CloudStream werden über Android TvProvider sichtbar; kein CloudStream-Sonderweg nötig
+- [x] D-Pad/Scroll/Fokus der aktuellen Watch-Next-Reihe im Gerätetest ohne blockierenden Fehler
+
+**Phase 2 ist funktional abgeschlossen.** Das separate TCL-/Covered-Applications-Thema des Accessibility-Fallbacks bleibt als Distribution-/Gerätebesonderheit offen und blockiert Phase 3 nicht.
 
 ## Phase 3 – TMDB
 
-- API-Client
-- gemeinsames Medienmodell
-- Resolver mit Confidence
-- Room-Mapping/Cache
-- Poster, Backdrops, Logos
-- Serien-/Episodendaten
-- Detailseite
+- [ ] API-Client
+- [ ] gemeinsames Medienmodell
+- [ ] Resolver mit Confidence
+- [ ] Room-Mapping/Cache
+- [ ] Poster, Backdrops, Logos
+- [ ] Serien-/Episodendaten
+- [ ] Detailseite
 
 ## Phase 4 – Trailer
 
-- TMDB Videos
-- YouTube-ID
-- YouTube-Suche nur als Fallback
-- Trailerwiedergabe
+- [ ] TMDB Videos
+- [ ] YouTube-ID
+- [ ] YouTube-Suche nur als Fallback
+- [ ] Trailerwiedergabe
 
 ## Phase 5 – Gigablue / OpenWebif
 
-- Verbindung und Authentifizierung
-- Bouquets
-- Sender
-- EPG Now/Next
-- `Jetzt im TV` auf Home
+- [ ] Verbindung und Authentifizierung
+- [ ] Bouquets
+- [ ] Sender
+- [ ] EPG Now/Next
+- [ ] `Jetzt im TV` auf Home
 
 ## Phase 6 – EPG
 
-- kompletter EPG-Guide
-- TMDB-Anreicherung
-- Bilder und Details
+- [ ] kompletter EPG-Guide
+- [ ] TMDB-Anreicherung
+- [ ] Bilder und Details
 
 ## Phase 7 – Live TV
 
-- Media3-Player
-- OpenWebif Streams
-- Zapping
-- TV-Player-UI
+- [ ] Media3-Player
+- [ ] OpenWebif Streams
+- [ ] Zapping
+- [ ] TV-Player-UI
 
 ## Phase 8 – optionale Provider
 
 Nur wenn Android-Standardschnittstellen nicht ausreichen:
 
-- Kodi
-- Jellyfin
-- Plex
-- CloudStream
-- weitere Provider
+- [ ] Kodi
+- [ ] Jellyfin
+- [ ] Plex
+- [ ] CloudStream
+- [ ] weitere Provider
