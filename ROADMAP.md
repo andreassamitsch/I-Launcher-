@@ -13,14 +13,16 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Apps per Deep/Launch Intent öffnen
 - [x] Home-Ansicht mit TV-optimierten Abständen
 - [x] Basisnavigation Home / Apps / Einstellungen
-- [ ] Focus/D-Pad-Verhalten – implementiert, realer TV-Test ausstehend
+- [ ] Focus/D-Pad-Verhalten – implementiert, laufende reale TV-Tests
 - [x] Unit-Test für App-Sortierung/Filterung soweit sinnvoll
 - [x] CI-Build
 - [x] Debug-APK als CI-Artefakt
 - [x] offizielle Android-Home-Rolle als bevorzugte Launcher-Aktivierung
 - [x] Accessibility-Fallback erkennt HOME-Key und System-Launcher-Fenster
 - [x] Hilfe für Android „Eingeschränkte Einstellungen“ bei seitlich installierten Accessibility-Services
-- [ ] realer TV-Gerätetest für Home-Rolle / Accessibility-Fallback
+- [x] TCL/Google-TV-Gerätetest: Accessibility-Fallback lässt sich aktivieren und HOME öffnet I Launcher
+- [x] zentrales dunkles TV-Material-Farbschema mit kontrastreichen Content-Farben
+- [ ] abschließender realer TV-Gerätetest für Focus/Scroll/Lesbarkeit nach den letzten UI-Fixes
 
 ## Distribution / Updates
 
@@ -40,11 +42,13 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 
 ## Phase 2 – Watch Next
 
-- Android TvProvider / Watch Next
-- vorhandene Reihenfolge beibehalten
-- Fortschritt und Metadaten darstellen
-- Quell-App über vorhandenen Intent/Deep Link öffnen
-- auf dem Zielgerät gegen Arc/CloudStream vergleichen
+- [ ] Android TvProvider / Watch Next einlesen
+- [ ] vom Provider gelieferte Reihenfolge unverändert abbilden
+- [ ] Titel, Staffel/Episode, Bild und Fortschritt darstellen
+- [ ] Quell-App / Package für Diagnose erfassen
+- [ ] Quell-App über vorhandenen Intent/Deep Link öffnen
+- [ ] Diagnoseansicht mit Rohreihenfolge und relevanten TvProvider-Feldern
+- [ ] auf dem Zielgerät gegen Arc/CloudStream vergleichen
 
 ## Phase 3 – TMDB
 
