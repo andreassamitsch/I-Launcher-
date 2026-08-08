@@ -16,18 +16,26 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phase 1 – Launcher MVP** ist in Umsetzung.
+**Phase 2 – Android Watch Next** ist in Gerätevalidierung.
 
-Der aktuelle Phase-1-Branch enthält:
+Bereits umgesetzt:
 
 - Android-TV-Home-/Launcher-Intent
-- Compose-for-TV-Grundoberfläche
-- Erkennung installierter TV-/Launcher-Apps
-- App-Start per Leanback-/Launch-Intent
-- Navigation Home / Apps / Einstellungen
-- TV-optimierte Cards mit Focus-Skalierung
-- Unit-Test der App-Auswahl/Sortierung
+- TCL-/Google-TV-Home-Fallback über Accessibility, real am Zielgerät bestätigt
+- Compose-for-TV-Oberfläche mit zentralem kontrastreichem Dark Theme
+- installierte TV-/Launcher-Apps und App-Start
+- scrollbare Apps-Ansicht
+- Android `TvProvider` / `WatchNextPrograms`
+- unveränderte Übernahme der vom Provider gelieferten Watch-Next-Reihenfolge
+- Watch-Next-Karten mit Quellbild, Staffel/Episode und Fortschritt
+- Deep-Link zurück zur Quell-App
+- Watch-Next-Diagnose mit Rohindex und Quellpaket
+- `ContentObserver` für laufende TvProvider-Änderungen
+- Unit-Tests für Mapping/Reihenfolge
 - GitHub-CI für Tests und Debug-APK
+- fester signierter Development-Updatekanal mit In-App-Updater
+
+Noch offen für Phase 2: realer Vergleich der Watch-Next-Daten, Reihenfolge, Deep-Links und D-Pad-Navigation gegen Arc/CloudStream auf dem TCL Google TV.
 
 Siehe:
 
@@ -48,6 +56,7 @@ Kotlin · Jetpack Compose · Compose for TV · AndroidX · Coroutines/Flow · Ro
 - minSdk 26
 - Compose BOM 2026.06.00
 - Compose for TV 1.1.0
+- Coil 3.5.0
 
 ## Lizenz
 
