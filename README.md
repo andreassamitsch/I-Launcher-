@@ -26,6 +26,7 @@ Bereits umgesetzt:
 - installierte TV-/Launcher-Apps und App-Start
 - scrollbare Apps-Ansicht
 - Android `TvProvider` / `WatchNextPrograms`
+- Android-Runtime-Berechtigung `android.permission.READ_TV_LISTINGS` für fremde Watch-Next-/Preview-Channel-Daten
 - unveränderte Übernahme der vom Provider gelieferten Watch-Next-Reihenfolge
 - Watch-Next-Karten mit Quellbild, Staffel/Episode und Fortschritt
 - Deep-Link zurück zur Quell-App
@@ -35,7 +36,11 @@ Bereits umgesetzt:
 - GitHub-CI für Tests und Debug-APK
 - fester signierter Development-Updatekanal mit In-App-Updater
 
-Noch offen für Phase 2: realer Vergleich der Watch-Next-Daten, Reihenfolge, Deep-Links und D-Pad-Navigation gegen Arc/CloudStream auf dem TCL Google TV.
+Wichtig: Ohne `READ_TV_LISTINGS` begrenzt Android TvProvider Abfragen auf Daten der eigenen App. I Launcher fordert diese Berechtigung deshalb beim ersten Start an und zeigt bei fehlender Freigabe einen klaren Setup-Hinweis statt irreführend eine leere Watch-Next-Liste.
+
+Der Home-Tasten-Fallback verwendet dagegen Android Accessibility. Diese Sonderfreigabe kann nicht über einen normalen Runtime-Permission-Dialog erteilt werden und wird deshalb über die Android-Bedienungshilfen aktiviert.
+
+Noch offen für Phase 2: realer Vergleich der Watch-Next-Daten, Reihenfolge, Deep-Links und D-Pad-Navigation gegen Arc/CloudStream auf dem TCL Google TV nach Freigabe von `READ_TV_LISTINGS`.
 
 Siehe:
 
