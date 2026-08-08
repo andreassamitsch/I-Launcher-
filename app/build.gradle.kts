@@ -12,6 +12,17 @@ val iLauncherVersionName = providers.gradleProperty("iLauncherVersionName")
     ?.takeIf { it.isNotBlank() }
     ?: "0.1.0"
 
+val developmentSigningStoreFile = System.getenv("IL_SIGNING_STORE_FILE")?.takeIf { it.isNotBlank() }
+val developmentSigningStorePassword = System.getenv("IL_SIGNING_STORE_PASSWORD")?.takeIf { it.isNotBlank() }
+val developmentSigningKeyAlias = System.getenv("IL_SIGNING_KEY_ALIAS")?.takeIf { it.isNotBlank() }
+val developmentSigningKeyPassword = System.getenv("IL_SIGNING_KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+val developmentSigningConfigured = listOf(
+    developmentSigningStoreFile,
+    developmentSigningStorePassword,
+    developmentSigningKeyAlias,
+    developmentSigningKeyPassword,
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.andreassamitsch.ilauncher"
     compileSdk = 36
@@ -35,7 +46,24 @@ android {
         compose = true
     }
 
+    signingConfigs {
+        if (developmentSigningConfigured) {
+            create("development") {
+                storeFile = file(requireNotNull(developmentSigningStoreFile))
+                storePassword = developmentSigningStorePassword
+                keyAlias = developmentSigningKeyAlias
+                keyPassword = developmentSigningKeyPassword
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (developmentSigningConfigured) {
+                signingConfig = signingConfigs.getByName("development")
+            }
+        }
+
         release {
             isMinifyEnabled = false
         }
