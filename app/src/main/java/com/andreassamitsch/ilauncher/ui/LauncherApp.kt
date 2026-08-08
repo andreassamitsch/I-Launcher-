@@ -1,6 +1,5 @@
 package com.andreassamitsch.ilauncher.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,9 +14,11 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Surface
+import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.apps.InstalledAppsRepository
 import com.andreassamitsch.ilauncher.data.update.UpdateManager
@@ -65,39 +66,46 @@ fun LauncherApp(
         else -> null
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF080A0E))
-            .padding(horizontal = 56.dp, vertical = 34.dp),
-        verticalArrangement = Arrangement.spacedBy(30.dp),
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        colors = SurfaceDefaults.colors(
+            containerColor = MaterialTheme.colorScheme.background,
+            contentColor = MaterialTheme.colorScheme.onBackground,
+        ),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            LauncherSection.entries.forEach { item ->
-                Button(onClick = { section = item }) {
-                    Text(item.label)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 56.dp, vertical = 34.dp),
+            verticalArrangement = Arrangement.spacedBy(30.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                LauncherSection.entries.forEach { item ->
+                    Button(onClick = { section = item }) {
+                        Text(item.label)
+                    }
+                }
+
+                updateAttentionLabel?.let { label ->
+                    Button(onClick = { section = LauncherSection.Settings }) {
+                        Text(label)
+                    }
                 }
             }
 
-            updateAttentionLabel?.let { label ->
-                Button(onClick = { section = LauncherSection.Settings }) {
-                    Text(label)
-                }
+            when (section) {
+                LauncherSection.Home -> HomeScreen(
+                    apps = apps,
+                    onOpenApp = openApp,
+                )
+
+                LauncherSection.Apps -> AppsScreen(
+                    apps = apps,
+                    onOpenApp = openApp,
+                )
+
+                LauncherSection.Settings -> SettingsScreen(updateManager = updateManager)
             }
-        }
-
-        when (section) {
-            LauncherSection.Home -> HomeScreen(
-                apps = apps,
-                onOpenApp = openApp,
-            )
-
-            LauncherSection.Apps -> AppsScreen(
-                apps = apps,
-                onOpenApp = openApp,
-            )
-
-            LauncherSection.Settings -> SettingsScreen(updateManager = updateManager)
         }
     }
 }
