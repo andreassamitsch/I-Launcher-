@@ -26,6 +26,7 @@ import com.andreassamitsch.ilauncher.BuildConfig
 import com.andreassamitsch.ilauncher.data.update.InstallResult
 import com.andreassamitsch.ilauncher.data.update.UpdateManager
 import com.andreassamitsch.ilauncher.data.update.UpdateState
+import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.HomeLauncherManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -33,6 +34,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsScreen(
     updateManager: UpdateManager,
+    watchNextResult: WatchNextLoadResult,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -145,6 +147,55 @@ fun SettingsScreen(
             text = "Der Bedienungshilfe-Fallback reagiert sowohl auf einen gelieferten HOME-Key als auch darauf, wenn der System-Launcher nach einem Home-Druck sichtbar wird.",
             style = MaterialTheme.typography.bodyMedium,
         )
+
+        Text(
+            text = "Watch Next Diagnose",
+            style = MaterialTheme.typography.headlineSmall,
+        )
+
+        if (watchNextResult.errorMessage != null) {
+            Text(
+                text = watchNextResult.errorMessage,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        } else {
+            Text(
+                text = "TvProvider liefert ${watchNextResult.items.size} Einträge. Die Cursor-Reihenfolge wird unverändert verwendet.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
+            watchNextResult.items.take(20).forEach { item ->
+                val progress = if (item.playbackPositionMillis != null && item.durationMillis != null) {
+                    "${item.playbackPositionMillis}/${item.durationMillis} ms"
+                } else {
+                    "kein Fortschritt"
+                }
+                Text(
+                    text = buildString {
+                        append("#${item.sourceOrder} | ")
+                        append(item.packageName ?: "Paket unbekannt")
+                        append(" | ")
+                        append(item.displayTitle)
+                        item.displaySubtitle?.let { append(" | $it") }
+                        append(" | $progress")
+                        append(" | type=${item.watchNextType ?: "?"}")
+                        append(" | intent=${if (item.intentUri.isNullOrBlank()) "nein" else "ja"}")
+                        append(" | bild=${if (item.artworkUri.isNullOrBlank()) "nein" else "ja"}")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            if (watchNextResult.items.size > 20) {
+                Text(
+                    text = "+ ${watchNextResult.items.size - 20} weitere Einträge",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
 
         Text(
             text = "Updates",
