@@ -3,6 +3,7 @@ package com.andreassamitsch.ilauncher.data.tv
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbEpisodeMetadata
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbMetadata
 import com.andreassamitsch.ilauncher.model.MediaType
+import com.andreassamitsch.ilauncher.model.TrailerProvider
 import com.andreassamitsch.ilauncher.model.WatchNextItem
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -34,6 +35,22 @@ class WatchNextMediaMapperTest {
         assertEquals("S2 · E4 · Episode Four", enriched.subtitle)
         assertEquals(100, enriched.tmdbId)
         assertEquals(200, enriched.tmdbEpisodeId)
+    }
+
+    @Test fun `episode trailer overrides series trailer`() {
+        val base = WatchNextMediaMapper.base(item(programType = 3))
+        val enriched = WatchNextMediaMapper.enrich(base, TmdbMetadata(
+            tmdbId=100, mediaType=MediaType.Series, title="Fallout", originalTitle="Fallout", overview="Serie",
+            releaseYear=2024, runtimeMinutes=55, posterUri=null, backdropUri=null, logoUri=null, voteAverage=8.0,
+            imdbId=null, tvdbId=null, wikidataId=null, trailerYoutubeId="seriesTrailer",
+            episode=TmdbEpisodeMetadata(
+                tmdbEpisodeId=200, seasonNumber=2, episodeNumber=4, title="Episode Four", overview=null,
+                airYear=2026, runtimeMinutes=52, stillUri=null, voteAverage=8.4, trailerYoutubeId="episodeTrailer",
+            ), confidence=0.97f,
+        ))
+
+        assertEquals(TrailerProvider.YouTube, enriched.trailer?.provider)
+        assertEquals("episodeTrailer", enriched.trailer?.externalId)
     }
 
     private fun item(programType: Int?) = WatchNextItem(
