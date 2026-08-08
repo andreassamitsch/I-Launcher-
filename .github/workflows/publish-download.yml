@@ -47,6 +47,28 @@ jobs:
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
 
+      - name: Configure stable development signing
+        env:
+          DEV_KEYSTORE_BASE64: ${{ secrets.IL_DEV_KEYSTORE_BASE64 }}
+          DEV_STORE_PASSWORD: ${{ secrets.IL_DEV_STORE_PASSWORD }}
+          DEV_KEY_ALIAS: ${{ secrets.IL_DEV_KEY_ALIAS }}
+          DEV_KEY_PASSWORD: ${{ secrets.IL_DEV_KEY_PASSWORD }}
+        run: |
+          if [ -n "$DEV_KEYSTORE_BASE64" ] && \
+             [ -n "$DEV_STORE_PASSWORD" ] && \
+             [ -n "$DEV_KEY_ALIAS" ] && \
+             [ -n "$DEV_KEY_PASSWORD" ]; then
+            echo "$DEV_KEYSTORE_BASE64" | base64 --decode > /tmp/i-launcher-development.jks
+            echo "IL_SIGNING_STORE_FILE=/tmp/i-launcher-development.jks" >> "$GITHUB_ENV"
+            echo "IL_SIGNING_STORE_PASSWORD=$DEV_STORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "IL_SIGNING_KEY_ALIAS=$DEV_KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "IL_SIGNING_KEY_PASSWORD=$DEV_KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "UPDATE_COMPATIBLE=true" >> "$GITHUB_ENV"
+          else
+            echo "UPDATE_COMPATIBLE=false" >> "$GITHUB_ENV"
+            echo "Stable development signing secrets are not configured; APK will be published for manual installation only."
+          fi
+
       - name: Test and build debug APK
         run: |
           gradle :app:testDebugUnitTest :app:assembleDebug \
@@ -64,6 +86,7 @@ jobs:
             "versionName": "$VERSION_NAME",
             "apkUrl": "https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/downloads/I-Launcher-debug.apk",
             "sha256": "$SHA256",
+            "updateCompatible": $UPDATE_COMPATIBLE,
             "sourceSha": "$GITHUB_SHA"
           }
           EOF
