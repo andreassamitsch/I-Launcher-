@@ -12,20 +12,20 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.model.InstalledApp
-import com.andreassamitsch.ilauncher.model.WatchNextItem
 import com.andreassamitsch.ilauncher.ui.components.AppCard
 import com.andreassamitsch.ilauncher.ui.components.WatchNextCard
 
 @Composable
 fun HomeScreen(
     apps: List<InstalledApp>,
-    watchNextItems: List<WatchNextItem>,
+    watchNextItems: List<EnrichedWatchNextItem>,
     watchNextError: String?,
     hasTvListingsPermission: Boolean,
     onRequestTvListingsPermission: () -> Unit,
     onOpenApp: (InstalledApp) -> Unit,
-    onOpenWatchNext: (WatchNextItem) -> Unit,
+    onOpenWatchNext: (EnrichedWatchNextItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -85,10 +85,10 @@ fun HomeScreen(
                 ) {
                     items(
                         items = watchNextItems,
-                        key = { "watch-next-${it.id}-${it.sourceOrder}" },
+                        key = { "watch-next-${it.sourceItem.id}-${it.sourceItem.sourceOrder}" },
                     ) { item ->
                         WatchNextCard(
-                            item = item,
+                            item = item.media,
                             onClick = { onOpenWatchNext(item) },
                         )
                     }
