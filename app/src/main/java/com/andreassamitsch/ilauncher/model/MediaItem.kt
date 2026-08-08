@@ -23,6 +23,7 @@ data class MediaItem(
     val overview: String? = null,
     val releaseYear: Int? = null,
     val tmdbId: Int? = null,
+    val tmdbEpisodeId: Int? = null,
     val seasonNumber: Int? = null,
     val episodeNumber: Int? = null,
     val episodeTitle: String? = null,
@@ -34,6 +35,10 @@ data class MediaItem(
     val durationMillis: Long? = null,
     val playbackPositionMillis: Long? = null,
     val lastEngagementTimeUtcMillis: Long? = null,
+    val voteAverage: Double? = null,
+    val imdbId: String? = null,
+    val tvdbId: Int? = null,
+    val wikidataId: String? = null,
     val source: MediaSource,
     val resolverConfidence: Float? = null,
 ) {
