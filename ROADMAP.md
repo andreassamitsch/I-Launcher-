@@ -84,12 +84,15 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] CI-Build des vollständigen Phase-3-Unterbaus inklusive Detailseite grün
 - [x] Detailseite implementiert, ohne den normalen Watch-Next-Direktstart zu ersetzen: OK = Wiedergabe, INFO/lange OK = Details
 - [x] Home-Scrollposition beim Wechsel in/aus Details im Compose-State erhalten
-- [x] signierter source-only Regression-Build `0.1.0-dev.34` (`26000034`) veröffentlicht, `updateCompatible=true`
-- [ ] realen TCL-Gerätetest für lange-OK/INFO, Back-Navigation und Focus-Rückkehr durchführen
-- [ ] TMDB-Attribution inklusive freigegebenem TMDB-Logo im About/Credits-Bereich
-- [ ] `IL_TMDB_READ_ACCESS_TOKEN` außerhalb des Repositories für signierten Development-Build konfigurieren
-- [ ] realen TCL-Gerätetest der TMDB-Anreicherung und Cache-Nutzung
-- [ ] TMDB-Diagnose für ID, Typ und Confidence ohne Secrets
+- [x] TCL-Gerätetest: Direktstart, INFO/lange OK, Detailseite und Back-Navigation funktionieren grundsätzlich
+- [x] reproduzierte Focus-Lücke analysiert: Home-Subtree wird bei Details aus der Composition entfernt; LazyListState allein erhält keinen Focus-Owner
+- [x] explizite Focus-Rückgabe über stabile Watch-Next-Source-ID + `FocusRequester` nach `scrollToItem` und folgendem Compose-Frame implementiert
+- [ ] Focus-Rückgabe auf exakt dieselbe Watch-Next-Karte auf TCL erneut verifizieren
+- [x] TMDB-Attribution im Bereich `Über / Credits` mit genehmigtem TMDB-Logo und vorgeschriebenem Hinweis implementiert
+- [x] signierter Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als geschütztes GitHub-Secret und veröffentlicht `tmdbConfigured=true/false` zur Diagnose
+- [ ] `IL_TMDB_READ_ACCESS_TOKEN` im Repository als Secret tatsächlich vorhanden/verifiziert (`tmdbConfigured=true`)
+- [x] TMDB-Diagnose für Build-Aktivierung, aufgelöste ID, Typ und Confidence ohne Secret/URLs implementiert
+- [ ] realen TCL-Gerätetest der aktiven TMDB-Anreicherung und Cache-Nutzung
 
 ## Phase 4 – Trailer
 
