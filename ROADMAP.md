@@ -99,10 +99,19 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 
 ## Phase 4 – Trailer
 
-- [ ] TMDB Videos
-- [ ] YouTube-ID
-- [ ] YouTube-Suche nur als Fallback
-- [ ] Trailerwiedergabe
+- [x] TMDB Videos über Movie-/TV-/Episode-Details einlesen
+- [x] bevorzugte YouTube-ID deterministisch auswählen und im gemeinsamen Medienmodell abbilden
+- [x] Episode-Trailer vor Serien-Trailer priorisieren
+- [x] Trailer-ID und „kein Treffer“-Status in Room cachen
+- [x] Room-Migration 1 → 2 ohne Löschen bestehender Phase-3-Caches implementieren
+- [x] YouTube-Suche nur als Fallback anbieten, wenn TMDB keine verwertbare Video-ID liefert
+- [x] Traileraktion in der provider-neutralen Detailseite implementieren
+- [x] Trailer/YouTube-Suche über Android `ACTION_VIEW` delegieren; keine YouTube-Stream-Extraktion
+- [x] Unit-Tests für Trailer-Auswahl und Episode-vor-Serie-Priorität
+- [ ] signierten Development-Build erfolgreich veröffentlichen
+- [ ] realen TCL-Gerätetest von Datenbankmigration, Trailerstart, Such-Fallback und Rückkehrverhalten durchführen
+
+**Phase 4 ist implementiert, bleibt aber bis zu Build- und TCL-Gerätetest offen.**
 
 ## Phase 5 – Gigablue / OpenWebif
 
