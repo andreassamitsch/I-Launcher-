@@ -9,7 +9,12 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
@@ -32,7 +37,32 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     watchNextListState: LazyListState = rememberLazyListState(),
     appsListState: LazyListState = rememberLazyListState(),
+    watchNextFocusRestoreSourceId: String? = null,
+    watchNextFocusRestoreGeneration: Int = 0,
 ) {
+    val watchNextRestoreFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(
+        watchNextFocusRestoreSourceId,
+        watchNextFocusRestoreGeneration,
+    ) {
+        val sourceId = watchNextFocusRestoreSourceId ?: return@LaunchedEffect
+        if (watchNextFocusRestoreGeneration <= 0) return@LaunchedEffect
+
+        val targetIndex = watchNextItems.indexOfFirst { item ->
+            item.media.source.sourceId == sourceId
+        }
+        if (targetIndex < 0) return@LaunchedEffect
+
+        // The Home subtree is removed while Details is visible, so preserving only
+        // LazyListState cannot preserve the actual Compose focus owner. Recompose
+        // the target item first, wait for the following frame, then explicitly
+        // restore focus to the exact Watch Next source card that opened Details.
+        watchNextListState.scrollToItem(targetIndex)
+        withFrameNanos { }
+        watchNextRestoreFocusRequester.requestFocus()
+    }
+
     Column(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -102,10 +132,19 @@ fun HomeScreen(
                         items = watchNextItems,
                         key = { "watch-next-${it.sourceItem.id}-${it.sourceItem.sourceOrder}" },
                     ) { item ->
+                        val cardModifier = if (
+                            item.media.source.sourceId == watchNextFocusRestoreSourceId
+                        ) {
+                            Modifier.focusRequester(watchNextRestoreFocusRequester)
+                        } else {
+                            Modifier
+                        }
+
                         WatchNextCard(
                             item = item.media,
                             onClick = { onOpenWatchNext(item) },
                             onDetails = { onOpenWatchNextDetails(item) },
+                            modifier = cardModifier,
                         )
                     }
                 }
