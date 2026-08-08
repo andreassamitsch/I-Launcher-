@@ -43,6 +43,9 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 
 ## Phase 2 – Watch Next
 
+- [x] `android.permission.READ_TV_LISTINGS` im Manifest deklarieren und als Runtime-Berechtigung anfordern
+- [x] fehlende TV-Listings-Berechtigung explizit erkennen statt fälschlich „0 Einträge“ zu melden
+- [x] gemeinsame Berechtigungsbasis für Watch Next und spätere Preview Channels
 - [x] Android TvProvider / Watch Next einlesen
 - [x] vom Provider gelieferte Cursor-Reihenfolge unverändert abbilden und per Unit-Test absichern
 - [x] Titel, Staffel/Episode, Bild und Fortschritt darstellen
@@ -52,7 +55,7 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Diagnoseansicht mit Rohreihenfolge und relevanten TvProvider-Feldern
 - [x] keine vollständigen Deep-Link-/Bild-URLs in Diagnose oder Logs ausgeben
 - [x] CI: Unit-Tests und Debug-Build erfolgreich
-- [ ] auf dem Zielgerät gegen Arc/CloudStream vergleichen
+- [ ] `READ_TV_LISTINGS` auf dem TCL freigeben und Watch Next erneut gegen Arc/CloudStream vergleichen
 - [ ] D-Pad/Scroll/Fokus der Watch-Next-Reihe auf realer TV-Hardware verifizieren
 
 ## Phase 3 – TMDB
