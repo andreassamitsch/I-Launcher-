@@ -136,9 +136,7 @@ Der Token wird nicht im Repository gespeichert. Unterstützt werden:
 
 Der signierte Development-Publisher liest `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich aus GitHub Actions Secrets und reicht ihn als Build-Environment an Gradle weiter. Das veröffentlichte `update.json` enthält nur `tmdbConfigured=true/false`, niemals den Secret-Wert.
 
-Seit der Live-Aktivierung von Phase 3 ist das Secret für den Development-Publisher verpflichtend: fehlt es, bricht der Workflow vor Build/Veröffentlichung ab. Dadurch kann nicht versehentlich wieder ein source-only APK als aktueller Phase-3-Build veröffentlicht werden.
-
-Verifizierter aktiver Build: `0.1.0-dev.40` (`26000040`), `tmdbConfigured=true`.
+Seit der Live-Aktivierung von Phase 3 ist das Secret für den Development-Publisher verpflichtend. Fehlt es, bricht der Workflow vor Build und Veröffentlichung ab. Der aktuelle aktive Build `0.1.0-dev.40` (`26000040`) wurde mit `tmdbConfigured=true` veröffentlicht.
 
 ## Room Cache
 
@@ -188,6 +186,8 @@ Tokens und vollständige private URLs werden weder angezeigt noch geloggt.
 ## Development-Publishing
 
 Der aktive Phase-3-Branch veröffentlicht signierte Development-Builds über den bestehenden `downloads`-Kanal. Der Publisher verwendet eine branchbezogene GitHub-Actions-Concurrency-Gruppe mit `cancel-in-progress`, damit bei mehreren schnellen Commits nie ein älterer Lauf nach einem neueren APK-Stand veröffentlicht werden kann.
+
+Der aktive TMDB-Build wurde durch den harten Secret-Check, Unit-Tests und `assembleDebug` verifiziert. Matching, Bilder, Episodendaten, Cache-Verhalten und Focus-Rückkehr bleiben Hardwaretests auf dem realen TCL.
 
 ## Home-Tasten-Fallback
 
