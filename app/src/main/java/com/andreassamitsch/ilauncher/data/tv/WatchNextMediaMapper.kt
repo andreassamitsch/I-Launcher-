@@ -23,6 +23,7 @@ object WatchNextMediaMapper {
             title = item.displayTitle,
             subtitle = item.displaySubtitle,
             overview = item.shortDescription,
+            releaseYear = item.releaseYear,
             seasonNumber = season,
             episodeNumber = episode,
             episodeTitle = item.episodeTitle,
@@ -70,7 +71,7 @@ object WatchNextMediaMapper {
             overview = episode?.overview?.takeIf { it.isNotBlank() }
                 ?: metadata.overview?.takeIf { it.isNotBlank() }
                 ?: base.overview,
-            releaseYear = episode?.airYear ?: metadata.releaseYear,
+            releaseYear = episode?.airYear ?: metadata.releaseYear ?: base.releaseYear,
             tmdbId = metadata.tmdbId,
             tmdbEpisodeId = episode?.tmdbEpisodeId,
             seasonNumber = episode?.seasonNumber ?: base.seasonNumber,
