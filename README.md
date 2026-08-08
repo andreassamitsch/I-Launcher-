@@ -43,7 +43,7 @@ Kotlin · Jetpack Compose · Compose for TV · AndroidX · Coroutines/Flow · Ro
 
 - Android Gradle Plugin 9.3.1
 - Gradle 9.5.0 (CI)
-- compileSdk 37
+- compileSdk 36
 - targetSdk 36
 - minSdk 26
 - Compose BOM 2026.06.00
