@@ -22,7 +22,7 @@ app/
   data/tv/         Android TvProvider / Watch Next
   data/update/     Development-Updatekanal
   model/           UI-unabhängige Basismodelle
-  system/          Home-Rolle / Accessibility-Fallback
+  system/          Home-Rolle / Accessibility / TvProvider-Berechtigungen
   ui/home/         Home inklusive Watch-Next-Reihe
   ui/apps/         App-Übersicht
   ui/settings/     Einstellungen und Diagnose
@@ -76,12 +76,27 @@ ViewModels / StateFlows
 Compose for TV UI
 ```
 
+## Android TvProvider Berechtigung
+
+Für das Lesen von TV-Daten anderer Apps verwendet I Launcher `android.permission.READ_TV_LISTINGS`.
+
+Diese Berechtigung ist die gemeinsame Basis für:
+
+- Android Watch Next / `WatchNextPrograms`
+- Preview Channels / `Channels`
+- Preview Programs / `PreviewPrograms`
+
+Sie wird im Manifest deklariert und zur Laufzeit angefordert. Fehlt die Freigabe, begrenzt der Android TvProvider normale Abfragen auf Daten der aufrufenden App; I Launcher behandelt diesen Zustand deshalb explizit als fehlende Berechtigung und nicht als leere Inhaltsquelle.
+
+`com.android.providers.tv.permission.READ_EPG_DATA` bleibt als kompatible Legacy-Deklaration enthalten, ist in AOSP aber nicht mehr die maßgebliche Berechtigung für den Zugriff auf fremde TV-Listings.
+
 ## Watch Next
 
 Primärquelle ist `TvContract.WatchNextPrograms.CONTENT_URI` des Android TvProvider.
 
 Aktuelle Phase-2-Regeln:
 
+- Query erst nach erteilter `READ_TV_LISTINGS`-Berechtigung
 - Query ohne Selection und ohne eigene Sortierung
 - Cursor-Reihenfolge wird 1:1 in `sourceOrder` übernommen
 - relevante Standardfelder werden auf `WatchNextItem` normalisiert
@@ -91,7 +106,11 @@ Aktuelle Phase-2-Regeln:
 - Zugriffsfehler werden als Diagnosezustand dargestellt statt die App abstürzen zu lassen
 - kein CloudStream-spezifischer Code, solange Android die Einträge liefert
 
-Die erste Gerätevalidierung vergleicht Anzahl, Reihenfolge, Fortschritt und Deep-Link-Verhalten mit Arc Launcher auf demselben TV.
+Die Gerätevalidierung vergleicht Anzahl, Reihenfolge, Fortschritt und Deep-Link-Verhalten mit Arc Launcher auf demselben TV.
+
+## Home-Tasten-Fallback
+
+Der Google-TV-/TCL-Home-Fallback basiert auf einem `AccessibilityService`. Die Service-Deklaration ist mit `android.permission.BIND_ACCESSIBILITY_SERVICE` geschützt. Die eigentliche Benutzerfreigabe ist eine Android-Sonderberechtigung und kann nicht durch einen normalen Runtime-Permission-Dialog erteilt werden; I Launcher führt deshalb gezielt in die Bedienungshilfen und zeigt den Aktivierungsstatus in den Einstellungen.
 
 ## Bilder
 
