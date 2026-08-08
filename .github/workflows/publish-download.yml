@@ -73,17 +73,16 @@ jobs:
             echo "Stable development signing secrets are not configured; APK will be published for manual installation only."
           fi
 
-      - name: Detect TMDB development configuration
+      - name: Require TMDB development configuration
         env:
           IL_TMDB_READ_ACCESS_TOKEN: ${{ secrets.IL_TMDB_READ_ACCESS_TOKEN }}
         run: |
-          if [ -n "$IL_TMDB_READ_ACCESS_TOKEN" ]; then
-            echo "TMDB_CONFIGURED=true" >> "$GITHUB_ENV"
-            echo "TMDB enrichment will be enabled in this signed Development build."
-          else
-            echo "TMDB_CONFIGURED=false" >> "$GITHUB_ENV"
-            echo "IL_TMDB_READ_ACCESS_TOKEN is not configured; build remains source-only."
+          if [ -z "$IL_TMDB_READ_ACCESS_TOKEN" ]; then
+            echo "::error::IL_TMDB_READ_ACCESS_TOKEN is required for Phase 3 Development publishing."
+            exit 1
           fi
+          echo "TMDB_CONFIGURED=true" >> "$GITHUB_ENV"
+          echo "TMDB enrichment is enabled in this signed Development build."
 
       - name: Test and build debug APK
         env:
