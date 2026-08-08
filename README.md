@@ -36,9 +36,9 @@ Bereits umgesetzt:
 - GitHub-CI für Tests und Debug-APK
 - fester signierter Development-Updatekanal mit In-App-Updater
 
-Wichtig: Ohne `READ_TV_LISTINGS` begrenzt Android TvProvider Abfragen auf Daten der eigenen App. I Launcher fordert diese Berechtigung deshalb beim ersten Start an und zeigt bei fehlender Freigabe einen klaren Setup-Hinweis statt irreführend eine leere Watch-Next-Liste.
+Wichtig: Ohne `READ_TV_LISTINGS` begrenzt Android TvProvider Abfragen auf Daten der eigenen App. I Launcher fordert diese Berechtigung deshalb beim ersten Start an und zeigt bei fehlender Freigabe einen klaren Setup-Hinweis statt irreführend eine leere Watch-Next-Liste. Dieselbe Freigabe wird für Preview Channels und Preview Programs verwendet.
 
-Der Home-Tasten-Fallback verwendet dagegen Android Accessibility. Diese Sonderfreigabe kann nicht über einen normalen Runtime-Permission-Dialog erteilt werden und wird deshalb über die Android-Bedienungshilfen aktiviert.
+Der Home-Tasten-Fallback verwendet dagegen Android Accessibility. Die Service-Deklaration ist über `BIND_ACCESSIBILITY_SERVICE` geschützt; die eigentliche Benutzerfreigabe ist eine Android-Sonderberechtigung und kann nicht über einen normalen Runtime-Permission-Dialog erteilt werden. I Launcher öffnet dafür die Bedienungshilfen und zeigt den Aktivierungsstatus an.
 
 Aktueller signierter Gerätetest-Build mit Permission-Fix: `0.1.0-dev.18` (`26000018`).
 
