@@ -28,6 +28,7 @@ import com.andreassamitsch.ilauncher.data.update.UpdateManager
 import com.andreassamitsch.ilauncher.data.update.UpdateState
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.HomeLauncherManager
+import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -35,6 +36,8 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(
     updateManager: UpdateManager,
     watchNextResult: WatchNextLoadResult,
+    hasTvListingsPermission: Boolean,
+    onRequestTvListingsPermission: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -96,6 +99,48 @@ fun SettingsScreen(
         )
 
         Text(
+            text = "Android-Freigaben",
+            style = MaterialTheme.typography.headlineSmall,
+        )
+
+        Text(
+            text = if (hasTvListingsPermission) {
+                "TV-Inhalte: freigegeben. I Launcher darf Watch Next und Preview Channels anderer Apps lesen."
+            } else {
+                "TV-Inhalte: Freigabe fehlt. Ohne „TV-Programme/Kanäle lesen“ sieht I Launcher bei TvProvider-Abfragen nur eigene Einträge."
+            },
+            style = MaterialTheme.typography.titleMedium,
+            color = if (hasTvListingsPermission) {
+                MaterialTheme.colorScheme.onBackground
+            } else {
+                MaterialTheme.colorScheme.error
+            },
+        )
+
+        if (!hasTvListingsPermission) {
+            Button(onClick = onRequestTvListingsPermission) {
+                Text("TV-Inhalte freigeben")
+            }
+            Button(onClick = { TvProviderPermissionManager.openAppDetails(context) }) {
+                Text("App-Info / Berechtigungen öffnen")
+            }
+        }
+
+        Text(
+            text = if (isHomeOverrideEnabled) {
+                "Home-Taste: Accessibility-Fallback ist freigegeben und aktiv."
+            } else {
+                "Home-Taste: Accessibility-Fallback ist nicht aktiv. Diese Sonderfreigabe kann Android nur in den Bedienungshilfen erteilen."
+            },
+            style = MaterialTheme.typography.titleMedium,
+            color = if (isHomeOverrideEnabled || isDefaultHome || isHomeRoleHeld) {
+                MaterialTheme.colorScheme.onBackground
+            } else {
+                MaterialTheme.colorScheme.error
+            },
+        )
+
+        Text(
             text = "Launcher",
             style = MaterialTheme.typography.headlineSmall,
         )
@@ -153,7 +198,13 @@ fun SettingsScreen(
             style = MaterialTheme.typography.headlineSmall,
         )
 
-        if (watchNextResult.errorMessage != null) {
+        if (!hasTvListingsPermission) {
+            Text(
+                text = "Diagnose pausiert, bis die Android-Berechtigung für TV-Inhalte erteilt wurde.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        } else if (watchNextResult.errorMessage != null) {
             Text(
                 text = watchNextResult.errorMessage,
                 style = MaterialTheme.typography.bodyMedium,
