@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.devtools.ksp")
 }
 
 val iLauncherVersionCode = providers.gradleProperty("iLauncherVersionCode")
@@ -23,6 +24,14 @@ val developmentSigningConfigured = listOf(
     developmentSigningKeyPassword,
 ).all { !it.isNullOrBlank() }
 
+val tmdbReadAccessToken = providers.gradleProperty("tmdbReadAccessToken")
+    .orElse(providers.environmentVariable("IL_TMDB_READ_ACCESS_TOKEN"))
+    .orNull
+    .orEmpty()
+
+fun String.asBuildConfigString(): String =
+    "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
 android {
     namespace = "com.andreassamitsch.ilauncher"
     compileSdk = 36
@@ -35,6 +44,11 @@ android {
         versionName = iLauncherVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField(
+            "String",
+            "TMDB_READ_ACCESS_TOKEN",
+            tmdbReadAccessToken.asBuildConfigString(),
+        )
     }
 
     compileOptions {
@@ -82,8 +96,18 @@ dependencies {
     implementation("androidx.tv:tv-material:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
+    implementation("androidx.room:room-runtime:2.8.4")
+    implementation("androidx.room:room-ktx:2.8.4")
+    ksp("androidx.room:room-compiler:2.8.4")
+
+    implementation("com.squareup.retrofit2:retrofit:3.0.0")
+    implementation("com.squareup.retrofit2:converter-gson:3.0.0")
+    implementation(platform("com.squareup.okhttp3:okhttp-bom:5.3.0"))
+    implementation("com.squareup.okhttp3:okhttp")
+
     implementation("io.coil-kt.coil3:coil-compose:3.5.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.5.0")
+    implementation("io.coil-kt.coil3:coil-svg:3.5.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

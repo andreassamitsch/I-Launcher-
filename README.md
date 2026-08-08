@@ -16,32 +16,48 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phase 2 – Android Watch Next ist funktional abgeschlossen. Phase 3 – TMDB startet.**
+**Phase 3 – TMDB ist funktional abgeschlossen und auf realer TCL-Hardware bestätigt. Phase 4 – Trailer startet als nächster Entwicklungsabschnitt.**
 
-Bereits umgesetzt und auf dem TCL grundsätzlich verifiziert:
+Der abgeschlossene Phase-3-Unterbau enthält:
 
-- Android-TV-Home-/Launcher-Intent inklusive normalem `MAIN`/`LAUNCHER`-Front-Door-Einstieg
-- Home-Fallback über Accessibility bei ADB-Installation
-- Compose-for-TV-Oberfläche mit zentralem kontrastreichem Dark Theme
-- installierte TV-/Launcher-Apps und App-Start
-- scrollbare Apps-Ansicht
-- Android `TvProvider` / `WatchNextPrograms`
-- Runtime-Berechtigung `android.permission.READ_TV_LISTINGS`
-- Watch-Next-Sortierung nach `last_engagement_time_utc_millis DESC`
-- Quellenfilter pro App/Package
-- Watch-Next-Karten mit Quellbild, Staffel/Episode und Fortschritt
-- Deep-Link zurück zur Quell-App
-- Watch-Next-Diagnose mit Rohindex, Quellpaket, Typ und Engagement-Zeit
-- `ContentObserver` für laufende TvProvider-Änderungen
-- Unit-Tests für Mapping/Reihenfolge/Sortieranforderung
-- GitHub-CI für Tests und Debug-APK
-- fester signierter Development-Updatekanal mit In-App-Updater
+- gemeinsames `MediaItem`-/`MediaSource`-Modell
+- Android-Watch-Next-Typ und Release-Datum als Resolver-Hinweise
+- Titel-/Jahr-/Staffel-/Episoden-Parser inklusive `Sx:Ex`-Quelltiteln
+- konservativen TMDB-Resolver mit Confidence-Schwelle
+- Retrofit/OkHttp-Client mit Bearer-Read-Access-Token
+- Room-Cache für Mappings, Medien- und Episodendaten einschließlich negativer Treffer
+- Cache-Identitätsprüfung gegen Titel/Jahr/Staffel/Episode vor Wiederverwendung eines Source-Mappings
+- 30-Tage-Refresh und 180-Tage-Hard-Limit für TMDB-Cache
+- TMDB-Bildkonfiguration für Poster, Backdrops, Logos und Episode Stills
+- Local-First-Anreicherung: Watch Next wird sofort mit Android-Quelldaten angezeigt und anschließend progressiv über TMDB angereichert
+- Verarbeitung aller sichtbaren Watch-Next-Einträge in kleinen Batches ohne feste 12-Einträge-Grenze
+- einmaliger Retry für noch nicht angereicherte Einträge; negative No-Match-Caches verhindern unnötige Wiederholungsanfragen
+- Beibehaltung von Watch-Next-Reihenfolge, Quellenfilter und Quell-Deep-Link
+- Detailseite: normales OK startet weiterhin direkt die Quelle; INFO bzw. lange OK öffnet Details
+- gespeicherte Watch-Next-Scrollposition und explizite Focus-Rückgabe an dieselbe stabile Source-ID
+- TMDB-Diagnose ohne Secrets oder vollständige private URLs
+- TMDB-Attribution im Bereich `Über / Credits`
+- Unit-Tests für Parser, Confidence, Medienmapping und Artwork-Priorität
 
-Watch Next liefert auf dem Zielgerät unter anderem CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Deshalb bleibt eine CloudStream-spezifische Integration weiterhin bewusst außen vor.
+Der TMDB-Token wird **nicht** im Repository abgelegt. Der signierte Development-Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als GitHub-Secret und veröffentlicht keinen aktiven TMDB-Build, wenn das Secret fehlt.
 
-Das TCL-/Google-TV-Thema rund um Android 13+ `Covered Applications` / `Restricted Settings` bei lokal installierten APKs bleibt als separates Distributionsthema offen. Es blockiert die weiteren Content-Phasen nicht.
+Auf dem TCL verifiziert:
 
-Phase 3 baut nun den gemeinsamen Medien-Unterbau und die TMDB-Anreicherung auf: API-Client, Resolver mit Confidence, lokaler Room-Cache, Bilder sowie Serien-/Episodendaten und Detailansicht.
+- Launcher-/Home-Funktion und D-Pad-Navigation
+- Android Watch Next über TvProvider einschließlich CloudStream
+- Reihenfolge, Quellenfilter und Deep-Links
+- Direktstart per OK
+- Detailseite per INFO/lange OK
+- Focus-Rückkehr nach Details auf exakt dieselbe Watch-Next-Karte
+- TMDB-Anreicherung für Filme, Serien und Episoden
+- Poster/Backdrops/Logos/Episodenbilder
+- progressives Nachladen über die gesamte sichtbare Watch-Next-Liste
+
+Aktueller bestätigter Phase-3-Build: **`0.1.0-dev.45` (`26000045`)**, `updateCompatible=true`, `tmdbConfigured=true`.
+
+Watch Next liefert CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Eine CloudStream-spezifische Integration bleibt deshalb bewusst außen vor.
+
+Das TCL-/Google-TV-Thema rund um Android 13+ `Covered Applications` / `Restricted Settings` bei lokal installierten APKs bleibt als separates Distributionsthema offen und blockiert die Content-Phasen nicht.
 
 Siehe:
 
@@ -63,6 +79,9 @@ Kotlin · Jetpack Compose · Compose for TV · AndroidX · Coroutines/Flow · Ro
 - Compose BOM 2026.06.00
 - Compose for TV 1.1.0
 - Coil 3.5.0
+- Room 2.8.4
+- Retrofit 3.0.0
+- OkHttp 5.3.0
 
 ## Lizenz
 

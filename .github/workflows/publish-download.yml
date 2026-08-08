@@ -3,7 +3,7 @@ name: Publish TV Downloader APK
 on:
   push:
     branches:
-      - agent/phase-2-watch-next
+      - agent/phase-3-tmdb
     paths:
       - "app/**"
       - "build.gradle.kts"
@@ -11,6 +11,10 @@ on:
       - "gradle.properties"
       - ".github/workflows/publish-download.yml"
   workflow_dispatch:
+
+concurrency:
+  group: publish-tv-downloader-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -69,7 +73,20 @@ jobs:
             echo "Stable development signing secrets are not configured; APK will be published for manual installation only."
           fi
 
+      - name: Require TMDB development configuration
+        env:
+          IL_TMDB_READ_ACCESS_TOKEN: ${{ secrets.IL_TMDB_READ_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$IL_TMDB_READ_ACCESS_TOKEN" ]; then
+            echo "::error::IL_TMDB_READ_ACCESS_TOKEN is required for Phase 3 Development publishing."
+            exit 1
+          fi
+          echo "TMDB_CONFIGURED=true" >> "$GITHUB_ENV"
+          echo "TMDB enrichment is enabled in this signed Development build."
+
       - name: Test and build debug APK
+        env:
+          IL_TMDB_READ_ACCESS_TOKEN: ${{ secrets.IL_TMDB_READ_ACCESS_TOKEN }}
         run: |
           gradle :app:testDebugUnitTest :app:assembleDebug \
             -PiLauncherVersionCode="$VERSION_CODE" \
@@ -87,6 +104,7 @@ jobs:
             "apkUrl": "https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/downloads/I-Launcher-debug.apk",
             "sha256": "$SHA256",
             "updateCompatible": $UPDATE_COMPATIBLE,
+            "tmdbConfigured": $TMDB_CONFIGURED,
             "sourceSha": "$GITHUB_SHA"
           }
           EOF

@@ -4,7 +4,9 @@ data class WatchNextItem(
     val id: Long,
     val sourceOrder: Int,
     val packageName: String?,
+    val programType: Int?,
     val title: String?,
+    val releaseDate: String?,
     val seasonDisplayNumber: String?,
     val episodeDisplayNumber: String?,
     val episodeTitle: String?,
@@ -35,6 +37,9 @@ data class WatchNextItem(
                 episodeTitle?.takeIf { it.isNotBlank() && it != displayTitle },
             ).joinToString(separator = " · ").ifBlank { null }
         }
+
+    val releaseYear: Int?
+        get() = releaseDate?.take(4)?.toIntOrNull()
 
     val artworkUri: String?
         get() = thumbnailUri?.takeIf { it.isNotBlank() }

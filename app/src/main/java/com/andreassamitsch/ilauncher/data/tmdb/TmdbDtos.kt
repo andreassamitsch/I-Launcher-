@@ -1,0 +1,79 @@
+package com.andreassamitsch.ilauncher.data.tmdb
+
+import com.google.gson.annotations.SerializedName
+
+internal data class TmdbSearchResponseDto(
+    val results: List<TmdbSearchResultDto> = emptyList(),
+)
+
+internal data class TmdbSearchResultDto(
+    val id: Int = 0,
+    @SerializedName("media_type") val mediaType: String? = null,
+    val title: String? = null,
+    @SerializedName("original_title") val originalTitle: String? = null,
+    val name: String? = null,
+    @SerializedName("original_name") val originalName: String? = null,
+    @SerializedName("release_date") val releaseDate: String? = null,
+    @SerializedName("first_air_date") val firstAirDate: String? = null,
+    val popularity: Double = 0.0,
+    @SerializedName("poster_path") val posterPath: String? = null,
+    @SerializedName("backdrop_path") val backdropPath: String? = null,
+)
+
+internal data class TmdbConfigurationDto(
+    val images: TmdbImageConfigurationDto = TmdbImageConfigurationDto(),
+)
+
+internal data class TmdbImageConfigurationDto(
+    @SerializedName("secure_base_url") val secureBaseUrl: String = "https://image.tmdb.org/t/p/",
+    @SerializedName("backdrop_sizes") val backdropSizes: List<String> = emptyList(),
+    @SerializedName("logo_sizes") val logoSizes: List<String> = emptyList(),
+    @SerializedName("poster_sizes") val posterSizes: List<String> = emptyList(),
+    @SerializedName("still_sizes") val stillSizes: List<String> = emptyList(),
+)
+
+internal data class TmdbMediaDetailsDto(
+    val id: Int = 0,
+    val title: String? = null,
+    @SerializedName("original_title") val originalTitle: String? = null,
+    val name: String? = null,
+    @SerializedName("original_name") val originalName: String? = null,
+    val overview: String? = null,
+    @SerializedName("release_date") val releaseDate: String? = null,
+    @SerializedName("first_air_date") val firstAirDate: String? = null,
+    val runtime: Int? = null,
+    @SerializedName("episode_run_time") val episodeRunTime: List<Int>? = null,
+    @SerializedName("poster_path") val posterPath: String? = null,
+    @SerializedName("backdrop_path") val backdropPath: String? = null,
+    val images: TmdbImagesDto? = null,
+    @SerializedName("vote_average") val voteAverage: Double? = null,
+    @SerializedName("external_ids") val externalIds: TmdbExternalIdsDto? = null,
+)
+
+internal data class TmdbEpisodeDetailsDto(
+    val id: Int = 0,
+    val name: String? = null,
+    val overview: String? = null,
+    @SerializedName("air_date") val airDate: String? = null,
+    @SerializedName("still_path") val stillPath: String? = null,
+    val runtime: Int? = null,
+    @SerializedName("vote_average") val voteAverage: Double? = null,
+)
+
+internal data class TmdbImagesDto(
+    val posters: List<TmdbImageDto> = emptyList(),
+    val backdrops: List<TmdbImageDto> = emptyList(),
+    val logos: List<TmdbImageDto> = emptyList(),
+)
+
+internal data class TmdbImageDto(
+    @SerializedName("file_path") val filePath: String? = null,
+    @SerializedName("iso_639_1") val language: String? = null,
+    @SerializedName("vote_average") val voteAverage: Double = 0.0,
+)
+
+internal data class TmdbExternalIdsDto(
+    @SerializedName("imdb_id") val imdbId: String? = null,
+    @SerializedName("tvdb_id") val tvdbId: Int? = null,
+    @SerializedName("wikidata_id") val wikidataId: String? = null,
+)

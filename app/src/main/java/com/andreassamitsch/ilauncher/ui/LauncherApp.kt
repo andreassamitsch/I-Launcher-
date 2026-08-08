@@ -1,6 +1,7 @@
 package com.andreassamitsch.ilauncher.ui
 
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -30,18 +32,21 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.apps.InstalledAppsRepository
+import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
+import com.andreassamitsch.ilauncher.data.tv.WatchNextEnrichmentRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextSourcePreferences
 import com.andreassamitsch.ilauncher.data.update.UpdateManager
 import com.andreassamitsch.ilauncher.data.update.UpdateState
 import com.andreassamitsch.ilauncher.model.InstalledApp
-import com.andreassamitsch.ilauncher.model.WatchNextItem
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import com.andreassamitsch.ilauncher.ui.apps.AppsScreen
+import com.andreassamitsch.ilauncher.ui.details.DetailsScreen
 import com.andreassamitsch.ilauncher.ui.home.HomeScreen
 import com.andreassamitsch.ilauncher.ui.settings.SettingsScreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 enum class LauncherSection(val label: String) {
@@ -50,15 +55,24 @@ enum class LauncherSection(val label: String) {
     Settings("Einstellungen"),
 }
 
+private const val TMDB_ENRICHMENT_BATCH_SIZE = 4
+private const val TMDB_ENRICHMENT_RETRY_DELAY_MILLIS = 1_500L
+
 @Composable
 fun LauncherApp(
     installedAppsRepository: InstalledAppsRepository,
     watchNextRepository: WatchNextRepository,
+    watchNextEnrichmentRepository: WatchNextEnrichmentRepository,
     updateManager: UpdateManager,
 ) {
     val context = LocalContext.current
     val activity = context as? ComponentActivity
     var section by rememberSaveable { mutableStateOf(LauncherSection.Home) }
+    var selectedDetailsSourceId by rememberSaveable { mutableStateOf<String?>(null) }
+    var watchNextFocusRestoreSourceId by rememberSaveable { mutableStateOf<String?>(null) }
+    var watchNextFocusRestoreGeneration by rememberSaveable { mutableIntStateOf(0) }
+    val watchNextListState = rememberLazyListState()
+    val appsListState = rememberLazyListState()
     val updateState by updateManager.state.collectAsState()
     var hasTvListingsPermission by remember {
         mutableStateOf(TvProviderPermissionManager.hasReadTvListings(context))
@@ -95,6 +109,34 @@ fun LauncherApp(
             packageName == null || packageName !in hiddenWatchNextPackages
         }
     }
+    var homeWatchNextItems by remember {
+        mutableStateOf<List<EnrichedWatchNextItem>>(emptyList())
+    }
+
+    LaunchedEffect(visibleWatchNextItems, watchNextEnrichmentRepository) {
+        val baseItems = watchNextEnrichmentRepository.base(visibleWatchNextItems)
+        homeWatchNextItems = baseItems
+        if (baseItems.isNotEmpty() && watchNextEnrichmentRepository.isTmdbConfigured) {
+            suspend fun enrichBatches(items: List<EnrichedWatchNextItem>) {
+                items.chunked(TMDB_ENRICHMENT_BATCH_SIZE).forEach { batch ->
+                    val enrichedBatch = watchNextEnrichmentRepository.enrich(batch)
+                    val enrichedBySourceId = enrichedBatch.associateBy { it.media.source.sourceId }
+                    homeWatchNextItems = homeWatchNextItems.map { current ->
+                        enrichedBySourceId[current.media.source.sourceId] ?: current
+                    }
+                }
+            }
+
+            enrichBatches(baseItems)
+
+            val unresolvedItems = homeWatchNextItems.filter { it.media.tmdbId == null }
+            if (unresolvedItems.isNotEmpty()) {
+                delay(TMDB_ENRICHMENT_RETRY_DELAY_MILLIS)
+                enrichBatches(unresolvedItems)
+            }
+        }
+    }
+
     val apps by produceState<List<InstalledApp>>(
         initialValue = emptyList(),
         key1 = installedAppsRepository,
@@ -103,6 +145,18 @@ fun LauncherApp(
             installedAppsRepository.loadApps()
         }
     }
+
+    val selectedDetailsItem = selectedDetailsSourceId?.let { selectedSourceId ->
+        homeWatchNextItems.firstOrNull { it.media.source.sourceId == selectedSourceId }
+    }
+    val closeDetails: () -> Unit = {
+        selectedDetailsSourceId?.let { sourceId ->
+            watchNextFocusRestoreSourceId = sourceId
+            watchNextFocusRestoreGeneration += 1
+        }
+        selectedDetailsSourceId = null
+    }
+    BackHandler(enabled = selectedDetailsItem != null, onBack = closeDetails)
 
     DisposableEffect(activity) {
         if (activity == null) {
@@ -134,7 +188,9 @@ fun LauncherApp(
     }
 
     val openApp: (InstalledApp) -> Unit = { app -> installedAppsRepository.launch(app) }
-    val openWatchNext: (WatchNextItem) -> Unit = { item -> watchNextRepository.launch(item) }
+    val openWatchNext: (EnrichedWatchNextItem) -> Unit = { item ->
+        watchNextRepository.launch(item.sourceItem)
+    }
     val updateAttentionLabel = when (updateState) {
         is UpdateState.Available,
         is UpdateState.ReadyToInstall,
@@ -151,52 +207,73 @@ fun LauncherApp(
             contentColor = MaterialTheme.colorScheme.onBackground,
         ),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 56.dp, vertical = 34.dp),
-            verticalArrangement = Arrangement.spacedBy(30.dp),
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                LauncherSection.entries.forEach { item ->
-                    Button(onClick = { section = item }) {
-                        Text(item.label)
+        if (selectedDetailsItem != null) {
+            val packageName = selectedDetailsItem.media.source.packageName
+            val sourceLabel = apps.firstOrNull { it.packageName == packageName }?.label
+                ?: packageName
+            DetailsScreen(
+                item = selectedDetailsItem.media,
+                sourceLabel = sourceLabel,
+                onPlay = { openWatchNext(selectedDetailsItem) },
+                onBack = closeDetails,
+            )
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 56.dp, vertical = 34.dp),
+                verticalArrangement = Arrangement.spacedBy(30.dp),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    LauncherSection.entries.forEach { item ->
+                        Button(onClick = { section = item }) {
+                            Text(item.label)
+                        }
+                    }
+
+                    updateAttentionLabel?.let { label ->
+                        Button(onClick = { section = LauncherSection.Settings }) {
+                            Text(label)
+                        }
                     }
                 }
 
-                updateAttentionLabel?.let { label ->
-                    Button(onClick = { section = LauncherSection.Settings }) {
-                        Text(label)
-                    }
+                when (section) {
+                    LauncherSection.Home -> HomeScreen(
+                        apps = apps,
+                        watchNextItems = homeWatchNextItems,
+                        watchNextError = watchNextResult.errorMessage,
+                        hasTvListingsPermission = hasTvListingsPermission,
+                        onRequestTvListingsPermission = requestTvListingsPermission,
+                        onOpenApp = openApp,
+                        onOpenWatchNext = openWatchNext,
+                        onOpenWatchNextDetails = { item ->
+                            selectedDetailsSourceId = item.media.source.sourceId
+                        },
+                        watchNextListState = watchNextListState,
+                        appsListState = appsListState,
+                        watchNextFocusRestoreSourceId = watchNextFocusRestoreSourceId,
+                        watchNextFocusRestoreGeneration = watchNextFocusRestoreGeneration,
+                    )
+
+                    LauncherSection.Apps -> AppsScreen(
+                        apps = apps,
+                        onOpenApp = openApp,
+                    )
+
+                    LauncherSection.Settings -> SettingsScreen(
+                        updateManager = updateManager,
+                        watchNextResult = watchNextResult,
+                        installedApps = apps,
+                        hiddenWatchNextPackages = hiddenWatchNextPackages,
+                        onSetWatchNextSourceVisible = watchNextSourcePreferences::setVisible,
+                        onShowAllWatchNextSources = watchNextSourcePreferences::showAll,
+                        hasTvListingsPermission = hasTvListingsPermission,
+                        onRequestTvListingsPermission = requestTvListingsPermission,
+                        tmdbConfigured = watchNextEnrichmentRepository.isTmdbConfigured,
+                        enrichedWatchNextItems = homeWatchNextItems,
+                    )
                 }
-            }
-
-            when (section) {
-                LauncherSection.Home -> HomeScreen(
-                    apps = apps,
-                    watchNextItems = visibleWatchNextItems,
-                    watchNextError = watchNextResult.errorMessage,
-                    hasTvListingsPermission = hasTvListingsPermission,
-                    onRequestTvListingsPermission = requestTvListingsPermission,
-                    onOpenApp = openApp,
-                    onOpenWatchNext = openWatchNext,
-                )
-
-                LauncherSection.Apps -> AppsScreen(
-                    apps = apps,
-                    onOpenApp = openApp,
-                )
-
-                LauncherSection.Settings -> SettingsScreen(
-                    updateManager = updateManager,
-                    watchNextResult = watchNextResult,
-                    installedApps = apps,
-                    hiddenWatchNextPackages = hiddenWatchNextPackages,
-                    onSetWatchNextSourceVisible = watchNextSourcePreferences::setVisible,
-                    onShowAllWatchNextSources = watchNextSourcePreferences::showAll,
-                    hasTvListingsPermission = hasTvListingsPermission,
-                    onRequestTvListingsPermission = requestTvListingsPermission,
-                )
             }
         }
     }

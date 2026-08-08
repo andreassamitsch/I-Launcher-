@@ -41,6 +41,7 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Update-Kanal sperrt automatische Installation, solange keine stabile Development-Signatur vorhanden ist
 - [x] dauerhafter Development-Signing-Key als geschützte GitHub-Secrets hinterlegt (`updateCompatible=true` verifiziert)
 - [x] Development-Downloadkanal auf den aktiven Entwicklungsbranch umstellbar
+- [x] Publisher-Concurrency verhindert, dass ältere parallele CI-Läufe einen neueren Development-Build überschreiben
 - [ ] realen Update-von-Version-A-auf-Version-B-Gerätetest als eigener Distributionstest dokumentieren
 
 ## Phase 2 – Watch Next
@@ -64,17 +65,37 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Watch-Next-Daten inklusive CloudStream werden über Android TvProvider sichtbar; kein CloudStream-Sonderweg nötig
 - [x] D-Pad/Scroll/Fokus der aktuellen Watch-Next-Reihe im Gerätetest ohne blockierenden Fehler
 
-**Phase 2 ist funktional abgeschlossen.** Das separate TCL-/Covered-Applications-Thema des Accessibility-Fallbacks bleibt als Distribution-/Gerätebesonderheit offen und blockiert Phase 3 nicht.
+**Phase 2 ist funktional abgeschlossen.** Das separate TCL-/Covered-Applications-Thema des Accessibility-Fallbacks bleibt als Distribution-/Gerätebesonderheit offen und blockiert die Content-Phasen nicht.
 
 ## Phase 3 – TMDB
 
-- [ ] API-Client
-- [ ] gemeinsames Medienmodell
-- [ ] Resolver mit Confidence
-- [ ] Room-Mapping/Cache
-- [ ] Poster, Backdrops, Logos
-- [ ] Serien-/Episodendaten
-- [ ] Detailseite
+- [x] Retrofit/OkHttp API-Client mit extern konfiguriertem Read-Access-Token
+- [x] gemeinsames Medienmodell für Android TV und spätere Provider
+- [x] deterministisches Titel-/Jahr-/Staffel-/Episoden-Parsing inklusive `Sx:Ex`-Quelltiteln
+- [x] Resolver mit konservativer Confidence-Schwelle und Source-Fallback
+- [x] Room-Mapping/Cache inklusive negativer No-Match-Ergebnisse
+- [x] Cache-Mapping nur wiederverwenden, wenn Titel/Jahr/Staffel/Episode weiterhin zur Quellidentität passen
+- [x] Local-First-Anreicherung: Quelle sofort anzeigen, TMDB danach progressiv nachladen
+- [x] alle sichtbaren Watch-Next-Einträge in kleinen Batches anreichern; keine feste 12-Einträge-Grenze
+- [x] einmaliger Retry noch ungelöster Einträge ohne unnötige Wiederholung negativer Cache-Treffer
+- [x] Android `COLUMN_TYPE` und `COLUMN_RELEASE_DATE` als Resolver-Hinweise übernehmen
+- [x] Poster-/Backdrop-/Logo-/Episode-Still-Infrastruktur über TMDB `/configuration`
+- [x] Serien-/Episodendaten-Unterbau inklusive Episode-Detail-Endpoint
+- [x] Cache-Refresh nach 30 Tagen und harte Löschung nach 180 Tagen
+- [x] Unit-Tests für Parser, Confidence, Android-Mapping und Artwork-Priorität
+- [x] CI-Build des vollständigen Phase-3-Unterbaus inklusive Detailseite grün
+- [x] Detailseite implementiert, ohne den normalen Watch-Next-Direktstart zu ersetzen: OK = Wiedergabe, INFO/lange OK = Details
+- [x] Home-Scrollposition beim Wechsel in/aus Details im Compose-State erhalten
+- [x] TCL-Gerätetest: Direktstart, INFO/lange OK, Detailseite und Back-Navigation funktionieren
+- [x] explizite Focus-Rückgabe über stabile Watch-Next-Source-ID + `FocusRequester` nach `scrollToItem` implementiert
+- [x] Focus-Rückgabe auf exakt dieselbe Watch-Next-Karte auf TCL verifiziert
+- [x] TMDB-Attribution im Bereich `Über / Credits` mit genehmigtem TMDB-Logo und vorgeschriebenem Hinweis implementiert
+- [x] signierter Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als geschütztes GitHub-Secret
+- [x] Publisher veröffentlicht keinen Phase-3-Development-Build ohne TMDB-Secret
+- [x] TMDB-Diagnose für Build-Aktivierung, aufgelöste ID, Typ und Confidence ohne Secret/URLs implementiert
+- [x] realer TCL-Gerätetest von aktiver TMDB-Anreicherung, Serien-/Episodenauflösung, Artwork-Auswahl, progressivem Nachladen und Focus-Rückkehr bestanden
+
+**Phase 3 ist funktional abgeschlossen und auf realer TCL-Hardware bestätigt.**
 
 ## Phase 4 – Trailer
 

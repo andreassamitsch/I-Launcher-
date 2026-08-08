@@ -121,7 +121,9 @@ class WatchNextRepository(context: Context) {
             rows += WatchNextRawRow(
                 id = cursor.long(BaseColumns._ID) ?: -1L,
                 packageName = cursor.string(TvContract.BaseTvColumns.COLUMN_PACKAGE_NAME),
+                programType = cursor.int(TvContract.PreviewPrograms.COLUMN_TYPE),
                 title = cursor.string(TvContract.PreviewPrograms.COLUMN_TITLE),
+                releaseDate = cursor.string(TvContract.PreviewPrograms.COLUMN_RELEASE_DATE),
                 seasonDisplayNumber = cursor.string(TvContract.PreviewPrograms.COLUMN_SEASON_DISPLAY_NUMBER),
                 episodeDisplayNumber = cursor.string(TvContract.PreviewPrograms.COLUMN_EPISODE_DISPLAY_NUMBER),
                 episodeTitle = cursor.string(TvContract.PreviewPrograms.COLUMN_EPISODE_TITLE),
@@ -166,7 +168,9 @@ class WatchNextRepository(context: Context) {
         private val PROJECTION = arrayOf(
             BaseColumns._ID,
             TvContract.BaseTvColumns.COLUMN_PACKAGE_NAME,
+            TvContract.PreviewPrograms.COLUMN_TYPE,
             TvContract.PreviewPrograms.COLUMN_TITLE,
+            TvContract.PreviewPrograms.COLUMN_RELEASE_DATE,
             TvContract.PreviewPrograms.COLUMN_SEASON_DISPLAY_NUMBER,
             TvContract.PreviewPrograms.COLUMN_EPISODE_DISPLAY_NUMBER,
             TvContract.PreviewPrograms.COLUMN_EPISODE_TITLE,

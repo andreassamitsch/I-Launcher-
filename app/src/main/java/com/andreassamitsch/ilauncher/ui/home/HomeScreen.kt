@@ -4,30 +4,65 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.model.InstalledApp
-import com.andreassamitsch.ilauncher.model.WatchNextItem
 import com.andreassamitsch.ilauncher.ui.components.AppCard
 import com.andreassamitsch.ilauncher.ui.components.WatchNextCard
 
 @Composable
 fun HomeScreen(
     apps: List<InstalledApp>,
-    watchNextItems: List<WatchNextItem>,
+    watchNextItems: List<EnrichedWatchNextItem>,
     watchNextError: String?,
     hasTvListingsPermission: Boolean,
     onRequestTvListingsPermission: () -> Unit,
     onOpenApp: (InstalledApp) -> Unit,
-    onOpenWatchNext: (WatchNextItem) -> Unit,
+    onOpenWatchNext: (EnrichedWatchNextItem) -> Unit,
+    onOpenWatchNextDetails: (EnrichedWatchNextItem) -> Unit,
     modifier: Modifier = Modifier,
+    watchNextListState: LazyListState = rememberLazyListState(),
+    appsListState: LazyListState = rememberLazyListState(),
+    watchNextFocusRestoreSourceId: String? = null,
+    watchNextFocusRestoreGeneration: Int = 0,
 ) {
+    val watchNextRestoreFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(
+        watchNextFocusRestoreSourceId,
+        watchNextFocusRestoreGeneration,
+    ) {
+        val sourceId = watchNextFocusRestoreSourceId ?: return@LaunchedEffect
+        if (watchNextFocusRestoreGeneration <= 0) return@LaunchedEffect
+
+        val targetIndex = watchNextItems.indexOfFirst { item ->
+            item.media.source.sourceId == sourceId
+        }
+        if (targetIndex < 0) return@LaunchedEffect
+
+        // The Home subtree is removed while Details is visible, so preserving only
+        // LazyListState cannot preserve the actual Compose focus owner. Recompose
+        // the target item first, wait for the following frame, then explicitly
+        // restore focus to the exact Watch Next source card that opened Details.
+        watchNextListState.scrollToItem(targetIndex)
+        withFrameNanos { }
+        watchNextRestoreFocusRequester.requestFocus()
+    }
+
     Column(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -43,10 +78,19 @@ fun HomeScreen(
             )
         }
 
-        Text(
-            text = "Weiterschauen",
-            style = MaterialTheme.typography.headlineSmall,
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = "Weiterschauen",
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            if (watchNextItems.isNotEmpty()) {
+                Text(
+                    text = "OK: Fortsetzen · INFO oder lange OK: Details",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
 
         when {
             !hasTvListingsPermission -> {
@@ -80,16 +124,27 @@ fun HomeScreen(
 
             else -> {
                 LazyRow(
+                    state = watchNextListState,
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
                     items(
                         items = watchNextItems,
-                        key = { "watch-next-${it.id}-${it.sourceOrder}" },
+                        key = { "watch-next-${it.sourceItem.id}-${it.sourceItem.sourceOrder}" },
                     ) { item ->
+                        val cardModifier = if (
+                            item.media.source.sourceId == watchNextFocusRestoreSourceId
+                        ) {
+                            Modifier.focusRequester(watchNextRestoreFocusRequester)
+                        } else {
+                            Modifier
+                        }
+
                         WatchNextCard(
-                            item = item,
+                            item = item.media,
                             onClick = { onOpenWatchNext(item) },
+                            onDetails = { onOpenWatchNextDetails(item) },
+                            modifier = cardModifier,
                         )
                     }
                 }
@@ -105,6 +160,7 @@ fun HomeScreen(
             Text("Installierte Apps werden geladen …")
         } else {
             LazyRow(
+                state = appsListState,
                 contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
             ) {
