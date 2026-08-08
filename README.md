@@ -40,6 +40,8 @@ Wichtig: Ohne `READ_TV_LISTINGS` begrenzt Android TvProvider Abfragen auf Daten 
 
 Der Home-Tasten-Fallback verwendet dagegen Android Accessibility. Diese Sonderfreigabe kann nicht über einen normalen Runtime-Permission-Dialog erteilt werden und wird deshalb über die Android-Bedienungshilfen aktiviert.
 
+Aktueller signierter Gerätetest-Build mit Permission-Fix: `0.1.0-dev.18` (`26000018`).
+
 Noch offen für Phase 2: realer Vergleich der Watch-Next-Daten, Reihenfolge, Deep-Links und D-Pad-Navigation gegen Arc/CloudStream auf dem TCL Google TV nach Freigabe von `READ_TV_LISTINGS`.
 
 Siehe:
