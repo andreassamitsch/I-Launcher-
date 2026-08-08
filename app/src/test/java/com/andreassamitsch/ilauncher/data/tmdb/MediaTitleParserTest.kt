@@ -19,6 +19,19 @@ class MediaTitleParserTest {
     }
 
     @Test
+    fun `parses colon separated episode marker before title`() {
+        val parsed = MediaTitleParser.parse(
+            MediaLookup(rawTitle = "S3:E2 Westworld"),
+        )
+
+        assertEquals("Westworld", parsed.title)
+        assertEquals("westworld", parsed.normalizedTitle)
+        assertEquals(3, parsed.seasonNumber)
+        assertEquals(2, parsed.episodeNumber)
+        assertEquals(MediaType.Episode, parsed.typeHint)
+    }
+
+    @Test
     fun `extracts release year without polluting normalized title`() {
         val parsed = MediaTitleParser.parse(
             MediaLookup(rawTitle = "Dune: Part Two (2024)", typeHint = MediaType.Movie),

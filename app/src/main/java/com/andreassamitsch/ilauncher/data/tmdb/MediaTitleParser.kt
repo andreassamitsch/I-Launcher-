@@ -5,7 +5,7 @@ import java.text.Normalizer
 
 object MediaTitleParser {
     private val seasonEpisodeRegex = Regex(
-        pattern = "(?i)(?:^|[\\s._-])S(\\d{1,2})[\\s._-]*E(\\d{1,3})(?:$|[\\s._-])",
+        pattern = "(?i)(?:^|[\\s._:-])S(\\d{1,2})[\\s._:-]*E(\\d{1,3})(?:$|[\\s._:-])",
     )
     private val alternateEpisodeRegex = Regex(
         pattern = "(?i)(?:^|[\\s._-])(\\d{1,2})x(\\d{1,3})(?:$|[\\s._-])",
