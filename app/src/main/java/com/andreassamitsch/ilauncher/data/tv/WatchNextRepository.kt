@@ -70,11 +70,11 @@ class WatchNextRepository(context: Context) {
                 PROJECTION,
                 null,
                 null,
-                null,
+                SORT_ORDER,
             )?.use(::readCursor).orEmpty()
             val items = WatchNextMapper.map(rawRows)
 
-            Log.d(TAG, "Watch Next query succeeded: ${items.size} rows")
+            Log.d(TAG, "Watch Next query succeeded: ${items.size} rows, ordered by last engagement DESC")
             WatchNextLoadResult(items = items)
         } catch (securityException: SecurityException) {
             Log.w(
@@ -160,6 +160,9 @@ class WatchNextRepository(context: Context) {
     }
 
     companion object {
+        internal val SORT_ORDER: String =
+            TvContract.WatchNextPrograms.COLUMN_LAST_ENGAGEMENT_TIME_UTC_MILLIS + " DESC"
+
         private val PROJECTION = arrayOf(
             BaseColumns._ID,
             TvContract.BaseTvColumns.COLUMN_PACKAGE_NAME,
