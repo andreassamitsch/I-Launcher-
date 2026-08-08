@@ -5,6 +5,7 @@ import com.andreassamitsch.ilauncher.model.WatchNextItem
 internal data class WatchNextRawRow(
     val id: Long,
     val packageName: String?,
+    val programType: Int?,
     val title: String?,
     val seasonDisplayNumber: String?,
     val episodeDisplayNumber: String?,
@@ -27,6 +28,7 @@ internal object WatchNextMapper {
                 id = row.id,
                 sourceOrder = index,
                 packageName = row.packageName,
+                programType = row.programType,
                 title = row.title,
                 seasonDisplayNumber = row.seasonDisplayNumber,
                 episodeDisplayNumber = row.episodeDisplayNumber,
