@@ -90,6 +90,8 @@ Sie wird im Manifest deklariert und zur Laufzeit angefordert. Fehlt die Freigabe
 
 `com.android.providers.tv.permission.READ_EPG_DATA` bleibt als kompatible Legacy-Deklaration enthalten, ist in AOSP aber nicht mehr die maßgebliche Berechtigung für den Zugriff auf fremde TV-Listings.
 
+Der Permission-Flow ist im signierten Development-Build `0.1.0-dev.18` (`26000018`) build-validiert; die tatsächliche Freigabe und Datenlieferung muss auf dem TCL-Gerät geprüft werden.
+
 ## Watch Next
 
 Primärquelle ist `TvContract.WatchNextPrograms.CONTENT_URI` des Android TvProvider.
