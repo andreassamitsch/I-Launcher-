@@ -46,6 +46,7 @@ import com.andreassamitsch.ilauncher.ui.details.DetailsScreen
 import com.andreassamitsch.ilauncher.ui.home.HomeScreen
 import com.andreassamitsch.ilauncher.ui.settings.SettingsScreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 enum class LauncherSection(val label: String) {
@@ -53,6 +54,9 @@ enum class LauncherSection(val label: String) {
     Apps("Apps"),
     Settings("Einstellungen"),
 }
+
+private const val TMDB_ENRICHMENT_BATCH_SIZE = 4
+private const val TMDB_ENRICHMENT_RETRY_DELAY_MILLIS = 1_500L
 
 @Composable
 fun LauncherApp(
@@ -113,7 +117,23 @@ fun LauncherApp(
         val baseItems = watchNextEnrichmentRepository.base(visibleWatchNextItems)
         homeWatchNextItems = baseItems
         if (baseItems.isNotEmpty() && watchNextEnrichmentRepository.isTmdbConfigured) {
-            homeWatchNextItems = watchNextEnrichmentRepository.enrich(baseItems)
+            suspend fun enrichBatches(items: List<EnrichedWatchNextItem>) {
+                items.chunked(TMDB_ENRICHMENT_BATCH_SIZE).forEach { batch ->
+                    val enrichedBatch = watchNextEnrichmentRepository.enrich(batch)
+                    val enrichedBySourceId = enrichedBatch.associateBy { it.media.source.sourceId }
+                    homeWatchNextItems = homeWatchNextItems.map { current ->
+                        enrichedBySourceId[current.media.source.sourceId] ?: current
+                    }
+                }
+            }
+
+            enrichBatches(baseItems)
+
+            val unresolvedItems = homeWatchNextItems.filter { it.media.tmdbId == null }
+            if (unresolvedItems.isNotEmpty()) {
+                delay(TMDB_ENRICHMENT_RETRY_DELAY_MILLIS)
+                enrichBatches(unresolvedItems)
+            }
         }
     }
 
