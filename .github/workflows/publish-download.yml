@@ -5,7 +5,11 @@ on:
     branches:
       - agent/phase-1-launcher-mvp
     paths:
-      - .github/workflows/publish-download.yml
+      - "app/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/publish-download.yml"
   workflow_dispatch:
 
 permissions:
@@ -36,11 +40,33 @@ jobs:
         with:
           gradle-version: "9.5.0"
 
-      - name: Test and build debug APK
-        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
+      - name: Define development version
+        run: |
+          VERSION_CODE=$((26000000 + GITHUB_RUN_NUMBER))
+          VERSION_NAME="0.1.0-dev.${GITHUB_RUN_NUMBER}"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
 
-      - name: Prepare APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk /tmp/I-Launcher-debug.apk
+      - name: Test and build debug APK
+        run: |
+          gradle :app:testDebugUnitTest :app:assembleDebug \
+            -PiLauncherVersionCode="$VERSION_CODE" \
+            -PiLauncherVersionName="$VERSION_NAME" \
+            --stacktrace
+
+      - name: Prepare APK and update manifest
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/I-Launcher-debug.apk
+          SHA256=$(sha256sum /tmp/I-Launcher-debug.apk | awk '{print $1}')
+          cat > /tmp/update.json <<EOF
+          {
+            "versionCode": $VERSION_CODE,
+            "versionName": "$VERSION_NAME",
+            "apkUrl": "https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/downloads/I-Launcher-debug.apk",
+            "sha256": "$SHA256",
+            "sourceSha": "$GITHUB_SHA"
+          }
+          EOF
 
       - name: Publish stable downloader branch
         run: |
@@ -49,8 +75,15 @@ jobs:
           git checkout --orphan downloader-publish
           git rm -rf .
           cp /tmp/I-Launcher-debug.apk I-Launcher-debug.apk
-          printf '%s\n' '# I Launcher TV Download' 'Diese Branch enthält nur die aktuell manuell veröffentlichte Test-APK.' > README.md
+          cp /tmp/update.json update.json
+          printf '%s\n' \
+            '# I Launcher TV Download' \
+            'Diese Branch enthält die aktuelle Development-APK und das Update-Manifest für den In-App-Updater.' \
+            '' \
+            'Direktdownload: https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/downloads/I-Launcher-debug.apk' \
+            'Update-Manifest: https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/downloads/update.json' \
+            > README.md
           touch .nojekyll
-          git add I-Launcher-debug.apk README.md .nojekyll
-          git commit -m "chore: publish TV downloader APK"
+          git add I-Launcher-debug.apk update.json README.md .nojekyll
+          git commit -m "chore: publish I Launcher $VERSION_NAME"
           git push origin HEAD:downloads --force
