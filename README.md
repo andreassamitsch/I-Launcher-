@@ -16,32 +16,41 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phase 2 – Android Watch Next ist funktional abgeschlossen. Phase 3 – TMDB startet.**
+**Phase 2 – Android Watch Next ist funktional abgeschlossen. Phase 3 – TMDB ist in Entwicklung.**
 
-Bereits umgesetzt und auf dem TCL grundsätzlich verifiziert:
+Der aktuelle Phase-3-Unterbau enthält bereits:
 
-- Android-TV-Home-/Launcher-Intent inklusive normalem `MAIN`/`LAUNCHER`-Front-Door-Einstieg
-- Home-Fallback über Accessibility bei ADB-Installation
-- Compose-for-TV-Oberfläche mit zentralem kontrastreichem Dark Theme
-- installierte TV-/Launcher-Apps und App-Start
-- scrollbare Apps-Ansicht
+- gemeinsames `MediaItem`-/`MediaSource`-Modell
+- Android-Watch-Next-Typ und Release-Datum als Resolver-Hinweise
+- Titel-/Jahr-/Staffel-/Episoden-Parser
+- konservativen TMDB-Resolver mit Confidence-Schwelle
+- Retrofit/OkHttp-Client mit Bearer-Read-Access-Token
+- Room-Cache für Mappings, Medien- und Episodendaten einschließlich negativer Treffer
+- 30-Tage-Refresh und 180-Tage-Hard-Limit für TMDB-Cache
+- TMDB-Bildkonfiguration für Poster, Backdrops, Logos und Episode Stills
+- Local-First-Anreicherung: Watch Next wird sofort mit Android-Quelldaten angezeigt und erst danach begrenzt über TMDB angereichert
+- Beibehaltung von Watch-Next-Reihenfolge, Quellenfilter und Quell-Deep-Link
+- Unit-Tests für Parser, Confidence, Medienmapping und Artwork-Priorität
+
+Der TMDB-Token wird **nicht** im Repository abgelegt. Der Code akzeptiert `IL_TMDB_READ_ACCESS_TOKEN` bzw. die Gradle-Property `tmdbReadAccessToken`. Ohne Token läuft I Launcher weiterhin vollständig mit den Android-Quelldaten wie in Phase 2.
+
+Vor Aktivierung der Live-TMDB-Nutzung im signierten Development-Build werden die vorgeschriebene TMDB-Attribution und ein freigegebenes TMDB-Logo im About/Credits-Bereich ergänzt. TMDB verlangt dort außerdem den Hinweis „This product uses the TMDB API but is not endorsed or certified by TMDB.“
+
+Bereits auf dem TCL grundsätzlich verifiziert:
+
+- Android-TV-Home-/Launcher-Intent
+- Accessibility-Home-Fallback bei ADB-Installation
+- kontrastreiches Compose-for-TV-Dark-Theme
+- installierte Apps und App-Start
 - Android `TvProvider` / `WatchNextPrograms`
 - Runtime-Berechtigung `android.permission.READ_TV_LISTINGS`
 - Watch-Next-Sortierung nach `last_engagement_time_utc_millis DESC`
 - Quellenfilter pro App/Package
-- Watch-Next-Karten mit Quellbild, Staffel/Episode und Fortschritt
-- Deep-Link zurück zur Quell-App
-- Watch-Next-Diagnose mit Rohindex, Quellpaket, Typ und Engagement-Zeit
-- `ContentObserver` für laufende TvProvider-Änderungen
-- Unit-Tests für Mapping/Reihenfolge/Sortieranforderung
-- GitHub-CI für Tests und Debug-APK
-- fester signierter Development-Updatekanal mit In-App-Updater
+- Deep-Links zurück zur Quell-App
 
-Watch Next liefert auf dem Zielgerät unter anderem CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Deshalb bleibt eine CloudStream-spezifische Integration weiterhin bewusst außen vor.
+Watch Next liefert auf dem Zielgerät unter anderem CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Deshalb bleibt eine CloudStream-spezifische Integration bewusst außen vor.
 
-Das TCL-/Google-TV-Thema rund um Android 13+ `Covered Applications` / `Restricted Settings` bei lokal installierten APKs bleibt als separates Distributionsthema offen. Es blockiert die weiteren Content-Phasen nicht.
-
-Phase 3 baut nun den gemeinsamen Medien-Unterbau und die TMDB-Anreicherung auf: API-Client, Resolver mit Confidence, lokaler Room-Cache, Bilder sowie Serien-/Episodendaten und Detailansicht.
+Das TCL-/Google-TV-Thema rund um Android 13+ `Covered Applications` / `Restricted Settings` bei lokal installierten APKs bleibt als separates Distributionsthema offen und blockiert die Content-Phasen nicht.
 
 Siehe:
 
@@ -63,6 +72,9 @@ Kotlin · Jetpack Compose · Compose for TV · AndroidX · Coroutines/Flow · Ro
 - Compose BOM 2026.06.00
 - Compose for TV 1.1.0
 - Coil 3.5.0
+- Room 2.8.4
+- Retrofit 3.0.0
+- OkHttp 5.3.0
 
 ## Lizenz
 
