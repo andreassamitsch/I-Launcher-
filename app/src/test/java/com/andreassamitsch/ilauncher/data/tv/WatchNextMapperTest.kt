@@ -28,6 +28,13 @@ class WatchNextMapperTest {
     }
 
     @Test
+    fun `preserves Android program type`() {
+        val mapped = WatchNextMapper.map(listOf(row(id = 1, programType = 3)))
+
+        assertEquals(3, mapped.single().programType)
+    }
+
+    @Test
     fun `computes progress only when duration and position are usable`() {
         val mapped = WatchNextMapper.map(
             listOf(
@@ -42,12 +49,14 @@ class WatchNextMapperTest {
 
     private fun row(
         id: Long,
+        programType: Int? = null,
         title: String? = null,
         durationMillis: Long? = null,
         playbackPositionMillis: Long? = null,
     ) = WatchNextRawRow(
         id = id,
         packageName = "example.package",
+        programType = programType,
         title = title,
         seasonDisplayNumber = null,
         episodeDisplayNumber = null,
