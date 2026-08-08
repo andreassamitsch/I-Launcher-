@@ -19,8 +19,13 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Debug-APK als CI-Artefakt
 - [x] offizielle Android-Home-Rolle als bevorzugte Launcher-Aktivierung
 - [x] Accessibility-Fallback erkennt HOME-Key und System-Launcher-Fenster
-- [x] Hilfe für Android „Eingeschränkte Einstellungen“ bei seitlich installierten Accessibility-Services
-- [x] TCL/Google-TV-Gerätetest: Accessibility-Fallback lässt sich aktivieren und HOME öffnet I Launcher
+- [x] `BIND_ACCESSIBILITY_SERVICE` und `canRequestFilterKeyEvents=true` korrekt konfiguriert
+- [x] TCL/Google-TV-Gerätetest bei ADB-Installation: Accessibility-Fallback lässt sich aktivieren und HOME öffnet I Launcher
+- [x] Android-13+-Restricted-Settings bei lokaler/heruntergeladener APK als Ursache für zurückspringenden Accessibility-Schalter berücksichtigt
+- [x] Installationsquellen-Diagnose und klare App-Info- / „Eingeschränkte Einstellungen zulassen“-Führung
+- [x] Standard-`MAIN`/`LAUNCHER`-Entry zusätzlich zu HOME/LEANBACK für reguläre Front-Door-/Installer-Öffnen-Funktion
+- [ ] TCL-Gerätetest nach normaler APK-Installation: Restricted Settings erlauben, Accessibility aktivieren, HOME testen
+- [ ] TCL-Gerätetest: Paketinstaller bietet nach Installation „Öffnen“ an
 - [x] zentrales dunkles TV-Material-Farbschema mit kontrastreichen Content-Farben
 - [ ] abschließender realer TV-Gerätetest für Focus/Scroll/Lesbarkeit nach den letzten UI-Fixes
 
@@ -38,7 +43,6 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Update-Kanal sperrt automatische Installation, solange keine stabile Development-Signatur vorhanden ist
 - [x] dauerhafter Development-Signing-Key als geschützte GitHub-Secrets hinterlegt (`updateCompatible=true` verifiziert)
 - [x] Development-Downloadkanal auf den aktiven Phase-2-Branch umgestellt
-- [ ] einmalige Neuinstallation auf die stabile Development-Signatur durchführen, falls noch ein alter wechselnd signierter Build installiert ist
 - [ ] realen Update-von-Version-A-auf-Version-B-Gerätetest durchführen
 
 ## Phase 2 – Watch Next
@@ -47,15 +51,19 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] fehlende TV-Listings-Berechtigung explizit erkennen statt fälschlich „0 Einträge“ zu melden
 - [x] gemeinsame Berechtigungsbasis für Watch Next und spätere Preview Channels
 - [x] Android TvProvider / Watch Next einlesen
-- [x] vom Provider gelieferte Cursor-Reihenfolge unverändert abbilden und per Unit-Test absichern
+- [x] Android-Sortierhinweis `last_engagement_time_utc_millis DESC` verwenden; mit Arc-Implementierung abgeglichen
+- [x] vom TvProvider angeforderte Reihenfolge im Mapper und nach Quellenfilterung unverändert erhalten
+- [x] Unit-Test für Watch-Next-Sortieranforderung und Mapping-Reihenfolge
+- [x] Quellenfilter pro App/Package für die Home-Reihe; Rohdaten bleiben in Diagnose erhalten
 - [x] Titel, Staffel/Episode, Bild und Fortschritt darstellen
 - [x] Quell-App / Package für Diagnose erfassen
 - [x] Quell-App über vorhandenen Intent/Deep Link öffnen
 - [x] TvProvider-Änderungen per ContentObserver live beobachten
-- [x] Diagnoseansicht mit Rohreihenfolge und relevanten TvProvider-Feldern
+- [x] Diagnoseansicht mit Rohreihenfolge, Watch-Next-Typ, Engagement-Zeit und relevanten TvProvider-Feldern
 - [x] keine vollständigen Deep-Link-/Bild-URLs in Diagnose oder Logs ausgeben
-- [x] CI/Publish-Build: Unit-Tests und Debug-Build mit Permission-Fix erfolgreich
-- [ ] `READ_TV_LISTINGS` auf dem TCL freigeben und Watch Next erneut gegen Arc/CloudStream vergleichen
+- [ ] neue Sortierung auf dem TCL gegen Arc/Projectivy vergleichen
+- [ ] Browser-/unerwünschte Quellen auf dem TCL per Quellenfilter ausblenden und Verhalten verifizieren
+- [ ] CloudStream-Einträge, Bilder, Fortschritt und Deep Links auf realer TV-Hardware verifizieren
 - [ ] D-Pad/Scroll/Fokus der Watch-Next-Reihe auf realer TV-Hardware verifizieren
 
 ## Phase 3 – TMDB
