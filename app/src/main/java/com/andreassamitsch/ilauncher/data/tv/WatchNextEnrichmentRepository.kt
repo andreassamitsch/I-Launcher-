@@ -28,10 +28,9 @@ class WatchNextEnrichmentRepository(
     ): List<EnrichedWatchNextItem> {
         if (!isTmdbConfigured || baseItems.isEmpty()) return baseItems
 
-        val enrichmentLimit = minOf(baseItems.size, MAX_ENRICHED_ITEMS)
         val semaphore = Semaphore(MAX_PARALLEL_LOOKUPS)
-        val enrichedHead = supervisorScope {
-            baseItems.take(enrichmentLimit).map { item ->
+        return supervisorScope {
+            baseItems.map { item ->
                 async {
                     semaphore.withPermit {
                         enrichOne(item)
@@ -39,8 +38,6 @@ class WatchNextEnrichmentRepository(
                 }
             }.awaitAll()
         }
-
-        return enrichedHead + baseItems.drop(enrichmentLimit)
     }
 
     private suspend fun enrichOne(item: EnrichedWatchNextItem): EnrichedWatchNextItem {
@@ -61,6 +58,5 @@ class WatchNextEnrichmentRepository(
 
     companion object {
         private const val MAX_PARALLEL_LOOKUPS = 2
-        private const val MAX_ENRICHED_ITEMS = 12
     }
 }
