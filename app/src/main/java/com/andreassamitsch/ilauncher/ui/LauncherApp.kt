@@ -1,6 +1,7 @@
 package com.andreassamitsch.ilauncher.ui
 
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -40,6 +42,7 @@ import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import com.andreassamitsch.ilauncher.ui.apps.AppsScreen
+import com.andreassamitsch.ilauncher.ui.details.DetailsScreen
 import com.andreassamitsch.ilauncher.ui.home.HomeScreen
 import com.andreassamitsch.ilauncher.ui.settings.SettingsScreen
 import kotlinx.coroutines.Dispatchers
@@ -61,6 +64,9 @@ fun LauncherApp(
     val context = LocalContext.current
     val activity = context as? ComponentActivity
     var section by rememberSaveable { mutableStateOf(LauncherSection.Home) }
+    var selectedDetailsMediaId by rememberSaveable { mutableStateOf<String?>(null) }
+    val watchNextListState = rememberLazyListState()
+    val appsListState = rememberLazyListState()
     val updateState by updateManager.state.collectAsState()
     var hasTvListingsPermission by remember {
         mutableStateOf(TvProviderPermissionManager.hasReadTvListings(context))
@@ -118,6 +124,12 @@ fun LauncherApp(
         }
     }
 
+    val selectedDetailsItem = selectedDetailsMediaId?.let { selectedId ->
+        homeWatchNextItems.firstOrNull { it.media.id == selectedId }
+    }
+    val closeDetails: () -> Unit = { selectedDetailsMediaId = null }
+    BackHandler(enabled = selectedDetailsItem != null, onBack = closeDetails)
+
     DisposableEffect(activity) {
         if (activity == null) {
             onDispose { }
@@ -167,52 +179,69 @@ fun LauncherApp(
             contentColor = MaterialTheme.colorScheme.onBackground,
         ),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 56.dp, vertical = 34.dp),
-            verticalArrangement = Arrangement.spacedBy(30.dp),
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                LauncherSection.entries.forEach { item ->
-                    Button(onClick = { section = item }) {
-                        Text(item.label)
+        if (selectedDetailsItem != null) {
+            val packageName = selectedDetailsItem.media.source.packageName
+            val sourceLabel = apps.firstOrNull { it.packageName == packageName }?.label
+                ?: packageName
+            DetailsScreen(
+                item = selectedDetailsItem.media,
+                sourceLabel = sourceLabel,
+                onPlay = { openWatchNext(selectedDetailsItem) },
+                onBack = closeDetails,
+            )
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 56.dp, vertical = 34.dp),
+                verticalArrangement = Arrangement.spacedBy(30.dp),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    LauncherSection.entries.forEach { item ->
+                        Button(onClick = { section = item }) {
+                            Text(item.label)
+                        }
+                    }
+
+                    updateAttentionLabel?.let { label ->
+                        Button(onClick = { section = LauncherSection.Settings }) {
+                            Text(label)
+                        }
                     }
                 }
 
-                updateAttentionLabel?.let { label ->
-                    Button(onClick = { section = LauncherSection.Settings }) {
-                        Text(label)
-                    }
+                when (section) {
+                    LauncherSection.Home -> HomeScreen(
+                        apps = apps,
+                        watchNextItems = homeWatchNextItems,
+                        watchNextError = watchNextResult.errorMessage,
+                        hasTvListingsPermission = hasTvListingsPermission,
+                        onRequestTvListingsPermission = requestTvListingsPermission,
+                        onOpenApp = openApp,
+                        onOpenWatchNext = openWatchNext,
+                        onOpenWatchNextDetails = { item ->
+                            selectedDetailsMediaId = item.media.id
+                        },
+                        watchNextListState = watchNextListState,
+                        appsListState = appsListState,
+                    )
+
+                    LauncherSection.Apps -> AppsScreen(
+                        apps = apps,
+                        onOpenApp = openApp,
+                    )
+
+                    LauncherSection.Settings -> SettingsScreen(
+                        updateManager = updateManager,
+                        watchNextResult = watchNextResult,
+                        installedApps = apps,
+                        hiddenWatchNextPackages = hiddenWatchNextPackages,
+                        onSetWatchNextSourceVisible = watchNextSourcePreferences::setVisible,
+                        onShowAllWatchNextSources = watchNextSourcePreferences::showAll,
+                        hasTvListingsPermission = hasTvListingsPermission,
+                        onRequestTvListingsPermission = requestTvListingsPermission,
+                    )
                 }
-            }
-
-            when (section) {
-                LauncherSection.Home -> HomeScreen(
-                    apps = apps,
-                    watchNextItems = homeWatchNextItems,
-                    watchNextError = watchNextResult.errorMessage,
-                    hasTvListingsPermission = hasTvListingsPermission,
-                    onRequestTvListingsPermission = requestTvListingsPermission,
-                    onOpenApp = openApp,
-                    onOpenWatchNext = openWatchNext,
-                )
-
-                LauncherSection.Apps -> AppsScreen(
-                    apps = apps,
-                    onOpenApp = openApp,
-                )
-
-                LauncherSection.Settings -> SettingsScreen(
-                    updateManager = updateManager,
-                    watchNextResult = watchNextResult,
-                    installedApps = apps,
-                    hiddenWatchNextPackages = hiddenWatchNextPackages,
-                    onSetWatchNextSourceVisible = watchNextSourcePreferences::setVisible,
-                    onShowAllWatchNextSources = watchNextSourcePreferences::showAll,
-                    hasTvListingsPermission = hasTvListingsPermission,
-                    onRequestTvListingsPermission = requestTvListingsPermission,
-                )
             }
         }
     }
