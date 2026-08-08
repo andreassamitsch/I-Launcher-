@@ -16,32 +16,27 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phase 3 – TMDB ist funktional abgeschlossen und auf realer TCL-Hardware bestätigt. Phase 4 – Trailer startet als nächster Entwicklungsabschnitt.**
+**Phase 3 – TMDB ist abgeschlossen und in `main` gemergt. Phase 4 – Trailer ist implementiert und befindet sich im Build-/Gerätetest.**
 
-Der abgeschlossene Phase-3-Unterbau enthält:
+Der bestätigte Phase-3-Unterbau umfasst das gemeinsame Medienmodell, Android Watch Next, konservative TMDB-Auflösung, Room-Cache, Film-/Serien-/Episodendaten, Bilder, provider-neutrale Details und die auf dem TCL verifizierte D-Pad-/Focus-Rückgabe.
 
-- gemeinsames `MediaItem`-/`MediaSource`-Modell
-- Android-Watch-Next-Typ und Release-Datum als Resolver-Hinweise
-- Titel-/Jahr-/Staffel-/Episoden-Parser inklusive `Sx:Ex`-Quelltiteln
-- konservativen TMDB-Resolver mit Confidence-Schwelle
-- Retrofit/OkHttp-Client mit Bearer-Read-Access-Token
-- Room-Cache für Mappings, Medien- und Episodendaten einschließlich negativer Treffer
-- Cache-Identitätsprüfung gegen Titel/Jahr/Staffel/Episode vor Wiederverwendung eines Source-Mappings
-- 30-Tage-Refresh und 180-Tage-Hard-Limit für TMDB-Cache
-- TMDB-Bildkonfiguration für Poster, Backdrops, Logos und Episode Stills
-- Local-First-Anreicherung: Watch Next wird sofort mit Android-Quelldaten angezeigt und anschließend progressiv über TMDB angereichert
-- Verarbeitung aller sichtbaren Watch-Next-Einträge in kleinen Batches ohne feste 12-Einträge-Grenze
-- einmaliger Retry für noch nicht angereicherte Einträge; negative No-Match-Caches verhindern unnötige Wiederholungsanfragen
-- Beibehaltung von Watch-Next-Reihenfolge, Quellenfilter und Quell-Deep-Link
-- Detailseite: normales OK startet weiterhin direkt die Quelle; INFO bzw. lange OK öffnet Details
-- gespeicherte Watch-Next-Scrollposition und explizite Focus-Rückgabe an dieselbe stabile Source-ID
-- TMDB-Diagnose ohne Secrets oder vollständige private URLs
-- TMDB-Attribution im Bereich `Über / Credits`
-- Unit-Tests für Parser, Confidence, Medienmapping und Artwork-Priorität
+Phase 4 ergänzt aktuell:
 
-Der TMDB-Token wird **nicht** im Repository abgelegt. Der signierte Development-Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als GitHub-Secret und veröffentlicht keinen aktiven TMDB-Build, wenn das Secret fehlt.
+- TMDB-Video-Metadaten für Filme, Serien und Episoden
+- deterministische Auswahl einer geeigneten YouTube-Trailer-ID
+- Episode-Trailer vor Serien-Trailer
+- provider-neutrale `TrailerRef` im gemeinsamen Medienmodell
+- Room-Cache für Trailer-ID und „kein Trailer gefunden“-Status
+- Datenbankmigration von Phase-3-Schema 1 auf Schema 2 ohne Löschen bestehender Caches
+- `Trailer`-Aktion in der Detailseite
+- Wiedergabe über Android `ACTION_VIEW` an YouTube/einen geeigneten Handler
+- `Trailer suchen` als gezielter YouTube-Fallback, falls TMDB keine verwertbare Video-ID liefert
+- keine YouTube-Data-API, kein zusätzlicher API-Key und keine YouTube-Stream-Extraktion
+- Unit-Tests für Trailer-Auswahl und Episode-vor-Serie-Priorität
 
-Auf dem TCL verifiziert:
+Der TMDB-Token wird **nicht** im Repository abgelegt. Der signierte Development-Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als GitHub-Secret.
+
+Auf dem TCL bereits aus Phase 3 verifiziert:
 
 - Launcher-/Home-Funktion und D-Pad-Navigation
 - Android Watch Next über TvProvider einschließlich CloudStream
@@ -53,7 +48,7 @@ Auf dem TCL verifiziert:
 - Poster/Backdrops/Logos/Episodenbilder
 - progressives Nachladen über die gesamte sichtbare Watch-Next-Liste
 
-Aktueller bestätigter Phase-3-Build: **`0.1.0-dev.45` (`26000045`)**, `updateCompatible=true`, `tmdbConfigured=true`.
+Aktueller bestätigter Phase-3-Build: **`0.1.0-dev.45` (`26000045`)**. Der Phase-4-Build wird erst nach erfolgreichem CI-/Publisher-Lauf als testbereit dokumentiert.
 
 Watch Next liefert CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Eine CloudStream-spezifische Integration bleibt deshalb bewusst außen vor.
 
