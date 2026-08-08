@@ -4,6 +4,7 @@ data class WatchNextItem(
     val id: Long,
     val sourceOrder: Int,
     val packageName: String?,
+    val programType: Int?,
     val title: String?,
     val seasonDisplayNumber: String?,
     val episodeDisplayNumber: String?,
