@@ -1,5 +1,6 @@
 package com.andreassamitsch.ilauncher.ui.components
 
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,8 +11,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -26,11 +32,50 @@ import com.andreassamitsch.ilauncher.model.MediaItem
 fun WatchNextCard(
     item: MediaItem,
     onClick: () -> Unit,
+    onDetails: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    var longPressHandled by remember(item.id) { mutableStateOf(false) }
+
     Card(
         onClick = onClick,
-        modifier = modifier.width(300.dp),
+        modifier = modifier
+            .width(300.dp)
+            .onPreviewKeyEvent { composeEvent ->
+                val event = composeEvent.nativeKeyEvent
+                val isConfirmKey = event.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
+                    event.keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
+                    event.keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
+
+                when {
+                    onDetails != null &&
+                        event.action == AndroidKeyEvent.ACTION_DOWN &&
+                        event.keyCode == AndroidKeyEvent.KEYCODE_INFO -> {
+                        onDetails()
+                        true
+                    }
+
+                    onDetails != null &&
+                        event.action == AndroidKeyEvent.ACTION_DOWN &&
+                        isConfirmKey &&
+                        event.repeatCount > 0 -> {
+                        if (!longPressHandled) {
+                            longPressHandled = true
+                            onDetails()
+                        }
+                        true
+                    }
+
+                    event.action == AndroidKeyEvent.ACTION_UP &&
+                        isConfirmKey &&
+                        longPressHandled -> {
+                        longPressHandled = false
+                        true
+                    }
+
+                    else -> false
+                }
+            },
         scale = CardDefaults.scale(focusedScale = 1.05f),
     ) {
         Column {
