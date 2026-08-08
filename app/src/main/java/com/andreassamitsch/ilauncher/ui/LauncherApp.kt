@@ -212,7 +212,6 @@ fun LauncherApp(
                     onShowAllWatchNextSources = watchNextSourcePreferences::showAll,
                     hasTvListingsPermission = hasTvListingsPermission,
                     onRequestTvListingsPermission = requestTvListingsPermission,
-                    isTmdbConfigured = watchNextEnrichmentRepository.isTmdbConfigured,
                 )
             }
         }
