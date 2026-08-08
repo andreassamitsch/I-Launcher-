@@ -77,15 +77,17 @@ class InstalledAppsRepository(
     }
 
     private fun Drawable.toBitmap(sizePx: Int): Bitmap {
-        if (this is BitmapDrawable && bitmap.width > 0 && bitmap.height > 0) {
+        if (
+            this is BitmapDrawable &&
+            bitmap.width == sizePx &&
+            bitmap.height == sizePx
+        ) {
             return bitmap
         }
 
-        val targetWidth = intrinsicWidth.takeIf { it > 0 } ?: sizePx
-        val targetHeight = intrinsicHeight.takeIf { it > 0 } ?: sizePx
-        val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        setBounds(0, 0, canvas.width, canvas.height)
+        setBounds(0, 0, sizePx, sizePx)
         draw(canvas)
         return bitmap
     }
