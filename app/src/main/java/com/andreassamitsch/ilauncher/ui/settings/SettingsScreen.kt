@@ -3,6 +3,7 @@ package com.andreassamitsch.ilauncher.ui.settings
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -15,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -22,7 +24,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.BuildConfig
+import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.data.update.InstallResult
 import com.andreassamitsch.ilauncher.data.update.UpdateManager
 import com.andreassamitsch.ilauncher.data.update.UpdateState
@@ -32,6 +36,9 @@ import com.andreassamitsch.ilauncher.system.HomeLauncherManager
 import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private const val TMDB_APPROVED_LOGO_URL =
+    "https://www.themoviedb.org/assets/2/v4/logos/v2/blue_square_2-d537fb228cf3ded904ef09b136fe3fec72548ebc1fea3fbbd1ad9e36364db38b.svg"
 
 @Composable
 fun SettingsScreen(
@@ -43,6 +50,8 @@ fun SettingsScreen(
     onShowAllWatchNextSources: () -> Unit,
     hasTvListingsPermission: Boolean,
     onRequestTvListingsPermission: () -> Unit,
+    tmdbConfigured: Boolean,
+    enrichedWatchNextItems: List<EnrichedWatchNextItem>,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -78,6 +87,9 @@ fun SettingsScreen(
                 )
             }
             .sortedBy { it.label.lowercase() }
+    }
+    val tmdbResolvedItems = remember(enrichedWatchNextItems) {
+        enrichedWatchNextItems.filter { it.media.tmdbId != null }
     }
 
     fun refreshLauncherStatus() {
@@ -343,6 +355,73 @@ fun SettingsScreen(
                 )
             }
         }
+
+        Text(
+            text = "TMDB",
+            style = MaterialTheme.typography.headlineSmall,
+        )
+
+        Text(
+            text = if (tmdbConfigured) {
+                "TMDB: aktiv. Der Read-Access-Token ist im Build konfiguriert; Quelldaten werden Local First angezeigt und anschließend angereichert."
+            } else {
+                "TMDB: nicht aktiv. Dieser Build enthält keinen Read-Access-Token und verwendet ausschließlich die Android-Quelldaten."
+            },
+            style = MaterialTheme.typography.titleMedium,
+            color = if (tmdbConfigured) {
+                MaterialTheme.colorScheme.onBackground
+            } else {
+                MaterialTheme.colorScheme.error
+            },
+        )
+
+        Text(
+            text = "Aufgelöst: ${tmdbResolvedItems.size} von ${enrichedWatchNextItems.size} aktuell sichtbaren Watch-Next-Einträgen.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+
+        tmdbResolvedItems.take(20).forEach { item ->
+            Text(
+                text = buildString {
+                    append(item.media.title)
+                    append(" | tmdb=")
+                    append(item.media.tmdbId)
+                    append(" | type=")
+                    append(item.media.type.name)
+                    item.media.tmdbEpisodeId?.let { append(" | episode=$it") }
+                    item.media.resolverConfidence?.let {
+                        append(" | confidence=")
+                        append((it * 100).toInt())
+                        append('%')
+                    }
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        Text(
+            text = "Über / Credits",
+            style = MaterialTheme.typography.headlineSmall,
+        )
+
+        AsyncImage(
+            model = TMDB_APPROVED_LOGO_URL,
+            contentDescription = "TMDB",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.size(88.dp),
+        )
+
+        Text(
+            text = "Film-, Serien- und Episodenmetadaten sowie zugehörige Bilder können von TMDB stammen.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+
+        Text(
+            text = "This product uses the TMDB API but is not endorsed or certified by TMDB.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         Text(
             text = "Updates",
