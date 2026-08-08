@@ -40,7 +40,7 @@ fun LauncherApp(
         initialValue = emptyList(),
         key1 = installedAppsRepository,
     ) {
-        value = withContext(Dispatchers.Default) {
+        value = withContext(Dispatchers.IO) {
             installedAppsRepository.loadApps()
         }
     }
