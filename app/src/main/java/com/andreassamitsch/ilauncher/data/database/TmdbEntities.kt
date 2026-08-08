@@ -40,6 +40,8 @@ data class TmdbMediaEntity(
     val imdbId: String?,
     val tvdbId: Int?,
     val wikidataId: String?,
+    val trailerYoutubeId: String?,
+    val videoLookupComplete: Boolean,
     val updatedAtUtcMillis: Long,
 )
 
@@ -59,5 +61,7 @@ data class TmdbEpisodeEntity(
     val runtimeMinutes: Int?,
     val stillPath: String?,
     val voteAverage: Double?,
+    val trailerYoutubeId: String?,
+    val videoLookupComplete: Boolean,
     val updatedAtUtcMillis: Long,
 )
