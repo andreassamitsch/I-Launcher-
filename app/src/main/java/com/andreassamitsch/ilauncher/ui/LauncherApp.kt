@@ -38,6 +38,7 @@ import com.andreassamitsch.ilauncher.data.tv.WatchNextRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextSourcePreferences
 import com.andreassamitsch.ilauncher.data.update.UpdateManager
 import com.andreassamitsch.ilauncher.data.update.UpdateState
+import com.andreassamitsch.ilauncher.data.youtube.YouTubeLauncher
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
@@ -208,14 +209,29 @@ fun LauncherApp(
         ),
     ) {
         if (selectedDetailsItem != null) {
-            val packageName = selectedDetailsItem.media.source.packageName
+            val detailsMedia = selectedDetailsItem.media
+            val packageName = detailsMedia.source.packageName
             val sourceLabel = apps.firstOrNull { it.packageName == packageName }?.label
                 ?: packageName
             DetailsScreen(
-                item = selectedDetailsItem.media,
+                item = detailsMedia,
                 sourceLabel = sourceLabel,
                 onPlay = { openWatchNext(selectedDetailsItem) },
                 onBack = closeDetails,
+                onTrailer = detailsMedia.trailer?.let {
+                    {
+                        YouTubeLauncher.playTrailer(context, detailsMedia)
+                        Unit
+                    }
+                },
+                onTrailerSearch = if (detailsMedia.trailer == null) {
+                    {
+                        YouTubeLauncher.searchTrailer(context, detailsMedia)
+                        Unit
+                    }
+                } else {
+                    null
+                },
             )
         } else {
             Column(
