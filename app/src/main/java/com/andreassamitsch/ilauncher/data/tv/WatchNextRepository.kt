@@ -53,13 +53,14 @@ class WatchNextRepository(context: Context) {
 
     fun load(): WatchNextLoadResult {
         return try {
-            val items = resolver.query(
+            val rawRows = resolver.query(
                 TvContract.WatchNextPrograms.CONTENT_URI,
                 PROJECTION,
                 null,
                 null,
                 null,
             )?.use(::readCursor).orEmpty()
+            val items = WatchNextMapper.map(rawRows)
 
             Log.d(TAG, "Watch Next query succeeded: ${items.size} rows")
             WatchNextLoadResult(items = items)
@@ -96,14 +97,12 @@ class WatchNextRepository(context: Context) {
         }.getOrDefault(false)
     }
 
-    private fun readCursor(cursor: Cursor): List<WatchNextItem> {
-        val items = ArrayList<WatchNextItem>(cursor.count.coerceAtLeast(0))
-        var sourceOrder = 0
+    private fun readCursor(cursor: Cursor): List<WatchNextRawRow> {
+        val rows = ArrayList<WatchNextRawRow>(cursor.count.coerceAtLeast(0))
 
         while (cursor.moveToNext()) {
-            items += WatchNextItem(
+            rows += WatchNextRawRow(
                 id = cursor.long(BaseColumns._ID) ?: -1L,
-                sourceOrder = sourceOrder,
                 packageName = cursor.string(TvContract.BaseTvColumns.COLUMN_PACKAGE_NAME),
                 title = cursor.string(TvContract.PreviewPrograms.COLUMN_TITLE),
                 seasonDisplayNumber = cursor.string(TvContract.PreviewPrograms.COLUMN_SEASON_DISPLAY_NUMBER),
@@ -123,10 +122,9 @@ class WatchNextRepository(context: Context) {
                     TvContract.WatchNextPrograms.COLUMN_LAST_ENGAGEMENT_TIME_UTC_MILLIS,
                 ),
             )
-            sourceOrder += 1
         }
 
-        return items
+        return rows
     }
 
     private fun Cursor.string(columnName: String): String? {
