@@ -56,8 +56,14 @@ fun LauncherApp(
     }
 
     val openApp: (InstalledApp) -> Unit = { app -> installedAppsRepository.launch(app) }
-    val updateAttentionNeeded = updateState is UpdateState.Available ||
-        updateState is UpdateState.ReadyToInstall
+    val updateAttentionLabel = when (updateState) {
+        is UpdateState.Available,
+        is UpdateState.ReadyToInstall,
+        -> "Update verfügbar"
+
+        is UpdateState.SigningRequired -> "Update-Setup nötig"
+        else -> null
+    }
 
     Column(
         modifier = Modifier
@@ -73,9 +79,9 @@ fun LauncherApp(
                 }
             }
 
-            if (updateAttentionNeeded) {
+            updateAttentionLabel?.let { label ->
                 Button(onClick = { section = LauncherSection.Settings }) {
-                    Text("Update verfügbar")
+                    Text(label)
                 }
             }
         }
