@@ -87,7 +87,7 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] TCL-Gerätetest: Direktstart, INFO/lange OK, Detailseite und Back-Navigation funktionieren grundsätzlich
 - [x] reproduzierte Focus-Lücke analysiert: Home-Subtree wird bei Details aus der Composition entfernt; LazyListState allein erhält keinen Focus-Owner
 - [x] explizite Focus-Rückgabe über stabile Watch-Next-Source-ID + `FocusRequester` nach `scrollToItem` und folgendem Compose-Frame implementiert
-- [ ] Focus-Rückgabe auf exakt dieselbe Watch-Next-Karte auf TCL erneut verifizieren
+- [x] Focus-Rückgabe auf exakt dieselbe Watch-Next-Karte auf TCL mit `dev.40` verifiziert
 - [x] TMDB-Attribution im Bereich `Über / Credits` mit genehmigtem TMDB-Logo und vorgeschriebenem Hinweis implementiert
 - [x] signierter Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als geschütztes GitHub-Secret und veröffentlicht `tmdbConfigured=true/false` zur Diagnose
 - [x] `IL_TMDB_READ_ACCESS_TOKEN` im Repository als Secret vorhanden und über harten CI-Prüfschritt verifiziert
@@ -96,7 +96,7 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] TMDB-Diagnose für Build-Aktivierung, aufgelöste ID, Typ und Confidence ohne Secret/URLs implementiert
 - [ ] realen TCL-Gerätetest der aktiven TMDB-Anreicherung, Serien-/Episodenauflösung, Artwork-Auswahl und Cache-Nutzung durchführen
 
-**Phase 3 bleibt bis zum realen TCL-Test von Focus-Rückgabe und aktiver TMDB-Anreicherung offen.**
+**Phase 3 bleibt nur noch bis zum realen TCL-Test der aktiven TMDB-Anreicherung offen.**
 
 ## Phase 4 – Trailer
 
