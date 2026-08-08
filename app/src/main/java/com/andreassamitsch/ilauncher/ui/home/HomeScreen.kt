@@ -4,8 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -26,7 +28,10 @@ fun HomeScreen(
     onRequestTvListingsPermission: () -> Unit,
     onOpenApp: (InstalledApp) -> Unit,
     onOpenWatchNext: (EnrichedWatchNextItem) -> Unit,
+    onOpenWatchNextDetails: (EnrichedWatchNextItem) -> Unit,
     modifier: Modifier = Modifier,
+    watchNextListState: LazyListState = rememberLazyListState(),
+    appsListState: LazyListState = rememberLazyListState(),
 ) {
     Column(
         modifier = modifier.fillMaxSize(),
@@ -43,10 +48,19 @@ fun HomeScreen(
             )
         }
 
-        Text(
-            text = "Weiterschauen",
-            style = MaterialTheme.typography.headlineSmall,
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = "Weiterschauen",
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            if (watchNextItems.isNotEmpty()) {
+                Text(
+                    text = "OK: Fortsetzen · INFO oder lange OK: Details",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
 
         when {
             !hasTvListingsPermission -> {
@@ -80,6 +94,7 @@ fun HomeScreen(
 
             else -> {
                 LazyRow(
+                    state = watchNextListState,
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
@@ -90,6 +105,7 @@ fun HomeScreen(
                         WatchNextCard(
                             item = item.media,
                             onClick = { onOpenWatchNext(item) },
+                            onDetails = { onOpenWatchNextDetails(item) },
                         )
                     }
                 }
@@ -105,6 +121,7 @@ fun HomeScreen(
             Text("Installierte Apps werden geladen …")
         } else {
             LazyRow(
+                state = appsListState,
                 contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
             ) {
