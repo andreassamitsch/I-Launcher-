@@ -12,6 +12,10 @@ on:
       - ".github/workflows/publish-download.yml"
   workflow_dispatch:
 
+concurrency:
+  group: publish-tv-downloader-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
