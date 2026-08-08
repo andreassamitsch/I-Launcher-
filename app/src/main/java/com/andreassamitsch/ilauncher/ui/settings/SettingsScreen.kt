@@ -3,6 +3,8 @@ package com.andreassamitsch.ilauncher.ui.settings
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +39,7 @@ fun SettingsScreen(
     val activity = context as? ComponentActivity
     val scope = rememberCoroutineScope()
     val updateState by updateManager.state.collectAsState()
+    val scrollState = rememberScrollState()
 
     var isDefaultHome by remember { mutableStateOf(HomeLauncherManager.isDefaultHome(context)) }
     var isHomeRoleAvailable by remember {
@@ -82,7 +85,7 @@ fun SettingsScreen(
     }
 
     Column(
-        modifier = modifier,
+        modifier = modifier.verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text(
@@ -159,6 +162,7 @@ fun SettingsScreen(
                 UpdateState.Checking -> "Suche nach einer neuen Version …"
                 is UpdateState.UpToDate -> "I Launcher ist aktuell."
                 is UpdateState.Available -> "Neue Version ${state.info.versionName} (${state.info.versionCode}) verfügbar."
+                is UpdateState.SigningRequired -> "Neue Version ${state.info.versionName} ist vorhanden, aber der Development-Kanal hat noch keinen dauerhaft hinterlegten Signing-Key. Automatische Updates bleiben deshalb sicherheitshalber gesperrt."
                 is UpdateState.Downloading -> state.progressPercent?.let {
                     "Update ${state.info.versionName} wird heruntergeladen: $it %"
                 } ?: "Update ${state.info.versionName} wird heruntergeladen …"
