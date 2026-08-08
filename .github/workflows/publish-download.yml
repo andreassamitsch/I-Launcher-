@@ -3,7 +3,7 @@ name: Publish TV Downloader APK
 on:
   push:
     branches:
-      - agent/phase-2-watch-next
+      - agent/phase-3-tmdb
     paths:
       - "app/**"
       - "build.gradle.kts"
