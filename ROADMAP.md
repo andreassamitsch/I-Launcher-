@@ -36,19 +36,24 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Installations-Intent zum Android-Systeminstaller
 - [x] direkte Freigabe für „Installation aus dieser Quelle“ öffnen
 - [x] Update-Kanal sperrt automatische Installation, solange keine stabile Development-Signatur vorhanden ist
-- [ ] dauerhaften Development-Signing-Key als geschützte GitHub-Secrets hinterlegen
-- [ ] einmalige Neuinstallation auf die stabile Development-Signatur durchführen
+- [x] dauerhafter Development-Signing-Key als geschützte GitHub-Secrets hinterlegt (`updateCompatible=true` verifiziert)
+- [x] Development-Downloadkanal auf den aktiven Phase-2-Branch umgestellt
+- [ ] einmalige Neuinstallation auf die stabile Development-Signatur durchführen, falls noch ein alter wechselnd signierter Build installiert ist
 - [ ] realen Update-von-Version-A-auf-Version-B-Gerätetest durchführen
 
 ## Phase 2 – Watch Next
 
-- [ ] Android TvProvider / Watch Next einlesen
-- [ ] vom Provider gelieferte Reihenfolge unverändert abbilden
-- [ ] Titel, Staffel/Episode, Bild und Fortschritt darstellen
-- [ ] Quell-App / Package für Diagnose erfassen
-- [ ] Quell-App über vorhandenen Intent/Deep Link öffnen
-- [ ] Diagnoseansicht mit Rohreihenfolge und relevanten TvProvider-Feldern
+- [x] Android TvProvider / Watch Next einlesen
+- [x] vom Provider gelieferte Cursor-Reihenfolge unverändert abbilden und per Unit-Test absichern
+- [x] Titel, Staffel/Episode, Bild und Fortschritt darstellen
+- [x] Quell-App / Package für Diagnose erfassen
+- [x] Quell-App über vorhandenen Intent/Deep Link öffnen
+- [x] TvProvider-Änderungen per ContentObserver live beobachten
+- [x] Diagnoseansicht mit Rohreihenfolge und relevanten TvProvider-Feldern
+- [x] keine vollständigen Deep-Link-/Bild-URLs in Diagnose oder Logs ausgeben
+- [x] CI: Unit-Tests und Debug-Build erfolgreich
 - [ ] auf dem Zielgerät gegen Arc/CloudStream vergleichen
+- [ ] D-Pad/Scroll/Fokus der Watch-Next-Reihe auf realer TV-Hardware verifizieren
 
 ## Phase 3 – TMDB
 
