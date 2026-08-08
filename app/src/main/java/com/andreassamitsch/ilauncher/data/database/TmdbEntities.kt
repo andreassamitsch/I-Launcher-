@@ -14,9 +14,9 @@ data class TmdbMappingEntity(
     val releaseYear: Int?,
     val seasonNumber: Int?,
     val episodeNumber: Int?,
-    val tmdbId: Int,
-    val mediaType: String,
-    val confidence: Float,
+    val tmdbId: Int?,
+    val mediaType: String?,
+    val confidence: Float?,
     val updatedAtUtcMillis: Long,
 )
 
