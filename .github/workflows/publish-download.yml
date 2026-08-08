@@ -73,7 +73,21 @@ jobs:
             echo "Stable development signing secrets are not configured; APK will be published for manual installation only."
           fi
 
+      - name: Detect TMDB development configuration
+        env:
+          IL_TMDB_READ_ACCESS_TOKEN: ${{ secrets.IL_TMDB_READ_ACCESS_TOKEN }}
+        run: |
+          if [ -n "$IL_TMDB_READ_ACCESS_TOKEN" ]; then
+            echo "TMDB_CONFIGURED=true" >> "$GITHUB_ENV"
+            echo "TMDB enrichment will be enabled in this signed Development build."
+          else
+            echo "TMDB_CONFIGURED=false" >> "$GITHUB_ENV"
+            echo "IL_TMDB_READ_ACCESS_TOKEN is not configured; build remains source-only."
+          fi
+
       - name: Test and build debug APK
+        env:
+          IL_TMDB_READ_ACCESS_TOKEN: ${{ secrets.IL_TMDB_READ_ACCESS_TOKEN }}
         run: |
           gradle :app:testDebugUnitTest :app:assembleDebug \
             -PiLauncherVersionCode="$VERSION_CODE" \
@@ -91,6 +105,7 @@ jobs:
             "apkUrl": "https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/downloads/I-Launcher-debug.apk",
             "sha256": "$SHA256",
             "updateCompatible": $UPDATE_COMPATIBLE,
+            "tmdbConfigured": $TMDB_CONFIGURED,
             "sourceSha": "$GITHUB_SHA"
           }
           EOF
