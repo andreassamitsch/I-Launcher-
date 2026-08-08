@@ -29,12 +29,14 @@ private const val KEY_VERSION_CODE = "version_code"
 private const val KEY_VERSION_NAME = "version_name"
 private const val KEY_APK_URL = "apk_url"
 private const val KEY_SHA256 = "sha256"
+private const val KEY_UPDATE_COMPATIBLE = "update_compatible"
 
 data class UpdateInfo(
     val versionCode: Int,
     val versionName: String,
     val apkUrl: String,
     val sha256: String,
+    val updateCompatible: Boolean,
 )
 
 sealed interface UpdateState {
@@ -42,6 +44,7 @@ sealed interface UpdateState {
     data object Checking : UpdateState
     data class UpToDate(val versionName: String, val versionCode: Int) : UpdateState
     data class Available(val info: UpdateInfo) : UpdateState
+    data class SigningRequired(val info: UpdateInfo) : UpdateState
     data class Downloading(
         val info: UpdateInfo,
         val downloadId: Long,
@@ -106,6 +109,12 @@ class UpdateManager(context: Context) {
                 return@onSuccess
             }
 
+            if (!info.updateCompatible) {
+                clearStoredDownload(removeDownload = true)
+                _state.value = UpdateState.SigningRequired(info)
+                return@onSuccess
+            }
+
             val storedInfo = readStoredInfo()
             val storedDownloadId = preferences.getLong(KEY_DOWNLOAD_ID, -1L)
             if (storedDownloadId > 0L && storedInfo?.versionCode == info.versionCode) {
@@ -124,6 +133,11 @@ class UpdateManager(context: Context) {
     }
 
     fun startDownload(info: UpdateInfo) {
+        if (!info.updateCompatible) {
+            _state.value = UpdateState.SigningRequired(info)
+            return
+        }
+
         clearStoredDownload(removeDownload = true)
 
         val updateFile = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
@@ -152,6 +166,7 @@ class UpdateManager(context: Context) {
                 .putString(KEY_VERSION_NAME, info.versionName)
                 .putString(KEY_APK_URL, info.apkUrl)
                 .putString(KEY_SHA256, info.sha256)
+                .putBoolean(KEY_UPDATE_COMPATIBLE, info.updateCompatible)
                 .apply()
             _state.value = UpdateState.Downloading(info, id, progressPercent = null)
         }.onFailure { throwable ->
@@ -297,13 +312,14 @@ class UpdateManager(context: Context) {
         val versionName = obj.getString("versionName").trim()
         val apkUrl = obj.getString("apkUrl").trim()
         val sha256 = obj.getString("sha256").trim().lowercase()
+        val updateCompatible = obj.optBoolean("updateCompatible", false)
 
         require(versionCode > 0) { "Ungültiger versionCode im Update-Manifest." }
         require(versionName.isNotBlank()) { "Leerer versionName im Update-Manifest." }
         require(apkUrl.startsWith("https://")) { "Update-APK muss über HTTPS geladen werden." }
         require(sha256.matches(Regex("[0-9a-f]{64}"))) { "Ungültige SHA-256-Prüfsumme." }
 
-        return UpdateInfo(versionCode, versionName, apkUrl, sha256)
+        return UpdateInfo(versionCode, versionName, apkUrl, sha256, updateCompatible)
     }
 
     private fun readStoredInfo(): UpdateInfo? {
@@ -311,10 +327,11 @@ class UpdateManager(context: Context) {
         val versionName = preferences.getString(KEY_VERSION_NAME, null)
         val apkUrl = preferences.getString(KEY_APK_URL, null)
         val sha256 = preferences.getString(KEY_SHA256, null)
+        val updateCompatible = preferences.getBoolean(KEY_UPDATE_COMPATIBLE, false)
         if (versionCode <= 0 || versionName.isNullOrBlank() || apkUrl.isNullOrBlank() || sha256.isNullOrBlank()) {
             return null
         }
-        return UpdateInfo(versionCode, versionName, apkUrl, sha256)
+        return UpdateInfo(versionCode, versionName, apkUrl, sha256, updateCompatible)
     }
 
     private fun verifySha256(uri: Uri, expectedHash: String): Boolean {
@@ -328,7 +345,9 @@ class UpdateManager(context: Context) {
             }
         } ?: return false
 
-        val actual = digest.digest().joinToString(separator = "") { byte -> "%02x".format(byte) }
+        val actual = digest.digest().joinToString(separator = "") { byte ->
+            "%02x".format(byte.toInt() and 0xff)
+        }
         return actual.equals(expectedHash, ignoreCase = true)
     }
 
