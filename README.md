@@ -16,11 +16,11 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phase 3 – TMDB ist abgeschlossen und in `main` gemergt. Phase 4 – Trailer ist implementiert und befindet sich im Build-/Gerätetest.**
+**Phase 3 – TMDB ist abgeschlossen und in `main` gemergt. Phase 4 – Trailer ist implementiert, gebaut und wartet auf den TCL-Gerätetest.**
 
 Der bestätigte Phase-3-Unterbau umfasst das gemeinsame Medienmodell, Android Watch Next, konservative TMDB-Auflösung, Room-Cache, Film-/Serien-/Episodendaten, Bilder, provider-neutrale Details und die auf dem TCL verifizierte D-Pad-/Focus-Rückgabe.
 
-Phase 4 ergänzt aktuell:
+Phase 4 ergänzt:
 
 - TMDB-Video-Metadaten für Filme, Serien und Episoden
 - deterministische Auswahl einer geeigneten YouTube-Trailer-ID
@@ -48,7 +48,7 @@ Auf dem TCL bereits aus Phase 3 verifiziert:
 - Poster/Backdrops/Logos/Episodenbilder
 - progressives Nachladen über die gesamte sichtbare Watch-Next-Liste
 
-Aktueller bestätigter Phase-3-Build: **`0.1.0-dev.45` (`26000045`)**. Der Phase-4-Build wird erst nach erfolgreichem CI-/Publisher-Lauf als testbereit dokumentiert.
+Aktueller Phase-4-Testbuild: **`0.1.0-dev.47` (`26000047`)**, `updateCompatible=true`, `tmdbConfigured=true`. Unit-Tests und `assembleDebug` sind im signierten Publisher erfolgreich. Trailerstart, Such-Fallback, Rückkehrverhalten und die Room-Migration müssen noch auf dem realen TCL bestätigt werden.
 
 Watch Next liefert CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Eine CloudStream-spezifische Integration bleibt deshalb bewusst außen vor.
 
