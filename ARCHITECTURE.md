@@ -134,7 +134,11 @@ Der Token wird nicht im Repository gespeichert. Unterstützt werden:
 - Environment `IL_TMDB_READ_ACCESS_TOKEN`
 - Gradle-Property `tmdbReadAccessToken`
 
-Der signierte Development-Publisher liest `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich aus GitHub Actions Secrets und reicht ihn als Build-Environment an Gradle weiter. Das veröffentlichte `update.json` enthält nur `tmdbConfigured=true/false`, niemals den Secret-Wert. Ohne Token bleibt der TMDB-Provider deaktiviert und I Launcher arbeitet vollständig mit Quelldaten weiter.
+Der signierte Development-Publisher liest `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich aus GitHub Actions Secrets und reicht ihn als Build-Environment an Gradle weiter. Das veröffentlichte `update.json` enthält nur `tmdbConfigured=true/false`, niemals den Secret-Wert.
+
+Seit der Live-Aktivierung von Phase 3 ist das Secret für den Development-Publisher verpflichtend: fehlt es, bricht der Workflow vor Build/Veröffentlichung ab. Dadurch kann nicht versehentlich wieder ein source-only APK als aktueller Phase-3-Build veröffentlicht werden.
+
+Verifizierter aktiver Build: `0.1.0-dev.40` (`26000040`), `tmdbConfigured=true`.
 
 ## Room Cache
 
