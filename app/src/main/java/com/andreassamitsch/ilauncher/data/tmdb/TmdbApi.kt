@@ -38,16 +38,18 @@ internal interface TmdbApi {
     suspend fun movieDetails(
         @Path("movieId") movieId: Int,
         @Query("language") language: String,
-        @Query("append_to_response") appendToResponse: String = "images,external_ids",
+        @Query("append_to_response") appendToResponse: String = "images,external_ids,videos",
         @Query("include_image_language") includeImageLanguage: String = "de,en,null",
+        @Query("include_video_language") includeVideoLanguage: String = "de,en,null",
     ): TmdbMediaDetailsDto
 
     @GET("3/tv/{seriesId}")
     suspend fun tvDetails(
         @Path("seriesId") seriesId: Int,
         @Query("language") language: String,
-        @Query("append_to_response") appendToResponse: String = "images,external_ids",
+        @Query("append_to_response") appendToResponse: String = "images,external_ids,videos",
         @Query("include_image_language") includeImageLanguage: String = "de,en,null",
+        @Query("include_video_language") includeVideoLanguage: String = "de,en,null",
     ): TmdbMediaDetailsDto
 
     @GET("3/tv/{seriesId}/season/{seasonNumber}/episode/{episodeNumber}")
@@ -56,5 +58,7 @@ internal interface TmdbApi {
         @Path("seasonNumber") seasonNumber: Int,
         @Path("episodeNumber") episodeNumber: Int,
         @Query("language") language: String,
+        @Query("append_to_response") appendToResponse: String = "videos",
+        @Query("include_video_language") includeVideoLanguage: String = "de,en,null",
     ): TmdbEpisodeDetailsDto
 }
