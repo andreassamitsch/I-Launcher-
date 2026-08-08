@@ -3,6 +3,15 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val iLauncherVersionCode = providers.gradleProperty("iLauncherVersionCode")
+    .orNull
+    ?.toIntOrNull()
+    ?: 1
+val iLauncherVersionName = providers.gradleProperty("iLauncherVersionName")
+    .orNull
+    ?.takeIf { it.isNotBlank() }
+    ?: "0.1.0"
+
 android {
     namespace = "com.andreassamitsch.ilauncher"
     compileSdk = 36
@@ -11,8 +20,8 @@ android {
         applicationId = "com.andreassamitsch.ilauncher"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = iLauncherVersionCode
+        versionName = iLauncherVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
