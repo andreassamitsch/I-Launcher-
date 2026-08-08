@@ -5,6 +5,8 @@ import com.andreassamitsch.ilauncher.data.tmdb.TmdbMetadata
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.MediaSource
 import com.andreassamitsch.ilauncher.model.MediaType
+import com.andreassamitsch.ilauncher.model.TrailerProvider
+import com.andreassamitsch.ilauncher.model.TrailerRef
 import com.andreassamitsch.ilauncher.model.WatchNextItem
 
 object WatchNextMediaMapper {
@@ -62,6 +64,7 @@ object WatchNextMediaMapper {
             metadata.runtimeMinutes != null -> metadata.runtimeMinutes * 60_000L
             else -> null
         }
+        val trailerYoutubeId = episode?.trailerYoutubeId ?: metadata.trailerYoutubeId
 
         return base.copy(
             type = resultingType,
@@ -86,6 +89,12 @@ object WatchNextMediaMapper {
             imdbId = metadata.imdbId,
             tvdbId = metadata.tvdbId,
             wikidataId = metadata.wikidataId,
+            trailer = trailerYoutubeId?.let { youtubeId ->
+                TrailerRef(
+                    provider = TrailerProvider.YouTube,
+                    externalId = youtubeId,
+                )
+            },
             resolverConfidence = metadata.confidence,
         )
     }
