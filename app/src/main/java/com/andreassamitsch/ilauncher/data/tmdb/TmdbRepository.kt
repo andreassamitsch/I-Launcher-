@@ -38,6 +38,7 @@ class TmdbRepository(
 
         val cachedMapping = dao.mapping(sourceKey)
             ?.takeIf { now - it.updatedAtUtcMillis <= MAPPING_MAX_AGE_MILLIS }
+            ?.takeIf { it.matches(parsed) }
 
         if (cachedMapping != null) {
             if (cachedMapping.tmdbId == null || cachedMapping.mediaType == null) {
@@ -263,6 +264,12 @@ class TmdbRepository(
         dao.deleteOldMedia(cutoff)
         dao.deleteOldEpisodes(cutoff)
     }
+
+    private fun TmdbMappingEntity.matches(parsed: ParsedMediaLookup): Boolean =
+        normalizedTitle == parsed.normalizedTitle &&
+            releaseYear == parsed.releaseYear &&
+            seasonNumber == parsed.seasonNumber &&
+            episodeNumber == parsed.episodeNumber
 
     private fun TmdbMediaDetailsDto.toEntity(mediaType: MediaType, now: Long): TmdbMediaEntity {
         val resolvedTitle = when (mediaType) {
