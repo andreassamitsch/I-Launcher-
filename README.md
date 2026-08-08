@@ -60,6 +60,8 @@ Bereits auf dem TCL grundsätzlich verifiziert:
 
 Beim ersten Detailseiten-Gerätetest ging der Focus nach Back verloren und landete effektiv wieder oben in der Navigation. Die Ursache ist behoben, indem nicht nur der LazyList-State, sondern zusätzlich die stabile Source-ID der geöffneten Karte gespeichert wird. Nach Back wird die Zielkarte zuerst wieder sichtbar gemacht und anschließend im folgenden Compose-Frame explizit fokussiert. Dieser Fix benötigt noch den abschließenden TCL-Retest mit `dev.40`.
 
+Für `dev.40` sind außerdem die aktive TMDB-Anreicherung, Serien-/Episodenauflösung, Artwork-Auswahl und Room-Cache-Nutzung auf realer Hardware zu verifizieren. Erst danach gilt Phase 3 als abgeschlossen.
+
 Watch Next liefert auf dem Zielgerät unter anderem CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Deshalb bleibt eine CloudStream-spezifische Integration bewusst außen vor.
 
 Das TCL-/Google-TV-Thema rund um Android 13+ `Covered Applications` / `Restricted Settings` bei lokal installierten APKs bleibt als separates Distributionsthema offen und blockiert die Content-Phasen nicht.
