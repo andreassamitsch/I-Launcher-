@@ -39,7 +39,10 @@ class WatchNextRepository(context: Context) {
                 observer,
             )
         }.onFailure { throwable ->
-            Log.w(TAG, "Unable to register Watch Next observer", throwable)
+            Log.w(
+                TAG,
+                "Unable to register Watch Next observer (${throwable.javaClass.simpleName})",
+            )
         }
 
         trySend(Unit)
@@ -65,13 +68,19 @@ class WatchNextRepository(context: Context) {
             Log.d(TAG, "Watch Next query succeeded: ${items.size} rows")
             WatchNextLoadResult(items = items)
         } catch (securityException: SecurityException) {
-            Log.w(TAG, "Watch Next query denied by TvProvider", securityException)
+            Log.w(
+                TAG,
+                "Watch Next query denied by TvProvider (${securityException.javaClass.simpleName})",
+            )
             WatchNextLoadResult(
                 items = emptyList(),
                 errorMessage = "TvProvider-Zugriff verweigert (${securityException.javaClass.simpleName}).",
             )
         } catch (throwable: Throwable) {
-            Log.e(TAG, "Watch Next query failed", throwable)
+            Log.e(
+                TAG,
+                "Watch Next query failed (${throwable.javaClass.simpleName})",
+            )
             WatchNextLoadResult(
                 items = emptyList(),
                 errorMessage = "Watch Next konnte nicht gelesen werden (${throwable.javaClass.simpleName}).",
@@ -91,8 +100,7 @@ class WatchNextRepository(context: Context) {
         }.onFailure { throwable ->
             Log.w(
                 TAG,
-                "Unable to launch Watch Next row ${item.sourceOrder} from ${item.packageName ?: "unknown"}",
-                throwable,
+                "Unable to launch Watch Next row ${item.sourceOrder} from ${item.packageName ?: "unknown"} (${throwable.javaClass.simpleName})",
             )
         }.getOrDefault(false)
     }
