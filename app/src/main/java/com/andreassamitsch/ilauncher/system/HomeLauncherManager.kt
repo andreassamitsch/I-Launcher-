@@ -5,11 +5,12 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 
 object HomeLauncherManager {
-    fun isDefaultHome(context: Context): Boolean {
+    fun defaultHomePackageName(context: Context): String? {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
         val resolveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.packageManager.resolveActivity(
@@ -20,7 +21,29 @@ object HomeLauncherManager {
             @Suppress("DEPRECATION")
             context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
         }
-        return resolveInfo?.activityInfo?.packageName == context.packageName
+        return resolveInfo?.activityInfo?.packageName
+    }
+
+    fun isDefaultHome(context: Context): Boolean =
+        defaultHomePackageName(context) == context.packageName
+
+    fun isHomeRoleAvailable(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return false
+        }
+        val roleManager = context.getSystemService(RoleManager::class.java) ?: return false
+        return runCatching { roleManager.isRoleAvailable(RoleManager.ROLE_HOME) }.getOrDefault(false)
+    }
+
+    fun isHomeRoleHeld(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return isDefaultHome(context)
+        }
+        val roleManager = context.getSystemService(RoleManager::class.java) ?: return isDefaultHome(context)
+        return runCatching {
+            roleManager.isRoleAvailable(RoleManager.ROLE_HOME) &&
+                roleManager.isRoleHeld(RoleManager.ROLE_HOME)
+        }.getOrDefault(isDefaultHome(context))
     }
 
     fun isHomeButtonOverrideEnabled(context: Context): Boolean {
@@ -60,6 +83,14 @@ object HomeLauncherManager {
     fun openAccessibilitySettings(context: Context): Boolean {
         return context.startSafely(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) ||
             context.startSafely(Intent(Settings.ACTION_SETTINGS))
+    }
+
+    fun openAppDetails(context: Context): Boolean {
+        val intent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:${context.packageName}"),
+        )
+        return context.startSafely(intent) || context.startSafely(Intent(Settings.ACTION_APPLICATION_SETTINGS))
     }
 
     private fun Context.startSafely(intent: Intent): Boolean {
