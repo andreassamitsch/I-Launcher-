@@ -31,6 +31,7 @@ import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.apps.InstalledAppsRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextRepository
+import com.andreassamitsch.ilauncher.data.tv.WatchNextSourcePreferences
 import com.andreassamitsch.ilauncher.data.update.UpdateManager
 import com.andreassamitsch.ilauncher.data.update.UpdateState
 import com.andreassamitsch.ilauncher.model.InstalledApp
@@ -63,6 +64,8 @@ fun LauncherApp(
         mutableStateOf(TvProviderPermissionManager.hasReadTvListings(context))
     }
     var tvProviderRefreshGeneration by remember { mutableIntStateOf(0) }
+    val watchNextSourcePreferences = remember(context) { WatchNextSourcePreferences(context) }
+    val hiddenWatchNextPackages by watchNextSourcePreferences.hiddenPackages.collectAsState()
 
     val tvListingsPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -86,6 +89,12 @@ fun LauncherApp(
     val watchNextResult by watchNextFlow.collectAsState(
         initial = WatchNextLoadResult(items = emptyList()),
     )
+    val visibleWatchNextItems = remember(watchNextResult.items, hiddenWatchNextPackages) {
+        watchNextResult.items.filter { item ->
+            val packageName = item.packageName
+            packageName == null || packageName !in hiddenWatchNextPackages
+        }
+    }
     val apps by produceState<List<InstalledApp>>(
         initialValue = emptyList(),
         key1 = installedAppsRepository,
@@ -165,7 +174,7 @@ fun LauncherApp(
             when (section) {
                 LauncherSection.Home -> HomeScreen(
                     apps = apps,
-                    watchNextItems = watchNextResult.items,
+                    watchNextItems = visibleWatchNextItems,
                     watchNextError = watchNextResult.errorMessage,
                     hasTvListingsPermission = hasTvListingsPermission,
                     onRequestTvListingsPermission = requestTvListingsPermission,
@@ -181,6 +190,10 @@ fun LauncherApp(
                 LauncherSection.Settings -> SettingsScreen(
                     updateManager = updateManager,
                     watchNextResult = watchNextResult,
+                    installedApps = apps,
+                    hiddenWatchNextPackages = hiddenWatchNextPackages,
+                    onSetWatchNextSourceVisible = watchNextSourcePreferences::setVisible,
+                    onShowAllWatchNextSources = watchNextSourcePreferences::showAll,
                     hasTvListingsPermission = hasTvListingsPermission,
                     onRequestTvListingsPermission = requestTvListingsPermission,
                 )
