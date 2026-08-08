@@ -94,7 +94,9 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Publisher veröffentlicht ab aktiver Phase 3 keinen source-only Build mehr, wenn das TMDB-Secret fehlt
 - [x] signierter Live-TMDB-Build `0.1.0-dev.40` (`26000040`) veröffentlicht; `updateCompatible=true`, `tmdbConfigured=true`
 - [x] TMDB-Diagnose für Build-Aktivierung, aufgelöste ID, Typ und Confidence ohne Secret/URLs implementiert
-- [ ] realen TCL-Gerätetest der aktiven TMDB-Anreicherung und Cache-Nutzung
+- [ ] realen TCL-Gerätetest der aktiven TMDB-Anreicherung, Serien-/Episodenauflösung, Artwork-Auswahl und Cache-Nutzung durchführen
+
+**Phase 3 bleibt bis zum realen TCL-Test von Focus-Rückgabe und aktiver TMDB-Anreicherung offen.**
 
 ## Phase 4 – Trailer
 
