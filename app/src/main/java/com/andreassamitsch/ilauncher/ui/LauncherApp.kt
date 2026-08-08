@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -18,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.apps.InstalledAppsRepository
+import com.andreassamitsch.ilauncher.data.update.UpdateManager
+import com.andreassamitsch.ilauncher.data.update.UpdateState
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.ui.apps.AppsScreen
 import com.andreassamitsch.ilauncher.ui.home.HomeScreen
@@ -34,8 +38,10 @@ enum class LauncherSection(val label: String) {
 @Composable
 fun LauncherApp(
     installedAppsRepository: InstalledAppsRepository,
+    updateManager: UpdateManager,
 ) {
     var section by rememberSaveable { mutableStateOf(LauncherSection.Home) }
+    val updateState by updateManager.state.collectAsState()
     val apps by produceState<List<InstalledApp>>(
         initialValue = emptyList(),
         key1 = installedAppsRepository,
@@ -45,7 +51,13 @@ fun LauncherApp(
         }
     }
 
+    LaunchedEffect(updateManager) {
+        updateManager.checkForUpdates()
+    }
+
     val openApp: (InstalledApp) -> Unit = { app -> installedAppsRepository.launch(app) }
+    val updateAttentionNeeded = updateState is UpdateState.Available ||
+        updateState is UpdateState.ReadyToInstall
 
     Column(
         modifier = Modifier
@@ -58,6 +70,12 @@ fun LauncherApp(
             LauncherSection.entries.forEach { item ->
                 Button(onClick = { section = item }) {
                     Text(item.label)
+                }
+            }
+
+            if (updateAttentionNeeded) {
+                Button(onClick = { section = LauncherSection.Settings }) {
+                    Text("Update verfügbar")
                 }
             }
         }
@@ -73,7 +91,7 @@ fun LauncherApp(
                 onOpenApp = openApp,
             )
 
-            LauncherSection.Settings -> SettingsScreen()
+            LauncherSection.Settings -> SettingsScreen(updateManager = updateManager)
         }
     }
 }
