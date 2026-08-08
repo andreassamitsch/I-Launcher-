@@ -64,7 +64,9 @@ fun LauncherApp(
     val context = LocalContext.current
     val activity = context as? ComponentActivity
     var section by rememberSaveable { mutableStateOf(LauncherSection.Home) }
-    var selectedDetailsMediaId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedDetailsSourceId by rememberSaveable { mutableStateOf<String?>(null) }
+    var watchNextFocusRestoreSourceId by rememberSaveable { mutableStateOf<String?>(null) }
+    var watchNextFocusRestoreGeneration by rememberSaveable { mutableIntStateOf(0) }
     val watchNextListState = rememberLazyListState()
     val appsListState = rememberLazyListState()
     val updateState by updateManager.state.collectAsState()
@@ -124,10 +126,16 @@ fun LauncherApp(
         }
     }
 
-    val selectedDetailsItem = selectedDetailsMediaId?.let { selectedId ->
-        homeWatchNextItems.firstOrNull { it.media.id == selectedId }
+    val selectedDetailsItem = selectedDetailsSourceId?.let { selectedSourceId ->
+        homeWatchNextItems.firstOrNull { it.media.source.sourceId == selectedSourceId }
     }
-    val closeDetails: () -> Unit = { selectedDetailsMediaId = null }
+    val closeDetails: () -> Unit = {
+        selectedDetailsSourceId?.let { sourceId ->
+            watchNextFocusRestoreSourceId = sourceId
+            watchNextFocusRestoreGeneration += 1
+        }
+        selectedDetailsSourceId = null
+    }
     BackHandler(enabled = selectedDetailsItem != null, onBack = closeDetails)
 
     DisposableEffect(activity) {
@@ -220,10 +228,12 @@ fun LauncherApp(
                         onOpenApp = openApp,
                         onOpenWatchNext = openWatchNext,
                         onOpenWatchNextDetails = { item ->
-                            selectedDetailsMediaId = item.media.id
+                            selectedDetailsSourceId = item.media.source.sourceId
                         },
                         watchNextListState = watchNextListState,
                         appsListState = appsListState,
+                        watchNextFocusRestoreSourceId = watchNextFocusRestoreSourceId,
+                        watchNextFocusRestoreGeneration = watchNextFocusRestoreGeneration,
                     )
 
                     LauncherSection.Apps -> AppsScreen(
@@ -240,6 +250,8 @@ fun LauncherApp(
                         onShowAllWatchNextSources = watchNextSourcePreferences::showAll,
                         hasTvListingsPermission = hasTvListingsPermission,
                         onRequestTvListingsPermission = requestTvListingsPermission,
+                        tmdbConfigured = watchNextEnrichmentRepository.isTmdbConfigured,
+                        enrichedWatchNextItems = homeWatchNextItems,
                     )
                 }
             }
