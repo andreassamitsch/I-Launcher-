@@ -29,7 +29,7 @@ app/
   ui/home/         Home inklusive Watch-Next-Reihe
   ui/details/      provider-neutrale Medien-Detailseite
   ui/apps/         App-Übersicht
-  ui/settings/     Einstellungen und Diagnose
+  ui/settings/     Einstellungen, Diagnose und Credits
   ui/components/   TV-Cards
   ui/theme/        TV-Material-Theme
 ```
@@ -104,16 +104,18 @@ Für Phase 3 werden zusätzlich Androids `COLUMN_TYPE` und `COLUMN_RELEASE_DATE`
 
 Die Quellinformation bleibt auch nach TMDB-Anreicherung erhalten.
 
-## Detailnavigation
+## Detailnavigation und Focus-Rückkehr
 
 Die verbindliche Direktstart-Regel für Watch Next bleibt erhalten:
 
 - kurzes `OK` auf einer Watch-Next-Karte startet weiterhin direkt den vorhandenen Source-/Playback-Intent
 - `KEYCODE_INFO` oder lange `OK` öffnet die provider-neutrale Detailseite
 - die Detailseite bietet `Fortsetzen`/`Wiedergeben` über denselben Source-Intent und `Zurück`
-- die Watch-Next- und App-LazyList-States leben oberhalb der Detailansicht und behalten daher ihre Scrollposition beim Zurückkehren
+- die Watch-Next- und App-LazyList-States leben oberhalb der Detailansicht und behalten ihre Scrollposition
 
-Die tatsächliche Focus-Rückkehr auf dieselbe Karte wird erst nach realem TCL-Gerätetest als verifiziert markiert.
+Der reale TCL-Test zeigte, dass der LazyList-State allein nicht ausreicht: während Details sichtbar ist, wird der Home-Subtree aus der Composition entfernt und damit auch der tatsächliche Focus-Owner. Die Rückkehr speichert deshalb zusätzlich die stabile `MediaSource.sourceId` der Karte. Nach dem Schließen von Details wird die Zielposition über `LazyListState.scrollToItem()` wieder zusammengesetzt; im folgenden Compose-Frame fordert ein an genau dieser Karte befestigter `FocusRequester` den Focus zurück. Damit werden Scrollposition und Focus-Ziel getrennt und deterministisch behandelt.
+
+Der abschließende Hardware-Retest dieses expliziten Focus-Restore-Pfads bleibt erforderlich.
 
 ## TMDB Resolver
 
@@ -132,7 +134,7 @@ Der Token wird nicht im Repository gespeichert. Unterstützt werden:
 - Environment `IL_TMDB_READ_ACCESS_TOKEN`
 - Gradle-Property `tmdbReadAccessToken`
 
-Ohne Token bleibt der TMDB-Provider deaktiviert und I Launcher arbeitet vollständig mit Quelldaten weiter.
+Der signierte Development-Publisher liest `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich aus GitHub Actions Secrets und reicht ihn als Build-Environment an Gradle weiter. Das veröffentlichte `update.json` enthält nur `tmdbConfigured=true/false`, niemals den Secret-Wert. Ohne Token bleibt der TMDB-Provider deaktiviert und I Launcher arbeitet vollständig mit Quelldaten weiter.
 
 ## Room Cache
 
@@ -160,17 +162,28 @@ Artwork-Priorität:
 - Episode: Episode Still → Backdrop → Poster → Quellbild
 - Film/Serie: Backdrop → Poster → Quellbild
 
-Coil übernimmt das Laden in Compose.
+Coil übernimmt das Laden in Compose. Für das von TMDB bereitgestellte SVG-Attributionslogo ist das Coil-SVG-Modul aktiviert.
 
-## TMDB Attribution
+## TMDB Attribution und Diagnose
 
-Vor Aktivierung der Live-TMDB-Nutzung im Development-/Release-Build wird ein About/Credits-Bereich mit einem freigegebenen TMDB-Logo und dem von TMDB geforderten Hinweis ergänzt. Logo/Marke werden nicht verändert oder als I-Launcher-Branding dargestellt.
+Der Bereich `Über / Credits` zeigt ein von TMDB bereitgestelltes und unverändertes Logo sowie den vorgeschriebenen Hinweis:
+
+> This product uses the TMDB API but is not endorsed or certified by TMDB.
+
+Der TMDB-Diagnosebereich zeigt nur nicht-sensitive Informationen:
+
+- ob der aktuelle Build TMDB aktiviert hat
+- Anzahl aktuell aufgelöster Watch-Next-Einträge
+- TMDB-ID
+- Medientyp
+- optionale Episode-ID
+- Resolver-Confidence
+
+Tokens und vollständige private URLs werden weder angezeigt noch geloggt.
 
 ## Development-Publishing
 
-Der aktive Phase-3-Branch veröffentlicht signierte Regression-Builds über den bestehenden `downloads`-Kanal. Der Publisher verwendet eine branchbezogene GitHub-Actions-Concurrency-Gruppe mit `cancel-in-progress`, damit bei mehreren schnellen Commits nie ein älterer Lauf nach einem neueren APK-Stand veröffentlicht werden kann.
-
-Der aktuelle source-only Regression-Build enthält keinen TMDB-Token; damit kann Phase 3 auf dem TCL auf Regressionen und Detailnavigation geprüft werden, ohne die noch nicht vollständig attribuierte Live-TMDB-Nutzung zu aktivieren.
+Der aktive Phase-3-Branch veröffentlicht signierte Development-Builds über den bestehenden `downloads`-Kanal. Der Publisher verwendet eine branchbezogene GitHub-Actions-Concurrency-Gruppe mit `cancel-in-progress`, damit bei mehreren schnellen Commits nie ein älterer Lauf nach einem neueren APK-Stand veröffentlicht werden kann.
 
 ## Home-Tasten-Fallback
 
