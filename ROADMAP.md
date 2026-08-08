@@ -17,17 +17,26 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Unit-Test für App-Sortierung/Filterung soweit sinnvoll
 - [x] CI-Build
 - [x] Debug-APK als CI-Artefakt
-- [ ] realer TV-Gerätetest
+- [x] offizielle Android-Home-Rolle als bevorzugte Launcher-Aktivierung
+- [x] Accessibility-Fallback erkennt HOME-Key und System-Launcher-Fenster
+- [x] Hilfe für Android „Eingeschränkte Einstellungen“ bei seitlich installierten Accessibility-Services
+- [ ] realer TV-Gerätetest für Home-Rolle / Accessibility-Fallback
 
 ## Distribution / Updates
 
-- [x] feste öffentliche URL für die jeweils aktuelle Development-APK über GitHub Release `dev`
-- [ ] Release-Versionierung mit sauberem `versionCode` / `versionName`
-- [ ] In-App-Prüfung auf neue Versionen
-- [ ] Update im Hintergrund herunterladen
-- [ ] TV-optimierter Dialog „Update installieren“
-- [ ] Installations-Intent starten; auf normalen Android-TV-/Google-TV-Geräten bleibt die Systembestätigung für die APK-Installation erforderlich
-- [ ] optional automatischer Update-Check beim Start, ohne den Launcher-Start zu blockieren
+- [x] feste öffentliche Downloader-URL über Branch `downloads`
+- [x] CI-Versionierung mit steigendem `versionCode` / `versionName`
+- [x] `update.json` mit Version, APK-URL und SHA-256
+- [x] automatische In-App-Prüfung auf neue Versionen beim Start
+- [x] Update im Hintergrund über Android `DownloadManager`
+- [x] SHA-256-Prüfung vor Installation
+- [x] TV-optimierte Update-Steuerung in Einstellungen und Hinweis in der Hauptnavigation
+- [x] Installations-Intent zum Android-Systeminstaller
+- [x] direkte Freigabe für „Installation aus dieser Quelle“ öffnen
+- [x] Update-Kanal sperrt automatische Installation, solange keine stabile Development-Signatur vorhanden ist
+- [ ] dauerhaften Development-Signing-Key als geschützte GitHub-Secrets hinterlegen
+- [ ] einmalige Neuinstallation auf die stabile Development-Signatur durchführen
+- [ ] realen Update-von-Version-A-auf-Version-B-Gerätetest durchführen
 
 ## Phase 2 – Watch Next
 
