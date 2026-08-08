@@ -54,7 +54,7 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] TvProvider-Änderungen per ContentObserver live beobachten
 - [x] Diagnoseansicht mit Rohreihenfolge und relevanten TvProvider-Feldern
 - [x] keine vollständigen Deep-Link-/Bild-URLs in Diagnose oder Logs ausgeben
-- [x] CI: Unit-Tests und Debug-Build erfolgreich
+- [x] CI/Publish-Build: Unit-Tests und Debug-Build mit Permission-Fix erfolgreich
 - [ ] `READ_TV_LISTINGS` auf dem TCL freigeben und Watch Next erneut gegen Arc/CloudStream vergleichen
 - [ ] D-Pad/Scroll/Fokus der Watch-Next-Reihe auf realer TV-Hardware verifizieren
 
