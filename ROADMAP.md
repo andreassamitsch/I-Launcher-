@@ -19,6 +19,16 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Debug-APK als CI-Artefakt
 - [ ] realer TV-Gerätetest
 
+## Distribution / Updates
+
+- [x] feste öffentliche URL für die jeweils aktuelle Development-APK über GitHub Release `dev`
+- [ ] Release-Versionierung mit sauberem `versionCode` / `versionName`
+- [ ] In-App-Prüfung auf neue Versionen
+- [ ] Update im Hintergrund herunterladen
+- [ ] TV-optimierter Dialog „Update installieren“
+- [ ] Installations-Intent starten; auf normalen Android-TV-/Google-TV-Geräten bleibt die Systembestätigung für die APK-Installation erforderlich
+- [ ] optional automatischer Update-Check beim Start, ohne den Launcher-Start zu blockieren
+
 ## Phase 2 – Watch Next
 
 - Android TvProvider / Watch Next
