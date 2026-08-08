@@ -65,17 +65,19 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Watch-Next-Daten inklusive CloudStream werden über Android TvProvider sichtbar; kein CloudStream-Sonderweg nötig
 - [x] D-Pad/Scroll/Fokus der aktuellen Watch-Next-Reihe im Gerätetest ohne blockierenden Fehler
 
-**Phase 2 ist funktional abgeschlossen.** Das separate TCL-/Covered-Applications-Thema des Accessibility-Fallbacks bleibt als Distribution-/Gerätebesonderheit offen und blockiert Phase 3 nicht.
+**Phase 2 ist funktional abgeschlossen.** Das separate TCL-/Covered-Applications-Thema des Accessibility-Fallbacks bleibt als Distribution-/Gerätebesonderheit offen und blockiert die Content-Phasen nicht.
 
 ## Phase 3 – TMDB
 
 - [x] Retrofit/OkHttp API-Client mit extern konfiguriertem Read-Access-Token
 - [x] gemeinsames Medienmodell für Android TV und spätere Provider
-- [x] deterministisches Titel-/Jahr-/Staffel-/Episoden-Parsing
+- [x] deterministisches Titel-/Jahr-/Staffel-/Episoden-Parsing inklusive `Sx:Ex`-Quelltiteln
 - [x] Resolver mit konservativer Confidence-Schwelle und Source-Fallback
 - [x] Room-Mapping/Cache inklusive negativer No-Match-Ergebnisse
 - [x] Cache-Mapping nur wiederverwenden, wenn Titel/Jahr/Staffel/Episode weiterhin zur Quellidentität passen
-- [x] Local-First-Anreicherung: Quelle sofort anzeigen, TMDB danach begrenzt nachladen
+- [x] Local-First-Anreicherung: Quelle sofort anzeigen, TMDB danach progressiv nachladen
+- [x] alle sichtbaren Watch-Next-Einträge in kleinen Batches anreichern; keine feste 12-Einträge-Grenze
+- [x] einmaliger Retry noch ungelöster Einträge ohne unnötige Wiederholung negativer Cache-Treffer
 - [x] Android `COLUMN_TYPE` und `COLUMN_RELEASE_DATE` als Resolver-Hinweise übernehmen
 - [x] Poster-/Backdrop-/Logo-/Episode-Still-Infrastruktur über TMDB `/configuration`
 - [x] Serien-/Episodendaten-Unterbau inklusive Episode-Detail-Endpoint
@@ -84,19 +86,16 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] CI-Build des vollständigen Phase-3-Unterbaus inklusive Detailseite grün
 - [x] Detailseite implementiert, ohne den normalen Watch-Next-Direktstart zu ersetzen: OK = Wiedergabe, INFO/lange OK = Details
 - [x] Home-Scrollposition beim Wechsel in/aus Details im Compose-State erhalten
-- [x] TCL-Gerätetest: Direktstart, INFO/lange OK, Detailseite und Back-Navigation funktionieren grundsätzlich
-- [x] reproduzierte Focus-Lücke analysiert: Home-Subtree wird bei Details aus der Composition entfernt; LazyListState allein erhält keinen Focus-Owner
-- [x] explizite Focus-Rückgabe über stabile Watch-Next-Source-ID + `FocusRequester` nach `scrollToItem` und folgendem Compose-Frame implementiert
-- [x] Focus-Rückgabe auf exakt dieselbe Watch-Next-Karte auf TCL mit `dev.40` verifiziert
+- [x] TCL-Gerätetest: Direktstart, INFO/lange OK, Detailseite und Back-Navigation funktionieren
+- [x] explizite Focus-Rückgabe über stabile Watch-Next-Source-ID + `FocusRequester` nach `scrollToItem` implementiert
+- [x] Focus-Rückgabe auf exakt dieselbe Watch-Next-Karte auf TCL verifiziert
 - [x] TMDB-Attribution im Bereich `Über / Credits` mit genehmigtem TMDB-Logo und vorgeschriebenem Hinweis implementiert
-- [x] signierter Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als geschütztes GitHub-Secret und veröffentlicht `tmdbConfigured=true/false` zur Diagnose
-- [x] `IL_TMDB_READ_ACCESS_TOKEN` im Repository als Secret vorhanden und über harten CI-Prüfschritt verifiziert
-- [x] Publisher veröffentlicht ab aktiver Phase 3 keinen source-only Build mehr, wenn das TMDB-Secret fehlt
-- [x] signierter Live-TMDB-Build `0.1.0-dev.40` (`26000040`) veröffentlicht; `updateCompatible=true`, `tmdbConfigured=true`
+- [x] signierter Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als geschütztes GitHub-Secret
+- [x] Publisher veröffentlicht keinen Phase-3-Development-Build ohne TMDB-Secret
 - [x] TMDB-Diagnose für Build-Aktivierung, aufgelöste ID, Typ und Confidence ohne Secret/URLs implementiert
-- [ ] realen TCL-Gerätetest der aktiven TMDB-Anreicherung, Serien-/Episodenauflösung, Artwork-Auswahl und Cache-Nutzung durchführen
+- [x] realer TCL-Gerätetest von aktiver TMDB-Anreicherung, Serien-/Episodenauflösung, Artwork-Auswahl, progressivem Nachladen und Focus-Rückkehr bestanden
 
-**Phase 3 bleibt nur noch bis zum realen TCL-Test der aktiven TMDB-Anreicherung offen.**
+**Phase 3 ist funktional abgeschlossen und auf realer TCL-Hardware bestätigt.**
 
 ## Phase 4 – Trailer
 
