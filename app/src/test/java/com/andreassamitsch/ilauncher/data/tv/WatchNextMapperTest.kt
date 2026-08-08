@@ -6,17 +6,25 @@ import org.junit.Test
 
 class WatchNextMapperTest {
     @Test
-    fun `preserves provider row order exactly`() {
+    fun `preserves the order requested from TvProvider exactly`() {
         val rows = listOf(
-            row(id = 91, title = "Dritter laut Zeitstempel"),
-            row(id = 12, title = "Erster laut Zeitstempel"),
-            row(id = 55, title = "Zweiter laut Zeitstempel"),
+            row(id = 12, title = "Neueste Interaktion"),
+            row(id = 55, title = "Mittlere Interaktion"),
+            row(id = 91, title = "Älteste Interaktion"),
         )
 
         val mapped = WatchNextMapper.map(rows)
 
-        assertEquals(listOf(91L, 12L, 55L), mapped.map { it.id })
+        assertEquals(listOf(12L, 55L, 91L), mapped.map { it.id })
         assertEquals(listOf(0, 1, 2), mapped.map { it.sourceOrder })
+    }
+
+    @Test
+    fun `requests last engagement descending from TvProvider`() {
+        assertEquals(
+            "last_engagement_time_utc_millis DESC",
+            WatchNextRepository.SORT_ORDER,
+        )
     }
 
     @Test
