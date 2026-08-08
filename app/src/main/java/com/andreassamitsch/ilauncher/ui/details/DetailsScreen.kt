@@ -121,15 +121,6 @@ fun DetailsScreen(
                     Text("Zurück")
                 }
             }
-
-            item.resolverConfidence?.let { confidence ->
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    text = "TMDB-Match: ${(confidence * 100).toInt()} %",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
     }
 }
