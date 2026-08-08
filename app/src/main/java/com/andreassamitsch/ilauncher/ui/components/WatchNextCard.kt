@@ -20,11 +20,11 @@ import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
-import com.andreassamitsch.ilauncher.model.WatchNextItem
+import com.andreassamitsch.ilauncher.model.MediaItem
 
 @Composable
 fun WatchNextCard(
-    item: WatchNextItem,
+    item: MediaItem,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -40,7 +40,7 @@ fun WatchNextCard(
                     .height(156.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
-                val artwork = item.artworkUri
+                val artwork = item.preferredArtworkUri
                 if (artwork != null) {
                     AsyncImage(
                         model = artwork,
@@ -50,7 +50,7 @@ fun WatchNextCard(
                     )
                 } else {
                     Text(
-                        text = item.displayTitle.take(1).uppercase(),
+                        text = item.title.take(1).uppercase(),
                         style = MaterialTheme.typography.displayMedium,
                         modifier = Modifier.align(Alignment.Center),
                     )
@@ -90,12 +90,12 @@ fun WatchNextCard(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             ) {
                 Text(
-                    text = item.displayTitle,
+                    text = item.title,
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                item.displaySubtitle?.let { subtitle ->
+                item.subtitle?.let { subtitle ->
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodyMedium,
