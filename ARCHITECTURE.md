@@ -8,20 +8,23 @@
 - Local First
 - Datenquellen hinter Provider-/Repository-Grenzen
 - UI kennt möglichst keine externen API-Details
-- D-Pad und Focus als Kernanforderung, nicht als nachträgliche Anpassung
+- D-Pad und Focus als Kernanforderung
 - lokale Daten zuerst, Netzwerkupdates danach
 - keine app-spezifischen Integrationen, wenn Android-Standardschnittstellen ausreichen
+- unsichere Metadaten-Treffer dürfen Quelldaten nicht überschreiben
 
-## Aktueller Stand: Phase 2
+## Aktueller Stand: Phase 3
 
-Die Gradle-Struktur bleibt vorerst bewusst bei einem `app`-Modul. Die Provider-Grenzen werden aber bereits im Package-Aufbau getrennt:
+Die Gradle-Struktur bleibt vorerst bewusst bei einem `app`-Modul. Die Provider-Grenzen sind bereits paketweise getrennt:
 
 ```text
 app/
   data/apps/       installierte Apps / PackageManager
-  data/tv/         Android TvProvider / Watch Next / Quellenpräferenzen
+  data/tv/         Android TvProvider / Watch Next / Quellenpräferenzen / Medienmapping
+  data/tmdb/       TMDB API / Parser / Resolver / Metadaten-Anreicherung
+  data/database/   Room / TMDB-Mappings / Medien- und Episodencache
   data/update/     Development-Updatekanal
-  model/           UI-unabhängige Basismodelle
+  model/           WatchNextItem + gemeinsames MediaItem/MediaSource-Modell
   system/          Home-Rolle / Accessibility / TvProvider-Berechtigungen
   ui/home/         Home inklusive Watch-Next-Reihe
   ui/apps/         App-Übersicht
@@ -30,7 +33,7 @@ app/
   ui/theme/        TV-Material-Theme
 ```
 
-Die logischen Grenzen sind so gewählt, dass spätere Gradle-Module ohne kompletten Umbau möglich bleiben.
+Die logischen Grenzen sind so gewählt, dass spätere Gradle-Module ohne kompletten Umbau möglich bleiben. Bestehende funktionierende Phase-1/2-Klassen werden nicht nur für eine sofortige Hilt-Migration umgebaut; Dependency Injection kann an den bereits getrennten Provider-/Repository-Grenzen später ergänzt werden.
 
 ## Zielarchitektur
 
@@ -56,73 +59,102 @@ feature:settings
 playback
 ```
 
-Die tatsächliche Modularisierung erfolgt schrittweise, wenn die Komplexität sie rechtfertigt.
-
 ## Datenfluss
 
 ```text
-Android TvProvider ─┐
-Installed Apps ─────┤
-TMDB ───────────────┤
-OpenWebif ──────────┤
-Optional Provider ──┘
+Android TvProvider / spätere Provider
         ↓
-Repositories / Resolver
+Quellmodell + stabiler Source-Key
         ↓
-Unified Models + Room Cache
+MediaItem (sofort darstellbar)
         ↓
-ViewModels / StateFlows
+TMDB Resolver ──→ Room Mapping/Metadata Cache
+        ↓                    ↑
+Confidence-Prüfung      Retrofit/OkHttp
+        ↓                    ↑
+angereichertes MediaItem ← TMDB API
         ↓
 Compose for TV UI
 ```
 
-## Android TvProvider Berechtigung
+Wichtig: Die UI wartet nicht auf TMDB. Android-Quelldaten werden sofort dargestellt. TMDB darf anschließend Metadaten und Bilder ersetzen, aber weder Watch-Next-Reihenfolge noch Quellfilter oder den ursprünglichen Playback-/Deep-Link verändern.
 
-Für das Lesen von TV-Daten anderer Apps verwendet I Launcher `android.permission.READ_TV_LISTINGS`.
+## Android TvProvider
 
-Diese Berechtigung ist die gemeinsame Basis für:
+Für das Lesen von TV-Daten anderer Apps verwendet I Launcher `android.permission.READ_TV_LISTINGS`. Diese Berechtigung ist die gemeinsame Basis für Watch Next, Preview Channels und Preview Programs.
 
-- Android Watch Next / `WatchNextPrograms`
-- Preview Channels / `Channels`
-- Preview Programs / `PreviewPrograms`
+Watch Next wird aus `TvContract.WatchNextPrograms.CONTENT_URI` gelesen. Die Query fordert `last_engagement_time_utc_millis DESC` an. Die resultierende Reihenfolge wird im Mapper nicht verändert; Quellenfilter entfernen nur Zeilen.
 
-Sie wird im Manifest deklariert und zur Laufzeit angefordert. Fehlt die Freigabe, begrenzt der Android TvProvider normale Abfragen auf Daten der aufrufenden App; I Launcher behandelt diesen Zustand deshalb explizit als fehlende Berechtigung und nicht als leere Inhaltsquelle.
+Für Phase 3 werden zusätzlich Androids `COLUMN_TYPE` und `COLUMN_RELEASE_DATE` übernommen. Sie liefern dem TMDB-Resolver einen Medientyp- und Jahres-Hinweis, ohne app-spezifische Sonderlogik einzuführen.
 
-`com.android.providers.tv.permission.READ_EPG_DATA` bleibt als kompatible Legacy-Deklaration enthalten, ist in AOSP aber nicht mehr die maßgebliche Berechtigung für den Zugriff auf fremde TV-Listings.
+## Gemeinsames Medienmodell
 
-## Watch Next
+`MediaItem` ist die provider-neutrale Darstellung für Filme, Serien und Episoden. Das Modell enthält unter anderem:
 
-Primärquelle ist `TvContract.WatchNextPrograms.CONTENT_URI` des Android TvProvider.
+- Medientyp
+- Titel/Originaltitel/Untertitel/Beschreibung
+- Jahr, Staffel und Episode
+- TMDB-/Episode-ID und externe IDs
+- Poster, Backdrop, Logo und Episode Still
+- Quellbild als Fallback
+- Fortschritt und Dauer
+- Quellprovider, Quell-ID, Package und Playback-Intent
+- Resolver-Confidence
 
-Aktuelle Phase-2-Regeln:
+Die Quellinformation bleibt auch nach TMDB-Anreicherung erhalten.
 
-- Query erst nach erteilter `READ_TV_LISTINGS`-Berechtigung
-- keine Selection; alle verfügbaren Watch-Next-Zeilen bleiben für Diagnose zugänglich
-- Sortierung wird bereits im TvProvider-Query mit `last_engagement_time_utc_millis DESC` angefordert
-- `COLUMN_LAST_ENGAGEMENT_TIME_UTC_MILLIS` ist Androids eigener Sortierhinweis für Watch Next; die aktuelle Arc-Launcher-Implementierung verwendet dieselbe DESC-Sortierung
-- die so angeforderte Reihenfolge wird 1:1 in `sourceOrder` übernommen und im Mapper nicht verändert
-- Benutzer können einzelne Quell-Packages für die Home-Reihe ausblenden; die Filterung entfernt nur Zeilen und sortiert die verbleibenden Einträge nicht neu
-- die vollständigen Rohzeilen bleiben unabhängig vom Home-Filter in der Diagnose sichtbar
-- relevante Standardfelder werden auf `WatchNextItem` normalisiert
-- `package_name` bleibt für Diagnose und Quellenfilter erhalten
-- Intent-URI wird nur zum Starten des Inhalts verwendet und nicht vollständig geloggt
-- TvProvider-Änderungen werden per `ContentObserver` beobachtet
-- Zugriffsfehler werden als Diagnosezustand dargestellt statt die App abstürzen zu lassen
-- kein CloudStream-spezifischer Code, solange Android die Einträge liefert
+## TMDB Resolver
 
-Die Gerätevalidierung vergleicht Anzahl, erste Einträge, Reihenfolge, Fortschritt und Deep-Link-Verhalten mit Arc/Projectivy auf demselben TV.
+Der Resolver verarbeitet zunächst lokal und deterministisch Titel, Jahr, Staffel und Episode. Danach werden TMDB-Kandidaten nach Titelähnlichkeit, Typ und Jahr bewertet. Nur Treffer oberhalb der konservativen Confidence-Schwelle werden übernommen. Andernfalls bleiben die Android-Quelldaten unverändert.
 
-## Home-Tasten-Fallback
+Für Episoden wird zuerst die Serie aufgelöst und bei bekannter Staffel/Episode anschließend der TMDB-Episode-Endpoint verwendet.
 
-Der Google-TV-/TCL-Home-Fallback basiert auf einem `AccessibilityService`. Die Service-Deklaration ist mit `android.permission.BIND_ACCESSIBILITY_SERVICE` geschützt und fordert Key-Filterung explizit über `canRequestFilterKeyEvents=true` an.
+## TMDB Netzwerk und Secrets
 
-Die eigentliche Benutzerfreigabe ist eine Android-Sonderberechtigung und kann nicht durch einen normalen Runtime-Permission-Dialog erteilt werden. Bei Android 13+ können lokal oder aus einer heruntergeladenen APK installierte Apps zusätzlich unter `Restricted Settings` fallen. In diesem Fall muss der Benutzer in der App-Info über das Drei-Punkte-Menü zuerst „Eingeschränkte Einstellungen zulassen“ freigeben. I Launcher erfasst dafür die vom System gemeldete Installationsquelle und zeigt die passende Einrichtungsführung an; die Sicherheitsfreigabe selbst wird nicht umgangen.
+TMDB wird über Retrofit/OkHttp angesprochen. Authentifizierung erfolgt per API Read Access Token im Bearer-Header.
 
-`MainActivity` besitzt getrennte Intent-Filter für HOME, LEANBACK_LAUNCHER und den normalen LAUNCHER-Einstieg. Der reguläre LAUNCHER-Einstieg dient außerdem als Front-Door-Activity für Systemfunktionen wie „Öffnen“ nach einer APK-Installation.
+Der Token wird nicht im Repository gespeichert. Unterstützt werden:
+
+- Environment `IL_TMDB_READ_ACCESS_TOKEN`
+- Gradle-Property `tmdbReadAccessToken`
+
+Ohne Token bleibt der TMDB-Provider deaktiviert und I Launcher arbeitet vollständig mit Quelldaten weiter.
+
+## Room Cache
+
+Room speichert getrennt:
+
+- Source-Key → TMDB-Mapping inklusive Confidence
+- negative/no-match Mappings
+- Film-/Serienmetadaten
+- Episodenmetadaten
+
+Aktuelle Cache-Policy:
+
+- Resolver-/Metadaten-Refresh nach 30 Tagen
+- harte Löschung spätestens nach 180 Tagen
+- Netzwerkfehler führen bei vorhandenen Daten zum Cache-Fallback
+
+Damit werden wiederholte Suchen vermieden und der Launcher bleibt Local First.
 
 ## Bilder
 
-Watch-Next-Quellbilder werden über Coil geladen. Phase 2 verwendet Quellbilder direkt; TMDB-Anreicherung und langfristiges Caching folgen in Phase 3.
+TMDB-Bild-URLs werden aus `/configuration` (`secure_base_url` + unterstützte Größe + Dateipfad) erzeugt. Die Bildkonfiguration wird lokal gecacht.
+
+Artwork-Priorität:
+
+- Episode: Episode Still → Backdrop → Poster → Quellbild
+- Film/Serie: Backdrop → Poster → Quellbild
+
+Coil übernimmt das Laden in Compose.
+
+## TMDB Attribution
+
+Vor Aktivierung der Live-TMDB-Nutzung im Development-/Release-Build wird ein About/Credits-Bereich mit einem freigegebenen TMDB-Logo und dem von TMDB geforderten Hinweis ergänzt. Logo/Marke werden nicht verändert oder als I-Launcher-Branding dargestellt.
+
+## Home-Tasten-Fallback
+
+Der Google-TV-/TCL-Home-Fallback basiert auf einem `AccessibilityService` mit `BIND_ACCESSIBILITY_SERVICE` und `canRequestFilterKeyEvents=true`. Das TCL-/Android-13+-Restricted-Settings-Verhalten bei lokal installierten APKs bleibt ein separates Distributionsthema und blockiert die Content-Architektur nicht.
 
 ## Gigablue
 
