@@ -6,17 +6,17 @@ Die Roadmap folgt den verbindlichen Richtlinien in `AGENTS.md`. Änderungen an P
 
 Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und App-Start.
 
-- [ ] Kotlin/Compose-for-TV-Projekt
-- [ ] Android-TV-Launcher/Home-Intent
-- [ ] App-Name `I Launcher`
-- [ ] installierte TV-Apps ermitteln
-- [ ] Apps per Deep/Launch Intent öffnen
-- [ ] Home-Ansicht mit TV-optimierten Abständen
-- [ ] Basisnavigation Home / Apps / Einstellungen
-- [ ] Focus/D-Pad-Verhalten
-- [ ] Unit-Test für App-Sortierung/Filterung soweit sinnvoll
-- [ ] CI-Build
-- [ ] Debug-APK als CI-Artefakt
+- [x] Kotlin/Compose-for-TV-Projekt
+- [x] Android-TV-Launcher/Home-Intent
+- [x] App-Name `I Launcher`
+- [x] installierte TV-Apps ermitteln
+- [x] Apps per Deep/Launch Intent öffnen
+- [x] Home-Ansicht mit TV-optimierten Abständen
+- [x] Basisnavigation Home / Apps / Einstellungen
+- [ ] Focus/D-Pad-Verhalten – implementiert, realer TV-Test ausstehend
+- [x] Unit-Test für App-Sortierung/Filterung soweit sinnvoll
+- [x] CI-Build
+- [x] Debug-APK als CI-Artefakt
 - [ ] realer TV-Gerätetest
 
 ## Phase 2 – Watch Next
