@@ -33,14 +33,14 @@ Der aktuelle Phase-3-Unterbau enthält bereits:
 - Beibehaltung von Watch-Next-Reihenfolge, Quellenfilter und Quell-Deep-Link
 - Detailseite: normales OK startet weiterhin direkt die Quelle; INFO bzw. lange OK öffnet Details
 - gespeicherte Watch-Next-Scrollposition beim Wechsel in/aus Details
+- explizite Focus-Rückgabe nach Details an dieselbe stabile Watch-Next-Source-ID
+- TMDB-Diagnose für Build-Aktivierung, TMDB-ID, Typ und Resolver-Confidence
+- TMDB-Attribution im Bereich `Über / Credits` mit genehmigtem TMDB-Logo und vorgeschriebenem Hinweis
 - Unit-Tests für Parser, Confidence, Medienmapping und Artwork-Priorität
-- grüner CI-Build für den vollständigen Phase-3-Unterbau inklusive Detailseite
 
-Der TMDB-Token wird **nicht** im Repository abgelegt. Der Code akzeptiert `IL_TMDB_READ_ACCESS_TOKEN` bzw. die Gradle-Property `tmdbReadAccessToken`. Ohne Token läuft I Launcher weiterhin vollständig mit den Android-Quelldaten wie in Phase 2.
+Der TMDB-Token wird **nicht** im Repository abgelegt. Der Code akzeptiert `IL_TMDB_READ_ACCESS_TOKEN` bzw. die Gradle-Property `tmdbReadAccessToken`. Der signierte Development-Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als GitHub-Secret und veröffentlicht in `update.json` zusätzlich `tmdbConfigured=true/false`. Ohne Token läuft I Launcher weiterhin vollständig mit den Android-Quelldaten wie in Phase 2.
 
-Vor Aktivierung der Live-TMDB-Nutzung im signierten Development-Build werden die vorgeschriebene TMDB-Attribution und ein freigegebenes TMDB-Logo im About/Credits-Bereich ergänzt. TMDB verlangt dort außerdem den Hinweis „This product uses the TMDB API but is not endorsed or certified by TMDB.“
-
-Aktueller signierter Phase-3-Regression-Build ohne aktivierten TMDB-Token: **`0.1.0-dev.34` (`26000034`)**, `updateCompatible=true`.
+TMDB verlangt für API-Nutzung ein genehmigtes Logo in einem About-/Credits-Bereich sowie den Hinweis „This product uses the TMDB API but is not endorsed or certified by TMDB.“ Beides ist vor der Live-Aktivierung umgesetzt.
 
 Bereits auf dem TCL grundsätzlich verifiziert:
 
@@ -53,8 +53,10 @@ Bereits auf dem TCL grundsätzlich verifiziert:
 - Watch-Next-Sortierung nach `last_engagement_time_utc_millis DESC`
 - Quellenfilter pro App/Package
 - Deep-Links zurück zur Quell-App
+- normales OK auf Watch Next startet direkt die Quelle
+- INFO/lange OK öffnet die Detailseite und Back kehrt zu Home zurück
 
-Für den neuen Phase-3-Build ist noch ein TCL-Gerätetest für lange-OK/INFO → Details, Zurück-/Focus-Verhalten und Regressionen erforderlich. Die eigentliche TMDB-Anreicherung wird erst nach Attribution und externer Token-Konfiguration aktiviert.
+Beim ersten Detailseiten-Gerätetest ging der Focus nach Back verloren und landete effektiv wieder oben in der Navigation. Die Ursache ist behoben, indem nicht nur der LazyList-State, sondern zusätzlich die stabile Source-ID der geöffneten Karte gespeichert wird. Nach Back wird die Zielkarte zuerst wieder sichtbar gemacht und anschließend im folgenden Compose-Frame explizit fokussiert. Dieser Fix benötigt noch den abschließenden TCL-Retest.
 
 Watch Next liefert auf dem Zielgerät unter anderem CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Deshalb bleibt eine CloudStream-spezifische Integration bewusst außen vor.
 
