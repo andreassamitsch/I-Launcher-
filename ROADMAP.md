@@ -108,10 +108,10 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Traileraktion in der provider-neutralen Detailseite implementieren
 - [x] Trailer/YouTube-Suche über Android `ACTION_VIEW` delegieren; keine YouTube-Stream-Extraktion
 - [x] Unit-Tests für Trailer-Auswahl und Episode-vor-Serie-Priorität
-- [ ] signierten Development-Build erfolgreich veröffentlichen
+- [x] signierten Development-Build `0.1.0-dev.47` erfolgreich mit Unit-Tests und `assembleDebug` veröffentlicht
 - [ ] realen TCL-Gerätetest von Datenbankmigration, Trailerstart, Such-Fallback und Rückkehrverhalten durchführen
 
-**Phase 4 ist implementiert, bleibt aber bis zu Build- und TCL-Gerätetest offen.**
+**Phase 4 ist implementiert und gebaut, bleibt aber bis zum TCL-Gerätetest offen.**
 
 ## Phase 5 – Gigablue / OpenWebif
 
