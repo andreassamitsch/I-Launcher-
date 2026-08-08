@@ -11,6 +11,7 @@ import android.provider.BaseColumns
 import android.util.Log
 import com.andreassamitsch.ilauncher.model.WatchNextItem
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
+import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -55,6 +56,14 @@ class WatchNextRepository(context: Context) {
         .flowOn(Dispatchers.IO)
 
     fun load(): WatchNextLoadResult {
+        if (!TvProviderPermissionManager.hasReadTvListings(appContext)) {
+            Log.d(TAG, "Watch Next query skipped: READ_TV_LISTINGS not granted")
+            return WatchNextLoadResult(
+                items = emptyList(),
+                errorMessage = "Android-Berechtigung für TV-Inhalte fehlt. Erlaube „TV-Programme/Kanäle lesen“, damit I Launcher Watch Next und App-Kanäle anderer Apps lesen kann.",
+            )
+        }
+
         return try {
             val rawRows = resolver.query(
                 TvContract.WatchNextPrograms.CONTENT_URI,
