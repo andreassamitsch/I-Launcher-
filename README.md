@@ -57,10 +57,11 @@ Bereits auf dem TCL grundsätzlich verifiziert:
 - Deep-Links zurück zur Quell-App
 - normales OK auf Watch Next startet direkt die Quelle
 - INFO/lange OK öffnet die Detailseite und Back kehrt zu Home zurück
+- `dev.40`: Focus kehrt nach Back aus Details auf exakt dieselbe Watch-Next-Karte zurück
 
-Beim ersten Detailseiten-Gerätetest ging der Focus nach Back verloren und landete effektiv wieder oben in der Navigation. Die Ursache ist behoben, indem nicht nur der LazyList-State, sondern zusätzlich die stabile Source-ID der geöffneten Karte gespeichert wird. Nach Back wird die Zielkarte zuerst wieder sichtbar gemacht und anschließend im folgenden Compose-Frame explizit fokussiert. Dieser Fix benötigt noch den abschließenden TCL-Retest mit `dev.40`.
+Der Focus-Fehler des ersten Detailseiten-Gerätetests ist damit behoben und auf realer TCL-Hardware bestätigt.
 
-Für `dev.40` sind außerdem die aktive TMDB-Anreicherung, Serien-/Episodenauflösung, Artwork-Auswahl und Room-Cache-Nutzung auf realer Hardware zu verifizieren. Erst danach gilt Phase 3 als abgeschlossen.
+Für `dev.40` sind nur noch die aktive TMDB-Anreicherung, Serien-/Episodenauflösung, Artwork-Auswahl und Room-Cache-Nutzung auf realer Hardware zu verifizieren. Erst danach gilt Phase 3 als abgeschlossen.
 
 Watch Next liefert auf dem Zielgerät unter anderem CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Deshalb bleibt eine CloudStream-spezifische Integration bewusst außen vor.
 
