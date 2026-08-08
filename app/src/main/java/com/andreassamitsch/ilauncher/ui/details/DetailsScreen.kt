@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +30,8 @@ fun DetailsScreen(
     sourceLabel: String?,
     onPlay: () -> Unit,
     onBack: () -> Unit,
+    onTrailer: (() -> Unit)? = null,
+    onTrailerSearch: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -116,6 +117,15 @@ fun DetailsScreen(
             ) {
                 Button(onClick = onPlay) {
                     Text(if ((item.playbackPositionMillis ?: 0L) > 0L) "Fortsetzen" else "Wiedergeben")
+                }
+                when {
+                    onTrailer != null -> Button(onClick = onTrailer) {
+                        Text("Trailer")
+                    }
+
+                    onTrailerSearch != null -> Button(onClick = onTrailerSearch) {
+                        Text("Trailer suchen")
+                    }
                 }
                 Button(onClick = onBack) {
                     Text("Zurück")
