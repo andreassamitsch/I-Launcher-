@@ -4,10 +4,17 @@ import android.app.role.RoleManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+
+data class InstallSourceStatus(
+    val label: String,
+    val installerPackageName: String?,
+    val restrictedSettingsLikely: Boolean,
+)
 
 object HomeLauncherManager {
     fun defaultHomePackageName(context: Context): String? {
@@ -58,6 +65,50 @@ object HomeLauncherManager {
             .asSequence()
             .mapNotNull(ComponentName::unflattenFromString)
             .any { it == expected }
+    }
+
+    fun installSourceStatus(context: Context): InstallSourceStatus {
+        return runCatching {
+            val packageManager = context.packageManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val info = packageManager.getInstallSourceInfo(context.packageName)
+                val label = when (info.packageSource) {
+                    PackageInstaller.PACKAGE_SOURCE_STORE -> "App-Store"
+                    PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE -> "lokale APK-Datei"
+                    PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE -> "heruntergeladene APK-Datei"
+                    PackageInstaller.PACKAGE_SOURCE_OTHER -> "andere Installationsquelle"
+                    else -> "nicht angegebene Installationsquelle"
+                }
+                InstallSourceStatus(
+                    label = label,
+                    installerPackageName = info.installingPackageName,
+                    restrictedSettingsLikely =
+                        info.packageSource == PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE ||
+                            info.packageSource == PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE,
+                )
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val info = packageManager.getInstallSourceInfo(context.packageName)
+                InstallSourceStatus(
+                    label = "Installationsquelle nicht klassifizierbar (Android < 13)",
+                    installerPackageName = info.installingPackageName,
+                    restrictedSettingsLikely = false,
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                val installer = packageManager.getInstallerPackageName(context.packageName)
+                InstallSourceStatus(
+                    label = "Installationsquelle nicht klassifizierbar (Android < 11)",
+                    installerPackageName = installer,
+                    restrictedSettingsLikely = false,
+                )
+            }
+        }.getOrElse {
+            InstallSourceStatus(
+                label = "Installationsquelle unbekannt",
+                installerPackageName = null,
+                restrictedSettingsLikely = false,
+            )
+        }
     }
 
     fun openDefaultHomeSelection(context: Context): Boolean {

@@ -26,13 +26,23 @@ import com.andreassamitsch.ilauncher.BuildConfig
 import com.andreassamitsch.ilauncher.data.update.InstallResult
 import com.andreassamitsch.ilauncher.data.update.UpdateManager
 import com.andreassamitsch.ilauncher.data.update.UpdateState
+import com.andreassamitsch.ilauncher.model.InstalledApp
+import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.HomeLauncherManager
+import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
     updateManager: UpdateManager,
+    watchNextResult: WatchNextLoadResult,
+    installedApps: List<InstalledApp>,
+    hiddenWatchNextPackages: Set<String>,
+    onSetWatchNextSourceVisible: (String, Boolean) -> Unit,
+    onShowAllWatchNextSources: () -> Unit,
+    hasTvListingsPermission: Boolean,
+    onRequestTvListingsPermission: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -40,6 +50,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val updateState by updateManager.state.collectAsState()
     val scrollState = rememberScrollState()
+    val installSourceStatus = remember { HomeLauncherManager.installSourceStatus(context) }
 
     var isDefaultHome by remember { mutableStateOf(HomeLauncherManager.isDefaultHome(context)) }
     var isHomeRoleAvailable by remember {
@@ -50,6 +61,24 @@ fun SettingsScreen(
         mutableStateOf(HomeLauncherManager.isHomeButtonOverrideEnabled(context))
     }
     var updateMessage by remember { mutableStateOf<String?>(null) }
+
+    val appLabels = remember(installedApps) {
+        installedApps.associate { it.packageName to it.label }
+    }
+    val watchNextSources = remember(watchNextResult.items, appLabels) {
+        watchNextResult.items
+            .mapNotNull { it.packageName }
+            .groupingBy { it }
+            .eachCount()
+            .map { (packageName, count) ->
+                WatchNextSourceRow(
+                    packageName = packageName,
+                    label = appLabels[packageName] ?: packageName,
+                    count = count,
+                )
+            }
+            .sortedBy { it.label.lowercase() }
+    }
 
     fun refreshLauncherStatus() {
         isDefaultHome = HomeLauncherManager.isDefaultHome(context)
@@ -94,6 +123,65 @@ fun SettingsScreen(
         )
 
         Text(
+            text = "Android-Freigaben",
+            style = MaterialTheme.typography.headlineSmall,
+        )
+
+        Text(
+            text = if (hasTvListingsPermission) {
+                "TV-Inhalte: freigegeben. I Launcher darf Watch Next und Preview Channels anderer Apps lesen."
+            } else {
+                "TV-Inhalte: Freigabe fehlt. Ohne „TV-Programme/Kanäle lesen“ sieht I Launcher bei TvProvider-Abfragen nur eigene Einträge."
+            },
+            style = MaterialTheme.typography.titleMedium,
+            color = if (hasTvListingsPermission) {
+                MaterialTheme.colorScheme.onBackground
+            } else {
+                MaterialTheme.colorScheme.error
+            },
+        )
+
+        if (!hasTvListingsPermission) {
+            Button(onClick = onRequestTvListingsPermission) {
+                Text("TV-Inhalte freigeben")
+            }
+            Button(onClick = { TvProviderPermissionManager.openAppDetails(context) }) {
+                Text("App-Info / Berechtigungen öffnen")
+            }
+        }
+
+        Text(
+            text = if (isHomeOverrideEnabled) {
+                "Home-Taste: Accessibility-Fallback ist freigegeben und aktiv."
+            } else {
+                "Home-Taste: Accessibility-Fallback ist nicht aktiv. Diese Sonderfreigabe kann Android nur in den Bedienungshilfen erteilen."
+            },
+            style = MaterialTheme.typography.titleMedium,
+            color = if (isHomeOverrideEnabled || isDefaultHome || isHomeRoleHeld) {
+                MaterialTheme.colorScheme.onBackground
+            } else {
+                MaterialTheme.colorScheme.error
+            },
+        )
+
+        Text(
+            text = buildString {
+                append("Installationsquelle: ${installSourceStatus.label}")
+                installSourceStatus.installerPackageName?.let { append(" ($it)") }
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        if (!isHomeOverrideEnabled && installSourceStatus.restrictedSettingsLikely) {
+            Text(
+                text = "Android stuft diese APK-Installation als seitlich installiert ein. Auf Android 13+ kann deshalb Accessibility sofort wieder ausgeschaltet werden, bis du für I Launcher ausdrücklich „Eingeschränkte Einstellungen zulassen“ freigibst.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+
+        Text(
             text = "Launcher",
             style = MaterialTheme.typography.headlineSmall,
         )
@@ -115,6 +203,14 @@ fun SettingsScreen(
         }
 
         if (!isDefaultHome && !isHomeRoleHeld) {
+            if (!isHomeOverrideEnabled) {
+                Button(
+                    onClick = { HomeLauncherManager.openAppDetails(context) },
+                ) {
+                    Text("1. App-Info: eingeschränkte Einstellungen erlauben")
+                }
+            }
+
             Button(
                 onClick = { HomeLauncherManager.openAccessibilitySettings(context) },
             ) {
@@ -122,21 +218,13 @@ fun SettingsScreen(
                     if (isHomeOverrideEnabled) {
                         "Home-Fallback verwalten"
                     } else {
-                        "Home-Fallback über Bedienungshilfen aktivieren"
+                        "2. Home-Fallback in Bedienungshilfen aktivieren"
                     },
                 )
             }
 
-            if (!isHomeOverrideEnabled) {
-                Button(
-                    onClick = { HomeLauncherManager.openAppDetails(context) },
-                ) {
-                    Text("App-Info / eingeschränkte Einstellungen")
-                }
-            }
-
             Text(
-                text = "Falls sich „I Launcher – Home-Taste“ in den Bedienungshilfen nicht einschalten lässt: App-Info öffnen, im Menü „Eingeschränkte Einstellungen zulassen“ aktivieren und danach die Bedienungshilfe erneut einschalten. Das betrifft insbesondere seitlich installierte Apps auf neueren Android-Versionen.",
+                text = "Wenn der Schalter sofort wieder zurückspringt: In der App-Info von I Launcher das Drei-Punkte-Menü öffnen, „Eingeschränkte Einstellungen zulassen“ wählen und danach den Home-Fallback erneut aktivieren. Diese Android-Sicherheitsfreigabe kann I Launcher nicht selbst erteilen.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -145,6 +233,116 @@ fun SettingsScreen(
             text = "Der Bedienungshilfe-Fallback reagiert sowohl auf einen gelieferten HOME-Key als auch darauf, wenn der System-Launcher nach einem Home-Druck sichtbar wird.",
             style = MaterialTheme.typography.bodyMedium,
         )
+
+        Text(
+            text = "Weiterschauen – Quellen",
+            style = MaterialTheme.typography.headlineSmall,
+        )
+
+        if (!hasTvListingsPermission) {
+            Text(
+                text = "Quellen werden sichtbar, sobald die TV-Inhalte-Berechtigung erteilt wurde.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        } else if (watchNextSources.isEmpty()) {
+            Text(
+                text = "Noch keine Watch-Next-Quellen gefunden.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Text(
+                text = "Wähle, von welchen Apps Einträge auf Home erscheinen. Die Rohdaten bleiben in der Diagnose erhalten; die Reihenfolge der sichtbaren Einträge wird nicht verändert.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
+            watchNextSources.forEach { source ->
+                val visible = source.packageName !in hiddenWatchNextPackages
+                Button(
+                    onClick = {
+                        onSetWatchNextSourceVisible(source.packageName, !visible)
+                    },
+                ) {
+                    Text(
+                        if (visible) {
+                            "Anzeigen: ${source.label} (${source.count})"
+                        } else {
+                            "Ausgeblendet: ${source.label} (${source.count})"
+                        },
+                    )
+                }
+                if (source.label != source.packageName) {
+                    Text(
+                        text = source.packageName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            if (hiddenWatchNextPackages.isNotEmpty()) {
+                Button(onClick = onShowAllWatchNextSources) {
+                    Text("Alle Quellen wieder anzeigen")
+                }
+            }
+        }
+
+        Text(
+            text = "Watch Next Diagnose",
+            style = MaterialTheme.typography.headlineSmall,
+        )
+
+        if (!hasTvListingsPermission) {
+            Text(
+                text = "Diagnose pausiert, bis die Android-Berechtigung für TV-Inhalte erteilt wurde.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        } else if (watchNextResult.errorMessage != null) {
+            Text(
+                text = watchNextResult.errorMessage,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        } else {
+            Text(
+                text = "TvProvider liefert ${watchNextResult.items.size} Einträge. Abfrage-Reihenfolge: last_engagement_time_utc_millis absteigend; ausgeblendete Quellen bleiben hier sichtbar.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
+            watchNextResult.items.take(30).forEach { item ->
+                val progress = if (item.playbackPositionMillis != null && item.durationMillis != null) {
+                    "${item.playbackPositionMillis}/${item.durationMillis} ms"
+                } else {
+                    "kein Fortschritt"
+                }
+                Text(
+                    text = buildString {
+                        append("#${item.sourceOrder} | ")
+                        append(item.packageName ?: "Paket unbekannt")
+                        append(" | ")
+                        append(item.displayTitle)
+                        item.displaySubtitle?.let { append(" | $it") }
+                        append(" | $progress")
+                        append(" | type=${watchNextTypeLabel(item.watchNextType)}")
+                        item.lastEngagementTimeUtcMillis?.let { append(" | engagement=$it") }
+                        append(" | intent=${if (item.intentUri.isNullOrBlank()) "nein" else "ja"}")
+                        append(" | bild=${if (item.artworkUri.isNullOrBlank()) "nein" else "ja"}")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            if (watchNextResult.items.size > 30) {
+                Text(
+                    text = "+ ${watchNextResult.items.size - 30} weitere Einträge",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
 
         Text(
             text = "Updates",
@@ -226,4 +424,18 @@ fun SettingsScreen(
             style = MaterialTheme.typography.bodyMedium,
         )
     }
+}
+
+private data class WatchNextSourceRow(
+    val packageName: String,
+    val label: String,
+    val count: Int,
+)
+
+private fun watchNextTypeLabel(type: Int?): String = when (type) {
+    0 -> "CONTINUE"
+    1 -> "NEXT"
+    2 -> "NEW"
+    3 -> "WATCHLIST"
+    else -> type?.toString() ?: "?"
 }

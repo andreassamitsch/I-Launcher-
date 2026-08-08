@@ -16,18 +16,32 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phase 1 – Launcher MVP** ist in Umsetzung.
+**Phase 2 – Android Watch Next ist funktional abgeschlossen. Phase 3 – TMDB startet.**
 
-Der aktuelle Phase-1-Branch enthält:
+Bereits umgesetzt und auf dem TCL grundsätzlich verifiziert:
 
-- Android-TV-Home-/Launcher-Intent
-- Compose-for-TV-Grundoberfläche
-- Erkennung installierter TV-/Launcher-Apps
-- App-Start per Leanback-/Launch-Intent
-- Navigation Home / Apps / Einstellungen
-- TV-optimierte Cards mit Focus-Skalierung
-- Unit-Test der App-Auswahl/Sortierung
+- Android-TV-Home-/Launcher-Intent inklusive normalem `MAIN`/`LAUNCHER`-Front-Door-Einstieg
+- Home-Fallback über Accessibility bei ADB-Installation
+- Compose-for-TV-Oberfläche mit zentralem kontrastreichem Dark Theme
+- installierte TV-/Launcher-Apps und App-Start
+- scrollbare Apps-Ansicht
+- Android `TvProvider` / `WatchNextPrograms`
+- Runtime-Berechtigung `android.permission.READ_TV_LISTINGS`
+- Watch-Next-Sortierung nach `last_engagement_time_utc_millis DESC`
+- Quellenfilter pro App/Package
+- Watch-Next-Karten mit Quellbild, Staffel/Episode und Fortschritt
+- Deep-Link zurück zur Quell-App
+- Watch-Next-Diagnose mit Rohindex, Quellpaket, Typ und Engagement-Zeit
+- `ContentObserver` für laufende TvProvider-Änderungen
+- Unit-Tests für Mapping/Reihenfolge/Sortieranforderung
 - GitHub-CI für Tests und Debug-APK
+- fester signierter Development-Updatekanal mit In-App-Updater
+
+Watch Next liefert auf dem Zielgerät unter anderem CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Deshalb bleibt eine CloudStream-spezifische Integration weiterhin bewusst außen vor.
+
+Das TCL-/Google-TV-Thema rund um Android 13+ `Covered Applications` / `Restricted Settings` bei lokal installierten APKs bleibt als separates Distributionsthema offen. Es blockiert die weiteren Content-Phasen nicht.
+
+Phase 3 baut nun den gemeinsamen Medien-Unterbau und die TMDB-Anreicherung auf: API-Client, Resolver mit Confidence, lokaler Room-Cache, Bilder sowie Serien-/Episodendaten und Detailansicht.
 
 Siehe:
 
@@ -48,6 +62,7 @@ Kotlin · Jetpack Compose · Compose for TV · AndroidX · Coroutines/Flow · Ro
 - minSdk 26
 - Compose BOM 2026.06.00
 - Compose for TV 1.1.0
+- Coil 3.5.0
 
 ## Lizenz
 

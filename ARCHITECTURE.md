@@ -12,18 +12,22 @@
 - lokale Daten zuerst, Netzwerkupdates danach
 - keine app-spezifischen Integrationen, wenn Android-Standardschnittstellen ausreichen
 
-## Aktueller Stand: Phase 1
+## Aktueller Stand: Phase 2
 
-Für den MVP bleibt die Gradle-Struktur bewusst klein:
+Die Gradle-Struktur bleibt vorerst bewusst bei einem `app`-Modul. Die Provider-Grenzen werden aber bereits im Package-Aufbau getrennt:
 
 ```text
 app/
   data/apps/       installierte Apps / PackageManager
-  model/           UI-nahe Basismodelle
-  ui/home/         Home
+  data/tv/         Android TvProvider / Watch Next / Quellenpräferenzen
+  data/update/     Development-Updatekanal
+  model/           UI-unabhängige Basismodelle
+  system/          Home-Rolle / Accessibility / TvProvider-Berechtigungen
+  ui/home/         Home inklusive Watch-Next-Reihe
   ui/apps/         App-Übersicht
-  ui/settings/     Platzhalter für Einstellungen
-  ui/theme/        TV-Theme
+  ui/settings/     Einstellungen und Diagnose
+  ui/components/   TV-Cards
+  ui/theme/        TV-Material-Theme
 ```
 
 Die logischen Grenzen sind so gewählt, dass spätere Gradle-Module ohne kompletten Umbau möglich bleiben.
@@ -72,9 +76,53 @@ ViewModels / StateFlows
 Compose for TV UI
 ```
 
+## Android TvProvider Berechtigung
+
+Für das Lesen von TV-Daten anderer Apps verwendet I Launcher `android.permission.READ_TV_LISTINGS`.
+
+Diese Berechtigung ist die gemeinsame Basis für:
+
+- Android Watch Next / `WatchNextPrograms`
+- Preview Channels / `Channels`
+- Preview Programs / `PreviewPrograms`
+
+Sie wird im Manifest deklariert und zur Laufzeit angefordert. Fehlt die Freigabe, begrenzt der Android TvProvider normale Abfragen auf Daten der aufrufenden App; I Launcher behandelt diesen Zustand deshalb explizit als fehlende Berechtigung und nicht als leere Inhaltsquelle.
+
+`com.android.providers.tv.permission.READ_EPG_DATA` bleibt als kompatible Legacy-Deklaration enthalten, ist in AOSP aber nicht mehr die maßgebliche Berechtigung für den Zugriff auf fremde TV-Listings.
+
 ## Watch Next
 
-Primärquelle ist Android TvProvider. Die Reihenfolge wird ohne explizite Produktentscheidung nicht verändert. CloudStream-spezifischer Code ist nicht vorgesehen, solange die vorhandenen Watch-Next-Einträge über Android verfügbar sind.
+Primärquelle ist `TvContract.WatchNextPrograms.CONTENT_URI` des Android TvProvider.
+
+Aktuelle Phase-2-Regeln:
+
+- Query erst nach erteilter `READ_TV_LISTINGS`-Berechtigung
+- keine Selection; alle verfügbaren Watch-Next-Zeilen bleiben für Diagnose zugänglich
+- Sortierung wird bereits im TvProvider-Query mit `last_engagement_time_utc_millis DESC` angefordert
+- `COLUMN_LAST_ENGAGEMENT_TIME_UTC_MILLIS` ist Androids eigener Sortierhinweis für Watch Next; die aktuelle Arc-Launcher-Implementierung verwendet dieselbe DESC-Sortierung
+- die so angeforderte Reihenfolge wird 1:1 in `sourceOrder` übernommen und im Mapper nicht verändert
+- Benutzer können einzelne Quell-Packages für die Home-Reihe ausblenden; die Filterung entfernt nur Zeilen und sortiert die verbleibenden Einträge nicht neu
+- die vollständigen Rohzeilen bleiben unabhängig vom Home-Filter in der Diagnose sichtbar
+- relevante Standardfelder werden auf `WatchNextItem` normalisiert
+- `package_name` bleibt für Diagnose und Quellenfilter erhalten
+- Intent-URI wird nur zum Starten des Inhalts verwendet und nicht vollständig geloggt
+- TvProvider-Änderungen werden per `ContentObserver` beobachtet
+- Zugriffsfehler werden als Diagnosezustand dargestellt statt die App abstürzen zu lassen
+- kein CloudStream-spezifischer Code, solange Android die Einträge liefert
+
+Die Gerätevalidierung vergleicht Anzahl, erste Einträge, Reihenfolge, Fortschritt und Deep-Link-Verhalten mit Arc/Projectivy auf demselben TV.
+
+## Home-Tasten-Fallback
+
+Der Google-TV-/TCL-Home-Fallback basiert auf einem `AccessibilityService`. Die Service-Deklaration ist mit `android.permission.BIND_ACCESSIBILITY_SERVICE` geschützt und fordert Key-Filterung explizit über `canRequestFilterKeyEvents=true` an.
+
+Die eigentliche Benutzerfreigabe ist eine Android-Sonderberechtigung und kann nicht durch einen normalen Runtime-Permission-Dialog erteilt werden. Bei Android 13+ können lokal oder aus einer heruntergeladenen APK installierte Apps zusätzlich unter `Restricted Settings` fallen. In diesem Fall muss der Benutzer in der App-Info über das Drei-Punkte-Menü zuerst „Eingeschränkte Einstellungen zulassen“ freigeben. I Launcher erfasst dafür die vom System gemeldete Installationsquelle und zeigt die passende Einrichtungsführung an; die Sicherheitsfreigabe selbst wird nicht umgangen.
+
+`MainActivity` besitzt getrennte Intent-Filter für HOME, LEANBACK_LAUNCHER und den normalen LAUNCHER-Einstieg. Der reguläre LAUNCHER-Einstieg dient außerdem als Front-Door-Activity für Systemfunktionen wie „Öffnen“ nach einer APK-Installation.
+
+## Bilder
+
+Watch-Next-Quellbilder werden über Coil geladen. Phase 2 verwendet Quellbilder direkt; TMDB-Anreicherung und langfristiges Caching folgen in Phase 3.
 
 ## Gigablue
 
@@ -82,10 +130,10 @@ Direkte OpenWebif-Integration. Keine dreamTV-/TiviMate-Abhängigkeit, sofern Ope
 
 ## Build-Basis
 
-Phase 1 verwendet einen aktuellen stabilen Android-Toolchain-Stand, der gegen offizielle Android-Dokumentation geprüft wird. Versionen werden explizit gepinnt, nicht dynamisch auf `+` gesetzt.
+Der aktuelle stabile Android-Toolchain-Stand wird gegen offizielle Dokumentation geprüft. Versionen werden explizit gepinnt, nicht dynamisch auf `+` gesetzt.
 
 ## Paketkennung
 
-Initiale Application ID: `com.andreassamitsch.ilauncher`.
+Application ID: `com.andreassamitsch.ilauncher`.
 
-Sie soll nach den ersten Gerätetests nicht mehr unnötig geändert werden, damit Updates installierbar bleiben.
+Sie bleibt stabil, damit Updates installierbar bleiben.

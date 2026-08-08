@@ -9,20 +9,28 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.model.InstalledApp
+import com.andreassamitsch.ilauncher.model.WatchNextItem
 import com.andreassamitsch.ilauncher.ui.components.AppCard
+import com.andreassamitsch.ilauncher.ui.components.WatchNextCard
 
 @Composable
 fun HomeScreen(
     apps: List<InstalledApp>,
+    watchNextItems: List<WatchNextItem>,
+    watchNextError: String?,
+    hasTvListingsPermission: Boolean,
+    onRequestTvListingsPermission: () -> Unit,
     onOpenApp: (InstalledApp) -> Unit,
+    onOpenWatchNext: (WatchNextItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(22.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
@@ -36,6 +44,59 @@ fun HomeScreen(
         }
 
         Text(
+            text = "Weiterschauen",
+            style = MaterialTheme.typography.headlineSmall,
+        )
+
+        when {
+            !hasTvListingsPermission -> {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "I Launcher benötigt Androids Berechtigung „TV-Programme/Kanäle lesen“, um Watch Next und später Preview Channels anderer Apps anzuzeigen.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Button(onClick = onRequestTvListingsPermission) {
+                        Text("TV-Inhalte freigeben")
+                    }
+                }
+            }
+
+            watchNextError != null -> {
+                Text(
+                    text = watchNextError,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+
+            watchNextItems.isEmpty() -> {
+                Text(
+                    text = "Android TvProvider liefert aktuell keine Watch-Next-Einträge.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            else -> {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    items(
+                        items = watchNextItems,
+                        key = { "watch-next-${it.id}-${it.sourceOrder}" },
+                    ) { item ->
+                        WatchNextCard(
+                            item = item,
+                            onClick = { onOpenWatchNext(item) },
+                        )
+                    }
+                }
+            }
+        }
+
+        Text(
             text = "Apps",
             style = MaterialTheme.typography.headlineSmall,
         )
@@ -44,7 +105,7 @@ fun HomeScreen(
             Text("Installierte Apps werden geladen …")
         } else {
             LazyRow(
-                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 10.dp),
+                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
             ) {
                 items(
