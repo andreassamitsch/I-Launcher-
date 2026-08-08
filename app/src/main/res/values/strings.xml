@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">I Launcher</string>
+    <string name="home_button_override_service_name">I Launcher – Home-Taste</string>
+    <string name="home_button_override_description">Leitet die Home-Taste auf I Launcher um, wenn Google TV die Auswahl eines anderen Standard-Launchers blockiert.</string>
 </resources>
