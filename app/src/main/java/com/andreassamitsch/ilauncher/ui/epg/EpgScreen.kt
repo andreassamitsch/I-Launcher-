@@ -45,34 +45,32 @@ fun EpgScreen(
     modifier: Modifier = Modifier,
     channelListState: LazyListState = rememberLazyListState(),
     programListState: LazyListState = rememberLazyListState(),
-    requestedProgramStartUtcMillis: Long? = null,
-    onProgramFocusRequestConsumed: () -> Unit = {},
 ) {
     val selectedChannel = channels.firstOrNull { it.serviceReference == selectedServiceReference }
         ?: channels.firstOrNull()
     val guide = state.guide(selectedChannel?.serviceReference)
     val nowUtcMillis = System.currentTimeMillis()
-    val requestedProgramFocusRequester = remember(requestedProgramStartUtcMillis) { FocusRequester() }
+    val selectedProgramStart = selectedProgram
+        ?.takeIf { it in guide }
+        ?.startUtcMillis
+    val selectedProgramFocusRequester = remember(selectedProgramStart) { FocusRequester() }
 
     LaunchedEffect(
         selectedChannel?.serviceReference,
         guide.firstOrNull()?.startUtcMillis,
         guide.lastOrNull()?.startUtcMillis,
-        requestedProgramStartUtcMillis,
+        selectedProgramStart,
     ) {
-        val requestedIndex = requestedProgramStartUtcMillis?.let { requestedStart ->
-            guide.indexOfFirst { it.startUtcMillis == requestedStart }
-        } ?: -1
-        val targetIndex = if (requestedIndex >= 0) {
-            requestedIndex
-        } else {
-            initialProgramIndex(guide, System.currentTimeMillis())
-        }
+        val targetIndex = targetProgramIndex(
+            programmes = guide,
+            nowUtcMillis = System.currentTimeMillis(),
+            selectedProgramStartUtcMillis = selectedProgramStart,
+        )
         if (targetIndex >= 0) {
             programListState.scrollToItem(targetIndex)
         }
 
-        if (requestedIndex >= 0) {
+        if (selectedProgramStart != null && targetIndex >= 0) {
             val channelIndex = channels.indexOfFirst {
                 it.serviceReference == selectedChannel?.serviceReference
             }
@@ -80,8 +78,7 @@ fun EpgScreen(
                 channelListState.scrollToItem(channelIndex)
             }
             delay(50)
-            runCatching { requestedProgramFocusRequester.requestFocus() }
-            onProgramFocusRequestConsumed()
+            runCatching { selectedProgramFocusRequester.requestFocus() }
         }
     }
 
@@ -186,7 +183,7 @@ fun EpgScreen(
                         ) { program ->
                             val isCurrent = nowUtcMillis >= program.startUtcMillis &&
                                 nowUtcMillis < program.endUtcMillis
-                            val isRequested = program.startUtcMillis == requestedProgramStartUtcMillis
+                            val isSelected = program.startUtcMillis == selectedProgramStart
                             Button(
                                 onClick = {
                                     selectedChannel?.let { channel ->
@@ -196,8 +193,8 @@ fun EpgScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .then(
-                                        if (isRequested) {
-                                            Modifier.focusRequester(requestedProgramFocusRequester)
+                                        if (isSelected) {
+                                            Modifier.focusRequester(selectedProgramFocusRequester)
                                         } else {
                                             Modifier
                                         },
@@ -237,6 +234,20 @@ fun EpgScreen(
             }
         }
     }
+}
+
+internal fun targetProgramIndex(
+    programmes: List<LiveTvProgram>,
+    nowUtcMillis: Long,
+    selectedProgramStartUtcMillis: Long?,
+): Int {
+    if (programmes.isEmpty()) return -1
+    selectedProgramStartUtcMillis?.let { selectedStart ->
+        programmes.indexOfFirst { it.startUtcMillis == selectedStart }
+            .takeIf { it >= 0 }
+            ?.let { return it }
+    }
+    return initialProgramIndex(programmes, nowUtcMillis)
 }
 
 internal fun initialProgramIndex(
