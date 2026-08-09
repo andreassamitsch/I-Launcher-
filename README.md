@@ -56,7 +56,7 @@ Der UI-Polish-Stand umfasst zusätzlich:
 - Sprachsuche über die auf dem TV verfügbare Android-Spracherkennungsaktivität
 - CloudStream-Suchhandoff erkennt Stable-, Prerelease-, Debug- und kombinierte Development-Paketvarianten dynamisch über den `cloudstreamsearch`-Intent
 
-Automatisiert geprüft und veröffentlicht ist der aktuelle Code als Development-Testbuild **`0.1.0-dev.115` (`26000115`)**. Build und Unit-Tests sind grün; die oben genannten UI-/Hardwareänderungen sind damit ausdrücklich noch nicht als Gerätetest bestätigt.
+Automatisiert geprüft und veröffentlicht ist der aktuelle Code als Development-Testbuild **`0.1.0-dev.115` (`26000115`)**. Build und Unit-Tests sind grün; die oben genannten UI-/Hardwareänderungen sind ausdrücklich noch nicht als Gerätetest bestätigt.
 
 ## Phase 7 – Live TV
 
