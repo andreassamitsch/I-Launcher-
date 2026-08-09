@@ -76,6 +76,7 @@ enum class LauncherSection(val label: String) {
 
 private const val TMDB_ENRICHMENT_BATCH_SIZE = 4
 private const val TMDB_ENRICHMENT_RETRY_DELAY_MILLIS = 1_500L
+private const val LOCAL_SEARCH_DEBOUNCE_MILLIS = 120L
 private const val TMDB_SEARCH_DEBOUNCE_MILLIS = 450L
 private const val OPENWEBIF_REFRESH_INTERVAL_MILLIS = 5L * 60L * 1_000L
 
@@ -107,6 +108,7 @@ fun LauncherApp(
     var selectedEpgServiceReference by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedEpgProgramStartUtcMillis by rememberSaveable { mutableStateOf<Long?>(null) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
+    var localSearchResults by remember { mutableStateOf<List<SearchItem>>(emptyList()) }
     var tmdbSearchResults by remember { mutableStateOf<List<SearchItem>>(emptyList()) }
     var isTmdbSearchLoading by remember { mutableStateOf(false) }
     val watchNextListState = rememberLazyListState()
@@ -230,7 +232,7 @@ fun LauncherApp(
         openWebifState.copy(channels = displayLiveTvChannels)
     }
 
-    val localSearchResults = remember(
+    LaunchedEffect(
         searchQuery,
         apps,
         homeWatchNextItems,
@@ -239,14 +241,26 @@ fun LauncherApp(
         epgState,
         searchRepository,
     ) {
-        searchRepository.searchLocal(
-            query = searchQuery,
-            apps = apps,
-            watchNextItems = homeWatchNextItems,
-            previewChannels = visiblePreviewChannels,
-            liveTvChannels = displayLiveTvChannels,
-            epgState = epgState,
-        )
+        val requestedQuery = searchQuery
+        if (requestedQuery.trim().length < 2) {
+            localSearchResults = emptyList()
+            return@LaunchedEffect
+        }
+
+        delay(LOCAL_SEARCH_DEBOUNCE_MILLIS)
+        val results = withContext(Dispatchers.Default) {
+            searchRepository.searchLocal(
+                query = requestedQuery,
+                apps = apps,
+                watchNextItems = homeWatchNextItems,
+                previewChannels = visiblePreviewChannels,
+                liveTvChannels = displayLiveTvChannels,
+                epgState = epgState,
+            )
+        }
+        if (searchQuery == requestedQuery) {
+            localSearchResults = results
+        }
     }
 
     LaunchedEffect(searchQuery, searchRepository) {
