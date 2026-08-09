@@ -126,9 +126,9 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] `Jetzt im TV` auf Home mit Senderlogo, aktueller Sendung, Zeit, Fortschritt und nächster Sendung
 - [x] Unit-Tests für URL-Normalisierung, Bouquet-Reihenfolge, EPG-Zuordnung und Fortschritt
 - [x] signierten Phase-5-Development-Build `0.1.0-dev.51` mit Unit-Tests und `assembleDebug` veröffentlicht
-- [ ] realen TCL + Gigablue-X3-Gerätetest von Verbindung/Auth, Bouquet, Sendern, Picons, Now/Next, Home-Reihe und Offline-Cache durchführen
+- [x] realer TCL + Gigablue-X3-Gerätetest von Verbindung, Bouquet, Sendern, Picons, Now/Next, Home-Reihe und Offline-Cache gemeinsam mit Phase 6 bestanden
 
-**Phase 5 ist implementiert und gebaut. Die Hardwarevalidierung mit der realen Gigablue bleibt offen und wird gemeinsam mit dem Phase-6-Test durchgeführt.**
+**Phase 5 ist funktional abgeschlossen und auf realer TCL-/Gigablue-Hardware bestätigt.**
 
 ## Phase 6 – EPG
 
@@ -157,18 +157,36 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] aktuelle Programme progressiv, weitere Guide-Einträge bei Auswahl mit TMDB anreichern
 - [x] Unit-Tests für M3U-Parsing, Sender-Mapping, XMLTV-Zeit/Episoden-Parsing, OpenWebif/XMLTV-Merge und EPG-Startposition hinzufügen
 - [x] signierten Phase-6-Development-Build mit `testDebugUnitTest` und `assembleDebug` erfolgreich veröffentlichen
-- [ ] reale `riedl-dach.at` M3U/XMLTV-Quelle auf TCL gegen Gigablue-Sender testen
-- [ ] D-Pad-/Focus-Test auf Home sowie im vollständigen EPG durchführen
-- [ ] Offline-/Cache-Test und Update/Migration von Phase-5-Build durchführen
+- [x] reale `riedl-dach.at` M3U/XMLTV-Quelle auf TCL gegen Gigablue-Sender getestet
+- [x] D-Pad-/Focus-Test auf Home sowie im vollständigen EPG bestanden
+- [x] Offline-/Cache-Test und Update/Migration vom bestehenden Build bestanden
 
-**Phase 6 ist vollständig implementiert, automatisiert getestet und als signierter Development-Build veröffentlicht. Zum Abschluss fehlen ausschließlich die realen TCL-/Gigablue-/XMLTV- und Offline-/Focus-Gerätetests.**
+**Phase 6 ist funktional abgeschlossen und auf realer TCL-/Gigablue-/XMLTV-Hardware bestätigt.**
 
 ## Phase 7 – Live TV
 
-- [ ] Media3-Player
-- [ ] OpenWebif Streams
-- [ ] Zapping
-- [ ] TV-Player-UI
+- [x] Media3/ExoPlayer 1.10.1 integrieren
+- [x] OpenWebif-Stream über receiver-eigenes `/web/stream.m3u?ref=…` auflösen; keinen Stream-Port raten oder hardcoden
+- [x] direkte MPEG-TS-Wiedergabe über `ProgressiveMediaSource`
+- [x] HLS über `HlsMediaSource` unterstützen, falls OpenWebif einen HLS-Stream liefert
+- [x] temporäre Streaming-Authentifizierung aus URL-Userinfo entfernen und nur flüchtig als HTTP-Header an Media3 weitergeben
+- [x] Stream-URLs, Session-IDs und Streaming-Zugangsdaten weder persistieren noch loggen
+- [x] Start des internen Players direkt aus `Jetzt im TV`
+- [x] Senderwechsel in unveränderter Gigablue-Bouquet-Reihenfolge
+- [x] Zapping über D-Pad ↑/↓ und CH+/CH− implementieren
+- [x] alten Stream beim Zappen sofort stoppen und Zielstream neu über OpenWebif auflösen
+- [x] Player-UI mit Sender-Picon, Sendername, Jetzt/Danach, Bouquet-Position, Ladezustand und sicheren Fehlern
+- [x] exakte Focus-Rückgabe auf die zuvor gestartete `Jetzt im TV`-Karte implementieren
+- [x] Unit-Tests für Stream-Playlist, Auth-/Session-Sanitizing und Zapping-Reihenfolge/-Wrap
+- [x] Android CI mit `testDebugUnitTest` und `assembleDebug` erfolgreich
+- [x] signierten Development-Build `0.1.0-dev.68` (`26000068`) erfolgreich veröffentlicht
+- [ ] realer TCL + Gigablue-X3-Test von Video und Audio auf mehreren HD-/SD-Sendern
+- [ ] realer Zapping-Test mit D-Pad und CH+/CH− inklusive Reihenfolge und Umschaltzeit
+- [ ] Back-/Focus-Rückgabe vom Player auf die exakte Home-Karte auf TCL bestätigen
+- [ ] Media3-Decoder-/Fehlerverhalten auf dem Zielgerät prüfen
+- [ ] Streaming-Authentifizierung auf Hardware prüfen, falls am Receiver aktiviert
+
+**Phase 7 ist softwareseitig implementiert, automatisiert getestet und als signierter Development-Build veröffentlicht. Für den Abschluss fehlt der reale TCL-/Gigablue-Streamingtest.**
 
 ## Phase 8 – optionale Provider
 
