@@ -86,6 +86,8 @@ fun LauncherApp(
     var selectedLiveTvServiceReference by rememberSaveable { mutableStateOf<String?>(null) }
     var watchNextFocusRestoreSourceId by rememberSaveable { mutableStateOf<String?>(null) }
     var watchNextFocusRestoreGeneration by rememberSaveable { mutableIntStateOf(0) }
+    var liveTvFocusRestoreServiceReference by rememberSaveable { mutableStateOf<String?>(null) }
+    var liveTvFocusRestoreGeneration by rememberSaveable { mutableIntStateOf(0) }
     var selectedEpgServiceReference by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedEpgProgramStartUtcMillis by rememberSaveable { mutableStateOf<Long?>(null) }
     val watchNextListState = rememberLazyListState()
@@ -222,6 +224,13 @@ fun LauncherApp(
         }
         selectedDetailsSourceId = null
     }
+    val closeLiveTvPlayer: () -> Unit = {
+        selectedLiveTvServiceReference?.let { serviceReference ->
+            liveTvFocusRestoreServiceReference = serviceReference
+            liveTvFocusRestoreGeneration += 1
+        }
+        selectedLiveTvServiceReference = null
+    }
     BackHandler(enabled = selectedDetailsItem != null, onBack = closeDetails)
 
     DisposableEffect(activity) {
@@ -279,7 +288,7 @@ fun LauncherApp(
                     channels = displayLiveTvChannels,
                     initialServiceReference = requireNotNull(selectedLiveTvServiceReference),
                     onResolveStream = openWebifRepository::resolveStream,
-                    onBack = { selectedLiveTvServiceReference = null },
+                    onBack = closeLiveTvPlayer,
                 )
             }
 
@@ -340,10 +349,12 @@ fun LauncherApp(
                             onOpenApp = openApp,
                             onOpenWatchNext = openWatchNext,
                             onOpenWatchNextDetails = { item ->
+                                liveTvFocusRestoreServiceReference = null
                                 selectedDetailsSourceId = item.media.source.sourceId
                             },
                             onOpenLiveTv = { section = LauncherSection.LiveTv },
                             onPlayLiveTvChannel = { channel ->
+                                watchNextFocusRestoreSourceId = null
                                 selectedLiveTvServiceReference = channel.serviceReference
                             },
                             watchNextListState = watchNextListState,
@@ -351,6 +362,8 @@ fun LauncherApp(
                             appsListState = appsListState,
                             watchNextFocusRestoreSourceId = watchNextFocusRestoreSourceId,
                             watchNextFocusRestoreGeneration = watchNextFocusRestoreGeneration,
+                            liveTvFocusRestoreServiceReference = liveTvFocusRestoreServiceReference,
+                            liveTvFocusRestoreGeneration = liveTvFocusRestoreGeneration,
                         )
 
                         LauncherSection.LiveTv -> LiveTvScreen(
