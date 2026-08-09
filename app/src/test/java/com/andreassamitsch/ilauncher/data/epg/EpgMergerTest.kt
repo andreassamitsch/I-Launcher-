@@ -49,7 +49,7 @@ class EpgMergerTest {
         )
 
         val merged = result.channels.single().now!!
-        assertEquals(77, merged.eventId)
+        assertEquals(77L, merged.eventId)
         assertEquals(base.startUtcMillis, merged.startUtcMillis)
         assertEquals(base.durationMillis, merged.durationMillis)
         assertEquals("Episode fünf", merged.subtitle)
