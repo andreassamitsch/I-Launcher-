@@ -13,8 +13,9 @@
 - keine app-spezifischen Integrationen, wenn Android-Standardschnittstellen ausreichen
 - unsichere Metadaten-Treffer dürfen Quelldaten nicht überschreiben
 - Trailerauflösung nutzt vorhandene Metadaten vor zusätzlichen Such-APIs
+- Gigablue bleibt für Live-TV die Identitäts-/Reihenfolge-/Streamquelle; externe EPG-Quellen ergänzen nur Metadaten
 
-## Aktueller Stand: Phase 5 in Gerätetest
+## Aktueller Stand: Phase 6 in Entwicklung
 
 Die Gradle-Struktur bleibt vorerst bewusst bei einem `app`-Modul. Die Provider-Grenzen sind paketweise getrennt:
 
@@ -25,13 +26,15 @@ app/
   data/tmdb/       TMDB API / Parser / Resolver / Metadaten / Trailer-Metadaten
   data/youtube/    YouTube-Wiedergabe und Such-Fallback über Android-Intents
   data/openwebif/  Gigablue/OpenWebif Verbindung, Cache, Bouquets, Sender und Now/Next
-  data/database/   Room / TMDB-Mappings / Medien-, Episoden- und Trailer-Cache
+  data/epg/        M3U-Metadaten, Sender-Mapping, XMLTV-Streaming, EPG-Merge und TMDB-EPG-Anreicherung
+  data/database/   Room / TMDB- und EPG-Cache
   data/update/     Development-Updatekanal
   model/           gemeinsame Media- und Live-TV-Modelle
   system/          Home-Rolle / Accessibility / TvProvider-Berechtigungen
   ui/home/         Home inklusive Watch Next und Jetzt im TV
   ui/details/      provider-neutrale Medien-Detailseite inklusive Traileraktion
-  ui/livetv/       Gigablue-Einrichtung, Bouquetwahl und Live-TV-Diagnose
+  ui/livetv/       Gigablue-Einrichtung und Sender-/EPG-Zuordnungsdiagnose
+  ui/epg/          vollständige Sender-/Programmübersicht
   ui/apps/         App-Übersicht
   ui/settings/     Einstellungen, Diagnose und Credits
   ui/components/   TV-Cards
@@ -90,25 +93,15 @@ Für das Lesen von TV-Daten anderer Apps verwendet I Launcher `android.permissio
 
 Watch Next wird aus `TvContract.WatchNextPrograms.CONTENT_URI` gelesen. Die Query fordert `last_engagement_time_utc_millis DESC` an. Die resultierende Reihenfolge wird im Mapper nicht verändert; Quellenfilter entfernen nur Zeilen.
 
-## Gemeinsames Medienmodell
+## Gemeinsame Medien- und Live-TV-Modelle
 
 `MediaItem` ist die provider-neutrale Darstellung für Filme, Serien und Episoden. Die Quellinformation bleibt auch nach TMDB-Anreicherung erhalten. Trailer sind über eine provider-neutrale `TrailerRef` angebunden.
 
-Für Phase 5 kommen provider-neutrale Live-TV-Modelle hinzu:
-
-- `LiveTvChannel`: Service Reference, Sendername, Picon, aktuelle und nächste Sendung
-- `LiveTvProgram`: Event-ID, Titel/Beschreibung, Start und Dauer
-- Fortschritt wird aus Start, Dauer und aktueller Zeit abgeleitet
-
-Die Home-UI kennt damit keine OpenWebif-DTOs.
-
-## Detailnavigation und Trailer
-
-Kurzes `OK` auf Watch Next startet den vorhandenen Source-/Playback-Intent. `INFO` oder lange `OK` öffnet Details. Trailer werden bevorzugt aus TMDB-Video-Metadaten aufgelöst und an YouTube delegiert; bei fehlender ID gibt es einen gezielten YouTube-Suchfallback. Focus-Rückgabe nach Details und Rückkehr aus YouTube sind auf TCL bestätigt.
+`LiveTvChannel` bleibt provider-neutral und enthält Service Reference, Sendername, Picon sowie aktuelle/nächste Sendung. `LiveTvProgram` wurde für Phase 6 erweitert um optionale XMLTV-/TMDB-Metadaten wie Untertitel, Kategorien, Staffel/Episode, Erscheinungsjahr und Artwork. Alte lokale Phase-5-Snapshots bleiben lesbar, weil die neuen Felder optional sind.
 
 ## OpenWebif / Gigablue Provider
 
-Phase 5 kommuniziert direkt mit der Gigablue X3 über die offizielle OpenWebif-JSON-Schnittstelle:
+Phase 5 kommuniziert direkt mit der Gigablue X3 über die OpenWebif-JSON-Schnittstelle:
 
 ```text
 lokale Receiver-Konfiguration
@@ -121,63 +114,150 @@ OpenWebifRepository
 OpenWebifMapper
         ↓
 LiveTvChannel / LiveTvProgram
-        ↓
-Home: Jetzt im TV + Live-TV-Diagnose
 ```
 
 `OpenWebifRepository` ist die Provider-Grenze. Retrofit/OkHttp-Details und OpenWebif-Feldnamen bleiben unter `data/openwebif`.
 
 ### Verbindung und Authentifizierung
 
-Die Receiver-Adresse wird lokal eingegeben und deterministisch normalisiert. Ohne Schema wird `http://` verwendet; HTTP und HTTPS sind erlaubt. Eingebettete Zugangsdaten in URLs werden abgelehnt. Optional wird HTTP Basic Authentication über einen Authorization-Header verwendet.
+Die Receiver-Adresse wird lokal eingegeben und deterministisch normalisiert. Ohne Schema wird `http://` verwendet; HTTP und HTTPS sind erlaubt. Eingebettete Zugangsdaten in URLs werden abgelehnt. Optional wird HTTP Basic Authentication verwendet.
 
-Normale OpenWebif-LAN-Installationen verwenden häufig unverschlüsseltes HTTP. Deshalb erlaubt die App Cleartext-Traffic. Die UI weist darauf hin, Zugangsdaten über HTTP nur im vertrauenswürdigen Heimnetz zu verwenden.
+Normale OpenWebif-LAN-Installationen verwenden häufig unverschlüsseltes HTTP. Deshalb erlaubt die App Cleartext-Traffic. Receiver-Adresse, Benutzername und Passwort werden ausschließlich lokal gespeichert. Passwort und vollständige private Receiver-URL werden weder geloggt noch in Diagnosemeldungen ausgegeben. `android:allowBackup=false` verhindert Android Auto Backup dieser lokalen Zugangsdaten.
 
-Receiver-Adresse, Benutzername und Passwort werden ausschließlich lokal gespeichert. Passwort und vollständige private Receiver-URL werden weder geloggt noch in Diagnosemeldungen ausgegeben. `android:allowBackup=false` verhindert, dass diese lokalen Zugangsdaten über Android Auto Backup ausgelagert werden.
+### Bouquets, Sender und Now/Next
 
-### Bouquets und Sender
+Ein `getservices`-Aufruf ohne `sRef` liefert die TV-Bouquets. Das ausgewählte Bouquet wird lokal gespeichert. Ein zweiter `getservices`-Aufruf mit der Bouquet-Service-Reference liefert Sender in Receiver-Reihenfolge. OpenWebif-Marker mit `pos=0` werden entfernt, echte Sender bleiben in Quellreihenfolge erhalten.
 
-Ein `getservices`-Aufruf ohne `sRef` liefert die TV-Bouquets. Das ausgewählte Bouquet wird lokal gespeichert. Ein zweiter `getservices`-Aufruf mit der Bouquet-Service-Reference liefert Sender in Receiver-Reihenfolge. OpenWebif-Marker mit `pos=0` werden aus der Content-Reihe entfernt, echte Sender bleiben in Quellreihenfolge erhalten.
+`/api/epgnownext` liefert aktuelle und folgende Events des Bouquets. Die Zuordnung erfolgt über die Enigma2-Service-Reference. OpenWebif-Zeitfenster/Event-IDs bleiben die bevorzugte Primärinformation für Now/Next.
 
-Picons werden als relative OpenWebif-Pfade geliefert und gegen die konfigurierte Receiver-Basisadresse aufgelöst.
+## Phase-6-EPG-Pipeline
 
-### EPG Now/Next
+Die externe M3U/XMLTV-Quelle wird **nur als Metadatenquelle** verwendet:
 
-`/api/epgnownext` liefert die aktuellen und folgenden Events des Bouquets. Die Zuordnung erfolgt ausschließlich über die Enigma2-Service-Reference. Aktuelle Sendung wird anhand des Epoch-Zeitfensters ermittelt; der nächste spätere Event wird als `next` übernommen.
+```text
+Gigablue / OpenWebif
+  ├─ Bouquet
+  ├─ Senderreihenfolge
+  ├─ serviceReference
+  └─ Now/Next
+           │
+           ▼
+M3U-Metadatenquelle
+  ├─ x-tvg-url
+  ├─ tvg-id / tvg-id-ALT
+  ├─ tvg-name
+  ├─ tvg-logo
+  └─ Service-Reference-Hinweise
+           │
+           ▼
+serviceReference ↔ XMLTV channel-id
+           │
+           ▼
+GZIP/XMLTV Streaming Parser
+           │
+           ▼
+Room EPG Cache
+           │
+           ▼
+OpenWebif + XMLTV Merge
+           │
+           ├─ Home: Jetzt im TV
+           └─ EPG Guide
+           │
+           ▼
+konservativer TMDB Resolver
+           │
+           ▼
+Bilder / Episodendaten / Details
+```
 
-### Local First und Aktualisierung
+### M3U-Sicherheitsgrenze
 
-Der letzte erfolgreich geladene Snapshot aus Bouquet, ausgewähltem Bouquet, Sendern und Now/Next wird lokal gecacht. Beim App-Start kann `Jetzt im TV` deshalb sofort aus dem letzten Snapshot erscheinen. Anschließend aktualisiert der Repository-Pfad im Hintergrund; während der Launcher sichtbar bleibt wird alle fünf Minuten erneut aktualisiert.
+Die konfigurierte M3U wird zeilenweise nur nach Metadaten ausgewertet. Wiedergabe-URLs, Plugin-URLs oder enthaltene IPTV-Streamdaten werden nicht persistiert und nicht zur Wiedergabe verwendet. Der Parser kann aus `tvg-id`, Picon- oder Streampfaden eine Enigma2-Service-Reference als **Mapping-Hinweis** extrahieren; die URL selbst wird danach verworfen.
 
-Ein Netzwerkfehler überschreibt vorhandene lokale Sender/EPG-Daten nicht. Fehler werden nur als sanitisierte Zustände wie HTTP-Code, Timeout, DNS- oder Verbindungsfehler dargestellt.
+Damit kann eine bestehende M3U bei der Senderzuordnung helfen, ohne dass I Launcher deren Streams übernimmt. Für Live-TV bleibt Phase 7 auf OpenWebif/Enigma2 ausgerichtet.
 
-### Scope-Grenze Phase 5
+### Senderzuordnung
 
-Die `Jetzt im TV`-Karten sind noch keine Player-Einstiegspunkte. Auswahl öffnet die Live-TV-Ansicht. Interne Stream-URLs, Media3-Wiedergabe und Zapping folgen bewusst erst in Phase 7.
+Automatisches Mapping erfolgt konservativ:
 
-## TMDB Resolver und Cache
+1. exakte Enigma2-Service-Reference
+2. eindeutiger normalisierter Sendername
+3. nur bei sehr hoher Sicherheit ein eindeutiger Fuzzy-Treffer
+4. ansonsten keine automatische Zuordnung
 
-Der Resolver verarbeitet lokal und deterministisch Titel, Jahr, Staffel und Episode und übernimmt nur Treffer oberhalb der konservativen Confidence-Schwelle. Room speichert Source-Mappings, negative Treffer, Film-/Serienmetadaten, Episodenmetadaten und Trailer-IDs. Cache-Refresh erfolgt nach 30 Tagen, harte Löschung spätestens nach 180 Tagen.
+Die Normalisierung entfernt u. a. reine HD/UHD/SD-Zusätze und kennt wenige deterministische Schreibvarianten wie `ProSieben`/`Pro7`. Unsichere Sender erscheinen in der Live-TV-Ansicht mit manueller XMLTV-Auswahl. Ein manuelles Mapping wird lokal dauerhaft gegenüber automatischen Treffern bevorzugt.
 
-## Bilder
+`tvg-id-ALT` wird als alternative XMLTV-Identität berücksichtigt. Wenn die primäre ID in der realen XMLTV-Datei keine Programme liefert, eine Alternate-ID aber schon, kann das Mapping auf diese tatsächlich vorhandene ID wechseln.
 
-TMDB-Bild-URLs werden aus `/configuration` erzeugt und lokal gecacht. Artwork-Priorität: Episode Still → Backdrop → Poster → Quellbild; Film/Serie: Backdrop → Poster → Quellbild. OpenWebif-Picons bleiben eine separate lokale Senderbildquelle.
+### XMLTV Streaming und Limits
 
-## TMDB Attribution und Diagnose
+Die XMLTV-Datei wird nicht vollständig als String in den Arbeitsspeicher geladen. Datenfluss:
 
-Der Bereich `Über / Credits` zeigt das TMDB-Logo und den vorgeschriebenen Hinweis. Tokens und vollständige private URLs werden weder angezeigt noch geloggt.
+```text
+OkHttp Response
+ → BufferedInputStream
+ → GZIPInputStream bei GZIP-Magic-Bytes
+ → sicher konfigurierter SAX Parser
+ → nur gemappte channel-IDs
+ → nur begrenztes Zeitfenster
+ → Room
+```
+
+Externe XML-Entities und DTD-Nachladen sind deaktiviert. Der aktuelle Guide-Cache umfasst sechs Stunden Vergangenheit und 72 Stunden Zukunft. Die M3U wird maximal täglich neu geladen; XMLTV maximal alle sechs Stunden, außer neue Sender-IDs benötigen erstmals Daten oder der Benutzer erzwingt ein Update.
+
+### XMLTV/OpenWebif Merge
+
+OpenWebif bleibt bei einer übereinstimmenden Sendung maßgeblich für Event-ID, Startzeit und Dauer. XMLTV füllt zusätzliche Informationen wie Beschreibung, Untertitel, Kategorien, Staffel/Episode, Jahr und Programm-Icon. Wenn OpenWebif für einen gemappten Sender kein Now/Next liefert, darf XMLTV als Fallback die aktuellen/folgenden Programmdaten bereitstellen.
+
+Die UI kennt weder XMLTV-Tags noch M3U-Felder, sondern ausschließlich `LiveTvChannel`/`LiveTvProgram`.
+
+### EPG/TMDB-Anreicherung
+
+TMDB wird nicht blind für jede TV-Sendung aufgerufen. Automatische Auflösung erfolgt nur, wenn XMLTV-Informationen einen Film-/Seriencharakter plausibel machen, z. B. über Kategorie oder Staffel/Episode. Der vorhandene konservative TMDB-Resolver entscheidet weiterhin über die Match-Confidence.
+
+Aktuelle Programme werden progressiv in begrenzter Zahl angereichert. Weitere Guide-Einträge werden bei Auswahl aufgelöst. TMDB ergänzt Artwork und fehlende Details, überschreibt aber nicht zuverlässige Quell-EPG-Zeitdaten.
+
+## Room Cache
+
+Room-Version 3 ergänzt zwei Tabellen ohne Verlust des bestehenden TMDB-Caches:
+
+- `epg_channel_mappings`: stabile Zuordnung Enigma2-Service-Reference → XMLTV-ID, inklusive Match-Methode/Confidence
+- `epg_programs`: lokaler XMLTV-Guide für die gemappten Sender
+
+Migration `2 → 3` erzeugt ausschließlich die neuen Tabellen/Indizes. Die bereits getestete Phase-4-Migration `1 → 2` bleibt erhalten.
+
+## Local First und Aktualisierung
+
+Der OpenWebif-Snapshot bleibt in SharedPreferences verfügbar. XMLTV-Programme und Sender-Mappings liegen in Room. Beim Start kann die Oberfläche daher bestehende lokale TV-/EPG-Daten darstellen, bevor Netzwerkupdates abgeschlossen sind. Netzwerkfehler löschen den letzten nutzbaren lokalen Stand nicht.
+
+## Home und EPG UI
+
+`Jetzt im TV` behält die Gigablue-Senderreihenfolge. Wenn XMLTV/TMDB ein passendes Programmbild liefert, wird dieses als Card-Artwork verwendet und das Sender-Picon darüber eingeblendet; ohne Programmbild bleibt die bisherige Picon-Karte erhalten.
+
+Der neue Bereich `EPG` zeigt links Sender und rechts das Programm des ausgewählten Senders. Auswahl eines Programmeintrags zeigt Beschreibung, Staffel/Episode, Kategorien und verfügbares Artwork und kann die TMDB-Auflösung dieses Eintrags auslösen.
+
+## Detailnavigation und Trailer
+
+Kurzes `OK` auf Watch Next startet den vorhandenen Source-/Playback-Intent. `INFO` oder lange `OK` öffnet Details. Trailer werden bevorzugt aus TMDB-Video-Metadaten aufgelöst und an YouTube delegiert; bei fehlender ID gibt es einen gezielten YouTube-Suchfallback. Focus-Rückgabe nach Details und Rückkehr aus YouTube sind auf TCL bestätigt.
+
+## TMDB Resolver und Bilder
+
+Der Resolver verarbeitet lokal und deterministisch Titel, Jahr, Staffel und Episode und übernimmt nur Treffer oberhalb der konservativen Confidence-Schwelle. Room speichert Source-Mappings, negative Treffer, Film-/Serienmetadaten, Episodenmetadaten und Trailer-IDs.
+
+TMDB-Artwork-Priorität bleibt: Episode Still → Backdrop → Poster → Quellbild; Film/Serie: Backdrop → Poster → Quellbild. Im Live-TV-Pfad kann ein XMLTV-Programmbild als zusätzliche Quelle dienen.
 
 ## Development-Publishing
 
-Signierte Development-Builds laufen über den `downloads`-Kanal. Build und Unit-Tests werden vor jeder Veröffentlichung ausgeführt. Phase 5 wird über `agent/phase-5-openwebif` veröffentlicht und gilt erst nach realem TCL-/Gigablue-Test als abgeschlossen.
+Signierte Development-Builds laufen über den `downloads`-Kanal. Phase 6 wird über `agent/phase-6-epg` veröffentlicht. Build und Unit-Tests müssen vor jeder Test-APK erfolgreich sein. Phase 5/6 gelten erst nach den jeweils relevanten realen TCL-/Gigablue-/XMLTV-Tests als hardwareverifiziert.
+
+## Scope-Grenze zu Phase 7
+
+EPG-Karten und Guide-Einträge sind noch keine internen Stream-Player. Media3-Wiedergabe, Gigablue-Stream-URLs, Zapping und Player-UI folgen bewusst in Phase 7.
 
 ## Home-Tasten-Fallback
 
 Der Google-TV-/TCL-Home-Fallback basiert auf einem `AccessibilityService` mit `BIND_ACCESSIBILITY_SERVICE` und `canRequestFilterKeyEvents=true`. Das TCL-/Android-13+-Restricted-Settings-Verhalten bei lokal installierten APKs bleibt ein separates Distributionsthema.
-
-## Build-Basis
-
-Der aktuelle stabile Android-Toolchain-Stand wird gegen offizielle Dokumentation geprüft. Versionen werden explizit gepinnt, nicht dynamisch auf `+` gesetzt.
 
 ## Paketkennung
 
