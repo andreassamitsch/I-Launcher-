@@ -125,16 +125,43 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] eigene D-Pad-bedienbare `Live TV`-Ansicht für Konfiguration, Bouquetwahl und Diagnose
 - [x] `Jetzt im TV` auf Home mit Senderlogo, aktueller Sendung, Zeit, Fortschritt und nächster Sendung
 - [x] Unit-Tests für URL-Normalisierung, Bouquet-Reihenfolge, EPG-Zuordnung und Fortschritt
-- [ ] signierten Phase-5-Development-Build erfolgreich veröffentlichen
+- [x] signierten Phase-5-Development-Build `0.1.0-dev.51` mit Unit-Tests und `assembleDebug` veröffentlicht
 - [ ] realen TCL + Gigablue-X3-Gerätetest von Verbindung/Auth, Bouquet, Sendern, Picons, Now/Next, Home-Reihe und Offline-Cache durchführen
 
-**Phase 5 ist implementiert und bleibt bis zum grünen Build sowie realen Gigablue-Gerätetest offen.**
+**Phase 5 ist implementiert und gebaut. Die Hardwarevalidierung mit der realen Gigablue bleibt offen und wird gemeinsam mit dem Phase-6-Test durchgeführt.**
 
 ## Phase 6 – EPG
 
-- [ ] kompletter EPG-Guide
-- [ ] TMDB-Anreicherung
-- [ ] Bilder und Details
+- [x] externe M3U als reine EPG-Metadatenquelle anbinden; Wiedergabe-/IPTV-URLs nicht verwenden oder persistieren
+- [x] `x-tvg-url`, `tvg-id`, `tvg-id-ALT`, `tvg-name`, Logos und Enigma2-Service-Reference-Hinweise parsen
+- [x] Gigablue `serviceReference` bevorzugt direkt gegen M3U-Hinweise mappen
+- [x] konservatives Sendernamen-Matching als Fallback; unklare Treffer nicht automatisch übernehmen
+- [x] manuelle Sender-zu-XMLTV-ID-Zuordnung mit lokal persistiertem Mapping
+- [x] alternative XMLTV-IDs automatisch berücksichtigen, wenn die primäre ID keine Programmdaten liefert
+- [x] GZIP/XMLTV streamend verarbeiten; keine komplette XML-Datei als String im RAM halten
+- [x] XML-Parser gegen externe Entities/DTD-Nachladen absichern
+- [x] nur gemappte Sender und begrenztes Zeitfenster laden
+- [x] vollständigen EPG-Guide je Gigablue-Sender bereitstellen
+- [x] XMLTV-Programme und Sender-Mappings in Room cachen
+- [x] Room-Migration 2 → 3 ohne Verlust des bestehenden TMDB-Caches implementieren
+- [x] Local-First: vorhandenen EPG-Cache vor Netzwerkrefresh verwenden
+- [x] OpenWebif Now/Next als Primärzeit/Event beibehalten und XMLTV-Beschreibung/Kategorie/Staffel/Episode/Jahr/Bild ergänzen
+- [x] XMLTV als Now/Next-Fallback verwenden, falls OpenWebif für einen gemappten Sender keine EPG-Sendung liefert
+- [x] XMLTV/OpenWebif-Merge gegen schwache zeitliche Überschneidungen absichern, damit keine Metadaten benachbarter Sendungen übernommen werden
+- [x] neue D-Pad-bedienbare `EPG`-Ansicht mit Sender- und Programmliste
+- [x] EPG beim aktuell laufenden Programm positionieren und laufende Sendung mit `JETZT` markieren
+- [x] Senderzuordnung mit XMLTV-ID und Match-Methode in der Live-TV-Diagnose sichtbar machen
+- [x] `Jetzt im TV` um verfügbares XMLTV/TMDB-Programmartwork erweitern; Picon als Senderidentität erhalten
+- [x] Home vertikal scrollbar machen, damit `Weiterschauen` → `Jetzt im TV` → `Apps` per D-Pad erreichbar ist
+- [x] vorhandenen konservativen TMDB-Resolver für plausible Film-/Serienprogramme wiederverwenden
+- [x] aktuelle Programme progressiv, weitere Guide-Einträge bei Auswahl mit TMDB anreichern
+- [x] Unit-Tests für M3U-Parsing, Sender-Mapping, XMLTV-Zeit/Episoden-Parsing, OpenWebif/XMLTV-Merge und EPG-Startposition hinzufügen
+- [x] signierten Phase-6-Development-Build mit `testDebugUnitTest` und `assembleDebug` erfolgreich veröffentlichen
+- [ ] reale `riedl-dach.at` M3U/XMLTV-Quelle auf TCL gegen Gigablue-Sender testen
+- [ ] D-Pad-/Focus-Test auf Home sowie im vollständigen EPG durchführen
+- [ ] Offline-/Cache-Test und Update/Migration von Phase-5-Build durchführen
+
+**Phase 6 ist vollständig implementiert, automatisiert getestet und als signierter Development-Build veröffentlicht. Zum Abschluss fehlen ausschließlich die realen TCL-/Gigablue-/XMLTV- und Offline-/Focus-Gerätetests.**
 
 ## Phase 7 – Live TV
 

@@ -33,6 +33,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.apps.InstalledAppsRepository
+import com.andreassamitsch.ilauncher.data.epg.EpgRepository
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifRepository
 import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.data.tv.WatchNextEnrichmentRepository
@@ -46,6 +47,7 @@ import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import com.andreassamitsch.ilauncher.ui.apps.AppsScreen
 import com.andreassamitsch.ilauncher.ui.details.DetailsScreen
+import com.andreassamitsch.ilauncher.ui.epg.EpgScreen
 import com.andreassamitsch.ilauncher.ui.home.HomeScreen
 import com.andreassamitsch.ilauncher.ui.livetv.LiveTvScreen
 import com.andreassamitsch.ilauncher.ui.settings.SettingsScreen
@@ -57,6 +59,7 @@ import kotlinx.coroutines.withContext
 enum class LauncherSection(val label: String) {
     Home("Home"),
     LiveTv("Live TV"),
+    Epg("EPG"),
     Apps("Apps"),
     Settings("Einstellungen"),
 }
@@ -71,6 +74,7 @@ fun LauncherApp(
     watchNextRepository: WatchNextRepository,
     watchNextEnrichmentRepository: WatchNextEnrichmentRepository,
     openWebifRepository: OpenWebifRepository,
+    epgRepository: EpgRepository,
     updateManager: UpdateManager,
 ) {
     val context = LocalContext.current
@@ -80,11 +84,16 @@ fun LauncherApp(
     var selectedDetailsSourceId by rememberSaveable { mutableStateOf<String?>(null) }
     var watchNextFocusRestoreSourceId by rememberSaveable { mutableStateOf<String?>(null) }
     var watchNextFocusRestoreGeneration by rememberSaveable { mutableIntStateOf(0) }
+    var selectedEpgServiceReference by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedEpgProgramStartUtcMillis by rememberSaveable { mutableStateOf<Long?>(null) }
     val watchNextListState = rememberLazyListState()
     val appsListState = rememberLazyListState()
     val liveTvListState = rememberLazyListState()
+    val epgChannelListState = rememberLazyListState()
+    val epgProgramListState = rememberLazyListState()
     val updateState by updateManager.state.collectAsState()
     val openWebifState by openWebifRepository.state.collectAsState()
+    val epgState by epgRepository.state.collectAsState()
     var hasTvListingsPermission by remember {
         mutableStateOf(TvProviderPermissionManager.hasReadTvListings(context))
     }
@@ -148,9 +157,13 @@ fun LauncherApp(
         }
     }
 
-    LaunchedEffect(openWebifRepository) {
+    LaunchedEffect(openWebifRepository, epgRepository) {
+        launch {
+            epgRepository.refresh(openWebifRepository.state.value.channels)
+        }
         while (true) {
             openWebifRepository.refresh()
+            epgRepository.refresh(openWebifRepository.state.value.channels)
             delay(OPENWEBIF_REFRESH_INTERVAL_MILLIS)
         }
     }
@@ -161,6 +174,34 @@ fun LauncherApp(
     ) {
         value = withContext(Dispatchers.IO) {
             installedAppsRepository.loadApps()
+        }
+    }
+
+    val enrichedLiveTvByRef = remember(epgState.enrichedChannels) {
+        epgState.enrichedChannels.associateBy { it.serviceReference }
+    }
+    val displayLiveTvChannels = remember(openWebifState.channels, enrichedLiveTvByRef) {
+        openWebifState.channels.map { channel ->
+            enrichedLiveTvByRef[channel.serviceReference] ?: channel
+        }
+    }
+    val displayLiveTvState = remember(openWebifState, displayLiveTvChannels) {
+        openWebifState.copy(channels = displayLiveTvChannels)
+    }
+
+    LaunchedEffect(displayLiveTvChannels) {
+        if (
+            selectedEpgServiceReference == null ||
+            displayLiveTvChannels.none { it.serviceReference == selectedEpgServiceReference }
+        ) {
+            selectedEpgServiceReference = displayLiveTvChannels.firstOrNull()?.serviceReference
+            selectedEpgProgramStartUtcMillis = null
+        }
+    }
+
+    val selectedEpgProgram = selectedEpgServiceReference?.let { serviceReference ->
+        selectedEpgProgramStartUtcMillis?.let { start ->
+            epgState.guide(serviceReference).firstOrNull { it.startUtcMillis == start }
         }
     }
 
@@ -238,13 +279,11 @@ fun LauncherApp(
                 onTrailer = detailsMedia.trailer?.let {
                     {
                         YouTubeLauncher.playTrailer(context, detailsMedia)
-                        Unit
                     }
                 },
                 onTrailerSearch = if (detailsMedia.trailer == null) {
                     {
                         YouTubeLauncher.searchTrailer(context, detailsMedia)
-                        Unit
                     }
                 } else {
                     null
@@ -277,7 +316,7 @@ fun LauncherApp(
                         watchNextItems = homeWatchNextItems,
                         watchNextError = watchNextResult.errorMessage,
                         hasTvListingsPermission = hasTvListingsPermission,
-                        liveTvState = openWebifState,
+                        liveTvState = displayLiveTvState,
                         onRequestTvListingsPermission = requestTvListingsPermission,
                         onOpenApp = openApp,
                         onOpenWatchNext = openWatchNext,
@@ -293,19 +332,84 @@ fun LauncherApp(
                     )
 
                     LauncherSection.LiveTv -> LiveTvScreen(
-                        state = openWebifState,
+                        state = displayLiveTvState,
+                        epgState = epgState,
                         onSaveConnection = { baseUrl, username, password ->
                             if (openWebifRepository.updateConnection(baseUrl, username, password)) {
-                                scope.launch { openWebifRepository.refresh() }
+                                scope.launch {
+                                    openWebifRepository.refresh()
+                                    epgRepository.refresh(openWebifRepository.state.value.channels)
+                                }
                             }
                         },
                         onSelectBouquet = { serviceReference ->
                             openWebifRepository.selectBouquet(serviceReference)
-                            scope.launch { openWebifRepository.refresh() }
+                            scope.launch {
+                                openWebifRepository.refresh()
+                                epgRepository.refresh(openWebifRepository.state.value.channels)
+                            }
                         },
                         onRefresh = {
-                            scope.launch { openWebifRepository.refresh() }
+                            scope.launch {
+                                openWebifRepository.refresh()
+                                epgRepository.refresh(openWebifRepository.state.value.channels)
+                            }
                         },
+                        onSaveEpgSource = { sourceUrl ->
+                            scope.launch {
+                                if (epgRepository.updateSource(sourceUrl)) {
+                                    epgRepository.refresh(
+                                        channels = openWebifRepository.state.value.channels,
+                                        force = true,
+                                    )
+                                }
+                            }
+                        },
+                        onRefreshEpg = {
+                            scope.launch {
+                                epgRepository.refresh(
+                                    channels = openWebifRepository.state.value.channels,
+                                    force = true,
+                                )
+                            }
+                        },
+                        onSetEpgMapping = { serviceReference, xmltvChannelId ->
+                            scope.launch {
+                                epgRepository.setManualMapping(serviceReference, xmltvChannelId)
+                                epgRepository.refresh(
+                                    channels = openWebifRepository.state.value.channels,
+                                    force = true,
+                                )
+                            }
+                        },
+                    )
+
+                    LauncherSection.Epg -> EpgScreen(
+                        state = epgState,
+                        channels = displayLiveTvChannels,
+                        selectedServiceReference = selectedEpgServiceReference,
+                        selectedProgram = selectedEpgProgram,
+                        onSelectChannel = { serviceReference ->
+                            selectedEpgServiceReference = serviceReference
+                            selectedEpgProgramStartUtcMillis = null
+                        },
+                        onSelectProgram = { serviceReference, program ->
+                            selectedEpgServiceReference = serviceReference
+                            selectedEpgProgramStartUtcMillis = program.startUtcMillis
+                            scope.launch {
+                                epgRepository.enrichProgram(serviceReference, program.startUtcMillis)
+                            }
+                        },
+                        onRefresh = {
+                            scope.launch {
+                                epgRepository.refresh(
+                                    channels = openWebifRepository.state.value.channels,
+                                    force = true,
+                                )
+                            }
+                        },
+                        channelListState = epgChannelListState,
+                        programListState = epgProgramListState,
                     )
 
                     LauncherSection.Apps -> AppsScreen(
