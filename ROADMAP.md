@@ -218,6 +218,7 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Launcher-Name aus der Navigationszeile entfernen
 - [x] Navigationszeile auf Home beim Herunterscrollen der Content-Reihen ausblenden
 - [x] Live-TV-/Gigablue-Konfiguration unter Einstellungen verschieben
+- [x] Development-Testbuild `0.1.0-dev.115` mit Unit-Tests und `assembleDebug` erfolgreich veröffentlicht
 - [ ] vollständigen D-Pad-/Focus-Gerätetest für den neuen Home-/Nav-Aufbau durchführen
 
 ## Phase 8 – optionale Provider
