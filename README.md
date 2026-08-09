@@ -17,13 +17,7 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phasen 1 bis 7 sind funktional abgeschlossen und auf dem Zielgerät bestätigt.**
-
-Der bestätigte Unterbau umfasst Android-TV-Launcher/Home-App, Android Watch Next über TvProvider, gemeinsame Medienmodelle, TMDB-Anreicherung, direkte Gigablue/OpenWebif-Integration, XMLTV/EPG, internen Media3-Live-TV-Player und bestätigte D-Pad-/Focus-Grundfunktionen.
-
-## Aktueller Entwicklungszweig – Suche / Preview Channels / UI-Polish
-
-Der aktuelle gestapelte Entwicklungsstand ergänzt Preview Channels, globale Suche und die nächste Home-/Player-UX. Diese Änderungen bleiben bis zum neuen Gerätetest in Draft-PRs.
+**Phasen 1 bis 7 sind funktional abgeschlossen und auf dem Zielgerät bestätigt.** Der aktuelle gestapelte Entwicklungsstand ergänzt Preview Channels, globale Suche und die nächste Home-/Player-UX. Diese Änderungen bleiben bis zum neuen Gerätetest in Draft-PRs.
 
 Aktuell umgesetzt:
 
@@ -45,11 +39,7 @@ OpenWebif-Zugangsdaten werden nur lokal gespeichert, nicht geloggt und durch `al
 
 Watch Next liefert CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Der optionale Suchhandoff aus TMDB-Ergebnissen verwendet nur die von CloudStream bereitgestellte externe Suchschnittstelle; I Launcher baut keine CloudStream-Provider nach.
 
-Siehe:
-
-- [`AGENTS.md`](AGENTS.md) – verbindliche Entwicklungsrichtlinien
-- [`ROADMAP.md`](ROADMAP.md) – Entwicklungsphasen
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) – Architektur
+Siehe [`AGENTS.md`](AGENTS.md), [`ROADMAP.md`](ROADMAP.md) und [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Stack
 
@@ -57,18 +47,7 @@ Kotlin · Jetpack Compose · Compose for TV · AndroidX · Coroutines/Flow · Ro
 
 ## Build-Basis
 
-- Android Gradle Plugin 9.3.1
-- Gradle 9.5.0 (CI)
-- compileSdk 36
-- targetSdk 36
-- minSdk 26
-- Compose BOM 2026.06.00
-- Compose for TV 1.1.0
-- Media3 1.10.1
-- Coil 3.5.0
-- Room 2.8.4
-- Retrofit 3.0.0
-- OkHttp 5.3.0
+Android Gradle Plugin 9.3.1 · Gradle 9.5.0 (CI) · compileSdk 36 · targetSdk 36 · minSdk 26 · Compose BOM 2026.06.00 · Compose for TV 1.1.0 · Media3 1.10.1 · Coil 3.5.0 · Room 2.8.4 · Retrofit 3.0.0 · OkHttp 5.3.0
 
 ## Lizenz
 
