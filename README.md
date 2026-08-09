@@ -17,7 +17,7 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phasen 1 bis 6 sind funktional abgeschlossen und auf dem Zielgerät bestätigt. Phase 7 – interner Live-TV-Player befindet sich in Entwicklung auf `agent/phase-7-live-tv`.**
+**Phasen 1 bis 6 sind funktional abgeschlossen und auf dem Zielgerät bestätigt. Phase 7 – interner Live-TV-Player ist softwareseitig implementiert und wartet auf den realen TCL-/Gigablue-Streamingtest.**
 
 Der bestätigte Unterbau umfasst:
 
@@ -48,13 +48,18 @@ Der aktuelle Phase-7-Unterbau ergänzt:
 - keine Persistierung oder Protokollierung von Stream-URLs, Session-IDs oder Stream-Zugangsdaten
 - MPEG-TS-Wiedergabe über Media3 Progressive Media Source
 - HLS-Wiedergabe, falls OpenWebif einen HLS-Stream zurückliefert
+- temporäre Streaming-Authentifizierung wird aus URL-Userinfo entfernt und nur flüchtig als HTTP-Header an Media3 weitergegeben
 - Start des internen Players direkt aus `Jetzt im TV`
 - Zapping in unveränderter Gigablue-Senderreihenfolge
 - D-Pad ↑/↓ sowie CH+/CH− für Senderwechsel
-- TV-Overlay mit Picon, aktueller/nächster Sendung, Lade- und Fehlerstatus
+- alter Stream wird beim Zappen sofort gestoppt, bevor der Zielstream neu aufgelöst wird
+- TV-Overlay mit Picon, aktueller/nächster Sendung, Bouquet-Position, Lade- und Fehlerstatus
 - exakte Focus-Rückgabe auf die zuvor gestartete `Jetzt im TV`-Karte
+- Unit-Tests für Stream-Parsing, Auth-/Session-Sanitizing und Zapping
 
-Dieser Stand gilt erst nach erfolgreichem CI-/Publisher-Build und anschließendem realen TCL-/Gigablue-Streamingtest als hardwareverifiziert.
+Android CI und der signierte Development-Publisher laufen für diesen Stand erfolgreich durch. Aktueller Phase-7-Testbuild: **`0.1.0-dev.68` (`26000068`)**, `updateCompatible=true`, `tmdbConfigured=true`.
+
+Dieser Stand gilt erst nach dem realen TCL-/Gigablue-Streamingtest als hardwareverifiziert.
 
 ## Datenschutz / Sicherheit
 
