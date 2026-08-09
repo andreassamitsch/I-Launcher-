@@ -5,11 +5,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -27,7 +29,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -35,6 +36,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
+import androidx.tv.material3.Card
+import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
@@ -44,7 +47,9 @@ import com.andreassamitsch.ilauncher.model.AppContentChannel
 import com.andreassamitsch.ilauncher.model.AppContentProgram
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
+import com.andreassamitsch.ilauncher.model.LiveTvProgram
 import com.andreassamitsch.ilauncher.model.MediaItem
+import com.andreassamitsch.ilauncher.model.MediaSource
 import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.ui.components.AppCard
 import com.andreassamitsch.ilauncher.ui.components.LiveTvCard
@@ -65,9 +70,11 @@ fun HomeScreen(
     onOpenApp: (InstalledApp) -> Unit,
     onOpenWatchNext: (EnrichedWatchNextItem) -> Unit,
     onOpenWatchNextDetails: (EnrichedWatchNextItem) -> Unit,
+    onOpenMediaDetails: (MediaItem, String?) -> Unit,
     onOpenPreviewProgram: (AppContentChannel, AppContentProgram) -> Unit,
     onOpenLiveTv: () -> Unit,
     onPlayLiveTvChannel: (LiveTvChannel) -> Unit,
+    onNavigationVisibilityChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     watchNextListState: LazyListState = rememberLazyListState(),
     liveTvListState: LazyListState = rememberLazyListState(),
@@ -79,7 +86,7 @@ fun HomeScreen(
 ) {
     val watchNextRestoreFocusRequester = remember { FocusRequester() }
     val liveTvRestoreFocusRequester = remember { FocusRequester() }
-    val homeScrollState = rememberScrollState()
+    val contentScrollState = rememberScrollState()
     val appLabels = remember(apps) { apps.associate { it.packageName to it.label } }
     val visiblePreviewChannels = remember(previewChannels) {
         previewChannels.filter { it.programs.isNotEmpty() }
@@ -94,7 +101,7 @@ fun HomeScreen(
             ?: apps.firstOrNull()?.let(::appHero)
             ?: HomeHeroContent(
                 key = "launcher",
-                eyebrow = "I Launcher",
+                eyebrow = "Home",
                 title = "Deine Inhalte. Deine Apps. Keine Werbung.",
                 description = "Content zuerst – schnell, ruhig und für die Fernbedienung gebaut.",
             )
@@ -107,18 +114,20 @@ fun HomeScreen(
         }
     }
 
+    LaunchedEffect(contentScrollState.value) {
+        onNavigationVisibilityChange(contentScrollState.value == 0)
+    }
+
     LaunchedEffect(
         watchNextFocusRestoreSourceId,
         watchNextFocusRestoreGeneration,
     ) {
         val sourceId = watchNextFocusRestoreSourceId ?: return@LaunchedEffect
         if (watchNextFocusRestoreGeneration <= 0) return@LaunchedEffect
-
         val targetIndex = watchNextItems.indexOfFirst { item ->
             item.media.source.sourceId == sourceId
         }
         if (targetIndex < 0) return@LaunchedEffect
-
         watchNextListState.scrollToItem(targetIndex)
         withFrameNanos { }
         watchNextRestoreFocusRequester.requestFocus()
@@ -130,74 +139,75 @@ fun HomeScreen(
     ) {
         val serviceReference = liveTvFocusRestoreServiceReference ?: return@LaunchedEffect
         if (liveTvFocusRestoreGeneration <= 0) return@LaunchedEffect
-
         val targetIndex = liveTvState.channels.indexOfFirst { channel ->
             channel.serviceReference == serviceReference
         }
         if (targetIndex < 0) return@LaunchedEffect
-
         liveTvListState.scrollToItem(targetIndex)
         withFrameNanos { }
         liveTvRestoreFocusRequester.requestFocus()
     }
 
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(homeScrollState),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        HomeHero(hero)
+        HomeHero(
+            content = hero,
+            onOpenMediaDetails = onOpenMediaDetails,
+            onOpenApp = onOpenApp,
+        )
 
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                text = "Weiterschauen",
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            if (watchNextItems.isNotEmpty()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(contentScrollState),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
-                    text = "OK: Fortsetzen · INFO oder lange OK: Details",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = "Weiterschauen",
+                    style = MaterialTheme.typography.headlineSmall,
                 )
-            }
-        }
-
-        when {
-            !hasTvListingsPermission -> {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (watchNextItems.isNotEmpty()) {
                     Text(
-                        text = "TV-Inhalte-Berechtigung fehlt. Watch Next und Preview Channels anderer Apps sind dadurch nicht verfügbar.",
+                        text = "OK: Fortsetzen · INFO/lange OK: Details",
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium,
                     )
-                    Button(onClick = onRequestTvListingsPermission) {
-                        Text("TV-Inhalte freigeben")
-                    }
                 }
             }
 
-            watchNextError != null -> {
-                Text(
+            when {
+                !hasTvListingsPermission -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "TV-Inhalte-Berechtigung fehlt. Watch Next und Preview Channels anderer Apps sind dadurch nicht verfügbar.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Button(onClick = onRequestTvListingsPermission) {
+                            Text("TV-Inhalte freigeben")
+                        }
+                    }
+                }
+
+                watchNextError != null -> Text(
                     text = watchNextError,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium,
                 )
-            }
 
-            watchNextItems.isEmpty() -> {
-                Text(
+                watchNextItems.isEmpty() -> Text(
                     text = "Android TvProvider liefert aktuell keine Watch-Next-Einträge.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
 
-            else -> {
-                LazyRow(
+                else -> LazyRow(
                     state = watchNextListState,
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     items(
                         items = watchNextItems,
@@ -211,40 +221,32 @@ fun HomeScreen(
                             Modifier
                         }
                         val sourceLabel = item.media.source.packageName?.let(appLabels::get)
-
                         WatchNextCard(
                             item = item.media,
                             onClick = { onOpenWatchNext(item) },
                             onDetails = { onOpenWatchNextDetails(item) },
-                            onFocused = {
-                                hero = mediaHero(item.media, sourceLabel)
-                            },
+                            onFocused = { hero = mediaHero(item.media, sourceLabel) },
                             modifier = cardModifier,
                         )
                     }
                 }
             }
-        }
 
-        if (liveTvState.configured) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = "Jetzt im TV",
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Text(
-                    text = liveTvState.receiverLabel?.let { "Gigablue · $it" } ?: "Gigablue / OpenWebif",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            if (liveTvState.configured) {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("Jetzt im TV", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        text = liveTvState.receiverLabel?.let { "Gigablue · $it" } ?: "Gigablue / OpenWebif",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
 
-            when {
-                liveTvState.channels.isNotEmpty() -> {
-                    LazyRow(
+                when {
+                    liveTvState.channels.isNotEmpty() -> LazyRow(
                         state = liveTvListState,
-                        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         items(
                             items = liveTvState.channels,
@@ -265,190 +267,199 @@ fun HomeScreen(
                             )
                         }
                     }
-                }
 
-                liveTvState.isRefreshing -> {
-                    Text(
+                    liveTvState.isRefreshing -> Text(
                         "Gigablue wird aktualisiert …",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                }
 
-                else -> {
-                    Button(onClick = onOpenLiveTv) {
-                        Text("Live TV öffnen / Verbindung prüfen")
+                    else -> Button(onClick = onOpenLiveTv) {
+                        Text("Live TV in Einstellungen konfigurieren")
                     }
                 }
             }
-        }
 
-        if (hasTvListingsPermission && previewChannelsError != null) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = "App-Kanäle",
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Text(
-                    text = previewChannelsError,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        }
-
-        visiblePreviewChannels.forEach { channel ->
-            key(channel.id) {
-                val channelListState = rememberLazyListState()
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (hasTvListingsPermission && previewChannelsError != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("App-Kanäle", style = MaterialTheme.typography.headlineSmall)
                     Text(
-                        text = channel.title,
-                        style = MaterialTheme.typography.headlineSmall,
+                        text = previewChannelsError,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
                     )
-                    val sourceLabel = channel.packageName?.let(appLabels::get)
-                    if (!sourceLabel.isNullOrBlank() && sourceLabel != channel.title) {
-                        Text(
-                            text = sourceLabel,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                }
+            }
+
+            visiblePreviewChannels.forEach { channel ->
+                key(channel.id) {
+                    val channelListState = rememberLazyListState()
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(channel.title, style = MaterialTheme.typography.headlineSmall)
+                        val sourceLabel = channel.packageName?.let(appLabels::get)
+                        if (!sourceLabel.isNullOrBlank() && sourceLabel != channel.title) {
+                            Text(
+                                text = sourceLabel,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    LazyRow(
+                        state = channelListState,
+                        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        items(
+                            items = channel.programs,
+                            key = { it.media.id },
+                        ) { program ->
+                            val sourceLabel = channel.packageName?.let(appLabels::get) ?: channel.title
+                            WatchNextCard(
+                                item = program.media,
+                                onClick = { onOpenPreviewProgram(channel, program) },
+                                onFocused = {
+                                    hero = mediaHero(
+                                        item = program.media,
+                                        sourceLabel = sourceLabel,
+                                    )
+                                },
+                            )
+                        }
                     }
                 }
+            }
 
+            Text("Apps", style = MaterialTheme.typography.headlineSmall)
+            if (apps.isEmpty()) {
+                Text("Installierte Apps werden geladen …")
+            } else {
                 LazyRow(
-                    state = channelListState,
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    state = appsListState,
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     items(
-                        items = channel.programs,
-                        key = { it.media.id },
-                    ) { program ->
-                        WatchNextCard(
-                            item = program.media,
-                            onClick = { onOpenPreviewProgram(channel, program) },
-                            onFocused = {
-                                hero = mediaHero(
-                                    item = program.media,
-                                    sourceLabel = channel.packageName?.let(appLabels::get) ?: channel.title,
-                                )
-                            },
+                        items = apps.take(12),
+                        key = { it.packageName },
+                    ) { app ->
+                        AppCard(
+                            app = app,
+                            onClick = { onOpenApp(app) },
+                            onFocused = { hero = appHero(app) },
                         )
                     }
                 }
             }
-        }
-
-        Text(
-            text = "Apps",
-            style = MaterialTheme.typography.headlineSmall,
-        )
-
-        if (apps.isEmpty()) {
-            Text("Installierte Apps werden geladen …")
-        } else {
-            LazyRow(
-                state = appsListState,
-                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
-            ) {
-                items(
-                    items = apps.take(12),
-                    key = { it.packageName },
-                ) { app ->
-                    AppCard(
-                        app = app,
-                        onClick = { onOpenApp(app) },
-                        onFocused = { hero = appHero(app) },
-                    )
-                }
-            }
+            Spacer(Modifier.height(12.dp))
         }
     }
 }
 
 @Composable
-private fun HomeHero(content: HomeHeroContent) {
-    Box(
+private fun HomeHero(
+    content: HomeHeroContent,
+    onOpenMediaDetails: (MediaItem, String?) -> Unit,
+    onOpenApp: (InstalledApp) -> Unit,
+) {
+    Card(
+        onClick = {
+            when {
+                content.detailsMedia != null -> onOpenMediaDetails(
+                    content.detailsMedia,
+                    content.sourceLabel,
+                )
+                content.app != null -> onOpenApp(content.app)
+            }
+        },
         modifier = Modifier
             .fillMaxWidth()
-            .height(300.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant),
+            .height(250.dp),
+        scale = CardDefaults.scale(focusedScale = 1.01f),
     ) {
-        content.artworkUri?.takeIf { it.isNotBlank() }?.let { artwork ->
-            AsyncImage(
-                model = artwork,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.background.copy(alpha = 0.98f),
-                            MaterialTheme.colorScheme.background.copy(alpha = 0.78f),
-                            MaterialTheme.colorScheme.background.copy(alpha = 0.18f),
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        ) {
+            content.artworkUri?.takeIf { it.isNotBlank() }?.let { artwork ->
+                AsyncImage(
+                    model = artwork,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.98f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.10f),
+                            ),
                         ),
                     ),
-                ),
-        )
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .fillMaxWidth(0.62f)
-                .padding(horizontal = 32.dp, vertical = 26.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            content.logoUri?.takeIf { it.isNotBlank() }?.let { logo ->
-                AsyncImage(
-                    model = logo,
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(width = 210.dp, height = 68.dp),
-                )
-            }
-
-            content.eyebrow?.takeIf { it.isNotBlank() }?.let { eyebrow ->
-                Text(
-                    text = eyebrow,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            Text(
-                text = content.title,
-                style = MaterialTheme.typography.displaySmall,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
             )
 
-            content.metadata?.takeIf { it.isNotBlank() }?.let { metadata ->
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .fillMaxWidth(0.64f)
+                    .padding(horizontal = 30.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                content.logoUri?.takeIf { it.isNotBlank() }?.let { logo ->
+                    AsyncImage(
+                        model = logo,
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(width = 190.dp, height = 58.dp),
+                    )
+                }
+                content.eyebrow?.takeIf { it.isNotBlank() }?.let { eyebrow ->
+                    Text(
+                        text = eyebrow,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Text(
-                    text = metadata,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    text = content.title,
+                    style = MaterialTheme.typography.displaySmall,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
-
-            content.description?.takeIf { it.isNotBlank() }?.let { description ->
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                content.metadata?.takeIf { it.isNotBlank() }?.let { metadata ->
+                    Text(
+                        text = metadata,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                content.description?.takeIf { it.isNotBlank() }?.let { description ->
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (content.detailsMedia != null) {
+                    Text(
+                        text = "OK: Details",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
         }
     }
@@ -462,6 +473,9 @@ private data class HomeHeroContent(
     val description: String? = null,
     val artworkUri: String? = null,
     val logoUri: String? = null,
+    val detailsMedia: MediaItem? = null,
+    val sourceLabel: String? = null,
+    val app: InstalledApp? = null,
 )
 
 private fun mediaHero(item: MediaItem, sourceLabel: String?): HomeHeroContent {
@@ -494,6 +508,8 @@ private fun mediaHero(item: MediaItem, sourceLabel: String?): HomeHeroContent {
             ?: item.sourceArtworkUri
             ?: item.posterUri,
         logoUri = item.logoUri,
+        detailsMedia = item,
+        sourceLabel = sourceLabel,
     )
 }
 
@@ -521,14 +537,39 @@ private fun liveTvHero(channel: LiveTvChannel): HomeHeroContent {
         description = description,
         artworkUri = now?.preferredArtworkUri,
         logoUri = channel.piconUri,
+        detailsMedia = now?.let { liveProgramMedia(channel, it) },
+        sourceLabel = channel.name,
     )
 }
+
+private fun liveProgramMedia(channel: LiveTvChannel, program: LiveTvProgram): MediaItem = MediaItem(
+    id = "live:${channel.serviceReference}:${program.startUtcMillis}",
+    type = program.tmdbType ?: MediaType.Unknown,
+    title = program.title,
+    subtitle = program.subtitle,
+    overview = program.longDescription ?: program.shortDescription,
+    releaseYear = program.releaseYear,
+    tmdbId = program.tmdbId,
+    tmdbEpisodeId = program.tmdbEpisodeId,
+    seasonNumber = program.seasonNumber,
+    episodeNumber = program.episodeNumber,
+    posterUri = program.posterUri,
+    backdropUri = program.backdropUri,
+    episodeStillUri = program.episodeStillUri,
+    sourceArtworkUri = program.imageUri,
+    voteAverage = program.voteAverage,
+    source = MediaSource(
+        provider = "openwebif",
+        sourceId = "${channel.serviceReference}:${program.startUtcMillis}",
+    ),
+)
 
 private fun appHero(app: InstalledApp): HomeHeroContent = HomeHeroContent(
     key = "app:${app.packageName}",
     eyebrow = "App",
     title = app.label,
     description = "OK: App öffnen",
+    app = app,
 )
 
 private fun formatHeroTime(utcMillis: Long): String =
