@@ -81,7 +81,7 @@ class PreviewChannelsRepository(context: Context) {
             val rawPreviewChannels = rawChannels.count { it.type == TvContract.Channels.TYPE_PREVIEW }
             val rawProgramCount = rawChannels
                 .asSequence()
-                .filter { it.type == TvContract.Channels.TYPE_PREVIEW && it.browsable != 0 }
+                .filter { it.type == TvContract.Channels.TYPE_PREVIEW && it.browsable == 1 }
                 .sumOf { it.programs.size }
 
             Log.d(
@@ -158,7 +158,7 @@ class PreviewChannelsRepository(context: Context) {
                 type = type,
                 programs = if (
                     type == TvContract.Channels.TYPE_PREVIEW &&
-                    browsable != 0
+                    browsable == 1
                 ) {
                     loadPrograms(channelId)
                 } else {
