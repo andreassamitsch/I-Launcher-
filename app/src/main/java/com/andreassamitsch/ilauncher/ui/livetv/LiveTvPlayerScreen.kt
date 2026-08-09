@@ -4,18 +4,22 @@ import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +40,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
@@ -50,6 +55,8 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Button
+import androidx.tv.material3.Card
+import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
@@ -100,6 +107,7 @@ internal fun LiveTvPlayerScreen(
     }
     val epgChannelListState = rememberLazyListState()
     val epgProgramListState = rememberLazyListState()
+    val zapListState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
     val rootFocusRequester = remember { FocusRequester() }
     val overlayFocusRequester = remember { FocusRequester() }
     val epgBackFocusRequester = remember { FocusRequester() }
@@ -118,6 +126,12 @@ internal fun LiveTvPlayerScreen(
         if (channels.isEmpty()) return
         overlayVisible = true
         currentIndex = LiveTvZapping.nextIndex(currentIndex, channels.size, delta)
+    }
+
+    fun selectChannel(index: Int) {
+        if (index !in channels.indices) return
+        overlayVisible = true
+        currentIndex = index
     }
 
     fun openEpg() {
@@ -199,6 +213,12 @@ internal fun LiveTvPlayerScreen(
         }
     }
 
+    LaunchedEffect(currentIndex, channels.size) {
+        if (channels.isNotEmpty()) {
+            zapListState.animateScrollToItem((currentIndex - 2).coerceAtLeast(0))
+        }
+    }
+
     LaunchedEffect(overlayVisible, currentChannel?.serviceReference, loading, errorMessage, showEpg) {
         if (overlayVisible && !loading && errorMessage == null && !showEpg) {
             delay(PLAYER_OVERLAY_TIMEOUT_MILLIS)
@@ -206,7 +226,7 @@ internal fun LiveTvPlayerScreen(
         }
     }
 
-    LaunchedEffect(overlayVisible, showEpg) {
+    LaunchedEffect(overlayVisible, showEpg, currentIndex) {
         withFrameNanos { }
         when {
             showEpg -> epgBackFocusRequester.requestFocus()
@@ -245,11 +265,11 @@ internal fun LiveTvPlayerScreen(
                         true
                     }
                     Key.DirectionUp -> {
-                        zap(-1)
+                        zap(+1)
                         true
                     }
                     Key.DirectionDown -> {
-                        zap(+1)
+                        zap(-1)
                         true
                     }
                     else -> false
@@ -275,7 +295,7 @@ internal fun LiveTvPlayerScreen(
                         .align(Alignment.TopStart)
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f))
-                        .padding(horizontal = 36.dp, vertical = 22.dp),
+                        .padding(horizontal = 36.dp, vertical = 18.dp),
                     horizontalArrangement = Arrangement.spacedBy(18.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -284,11 +304,14 @@ internal fun LiveTvPlayerScreen(
                             model = picon,
                             contentDescription = null,
                             contentScale = ContentScale.Fit,
-                            modifier = Modifier.size(width = 110.dp, height = 62.dp),
+                            modifier = Modifier.size(width = 104.dp, height = 56.dp),
                         )
                     }
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(channel.name, style = MaterialTheme.typography.headlineSmall)
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(
+                            text = "${currentIndex + 1} · ${channel.name}",
+                            style = MaterialTheme.typography.headlineSmall,
+                        )
                         channel.now?.let { now ->
                             Text(now.title, style = MaterialTheme.typography.titleMedium)
                         }
@@ -307,9 +330,9 @@ internal fun LiveTvPlayerScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f))
-                    .padding(horizontal = 36.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.90f))
+                    .padding(horizontal = 30.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 errorMessage?.let { error ->
                     Text(error, color = MaterialTheme.colorScheme.error)
@@ -320,17 +343,36 @@ internal fun LiveTvPlayerScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+
+                Text("Jetzt im TV", style = MaterialTheme.typography.titleMedium)
+                LazyRow(
+                    state = zapListState,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    itemsIndexed(
+                        items = channels,
+                        key = { _, channel -> channel.serviceReference },
+                    ) { index, channel ->
+                        CompactLiveTvCard(
+                            channel = channel,
+                            channelNumber = index + 1,
+                            selected = index == currentIndex,
+                            onClick = { selectChannel(index) },
+                            modifier = if (index == currentIndex) {
+                                Modifier.focusRequester(overlayFocusRequester)
+                            } else {
+                                Modifier
+                            },
+                        )
+                    }
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Button(onClick = onBack) { Text("Zurück") }
-                    Button(onClick = { zap(-1) }) { Text("Sender −") }
-                    Button(
-                        onClick = { zap(+1) },
-                        modifier = Modifier.focusRequester(overlayFocusRequester),
-                    ) { Text("Sender +") }
                     Button(onClick = ::openEpg) { Text("EPG") }
                     currentChannel?.let {
                         Text(
@@ -339,12 +381,6 @@ internal fun LiveTvPlayerScreen(
                         )
                     }
                 }
-                Text(
-                    "OK: Info einblenden · Zurück: Info ausblenden · D-Pad ↑/↓ oder CH+/CH−: Sender wechseln",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(1.dp))
             }
         }
 
@@ -391,6 +427,87 @@ internal fun LiveTvPlayerScreen(
                     channelListState = epgChannelListState,
                     programListState = epgProgramListState,
                     modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactLiveTvCard(
+    channel: LiveTvChannel,
+    channelNumber: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(10.dp)
+    val artwork = channel.now?.preferredArtworkUri
+    Card(
+        onClick = onClick,
+        modifier = modifier
+            .width(190.dp)
+            .then(
+                if (selected) {
+                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape)
+                } else {
+                    Modifier
+                },
+            ),
+        scale = CardDefaults.scale(focusedScale = 1.04f),
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(78.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                when {
+                    !artwork.isNullOrBlank() -> AsyncImage(
+                        model = artwork,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    !channel.piconUri.isNullOrBlank() -> AsyncImage(
+                        model = channel.piconUri,
+                        contentDescription = channel.name,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                    )
+                    else -> Text(channelNumber.toString(), style = MaterialTheme.typography.headlineSmall)
+                }
+                if (!artwork.isNullOrBlank() && !channel.piconUri.isNullOrBlank()) {
+                    AsyncImage(
+                        model = channel.piconUri,
+                        contentDescription = channel.name,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .size(width = 54.dp, height = 28.dp),
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = "$channelNumber · ${channel.name}",
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = channel.now?.title ?: "Keine EPG-Daten",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
