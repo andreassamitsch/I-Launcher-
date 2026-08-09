@@ -78,19 +78,22 @@ class PreviewChannelsRepository(context: Context) {
                 null,
             )?.use(::readChannels).orEmpty()
             val mapped = PreviewChannelsMapper.map(rawChannels)
-            val rawPreviewChannels = rawChannels.count { it.type == TvContract.Channels.TYPE_PREVIEW }
-            val rawProgramCount = rawChannels
-                .asSequence()
-                .filter { it.type == TvContract.Channels.TYPE_PREVIEW }
-                .sumOf { it.programs.size }
+            val rawPreviewChannels = rawChannels.filter { it.type == TvContract.Channels.TYPE_PREVIEW }
+            val rawProgramCount = rawPreviewChannels.sumOf { it.programs.size }
+            val systemBrowsableChannelCount = rawPreviewChannels.count { it.browsable == 1 }
+            val displayableProgramCount = mapped.sumOf { it.programs.size }
+            val usableChannelCount = mapped.count { it.programs.isNotEmpty() }
 
             Log.d(
                 PREVIEW_TAG,
-                "Preview channel query succeeded: $rawPreviewChannels preview channels, $rawProgramCount programs readable across all preview channels, ${mapped.size} browsable channels",
+                "Preview channel query succeeded: ${rawPreviewChannels.size} preview channels, " +
+                    "$systemBrowsableChannelCount system-browsable, $rawProgramCount raw programs, " +
+                    "$usableChannelCount usable channels, $displayableProgramCount displayable programs",
             )
             AppContentChannelsLoadResult(
                 channels = mapped,
-                queriedChannelCount = rawPreviewChannels,
+                queriedChannelCount = rawPreviewChannels.size,
+                systemBrowsableChannelCount = systemBrowsableChannelCount,
                 queriedProgramCount = rawProgramCount,
             )
         } catch (securityException: SecurityException) {
