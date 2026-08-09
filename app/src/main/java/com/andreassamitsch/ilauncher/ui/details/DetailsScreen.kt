@@ -13,15 +13,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
+import com.andreassamitsch.ilauncher.data.handoff.ContentSearchHandoff
 import com.andreassamitsch.ilauncher.model.MediaItem
 
 @Composable
@@ -34,6 +37,18 @@ fun DetailsScreen(
     onTrailerSearch: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val contentSearchHandoff = remember(context) {
+        ContentSearchHandoff(context.applicationContext)
+    }
+    val externalSearchTargets = remember(sourceLabel, onPlay, contentSearchHandoff) {
+        if (sourceLabel == "TMDB" && onPlay == null) {
+            contentSearchHandoff.availableTargets()
+        } else {
+            emptyList()
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         item.preferredArtworkUri?.let { artwork ->
             AsyncImage(
@@ -127,6 +142,11 @@ fun DetailsScreen(
 
                     onTrailerSearch != null -> Button(onClick = onTrailerSearch) {
                         Text("Trailer suchen")
+                    }
+                }
+                externalSearchTargets.forEach { target ->
+                    Button(onClick = { contentSearchHandoff.launch(target, item.title) }) {
+                        Text(target.buttonLabel)
                     }
                 }
                 Button(onClick = onBack) {
