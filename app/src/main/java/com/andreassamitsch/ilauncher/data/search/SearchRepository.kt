@@ -38,11 +38,28 @@ class SearchRepository(
 
         watchNextItems.forEach { enriched ->
             val media = enriched.media
-            scoreMedia(
+            val source = enriched.sourceItem
+            val mediaScore = scoreMedia(
                 query = normalizedQuery,
                 media = media,
                 includeLongMetadata = includeLongMetadata,
-            )?.let { score ->
+            ) ?: 0
+            val sourceIdentityScore = maxOf(
+                scoreText(normalizedQuery, source.displayTitle),
+                scoreText(normalizedQuery, source.episodeTitle),
+                scoreText(normalizedQuery, source.displaySubtitle),
+            )
+            val sourceDescriptionScore = if (includeLongMetadata) {
+                scoreText(normalizedQuery, source.shortDescription)
+                    .takeIf { it > 0 }
+                    ?.minus(220)
+                    ?.coerceAtLeast(0)
+                    ?: 0
+            } else {
+                0
+            }
+            val score = maxOf(mediaScore, sourceIdentityScore, sourceDescriptionScore)
+            if (score > 0) {
                 matches += ScoredSearchItem(
                     score = score,
                     priority = PRIORITY_WATCH_NEXT,
@@ -51,8 +68,8 @@ class SearchRepository(
                         id = "search:watch:${media.source.sourceId}",
                         kind = SearchResultKind.WatchNext,
                         title = media.title,
-                        subtitle = media.subtitle,
-                        artworkUri = media.preferredArtworkUri,
+                        subtitle = media.subtitle ?: source.displaySubtitle,
+                        artworkUri = media.preferredArtworkUri ?: source.artworkUri,
                         sourceLabel = media.source.packageName?.let { appLabels[it] ?: it },
                         media = media,
                         packageName = media.source.packageName,
@@ -62,13 +79,20 @@ class SearchRepository(
         }
 
         previewChannels.forEach { channel ->
+            val channelSourceLabel = channel.packageName?.let { appLabels[it] ?: it }
             channel.programs.forEach { program ->
                 val media = program.media
-                scoreMedia(
+                val mediaScore = scoreMedia(
                     query = normalizedQuery,
                     media = media,
                     includeLongMetadata = includeLongMetadata,
-                )?.let { score ->
+                ) ?: 0
+                val channelScore = maxOf(
+                    scoreText(normalizedQuery, channel.title),
+                    scoreText(normalizedQuery, channelSourceLabel),
+                ).takeIf { it > 0 }?.minus(260)?.coerceAtLeast(0) ?: 0
+                val score = maxOf(mediaScore, channelScore)
+                if (score > 0) {
                     matches += ScoredSearchItem(
                         score = score,
                         priority = PRIORITY_PREVIEW,
@@ -79,7 +103,9 @@ class SearchRepository(
                             title = media.title,
                             subtitle = media.subtitle,
                             artworkUri = media.preferredArtworkUri,
-                            sourceLabel = channel.title,
+                            sourceLabel = listOfNotNull(channel.title, channelSourceLabel)
+                                .distinct()
+                                .joinToString(" · "),
                             media = media,
                             packageName = media.source.packageName,
                             previewChannelId = channel.id,
@@ -107,9 +133,6 @@ class SearchRepository(
                         ).joinToString(" "),
                     )
                 } else {
-                    // Two-character input is intentionally limited to compact identity fields.
-                    // Broad substring searches through every EPG description are both noisy and
-                    // expensive on TV hardware with a large local guide.
                     scoreText(normalizedQuery, channel?.name)
                 }
                 val score = maxOf(titleScore, metadataScore.takeIf { it > 0 }?.minus(220) ?: 0)
