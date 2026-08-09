@@ -21,6 +21,7 @@ internal object OpenWebifMapper {
     ): List<LiveTvChannel> {
         val nowSeconds = nowUtcMillis / 1_000L
         return services.mapNotNull { service ->
+            if (service.pos == 0) return@mapNotNull null
             val reference = service.serviceReference?.trim()?.takeIf { it.isNotBlank() }
                 ?: return@mapNotNull null
             val name = service.serviceName?.trim()?.takeIf { it.isNotBlank() }
