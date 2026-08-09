@@ -147,17 +147,21 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Local-First: vorhandenen EPG-Cache vor Netzwerkrefresh verwenden
 - [x] OpenWebif Now/Next als Primärzeit/Event beibehalten und XMLTV-Beschreibung/Kategorie/Staffel/Episode/Jahr/Bild ergänzen
 - [x] XMLTV als Now/Next-Fallback verwenden, falls OpenWebif für einen gemappten Sender keine EPG-Sendung liefert
+- [x] XMLTV/OpenWebif-Merge gegen schwache zeitliche Überschneidungen absichern, damit keine Metadaten benachbarter Sendungen übernommen werden
 - [x] neue D-Pad-bedienbare `EPG`-Ansicht mit Sender- und Programmliste
+- [x] EPG beim aktuell laufenden Programm positionieren und laufende Sendung mit `JETZT` markieren
+- [x] Senderzuordnung mit XMLTV-ID und Match-Methode in der Live-TV-Diagnose sichtbar machen
 - [x] `Jetzt im TV` um verfügbares XMLTV/TMDB-Programmartwork erweitern; Picon als Senderidentität erhalten
+- [x] Home vertikal scrollbar machen, damit `Weiterschauen` → `Jetzt im TV` → `Apps` per D-Pad erreichbar ist
 - [x] vorhandenen konservativen TMDB-Resolver für plausible Film-/Serienprogramme wiederverwenden
 - [x] aktuelle Programme progressiv, weitere Guide-Einträge bei Auswahl mit TMDB anreichern
-- [x] Unit-Tests für M3U-Parsing, Sender-Mapping, XMLTV-Zeit/Episoden-Parsing und OpenWebif/XMLTV-Merge hinzufügen
-- [ ] signierten Phase-6-Development-Build mit `testDebugUnitTest` und `assembleDebug` erfolgreich veröffentlichen
+- [x] Unit-Tests für M3U-Parsing, Sender-Mapping, XMLTV-Zeit/Episoden-Parsing, OpenWebif/XMLTV-Merge und EPG-Startposition hinzufügen
+- [x] signierten Phase-6-Development-Build mit `testDebugUnitTest` und `assembleDebug` erfolgreich veröffentlichen
 - [ ] reale `riedl-dach.at` M3U/XMLTV-Quelle auf TCL gegen Gigablue-Sender testen
-- [ ] D-Pad-/Focus-Test im vollständigen EPG durchführen
+- [ ] D-Pad-/Focus-Test auf Home sowie im vollständigen EPG durchführen
 - [ ] Offline-/Cache-Test und Update/Migration von Phase-5-Build durchführen
 
-**Phase 6 ist implementiert, aber erst nach grünem CI-/Publisher-Build und dem realen Gigablue/XMLTV-Gerätetest abgeschlossen.**
+**Phase 6 ist vollständig implementiert, automatisiert getestet und als signierter Development-Build veröffentlicht. Zum Abschluss fehlen ausschließlich die realen TCL-/Gigablue-/XMLTV- und Offline-/Focus-Gerätetests.**
 
 ## Phase 7 – Live TV
 
