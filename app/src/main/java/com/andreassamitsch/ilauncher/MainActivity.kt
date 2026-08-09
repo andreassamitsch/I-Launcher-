@@ -6,7 +6,9 @@ import androidx.activity.compose.setContent
 import com.andreassamitsch.ilauncher.data.apps.InstalledAppsRepository
 import com.andreassamitsch.ilauncher.data.epg.EpgRepository
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifRepository
+import com.andreassamitsch.ilauncher.data.search.SearchRepository
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbRepository
+import com.andreassamitsch.ilauncher.data.tmdb.TmdbSearchRepository
 import com.andreassamitsch.ilauncher.data.tv.PreviewChannelsRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextEnrichmentRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextRepository
@@ -22,6 +24,8 @@ class MainActivity : ComponentActivity() {
         val watchNextRepository = WatchNextRepository(applicationContext)
         val previewChannelsRepository = PreviewChannelsRepository(applicationContext)
         val tmdbRepository = TmdbRepository(applicationContext)
+        val tmdbSearchRepository = TmdbSearchRepository(applicationContext)
+        val searchRepository = SearchRepository(tmdbSearchRepository)
         val watchNextEnrichmentRepository = WatchNextEnrichmentRepository(tmdbRepository)
         val openWebifRepository = OpenWebifRepository(applicationContext)
         val epgRepository = EpgRepository(applicationContext, tmdbRepository)
@@ -34,6 +38,7 @@ class MainActivity : ComponentActivity() {
                     watchNextRepository = watchNextRepository,
                     previewChannelsRepository = previewChannelsRepository,
                     watchNextEnrichmentRepository = watchNextEnrichmentRepository,
+                    searchRepository = searchRepository,
                     openWebifRepository = openWebifRepository,
                     epgRepository = epgRepository,
                     updateManager = updateManager,
