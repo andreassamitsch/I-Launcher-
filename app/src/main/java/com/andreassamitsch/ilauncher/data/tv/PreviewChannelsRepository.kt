@@ -81,12 +81,12 @@ class PreviewChannelsRepository(context: Context) {
             val rawPreviewChannels = rawChannels.count { it.type == TvContract.Channels.TYPE_PREVIEW }
             val rawProgramCount = rawChannels
                 .asSequence()
-                .filter { it.type == TvContract.Channels.TYPE_PREVIEW && it.browsable == 1 }
+                .filter { it.type == TvContract.Channels.TYPE_PREVIEW }
                 .sumOf { it.programs.size }
 
             Log.d(
                 PREVIEW_TAG,
-                "Preview channel query succeeded: $rawPreviewChannels preview channels, $rawProgramCount readable programs, ${mapped.size} browsable channels",
+                "Preview channel query succeeded: $rawPreviewChannels preview channels, $rawProgramCount programs readable across all preview channels, ${mapped.size} browsable channels",
             )
             AppContentChannelsLoadResult(
                 channels = mapped,
@@ -156,11 +156,15 @@ class PreviewChannelsRepository(context: Context) {
                 appLinkIntentUri = cursor.string(TvContract.Channels.COLUMN_APP_LINK_INTENT_URI),
                 browsable = browsable,
                 type = type,
-                programs = if (
-                    type == TvContract.Channels.TYPE_PREVIEW &&
-                    browsable == 1
-                ) {
-                    loadPrograms(channelId)
+                programs = if (type == TvContract.Channels.TYPE_PREVIEW) {
+                    runCatching { loadPrograms(channelId) }
+                        .onFailure { throwable ->
+                            Log.d(
+                                PREVIEW_TAG,
+                                "Preview programs unavailable for channel $channelId (${throwable.javaClass.simpleName})",
+                            )
+                        }
+                        .getOrDefault(emptyList())
                 } else {
                     emptyList()
                 },
