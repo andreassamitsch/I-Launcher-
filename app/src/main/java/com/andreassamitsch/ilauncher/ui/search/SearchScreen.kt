@@ -1,5 +1,10 @@
 package com.andreassamitsch.ilauncher.ui.search
 
+import android.app.Activity
+import android.content.Intent
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,8 +38,10 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Button
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
@@ -60,8 +67,24 @@ fun SearchScreen(
     focusRestoreGeneration: Int,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val appsByPackage = remember(apps) { apps.associateBy { it.packageName } }
     val restoreRequester = remember(focusRestoreResultId) { FocusRequester() }
+    var voiceError by remember { mutableStateOf<String?>(null) }
+    val voiceSearchLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                ?.trim()
+            if (!spoken.isNullOrBlank()) {
+                voiceError = null
+                onQueryChange(spoken)
+            }
+        }
+    }
 
     LaunchedEffect(focusRestoreGeneration, focusRestoreResultId) {
         if (focusRestoreGeneration <= 0 || focusRestoreResultId == null) return@LaunchedEffect
@@ -84,17 +107,52 @@ fun SearchScreen(
 
     Column(
         modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text(
             text = "Globale Suche",
             style = MaterialTheme.typography.headlineLarge,
         )
 
-        SearchInput(
-            query = query,
-            onQueryChange = onQueryChange,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SearchInput(
+                query = query,
+                onQueryChange = onQueryChange,
+                modifier = Modifier.weight(1f),
+            )
+            Button(
+                onClick = {
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(
+                            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                        )
+                        putExtra(RecognizerIntent.EXTRA_PROMPT, "Suchen")
+                        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                    }
+                    if (intent.resolveActivity(context.packageManager) != null) {
+                        voiceError = null
+                        voiceSearchLauncher.launch(intent)
+                    } else {
+                        voiceError = "Sprachsuche ist auf diesem Gerät nicht verfügbar."
+                    }
+                },
+            ) {
+                Text("🎙 Sprache")
+            }
+        }
+
+        voiceError?.let { error ->
+            Text(
+                text = error,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
 
         when {
             query.trim().length < 2 -> {
@@ -122,7 +180,7 @@ fun SearchScreen(
                     if (localResults.isNotEmpty()) {
                         item(key = "local-heading") {
                             Text(
-                                text = "Auf diesem TV",
+                                text = "Auf diesem TV · ${localResults.size} Treffer",
                                 style = MaterialTheme.typography.headlineSmall,
                             )
                         }
@@ -183,6 +241,7 @@ fun SearchScreen(
 private fun SearchInput(
     query: String,
     onQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
@@ -195,8 +254,7 @@ private fun SearchInput(
             color = MaterialTheme.colorScheme.onSurface,
         ),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
             .onFocusChanged { focused = it.isFocused }
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
