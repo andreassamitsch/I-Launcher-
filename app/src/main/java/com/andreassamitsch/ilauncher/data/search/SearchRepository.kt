@@ -13,10 +13,10 @@ import java.text.Normalizer
 import java.util.Locale
 
 class SearchRepository(
-    private val tmdbSearchRepository: TmdbSearchRepository,
+    private val tmdbSearchRepository: TmdbSearchRepository? = null,
 ) {
     val isTmdbConfigured: Boolean
-        get() = tmdbSearchRepository.isConfigured
+        get() = tmdbSearchRepository?.isConfigured == true
 
     fun searchLocal(
         query: String,
@@ -149,8 +149,9 @@ class SearchRepository(
     }
 
     suspend fun searchTmdb(query: String): List<SearchItem> {
-        if (!isTmdbConfigured || normalize(query).length < MIN_TMDB_QUERY_LENGTH) return emptyList()
-        return tmdbSearchRepository.search(query)
+        val provider = tmdbSearchRepository ?: return emptyList()
+        if (!provider.isConfigured || normalize(query).length < MIN_TMDB_QUERY_LENGTH) return emptyList()
+        return provider.search(query)
             .take(MAX_TMDB_RESULTS)
             .map { media ->
                 SearchItem(
@@ -166,7 +167,7 @@ class SearchRepository(
     }
 
     suspend fun loadTmdbDetails(item: MediaItem): MediaItem =
-        tmdbSearchRepository.loadDetails(item) ?: item
+        tmdbSearchRepository?.loadDetails(item) ?: item
 
     private fun scoreMedia(query: String, media: MediaItem): Int? {
         val titleScore = maxOf(
