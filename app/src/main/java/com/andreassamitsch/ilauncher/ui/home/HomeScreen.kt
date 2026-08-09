@@ -24,6 +24,7 @@ import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifState
 import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.model.InstalledApp
+import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.ui.components.AppCard
 import com.andreassamitsch.ilauncher.ui.components.LiveTvCard
 import com.andreassamitsch.ilauncher.ui.components.WatchNextCard
@@ -40,6 +41,7 @@ fun HomeScreen(
     onOpenWatchNext: (EnrichedWatchNextItem) -> Unit,
     onOpenWatchNextDetails: (EnrichedWatchNextItem) -> Unit,
     onOpenLiveTv: () -> Unit,
+    onPlayLiveTvChannel: (LiveTvChannel) -> Unit,
     modifier: Modifier = Modifier,
     watchNextListState: LazyListState = rememberLazyListState(),
     liveTvListState: LazyListState = rememberLazyListState(),
@@ -183,7 +185,7 @@ fun HomeScreen(
                         ) { channel ->
                             LiveTvCard(
                                 channel = channel,
-                                onClick = onOpenLiveTv,
+                                onClick = { onPlayLiveTvChannel(channel) },
                             )
                         }
                     }
