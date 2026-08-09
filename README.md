@@ -40,6 +40,22 @@ Der bestätigte Unterbau umfasst:
 
 Phase 5 und Phase 6 wurden gemeinsam auf realer TCL-/Gigablue-X3-Hardware gegen die reale `riedl-dach.at` M3U/XMLTV-Quelle verifiziert. Dazu gehören Receiver-Verbindung, Bouquet-/Senderreihenfolge, Picons, Now/Next, XMLTV-Mapping, vollständiger EPG, TMDB-Artwork, D-Pad/Focus, Update/Migration und Offline-/Cache-Verhalten.
 
+## Aktueller Entwicklungszweig – Suche / Preview Channels / UI-Polish
+
+Der aktuelle gestapelte Entwicklungsstand ergänzt Preview Channels, globale Suche und eine überarbeitete Content-Home-Oberfläche. Diese Bereiche bleiben bis zum abschließenden Gerätetest bewusst in Draft-PRs.
+
+Der UI-Polish-Stand umfasst zusätzlich:
+
+- fest sichtbaren, fokussierbaren Hero-Bereich auf Home; der Inhalt folgt dem fokussierten Content und `OK` öffnet bei Medien die Detailansicht
+- kompaktere Hauptnavigation `Home · Suche · Apps · Einstellungen`, nur mit Rahmenmarkierung für den aktiven Bereich; auf Home kann die Navigation beim Scrollen der Reihen ausblenden
+- Live-TV-/Gigablue-Konfiguration als Unterpunkt der Einstellungen statt eigener Hauptnavigation
+- EPG als TV-Guide direkt im laufenden Live-TV-Player statt eigener Hauptnavigation
+- Live-TV-Infoleisten mit automatischem Ausblenden nach drei Sekunden, `OK` zum Einblenden und Back-First-Hide-Verhalten
+- interne Trailerwiedergabe in einer eigenen Launcher-Activity mit WebView-Fullscreen-Videooberfläche; externe YouTube-Suche bleibt Fallback, wenn keine konkrete TMDB-Video-ID vorliegt
+- lokale Suche berücksichtigt zusätzlich die unveränderten Android-Watch-Next-Quelltitel und Preview-Channel-Namen
+- Sprachsuche über die auf dem TV verfügbare Android-Spracherkennungsaktivität
+- CloudStream-Suchhandoff erkennt Stable-, Prerelease-, Debug- und kombinierte Development-Paketvarianten dynamisch über den `cloudstreamsearch`-Intent
+
 ## Phase 7 – Live TV
 
 Phase 7 ergänzt:
@@ -64,7 +80,7 @@ Android CI und der signierte Development-Publisher laufen für diesen Stand erfo
 
 OpenWebif-Zugangsdaten werden nur lokal gespeichert, nicht geloggt und durch `allowBackup=false` nicht über Android Auto Backup ausgelagert. Externe EPG-Quellen erhalten keine Receiver-Zugangsdaten. Phase 7 behandelt vom Receiver gelieferte Stream-Adressen und temporäre Streaming-Authentifizierung ausschließlich flüchtig im Arbeitsspeicher.
 
-Watch Next liefert CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Eine CloudStream-spezifische Integration bleibt deshalb bewusst außen vor.
+Watch Next liefert CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Eine CloudStream-spezifische Integration bleibt deshalb für das Einlesen von Watch Next bewusst außen vor; der optionale Suchhandoff aus TMDB-Ergebnissen verwendet ausschließlich die von CloudStream bereitgestellte externe Suchschnittstelle.
 
 Das TCL-/Google-TV-Thema rund um Android 13+ `Covered Applications` / `Restricted Settings` bei lokal installierten APKs bleibt als separates Distributionsthema offen und blockiert die Content-Phasen nicht.
 
