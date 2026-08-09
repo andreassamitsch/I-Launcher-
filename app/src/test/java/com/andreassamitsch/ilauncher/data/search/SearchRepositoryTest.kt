@@ -126,10 +126,109 @@ class SearchRepositoryTest {
         assertTrue(results.isEmpty())
     }
 
-    private fun media(title: String, sourceId: String) = MediaItem(
+    @Test
+    fun `two character search does not scan preview overviews`() {
+        val preview = AppContentChannel(
+            id = "channel-1",
+            sourceOrder = 0,
+            packageName = "example.app",
+            title = "Empfohlen",
+            appLinkIntentUri = null,
+            programs = listOf(
+                AppContentProgram(
+                    sourceOrder = 0,
+                    media = media(
+                        title = "Tatort",
+                        sourceId = "preview-1",
+                        overview = "OR steckt nur in einer langen Beschreibung.",
+                    ),
+                ),
+            ),
+        )
+
+        val results = repository.searchLocal(
+            query = "or",
+            apps = emptyList(),
+            watchNextItems = emptyList(),
+            previewChannels = listOf(preview),
+            liveTvChannels = emptyList(),
+            epgState = EpgState(),
+        )
+
+        assertTrue(results.isEmpty())
+    }
+
+    @Test
+    fun `three character search still searches preview overviews`() {
+        val preview = AppContentChannel(
+            id = "channel-1",
+            sourceOrder = 0,
+            packageName = "example.app",
+            title = "Empfohlen",
+            appLinkIntentUri = null,
+            programs = listOf(
+                AppContentProgram(
+                    sourceOrder = 0,
+                    media = media(
+                        title = "Tatort",
+                        sourceId = "preview-1",
+                        overview = "Weltraumreise mit unbekanntem Ziel.",
+                    ),
+                ),
+            ),
+        )
+
+        val results = repository.searchLocal(
+            query = "wel",
+            apps = emptyList(),
+            watchNextItems = emptyList(),
+            previewChannels = listOf(preview),
+            liveTvChannels = emptyList(),
+            epgState = EpgState(),
+        )
+
+        assertEquals(1, results.size)
+        assertEquals(SearchResultKind.PreviewProgram, results.single().kind)
+    }
+
+    @Test
+    fun `deduplicates duplicate EPG programme identities`() {
+        val now = 30_000_000L
+        val channel = LiveTvChannel(serviceReference = "ref", name = "ORF 1")
+        val duplicate = program(
+            title = "Nachrichten",
+            start = now + 60_000L,
+            duration = 1_800_000L,
+        )
+        val epg = EpgState(
+            guideByServiceReference = mapOf(
+                "ref" to listOf(duplicate, duplicate.copy()),
+            ),
+        )
+
+        val results = repository.searchLocal(
+            query = "Nachrichten",
+            apps = emptyList(),
+            watchNextItems = emptyList(),
+            previewChannels = emptyList(),
+            liveTvChannels = listOf(channel),
+            epgState = epg,
+            nowUtcMillis = now,
+        )
+
+        assertEquals(1, results.size)
+        assertEquals(SearchResultKind.EpgProgram, results.single().kind)
+    }
+
+    private fun media(
+        title: String,
+        sourceId: String,
+        overview: String? = null,
+    ) = MediaItem(
         id = sourceId,
         type = MediaType.Movie,
         title = title,
+        overview = overview,
         source = MediaSource(
             provider = "test",
             sourceId = sourceId,
