@@ -1,10 +1,8 @@
 package com.andreassamitsch.ilauncher.data.openwebif
 
-import java.net.URI
-import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
 import okhttp3.Credentials
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 
 /**
@@ -61,8 +59,10 @@ internal data class OpenWebifResolvedStream(
     val requestHeaders: Map<String, String> = emptyMap(),
 ) {
     val isHls: Boolean
-        get() = runCatching { URI(url).path.orEmpty().lowercase().endsWith(".m3u8") }
-            .getOrDefault(false)
+        get() = url.toHttpUrlOrNull()
+            ?.encodedPath
+            ?.lowercase()
+            ?.endsWith(".m3u8") == true
 }
 
 internal object OpenWebifStreamPlaylist {
@@ -72,40 +72,23 @@ internal object OpenWebifStreamPlaylist {
             .firstOrNull { it.isNotBlank() && !it.startsWith('#') }
             ?: return null
 
-        val uri = runCatching { URI(rawUrl) }.getOrNull() ?: return null
-        if (uri.scheme?.lowercase() !in setOf("http", "https") || uri.host.isNullOrBlank()) {
-            return null
-        }
-
+        val parsed = rawUrl.toHttpUrlOrNull() ?: return null
         val headers = linkedMapOf<String, String>()
-        uri.rawUserInfo?.takeIf(String::isNotBlank)?.let { rawUserInfo ->
-            val separator = rawUserInfo.indexOf(':')
-            if (separator > 0) {
-                val user = decode(rawUserInfo.substring(0, separator))
-                val password = decode(rawUserInfo.substring(separator + 1))
-                headers["Authorization"] = Credentials.basic(user, password)
-            }
+        if (parsed.username.isNotEmpty()) {
+            headers["Authorization"] = Credentials.basic(parsed.username, parsed.password)
         }
 
-        val sanitized = URI(
-            uri.scheme,
-            null,
-            uri.host,
-            uri.port,
-            uri.rawPath,
-            uri.rawQuery,
-            uri.rawFragment,
-        ).toASCIIString()
+        val sanitized = parsed.newBuilder()
+            .username("")
+            .password("")
+            .build()
+            .toString()
 
         return OpenWebifResolvedStream(
             url = sanitized,
             requestHeaders = headers,
         )
     }
-
-    private fun decode(value: String): String = runCatching {
-        URLDecoder.decode(value, StandardCharsets.UTF_8.name())
-    }.getOrDefault(value)
 }
 
 internal open class OpenWebifStreamException(message: String) : Exception(message)
