@@ -10,7 +10,7 @@ internal object YouTubeEmbedPlayer {
 
         return """
             <!doctype html>
-            <html>
+            <html lang="de">
               <head>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
                 <meta name="referrer" content="strict-origin-when-cross-origin">
@@ -29,7 +29,7 @@ internal object YouTubeEmbedPlayer {
               <body>
                 <iframe
                   id="player"
-                  src="https://www.youtube.com/embed/$videoId?autoplay=1&controls=1&fs=0&playsinline=1&rel=0"
+                  src="https://www.youtube.com/embed/$videoId?autoplay=1&controls=1&fs=0&playsinline=1&rel=0&hl=de&cc_lang_pref=de"
                   title="YouTube trailer"
                   allow="autoplay; encrypted-media; picture-in-picture"
                   allowfullscreen>
