@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -29,13 +30,18 @@ import java.util.Date
 fun LiveTvCard(
     channel: LiveTvChannel,
     onClick: () -> Unit,
+    onFocused: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val artwork = channel.now?.preferredArtworkUri
 
     Card(
         onClick = onClick,
-        modifier = modifier.width(300.dp),
+        modifier = modifier
+            .width(300.dp)
+            .onFocusChanged { focusState ->
+                if (focusState.isFocused) onFocused?.invoke()
+            },
         scale = CardDefaults.scale(focusedScale = 1.05f),
     ) {
         Column {
