@@ -41,12 +41,15 @@ internal data class PreviewProgramRawRow(
 
 internal object PreviewChannelsMapper {
     fun map(rows: List<PreviewChannelRawRow>): List<AppContentChannel> = rows.mapNotNull { channel ->
-        if (channel.type != TvContract.Channels.TYPE_PREVIEW || channel.browsable == 0) {
+        if (
+            channel.type != TvContract.Channels.TYPE_PREVIEW ||
+            channel.browsable != 1
+        ) {
             return@mapNotNull null
         }
 
         val programs = channel.programs.mapNotNull { program ->
-            if (program.browsable == 0 || program.searchable == 0) {
+            if (program.browsable != 1 || program.searchable != 1) {
                 null
             } else {
                 AppContentProgram(
