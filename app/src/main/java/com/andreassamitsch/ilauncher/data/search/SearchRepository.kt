@@ -29,6 +29,7 @@ class SearchRepository(
     ): List<SearchItem> {
         val normalizedQuery = normalize(query)
         if (normalizedQuery.length < MIN_LOCAL_QUERY_LENGTH) return emptyList()
+        val includeLongMetadata = normalizedQuery.length >= MIN_METADATA_QUERY_LENGTH
 
         val appLabels = apps.associate { it.packageName to it.label }
         val channelsByRef = liveTvChannels.associateBy { it.serviceReference }
@@ -37,7 +38,11 @@ class SearchRepository(
 
         watchNextItems.forEach { enriched ->
             val media = enriched.media
-            scoreMedia(normalizedQuery, media)?.let { score ->
+            scoreMedia(
+                query = normalizedQuery,
+                media = media,
+                includeLongMetadata = includeLongMetadata,
+            )?.let { score ->
                 matches += ScoredSearchItem(
                     score = score,
                     priority = PRIORITY_WATCH_NEXT,
@@ -59,7 +64,11 @@ class SearchRepository(
         previewChannels.forEach { channel ->
             channel.programs.forEach { program ->
                 val media = program.media
-                scoreMedia(normalizedQuery, media)?.let { score ->
+                scoreMedia(
+                    query = normalizedQuery,
+                    media = media,
+                    includeLongMetadata = includeLongMetadata,
+                )?.let { score ->
                     matches += ScoredSearchItem(
                         score = score,
                         priority = PRIORITY_PREVIEW,
@@ -86,16 +95,23 @@ class SearchRepository(
             programs.forEach programLoop@{ program ->
                 if (program.endUtcMillis < nowUtcMillis) return@programLoop
                 val titleScore = scoreText(normalizedQuery, program.title)
-                val metadataScore = scoreText(
-                    normalizedQuery,
-                    listOfNotNull(
-                        program.subtitle,
-                        program.shortDescription,
-                        program.longDescription,
-                        program.categories?.joinToString(" "),
-                        channel?.name,
-                    ).joinToString(" "),
-                )
+                val metadataScore = if (includeLongMetadata) {
+                    scoreText(
+                        normalizedQuery,
+                        listOfNotNull(
+                            program.subtitle,
+                            program.shortDescription,
+                            program.longDescription,
+                            program.categories?.joinToString(" "),
+                            channel?.name,
+                        ).joinToString(" "),
+                    )
+                } else {
+                    // Two-character input is intentionally limited to compact identity fields.
+                    // Broad substring searches through every EPG description are both noisy and
+                    // expensive on TV hardware with a large local guide.
+                    scoreText(normalizedQuery, channel?.name)
+                }
                 val score = maxOf(titleScore, metadataScore.takeIf { it > 0 }?.minus(220) ?: 0)
                 if (score <= 0) return@programLoop
 
@@ -118,6 +134,7 @@ class SearchRepository(
         }
         matches += epgMatches
             .sortedWith(scoredComparator)
+            .distinctBy { it.item.id }
             .take(MAX_EPG_RESULTS)
 
         apps.forEach { app ->
@@ -144,6 +161,7 @@ class SearchRepository(
 
         return matches
             .sortedWith(scoredComparator)
+            .distinctBy { it.item.id }
             .map(ScoredSearchItem::item)
             .take(MAX_LOCAL_RESULTS)
     }
@@ -169,16 +187,24 @@ class SearchRepository(
     suspend fun loadTmdbDetails(item: MediaItem): MediaItem =
         tmdbSearchRepository?.loadDetails(item) ?: item
 
-    private fun scoreMedia(query: String, media: MediaItem): Int? {
+    private fun scoreMedia(
+        query: String,
+        media: MediaItem,
+        includeLongMetadata: Boolean,
+    ): Int? {
         val titleScore = maxOf(
             scoreText(query, media.title),
             scoreText(query, media.originalTitle),
             scoreText(query, media.episodeTitle),
         )
-        val metadataScore = scoreText(
-            query,
-            listOfNotNull(media.subtitle, media.overview).joinToString(" "),
-        )
+        val metadataScore = if (includeLongMetadata) {
+            scoreText(
+                query,
+                listOfNotNull(media.subtitle, media.overview).joinToString(" "),
+            )
+        } else {
+            scoreText(query, media.subtitle)
+        }
         val score = maxOf(titleScore, metadataScore.takeIf { it > 0 }?.minus(220) ?: 0)
         return score.takeIf { it > 0 }
     }
@@ -213,6 +239,7 @@ class SearchRepository(
 
     private companion object {
         const val MIN_LOCAL_QUERY_LENGTH = 2
+        const val MIN_METADATA_QUERY_LENGTH = 3
         const val MIN_TMDB_QUERY_LENGTH = 3
         const val MAX_LOCAL_RESULTS = 60
         const val MAX_EPG_RESULTS = 24
