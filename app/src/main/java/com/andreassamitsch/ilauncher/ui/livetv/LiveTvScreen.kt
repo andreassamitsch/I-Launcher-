@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.andreassamitsch.ilauncher.data.epg.EpgChannelMatcher
 import com.andreassamitsch.ilauncher.data.epg.EpgSourceChannel
 import com.andreassamitsch.ilauncher.data.epg.EpgState
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifState
@@ -37,6 +38,7 @@ fun LiveTvScreen(
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    val mappingByServiceReference = epgState.mappings.associateBy { it.serviceReference }
 
     Column(
         modifier = modifier.verticalScroll(scrollState),
@@ -139,7 +141,7 @@ fun LiveTvScreen(
 
         if (state.channels.isNotEmpty()) {
             Text(
-                "Senderzuordnung: ${epgState.mappedChannelCount} von ${state.channels.size}",
+                "Senderzuordnung: ${epgState.mappedChannelCount} von ${state.channels.size} · M3U-Sender: ${epgState.sourceChannels.size}",
                 style = MaterialTheme.typography.titleMedium,
             )
         }
@@ -192,13 +194,28 @@ fun LiveTvScreen(
         }
 
         if (state.channels.isNotEmpty()) {
-            Text("Sender / EPG Now & Next", style = MaterialTheme.typography.headlineSmall)
+            Text("Sender / EPG Diagnose", style = MaterialTheme.typography.headlineSmall)
+            Text(
+                "Die XMLTV-ID und die Art der Zuordnung helfen beim Gerätetest, ohne Receiver-Adresse oder Zugangsdaten anzuzeigen.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             state.channels.take(30).forEachIndexed { index, channel ->
+                val mapping = mappingByServiceReference[channel.serviceReference]
                 Text(
                     text = buildString {
                         append(index + 1)
                         append(". ")
                         append(channel.name)
+                        if (mapping != null) {
+                            append(" · EPG: ")
+                            append(mapping.xmltvChannelId)
+                            append(" (")
+                            append(mappingMethodLabel(mapping.matchMethod))
+                            append(")")
+                        } else {
+                            append(" · EPG: nicht zugeordnet")
+                        }
                         channel.now?.let { append(" · jetzt: ${it.title}") }
                         channel.next?.let { append(" · danach: ${it.title}") }
                     },
@@ -325,6 +342,15 @@ private fun showMappingDialog(
         }
         .setNegativeButton("Abbrechen", null)
         .show()
+}
+
+private fun mappingMethodLabel(method: String): String = when (method) {
+    EpgChannelMatcher.METHOD_MANUAL -> "manuell"
+    EpgChannelMatcher.METHOD_SERVICE_REFERENCE -> "Service-Reference"
+    EpgChannelMatcher.METHOD_EXACT_NAME -> "Name exakt"
+    EpgChannelMatcher.METHOD_FUZZY_NAME -> "Name sicher"
+    EpgChannelMatcher.METHOD_ALT_XMLTV_ID -> "Alternative ID"
+    else -> method
 }
 
 private fun formatDateTime(utcMillis: Long): String =
