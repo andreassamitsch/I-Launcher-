@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,6 +45,18 @@ fun EpgScreen(
     val selectedChannel = channels.firstOrNull { it.serviceReference == selectedServiceReference }
         ?: channels.firstOrNull()
     val guide = state.guide(selectedChannel?.serviceReference)
+    val nowUtcMillis = System.currentTimeMillis()
+
+    LaunchedEffect(
+        selectedChannel?.serviceReference,
+        guide.firstOrNull()?.startUtcMillis,
+        guide.lastOrNull()?.startUtcMillis,
+    ) {
+        val targetIndex = initialProgramIndex(guide, System.currentTimeMillis())
+        if (targetIndex >= 0) {
+            programListState.scrollToItem(targetIndex)
+        }
+    }
 
     Column(
         modifier = modifier.fillMaxSize(),
@@ -144,6 +157,8 @@ fun EpgScreen(
                             items = guide,
                             key = { "${it.xmltvChannelId}:${it.startUtcMillis}" },
                         ) { program ->
+                            val isCurrent = nowUtcMillis >= program.startUtcMillis &&
+                                nowUtcMillis < program.endUtcMillis
                             Button(
                                 onClick = {
                                     selectedChannel?.let { channel ->
@@ -157,7 +172,14 @@ fun EpgScreen(
                                     verticalArrangement = Arrangement.spacedBy(2.dp),
                                 ) {
                                     Text(
-                                        "${formatTime(program.startUtcMillis)}–${formatTime(program.endUtcMillis)} · ${program.title}",
+                                        buildString {
+                                            if (isCurrent) append("JETZT · ")
+                                            append(formatTime(program.startUtcMillis))
+                                            append("–")
+                                            append(formatTime(program.endUtcMillis))
+                                            append(" · ")
+                                            append(program.title)
+                                        },
                                         style = MaterialTheme.typography.titleMedium,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -179,6 +201,20 @@ fun EpgScreen(
             }
         }
     }
+}
+
+internal fun initialProgramIndex(
+    programmes: List<LiveTvProgram>,
+    nowUtcMillis: Long,
+): Int {
+    if (programmes.isEmpty()) return -1
+    val currentIndex = programmes.indexOfFirst { programme ->
+        nowUtcMillis >= programme.startUtcMillis && nowUtcMillis < programme.endUtcMillis
+    }
+    if (currentIndex >= 0) return currentIndex
+
+    val nextIndex = programmes.indexOfFirst { it.startUtcMillis >= nowUtcMillis }
+    return if (nextIndex >= 0) nextIndex else programmes.lastIndex
 }
 
 @Composable
