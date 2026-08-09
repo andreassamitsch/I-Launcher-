@@ -1,7 +1,7 @@
 package com.andreassamitsch.ilauncher.data.search
 
 import com.andreassamitsch.ilauncher.data.epg.EpgState
-import com.andreassamitsch.ilauncher.data.tmdb.TmdbRepository
+import com.andreassamitsch.ilauncher.data.tmdb.TmdbSearchRepository
 import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.model.AppContentChannel
 import com.andreassamitsch.ilauncher.model.InstalledApp
@@ -13,10 +13,10 @@ import java.text.Normalizer
 import java.util.Locale
 
 class SearchRepository(
-    private val tmdbRepository: TmdbRepository,
+    private val tmdbSearchRepository: TmdbSearchRepository,
 ) {
     val isTmdbConfigured: Boolean
-        get() = tmdbRepository.isConfigured
+        get() = tmdbSearchRepository.isConfigured
 
     fun searchLocal(
         query: String,
@@ -83,8 +83,8 @@ class SearchRepository(
         val epgMatches = mutableListOf<ScoredSearchItem>()
         epgState.guideByServiceReference.forEach { (serviceReference, programs) ->
             val channel = channelsByRef[serviceReference]
-            programs.forEach { program ->
-                if (program.endUtcMillis < nowUtcMillis) return@forEach
+            programs.forEach programLoop@{ program ->
+                if (program.endUtcMillis < nowUtcMillis) return@programLoop
                 val titleScore = scoreText(normalizedQuery, program.title)
                 val metadataScore = scoreText(
                     normalizedQuery,
@@ -97,7 +97,7 @@ class SearchRepository(
                     ).joinToString(" "),
                 )
                 val score = maxOf(titleScore, metadataScore.takeIf { it > 0 }?.minus(220) ?: 0)
-                if (score <= 0) return@forEach
+                if (score <= 0) return@programLoop
 
                 epgMatches += ScoredSearchItem(
                     score = score,
@@ -150,7 +150,7 @@ class SearchRepository(
 
     suspend fun searchTmdb(query: String): List<SearchItem> {
         if (!isTmdbConfigured || normalize(query).length < MIN_TMDB_QUERY_LENGTH) return emptyList()
-        return tmdbRepository.search(query)
+        return tmdbSearchRepository.search(query)
             .take(MAX_TMDB_RESULTS)
             .map { media ->
                 SearchItem(
@@ -166,7 +166,7 @@ class SearchRepository(
     }
 
     suspend fun loadTmdbDetails(item: MediaItem): MediaItem =
-        tmdbRepository.loadSearchDetails(item) ?: item
+        tmdbSearchRepository.loadDetails(item) ?: item
 
     private fun scoreMedia(query: String, media: MediaItem): Int? {
         val titleScore = maxOf(
