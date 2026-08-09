@@ -13,12 +13,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,6 +27,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
@@ -40,6 +43,7 @@ import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.model.SearchResultKind
+import kotlinx.coroutines.delay
 
 @Composable
 fun SearchScreen(
@@ -51,9 +55,32 @@ fun SearchScreen(
     tmdbConfigured: Boolean,
     apps: List<InstalledApp>,
     onOpenResult: (SearchItem) -> Unit,
+    listState: LazyListState,
+    focusRestoreResultId: String?,
+    focusRestoreGeneration: Int,
     modifier: Modifier = Modifier,
 ) {
     val appsByPackage = remember(apps) { apps.associateBy { it.packageName } }
+    val restoreRequester = remember(focusRestoreResultId) { FocusRequester() }
+
+    LaunchedEffect(focusRestoreGeneration, focusRestoreResultId) {
+        if (focusRestoreGeneration <= 0 || focusRestoreResultId == null) return@LaunchedEffect
+        val localIndex = localResults.indexOfFirst { it.id == focusRestoreResultId }
+        val tmdbIndex = tmdbResults.indexOfFirst { it.id == focusRestoreResultId }
+        val lazyIndex = when {
+            localIndex >= 0 -> 1 + localIndex
+            tmdbIndex >= 0 -> {
+                val localBlockSize = if (localResults.isNotEmpty()) 1 + localResults.size else 0
+                localBlockSize + 1 + tmdbIndex
+            }
+            else -> -1
+        }
+        if (lazyIndex >= 0) {
+            listState.scrollToItem(lazyIndex)
+            delay(40)
+            runCatching { restoreRequester.requestFocus() }
+        }
+    }
 
     Column(
         modifier = modifier.fillMaxSize(),
@@ -88,6 +115,7 @@ fun SearchScreen(
 
             else -> {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
@@ -103,6 +131,11 @@ fun SearchScreen(
                                 item = item,
                                 app = item.packageName?.let(appsByPackage::get),
                                 onClick = { onOpenResult(item) },
+                                modifier = if (item.id == focusRestoreResultId) {
+                                    Modifier.focusRequester(restoreRequester)
+                                } else {
+                                    Modifier
+                                },
                             )
                         }
                     }
@@ -128,6 +161,11 @@ fun SearchScreen(
                                 item = item,
                                 app = null,
                                 onClick = { onOpenResult(item) },
+                                modifier = if (item.id == focusRestoreResultId) {
+                                    Modifier.focusRequester(restoreRequester)
+                                } else {
+                                    Modifier
+                                },
                             )
                         }
                     }
@@ -192,10 +230,11 @@ private fun SearchResultCard(
     item: SearchItem,
     app: InstalledApp?,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Card(
         onClick = onClick,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(104.dp),
         scale = CardDefaults.scale(focusedScale = 1.015f),
