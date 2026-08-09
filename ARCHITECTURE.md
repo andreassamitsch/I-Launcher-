@@ -14,7 +14,7 @@
 - unsichere Metadaten-Treffer dürfen Quelldaten nicht überschreiben
 - Trailerauflösung nutzt vorhandene Metadaten vor zusätzlichen Such-APIs
 
-## Aktueller Stand: Phase 4
+## Aktueller Stand: Phase 4 abgeschlossen
 
 Die Gradle-Struktur bleibt vorerst bewusst bei einem `app`-Modul. Die Provider-Grenzen sind paketweise getrennt:
 
@@ -92,24 +92,11 @@ Androids `COLUMN_TYPE` und `COLUMN_RELEASE_DATE` werden als Resolver-Hinweise ü
 
 ## Gemeinsames Medienmodell
 
-`MediaItem` ist die provider-neutrale Darstellung für Filme, Serien und Episoden. Das Modell enthält unter anderem:
+`MediaItem` ist die provider-neutrale Darstellung für Filme, Serien und Episoden. Das Modell enthält unter anderem Medientyp, Titel, Beschreibung, Jahr, Staffel/Episode, TMDB-/Episode-ID, Bilder, Fortschritt, Quellprovider, Playback-Intent, Resolver-Confidence und eine optionale provider-neutrale `TrailerRef`.
 
-- Medientyp
-- Titel/Originaltitel/Untertitel/Beschreibung
-- Jahr, Staffel und Episode
-- TMDB-/Episode-ID und externe IDs
-- Poster, Backdrop, Logo und Episode Still
-- Quellbild als Fallback
-- Fortschritt und Dauer
-- Quellprovider, Quell-ID, Package und Playback-Intent
-- Resolver-Confidence
-- optionale provider-neutrale `TrailerRef`
-
-Eine Trailerreferenz besteht aus Provider und externer ID. Phase 4 verwendet zunächst `TrailerProvider.YouTube`; die UI muss dadurch keine TMDB-Video-DTOs kennen.
+Eine Trailerreferenz besteht aus Provider und externer ID. Phase 4 verwendet `TrailerProvider.YouTube`; die UI kennt keine TMDB-Video-DTOs.
 
 ## Detailnavigation und Focus-Rückkehr
-
-Die Direktstart-Regel für Watch Next bleibt erhalten:
 
 - kurzes `OK` auf einer Watch-Next-Karte startet den vorhandenen Source-/Playback-Intent
 - `KEYCODE_INFO` oder lange `OK` öffnet die provider-neutrale Detailseite
@@ -117,19 +104,15 @@ Die Direktstart-Regel für Watch Next bleibt erhalten:
 - Watch-Next- und App-LazyList-State behalten ihre Scrollposition
 - die stabile `MediaSource.sourceId` dient zur expliziten Focus-Rückgabe nach Details
 
-Dieser Focus-Restore-Pfad ist auf dem TCL mit Phase 3 real verifiziert.
+Dieser Pfad ist auf dem TCL real verifiziert, einschließlich Rückkehr aus externer YouTube-Wiedergabe.
 
 ## TMDB Resolver
 
 Der Resolver verarbeitet lokal und deterministisch Titel, Jahr, Staffel und Episode. Danach werden TMDB-Kandidaten nach Titelähnlichkeit, Typ und Jahr bewertet. Nur Treffer oberhalb der konservativen Confidence-Schwelle werden übernommen. Andernfalls bleiben die Android-Quelldaten unverändert.
 
-Für Episoden wird zuerst die Serie aufgelöst und bei bekannter Staffel/Episode anschließend der TMDB-Episode-Endpoint verwendet.
-
-Ein gespeichertes Source-Key-Mapping wird nur wiederverwendet, wenn normalisierter Titel, Jahr, Staffel und Episode weiterhin mit der aktuellen Quelle übereinstimmen.
+Für Episoden wird zuerst die Serie aufgelöst und bei bekannter Staffel/Episode anschließend der TMDB-Episode-Endpoint verwendet. Ein gespeichertes Source-Key-Mapping wird nur wiederverwendet, wenn normalisierter Titel, Jahr, Staffel und Episode weiterhin mit der aktuellen Quelle übereinstimmen.
 
 ## Trailer-Pipeline
-
-Phase 4 folgt der in `AGENTS.md` vorgegebenen Priorität:
 
 ```text
 TMDB-Match
@@ -145,79 +128,39 @@ MediaItem.trailer
 Details → Trailer
 ```
 
-Auswahlregeln für TMDB-Videos:
+Auswahlregeln: nur YouTube-Videos mit ID; Trailer vor Teaser; offiziell vor inoffiziell; deutsch vor englisch, danach sprachneutral; bei Episoden Episode-Trailer vor Serien-Trailer.
 
-1. nur YouTube-Videos mit verwertbarer ID
-2. `Trailer` vor `Teaser`
-3. offiziell vor inoffiziell
-4. deutsch vor englisch, danach sprachneutral
-5. bei Episoden Episode-Trailer vor Serien-Trailer
-
-Falls TMDB keine verwertbare YouTube-ID liefert, wird **nicht automatisch eine zusätzliche YouTube-API-Suche gestartet**. Die Detailseite bietet stattdessen `Trailer suchen`, das eine gezielte YouTube-Suche über Android `ACTION_VIEW` öffnet. Damit entstehen weder ein zusätzlicher YouTube-API-Key noch Such-Quota oder ein eigener Stream-Extractor.
-
-Die Trailerwiedergabe selbst wird in Phase 4 ebenfalls über Android `ACTION_VIEW` an YouTube bzw. einen geeigneten Handler delegiert. Der Launcher extrahiert keine YouTube-Streams. Ein eigener Media3-Trailerplayer kann später nur ergänzt werden, wenn eine technisch und rechtlich saubere direkte Medienquelle vorhanden ist.
+Falls TMDB keine verwertbare YouTube-ID liefert, wird keine zusätzliche YouTube-Data-API-Suche gestartet. Die Detailseite bietet `Trailer suchen`, das eine gezielte YouTube-Suche über Android `ACTION_VIEW` öffnet. Die Trailerwiedergabe wird ebenfalls an YouTube bzw. einen geeigneten Handler delegiert; der Launcher extrahiert keine YouTube-Streams.
 
 ## TMDB Netzwerk und Secrets
 
-TMDB wird über Retrofit/OkHttp angesprochen. Authentifizierung erfolgt per API Read Access Token im Bearer-Header.
-
-Der Token wird nicht im Repository gespeichert. Unterstützt werden:
-
-- Environment `IL_TMDB_READ_ACCESS_TOKEN`
-- Gradle-Property `tmdbReadAccessToken`
-
-Der signierte Development-Publisher liest `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich aus GitHub Actions Secrets. Das veröffentlichte `update.json` enthält nur den Aktivierungsstatus, niemals den Secret-Wert.
+TMDB wird über Retrofit/OkHttp mit Bearer-Token angesprochen. Der Token wird nicht im Repository gespeichert. Der signierte Development-Publisher liest `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich aus GitHub Actions Secrets.
 
 ## Room Cache
 
-Room speichert getrennt:
+Room speichert Source-Key-Mappings, negative Treffer, Film-/Serienmetadaten, Episodenmetadaten sowie ausgewählte YouTube-Trailer-ID und Lookup-Status. Phase 4 migriert die Datenbank von Version 1 auf 2. Der reale Update-Test `dev.45` → `dev.47` bestätigte die Migration ohne Cache-Verlust.
 
-- Source-Key → TMDB-Mapping inklusive Confidence
-- negative/no-match Mappings
-- Film-/Serienmetadaten
-- Episodenmetadaten
-- ausgewählte YouTube-Trailer-ID und Status, ob TMDB-Videos bereits geprüft wurden
-
-Phase 4 migriert die Datenbank von Version 1 auf 2. Bestehende Phase-3-Zeilen erhalten `videoLookupComplete = false`, damit sie genau einmal für Trailer-Metadaten nachgeladen werden können. Neue oder aktualisierte Datensätze speichern auch einen legitimen „kein Trailer gefunden“-Zustand und verhindern dadurch wiederholte unnötige Videoabfragen.
-
-Aktuelle Cache-Policy:
-
-- Resolver-/Metadaten-Refresh nach 30 Tagen
-- harte Löschung spätestens nach 180 Tagen
-- Netzwerkfehler führen bei vorhandenen Daten zum Cache-Fallback
+Cache-Policy: Resolver-/Metadaten-Refresh nach 30 Tagen, harte Löschung spätestens nach 180 Tagen, Netzwerkfehler nutzen vorhandene Cache-Daten.
 
 ## Bilder
 
-TMDB-Bild-URLs werden aus `/configuration` (`secure_base_url` + unterstützte Größe + Dateipfad) erzeugt und lokal gecacht.
-
-Artwork-Priorität:
-
-- Episode: Episode Still → Backdrop → Poster → Quellbild
-- Film/Serie: Backdrop → Poster → Quellbild
-
-Coil übernimmt das Laden in Compose. Für das TMDB-Attributionslogo ist das Coil-SVG-Modul aktiviert.
+TMDB-Bild-URLs werden aus `/configuration` erzeugt und lokal gecacht. Artwork-Priorität: Episode Still → Backdrop → Poster → Quellbild; Film/Serie: Backdrop → Poster → Quellbild.
 
 ## TMDB Attribution und Diagnose
 
-Der Bereich `Über / Credits` zeigt ein von TMDB bereitgestelltes und unverändertes Logo sowie den vorgeschriebenen Hinweis:
-
-> This product uses the TMDB API but is not endorsed or certified by TMDB.
-
-Diagnoseinformationen bleiben nicht-sensitiv. Tokens und vollständige private URLs werden weder angezeigt noch geloggt.
+Der Bereich `Über / Credits` zeigt das TMDB-Logo und den vorgeschriebenen Hinweis. Tokens und vollständige private URLs werden weder angezeigt noch geloggt.
 
 ## Development-Publishing
 
-Der aktive Phase-4-Branch veröffentlicht signierte Development-Builds über den bestehenden `downloads`-Kanal. Der Publisher verwendet eine branchbezogene GitHub-Actions-Concurrency-Gruppe mit `cancel-in-progress`, damit ältere parallele Builds keinen neueren Development-Stand überschreiben.
-
-Build und Unit-Tests werden vor jeder Veröffentlichung ausgeführt. Trailerstart, YouTube-Fallback, Rückkehrverhalten und Datenbankmigration müssen zusätzlich auf dem realen TCL geprüft werden.
+Signierte Development-Builds laufen über den `downloads`-Kanal. Build und Unit-Tests werden vor jeder Veröffentlichung ausgeführt. Der bestätigte Phase-4-Build ist `0.1.0-dev.47` (`26000047`).
 
 ## Home-Tasten-Fallback
 
-Der Google-TV-/TCL-Home-Fallback basiert auf einem `AccessibilityService` mit `BIND_ACCESSIBILITY_SERVICE` und `canRequestFilterKeyEvents=true`. Das TCL-/Android-13+-Restricted-Settings-Verhalten bei lokal installierten APKs bleibt ein separates Distributionsthema und blockiert die Content-Architektur nicht.
+Der Google-TV-/TCL-Home-Fallback basiert auf einem `AccessibilityService` mit `BIND_ACCESSIBILITY_SERVICE` und `canRequestFilterKeyEvents=true`. Das TCL-/Android-13+-Restricted-Settings-Verhalten bei lokal installierten APKs bleibt ein separates Distributionsthema.
 
-## Gigablue
+## Gigablue / nächste Phase
 
-Direkte OpenWebif-Integration. Keine dreamTV-/TiviMate-Abhängigkeit, sofern OpenWebif die Funktion abdeckt.
+Phase 5 integriert die Gigablue X3 direkt über Enigma2/OpenWebif. Verbindung, optionale HTTP-Authentifizierung, Bouquets, Sender und EPG Now/Next werden hinter einer eigenen Provider-/Repository-Grenze implementiert. Zugangsdaten bleiben lokal und dürfen weder in Logs noch im Repository landen. Die Home-UI erhält daraus eine Reihe `Jetzt im TV`; vollständiger EPG-Guide und interner Live-TV-Player folgen erst in Phase 6/7.
 
 ## Build-Basis
 
