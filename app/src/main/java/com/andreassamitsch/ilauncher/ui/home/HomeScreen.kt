@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,8 +28,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -154,6 +157,7 @@ fun HomeScreen(
             content = hero,
             onOpenMediaDetails = onOpenMediaDetails,
             onOpenApp = onOpenApp,
+            onFocused = { onNavigationVisibilityChange(true) },
         )
 
         Column(
@@ -162,19 +166,10 @@ fun HomeScreen(
                 .verticalScroll(contentScrollState),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    text = "Weiterschauen",
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                if (watchNextItems.isNotEmpty()) {
-                    Text(
-                        text = "OK: Fortsetzen · INFO/lange OK: Details",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            Text(
+                text = "Weiterschauen",
+                style = MaterialTheme.typography.headlineSmall,
+            )
 
             when {
                 !hasTvListingsPermission -> {
@@ -273,7 +268,7 @@ fun HomeScreen(
                     )
 
                     else -> Button(onClick = onOpenLiveTv) {
-                        Text("Live TV in Einstellungen konfigurieren")
+                        Text("Live TV konfigurieren")
                     }
                 }
             }
@@ -360,6 +355,7 @@ private fun HomeHero(
     content: HomeHeroContent,
     onOpenMediaDetails: (MediaItem, String?) -> Unit,
     onOpenApp: (InstalledApp) -> Unit,
+    onFocused: () -> Unit,
 ) {
     Card(
         onClick = {
@@ -373,7 +369,8 @@ private fun HomeHero(
         },
         modifier = Modifier
             .fillMaxWidth()
-            .height(250.dp),
+            .height(250.dp)
+            .onFocusChanged { if (it.isFocused) onFocused() },
         scale = CardDefaults.scale(focusedScale = 1.01f),
     ) {
         Box(
@@ -386,8 +383,24 @@ private fun HomeHero(
                     model = artwork,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .alpha(0.32f),
                 )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxWidth(0.62f)
+                        .fillMaxHeight(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AsyncImage(
+                        model = artwork,
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
 
             Box(
@@ -397,8 +410,9 @@ private fun HomeHero(
                         Brush.horizontalGradient(
                             colors = listOf(
                                 MaterialTheme.colorScheme.background.copy(alpha = 0.98f),
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.10f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.80f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.34f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.04f),
                             ),
                         ),
                     ),
@@ -407,7 +421,7 @@ private fun HomeHero(
             Column(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .fillMaxWidth(0.64f)
+                    .fillMaxWidth(0.60f)
                     .padding(horizontal = 30.dp, vertical = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -449,13 +463,6 @@ private fun HomeHero(
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (content.detailsMedia != null) {
-                    Text(
-                        text = "OK: Details",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
                     )
                 }
             }
@@ -566,7 +573,6 @@ private fun appHero(app: InstalledApp): HomeHeroContent = HomeHeroContent(
     key = "app:${app.packageName}",
     eyebrow = "App",
     title = app.label,
-    description = "OK: App öffnen",
     app = app,
 )
 
