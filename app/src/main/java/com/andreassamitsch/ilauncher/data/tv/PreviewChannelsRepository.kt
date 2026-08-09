@@ -81,12 +81,12 @@ class PreviewChannelsRepository(context: Context) {
             val rawPreviewChannels = rawChannels.count { it.type == TvContract.Channels.TYPE_PREVIEW }
             val rawProgramCount = rawChannels
                 .asSequence()
-                .filter { it.type == TvContract.Channels.TYPE_PREVIEW }
+                .filter { it.type == TvContract.Channels.TYPE_PREVIEW && it.browsable != 0 }
                 .sumOf { it.programs.size }
 
             Log.d(
                 PREVIEW_TAG,
-                "Preview channel query succeeded: $rawPreviewChannels preview channels, $rawProgramCount programs, ${mapped.size} browsable channels",
+                "Preview channel query succeeded: $rawPreviewChannels preview channels, $rawProgramCount readable programs, ${mapped.size} browsable channels",
             )
             AppContentChannelsLoadResult(
                 channels = mapped,
@@ -147,15 +147,19 @@ class PreviewChannelsRepository(context: Context) {
         while (cursor.moveToNext()) {
             val channelId = cursor.long(BaseColumns._ID) ?: continue
             val type = cursor.string(TvContract.Channels.COLUMN_TYPE)
+            val browsable = cursor.int(TvContract.Channels.COLUMN_BROWSABLE)
             rows += PreviewChannelRawRow(
                 id = channelId,
                 sourceOrder = sourceOrder++,
                 packageName = cursor.string(TvContract.BaseTvColumns.COLUMN_PACKAGE_NAME),
                 displayName = cursor.string(TvContract.Channels.COLUMN_DISPLAY_NAME),
                 appLinkIntentUri = cursor.string(TvContract.Channels.COLUMN_APP_LINK_INTENT_URI),
-                browsable = cursor.int(TvContract.Channels.COLUMN_BROWSABLE),
+                browsable = browsable,
                 type = type,
-                programs = if (type == TvContract.Channels.TYPE_PREVIEW) {
+                programs = if (
+                    type == TvContract.Channels.TYPE_PREVIEW &&
+                    browsable != 0
+                ) {
                     loadPrograms(channelId)
                 } else {
                     emptyList()
