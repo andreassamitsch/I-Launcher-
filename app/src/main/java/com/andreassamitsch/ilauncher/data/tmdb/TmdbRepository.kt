@@ -389,7 +389,6 @@ class TmdbRepository(
         tmdbEpisodeId = tmdbEpisodeId,
         seasonNumber = seasonNumber,
         episodeNumber = episodeNumber,
-        tmdbEpisodeId = tmdbEpisodeId,
         title = title,
         overview = overview,
         airYear = airYear,
@@ -425,6 +424,5 @@ class TmdbRepository(
         internal fun yearOf(date: String?): Int? = date
             ?.take(4)
             ?.toIntOrNull()
-            ?: return null
     }
 }
