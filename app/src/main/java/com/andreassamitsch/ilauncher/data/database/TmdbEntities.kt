@@ -1,5 +1,6 @@
 package com.andreassamitsch.ilauncher.data.database
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -40,6 +41,8 @@ data class TmdbMediaEntity(
     val imdbId: String?,
     val tvdbId: Int?,
     val wikidataId: String?,
+    val trailerYoutubeId: String?,
+    @ColumnInfo(defaultValue = "0") val videoLookupComplete: Boolean,
     val updatedAtUtcMillis: Long,
 )
 
@@ -59,5 +62,7 @@ data class TmdbEpisodeEntity(
     val runtimeMinutes: Int?,
     val stillPath: String?,
     val voteAverage: Double?,
+    val trailerYoutubeId: String?,
+    @ColumnInfo(defaultValue = "0") val videoLookupComplete: Boolean,
     val updatedAtUtcMillis: Long,
 )

@@ -16,44 +16,40 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phase 3 – TMDB ist funktional abgeschlossen und auf realer TCL-Hardware bestätigt. Phase 4 – Trailer startet als nächster Entwicklungsabschnitt.**
+**Phase 4 – Trailer ist funktional abgeschlossen und auf realer TCL-Hardware bestätigt. Phase 5 – Gigablue/OpenWebif ist der nächste Entwicklungsabschnitt.**
 
-Der abgeschlossene Phase-3-Unterbau enthält:
+Der bestätigte Unterbau umfasst inzwischen:
 
-- gemeinsames `MediaItem`-/`MediaSource`-Modell
-- Android-Watch-Next-Typ und Release-Datum als Resolver-Hinweise
-- Titel-/Jahr-/Staffel-/Episoden-Parser inklusive `Sx:Ex`-Quelltiteln
-- konservativen TMDB-Resolver mit Confidence-Schwelle
-- Retrofit/OkHttp-Client mit Bearer-Read-Access-Token
-- Room-Cache für Mappings, Medien- und Episodendaten einschließlich negativer Treffer
-- Cache-Identitätsprüfung gegen Titel/Jahr/Staffel/Episode vor Wiederverwendung eines Source-Mappings
-- 30-Tage-Refresh und 180-Tage-Hard-Limit für TMDB-Cache
-- TMDB-Bildkonfiguration für Poster, Backdrops, Logos und Episode Stills
-- Local-First-Anreicherung: Watch Next wird sofort mit Android-Quelldaten angezeigt und anschließend progressiv über TMDB angereichert
-- Verarbeitung aller sichtbaren Watch-Next-Einträge in kleinen Batches ohne feste 12-Einträge-Grenze
-- einmaliger Retry für noch nicht angereicherte Einträge; negative No-Match-Caches verhindern unnötige Wiederholungsanfragen
-- Beibehaltung von Watch-Next-Reihenfolge, Quellenfilter und Quell-Deep-Link
-- Detailseite: normales OK startet weiterhin direkt die Quelle; INFO bzw. lange OK öffnet Details
-- gespeicherte Watch-Next-Scrollposition und explizite Focus-Rückgabe an dieselbe stabile Source-ID
-- TMDB-Diagnose ohne Secrets oder vollständige private URLs
-- TMDB-Attribution im Bereich `Über / Credits`
-- Unit-Tests für Parser, Confidence, Medienmapping und Artwork-Priorität
+- Android-TV-Launcher/Home-App mit D-Pad-Focus
+- Android Watch Next über TvProvider einschließlich CloudStream
+- gemeinsames provider-neutrales `MediaItem`-/`MediaSource`-Modell
+- konservative TMDB-Auflösung mit Room-Cache
+- Film-/Serien-/Episodendaten und Artwork
+- provider-neutrale Detailseite mit Focus-Rückgabe
+- TMDB-Trailerauflösung mit YouTube-ID
+- Episode-Trailer vor Serien-Trailer
+- `Trailer` sowie `Trailer suchen` als Fallback
+- Trailerstart per Android `ACTION_VIEW`
+- Room-Migration von Phase 3 auf Phase 4 ohne Verlust bestehender Cache-Daten
 
-Der TMDB-Token wird **nicht** im Repository abgelegt. Der signierte Development-Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als GitHub-Secret und veröffentlicht keinen aktiven TMDB-Build, wenn das Secret fehlt.
+Der TMDB-Token wird **nicht** im Repository abgelegt. Der signierte Development-Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als GitHub-Secret.
 
 Auf dem TCL verifiziert:
 
 - Launcher-/Home-Funktion und D-Pad-Navigation
-- Android Watch Next über TvProvider einschließlich CloudStream
-- Reihenfolge, Quellenfilter und Deep-Links
-- Direktstart per OK
-- Detailseite per INFO/lange OK
-- Focus-Rückkehr nach Details auf exakt dieselbe Watch-Next-Karte
+- Watch-Next-Reihenfolge, Quellenfilter und Deep-Links
+- Direktstart und Detailseite
+- Focus-Rückkehr nach Details
 - TMDB-Anreicherung für Filme, Serien und Episoden
 - Poster/Backdrops/Logos/Episodenbilder
-- progressives Nachladen über die gesamte sichtbare Watch-Next-Liste
+- progressives Nachladen über die gesamte Watch-Next-Liste
+- Update `dev.45` → `dev.47` einschließlich Room-Migration
+- TMDB-Trailerbutton
+- YouTube-Trailerstart
+- Such-Fallback bei fehlendem TMDB-Trailer
+- Rückkehr aus YouTube ohne Navigation-/Focus-Regression
 
-Aktueller bestätigter Phase-3-Build: **`0.1.0-dev.45` (`26000045`)**, `updateCompatible=true`, `tmdbConfigured=true`.
+Bestätigter Phase-4-Build: **`0.1.0-dev.47` (`26000047`)**, `updateCompatible=true`, `tmdbConfigured=true`.
 
 Watch Next liefert CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Eine CloudStream-spezifische Integration bleibt deshalb bewusst außen vor.
 

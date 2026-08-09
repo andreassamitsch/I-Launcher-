@@ -176,11 +176,30 @@ class TmdbRepository(
         if (now - media.updatedAtUtcMillis > CACHE_MAX_AGE_MILLIS) return null
 
         val imageConfiguration = imageConfigurationStore.loadFresh(now)
+        val needsEpisodeDetails =
+            parsed.typeHint == MediaType.Episode &&
+                parsed.seasonNumber != null &&
+                parsed.episodeNumber != null &&
+                mediaType == MediaType.Series
+        val episodeEntity = if (needsEpisodeDetails) {
+            dao.episode(
+                episodeKey(
+                    seriesTmdbId = tmdbId,
+                    season = parsed.seasonNumber!!,
+                    episode = parsed.episodeNumber!!,
+                ),
+            )
+        } else {
+            null
+        }
+        val videoLookupComplete = media.videoLookupComplete &&
+            (!needsEpisodeDetails || episodeEntity?.videoLookupComplete == true)
+
         return media.toMetadata(
             confidence = mapping.confidence ?: 1f,
-            episode = loadEpisode(tmdbId, parsed, imageConfiguration),
+            episode = episodeEntity?.toMetadata(imageConfiguration),
             imageConfiguration = imageConfiguration,
-        ) to media.updatedAtUtcMillis
+        ) to if (videoLookupComplete) media.updatedAtUtcMillis else 0L
     }
 
     private suspend fun loadEpisode(
@@ -307,6 +326,8 @@ class TmdbRepository(
             imdbId = externalIds?.imdbId,
             tvdbId = externalIds?.tvdbId,
             wikidataId = externalIds?.wikidataId,
+            trailerYoutubeId = TmdbTrailerSelector.preferredYouTubeId(videos?.results.orEmpty()),
+            videoLookupComplete = true,
             updatedAtUtcMillis = now,
         )
     }
@@ -328,6 +349,8 @@ class TmdbRepository(
         runtimeMinutes = runtime,
         stillPath = stillPath,
         voteAverage = voteAverage,
+        trailerYoutubeId = TmdbTrailerSelector.preferredYouTubeId(videos?.results.orEmpty()),
+        videoLookupComplete = true,
         updatedAtUtcMillis = now,
     )
 
@@ -350,6 +373,7 @@ class TmdbRepository(
         imdbId = imdbId,
         tvdbId = tvdbId,
         wikidataId = wikidataId,
+        trailerYoutubeId = trailerYoutubeId,
         episode = episode,
         confidence = confidence,
     )
@@ -366,6 +390,7 @@ class TmdbRepository(
         runtimeMinutes = runtimeMinutes,
         stillUri = imageConfiguration?.url(TmdbImageKind.Still, stillPath),
         voteAverage = voteAverage,
+        trailerYoutubeId = trailerYoutubeId,
     )
 
     private fun languageRank(language: String?): Int = when (language) {

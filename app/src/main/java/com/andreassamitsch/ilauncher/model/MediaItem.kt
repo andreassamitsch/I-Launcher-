@@ -7,6 +7,15 @@ enum class MediaType {
     Unknown,
 }
 
+enum class TrailerProvider {
+    YouTube,
+}
+
+data class TrailerRef(
+    val provider: TrailerProvider,
+    val externalId: String,
+)
+
 data class MediaSource(
     val provider: String,
     val sourceId: String,
@@ -39,6 +48,7 @@ data class MediaItem(
     val imdbId: String? = null,
     val tvdbId: Int? = null,
     val wikidataId: String? = null,
+    val trailer: TrailerRef? = null,
     val source: MediaSource,
     val resolverConfidence: Float? = null,
 ) {
