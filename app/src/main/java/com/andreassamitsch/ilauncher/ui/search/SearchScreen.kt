@@ -205,7 +205,7 @@ private fun SearchInput(
                 color = if (focused) {
                     MaterialTheme.colorScheme.primary
                 } else {
-                    MaterialTheme.colorScheme.outline
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
                 },
                 shape = shape,
             )
