@@ -16,7 +16,7 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phase 4 – Trailer ist abgeschlossen. Phase 5 – Gigablue/OpenWebif ist implementiert und befindet sich im Build-/Gerätetest.**
+**Phase 4 – Trailer ist abgeschlossen. Phase 5 – Gigablue/OpenWebif ist implementiert, erfolgreich gebaut und wartet auf den realen Gigablue-Gerätetest.**
 
 Der bestätigte Unterbau umfasst:
 
@@ -44,9 +44,9 @@ OpenWebif-Zugangsdaten werden nur lokal gespeichert, nicht geloggt und durch `al
 
 Auf dem TCL bereits verifiziert sind Launcher, Watch Next, TMDB, Detailnavigation, Focus-Rückgabe und Trailer einschließlich Update `dev.45` → `dev.47`.
 
-Bestätigter Phase-4-Build: **`0.1.0-dev.47` (`26000047`)**, `updateCompatible=true`, `tmdbConfigured=true`.
+Bestätigter Phase-4-Build: **`0.1.0-dev.47` (`26000047`)**.
 
-Der Phase-5-Build gilt erst nach erfolgreichem CI-Build und anschließendem realen TCL + Gigablue-X3-Test als abgeschlossen.
+Aktueller Phase-5-Testbuild: **`0.1.0-dev.51` (`26000051`)**, `updateCompatible=true`, `tmdbConfigured=true`. Unit-Tests und `assembleDebug` sind im signierten Publisher erfolgreich durchgelaufen. Phase 5 gilt erst nach dem realen TCL + Gigablue-X3-Test als abgeschlossen.
 
 Watch Next liefert CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Eine CloudStream-spezifische Integration bleibt deshalb bewusst außen vor.
 
