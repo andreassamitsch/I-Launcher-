@@ -35,21 +35,24 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Button
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
+import com.andreassamitsch.ilauncher.R
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.model.SearchResultKind
+import java.util.Locale
 import kotlinx.coroutines.delay
 
 @Composable
@@ -71,6 +74,7 @@ fun SearchScreen(
     val appsByPackage = remember(apps) { apps.associateBy { it.packageName } }
     val restoreRequester = remember(focusRestoreResultId) { FocusRequester() }
     var voiceError by remember { mutableStateOf<String?>(null) }
+    var previousQuery by remember { mutableStateOf(query) }
     val voiceSearchLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
@@ -83,6 +87,13 @@ fun SearchScreen(
                 voiceError = null
                 onQueryChange(spoken)
             }
+        }
+    }
+
+    LaunchedEffect(query) {
+        if (query != previousQuery) {
+            previousQuery = query
+            listState.scrollToItem(0)
         }
     }
 
@@ -124,14 +135,14 @@ fun SearchScreen(
                 onQueryChange = onQueryChange,
                 modifier = Modifier.weight(1f),
             )
-            Button(
+            Card(
                 onClick = {
                     val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                         putExtra(
                             RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                             RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
                         )
-                        putExtra(RecognizerIntent.EXTRA_PROMPT, "Suchen")
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
                         putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
                     }
                     if (intent.resolveActivity(context.packageManager) != null) {
@@ -141,8 +152,22 @@ fun SearchScreen(
                         voiceError = "Sprachsuche ist auf diesem Gerät nicht verfügbar."
                     }
                 },
+                modifier = Modifier.size(58.dp),
+                scale = CardDefaults.scale(focusedScale = 1.08f),
             ) {
-                Text("🎙 Sprache")
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.ic_mic),
+                        contentDescription = "Sprachsuche",
+                        modifier = Modifier.size(28.dp),
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
+                    )
+                }
             }
         }
 
@@ -157,7 +182,7 @@ fun SearchScreen(
         when {
             query.trim().length < 2 -> {
                 Text(
-                    text = "Mindestens zwei Zeichen eingeben. Durchsucht werden Apps, Weiterschauen, App-Kanäle und der lokale TV-EPG. Ab drei Zeichen wird zusätzlich TMDB abgefragt.",
+                    text = "Suche nach Filmen, Serien, Apps und TV-Inhalten.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -198,7 +223,7 @@ fun SearchScreen(
                         }
                     }
 
-                    if (tmdbConfigured && query.trim().length >= 3) {
+                    if (tmdbConfigured && query.trim().length >= 3 && (tmdbResults.isNotEmpty() || isTmdbLoading)) {
                         item(key = "tmdb-heading") {
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(
