@@ -47,9 +47,11 @@ import com.andreassamitsch.ilauncher.data.tv.WatchNextSourcePreferences
 import com.andreassamitsch.ilauncher.data.update.UpdateManager
 import com.andreassamitsch.ilauncher.data.update.UpdateState
 import com.andreassamitsch.ilauncher.data.youtube.YouTubeLauncher
+import com.andreassamitsch.ilauncher.model.AppContentChannel
 import com.andreassamitsch.ilauncher.model.AppContentChannelsLoadResult
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.MediaItem
+import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.model.SearchResultKind
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
@@ -226,6 +228,7 @@ fun LauncherApp(
             installedAppsRepository.loadApps()
         }
     }
+    val appLabels = remember(apps) { apps.associate { it.packageName to it.label } }
 
     val enrichedLiveTvByRef = remember(epgState.enrichedChannels) {
         epgState.enrichedChannels.associateBy { it.serviceReference }
@@ -285,6 +288,32 @@ fun LauncherApp(
         }
     }
 
+    val sourceLinkedTmdbResults = remember(
+        tmdbSearchResults,
+        homeWatchNextItems,
+        visiblePreviewChannels,
+        appLabels,
+    ) {
+        tmdbSearchResults.map { result ->
+            linkTmdbResultToLocalSource(
+                result = result,
+                watchNextItems = homeWatchNextItems,
+                previewChannels = visiblePreviewChannels,
+                appLabels = appLabels,
+            )
+        }
+    }
+    val mergedLocalSearchResults = remember(localSearchResults, sourceLinkedTmdbResults) {
+        (localSearchResults + sourceLinkedTmdbResults.filter { it.kind != SearchResultKind.Tmdb })
+            .distinctBy(SearchItem::id)
+    }
+    val pureTmdbSearchResults = remember(sourceLinkedTmdbResults, mergedLocalSearchResults) {
+        val localTmdbKeys = mergedLocalSearchResults.mapNotNull { it.media?.tmdbIdentityKey() }.toSet()
+        sourceLinkedTmdbResults
+            .filter { it.kind == SearchResultKind.Tmdb }
+            .filter { it.media?.tmdbIdentityKey() !in localTmdbKeys }
+    }
+
     LaunchedEffect(displayLiveTvChannels) {
         selectedLiveTvServiceReference?.let { selectedRef ->
             if (displayLiveTvChannels.none { it.serviceReference == selectedRef }) {
@@ -307,14 +336,6 @@ fun LauncherApp(
         ?: selectedHomeDetailsMedia
     val closeDetails: () -> Unit = {
         when {
-            selectedDetailsItem != null -> {
-                selectedDetailsSourceId?.let { sourceId ->
-                    watchNextFocusRestoreSourceId = sourceId
-                    watchNextFocusRestoreGeneration += 1
-                }
-                selectedDetailsSourceId = null
-            }
-
             selectedSearchDetailsResultId != null -> {
                 selectedSearchDetailsResultId?.let { resultId ->
                     searchFocusRestoreResultId = resultId
@@ -322,6 +343,15 @@ fun LauncherApp(
                 }
                 selectedSearchDetailsResultId = null
                 selectedSearchDetailsMedia = null
+                selectedDetailsSourceId = null
+            }
+
+            selectedDetailsItem != null -> {
+                selectedDetailsSourceId?.let { sourceId ->
+                    watchNextFocusRestoreSourceId = sourceId
+                    watchNextFocusRestoreGeneration += 1
+                }
+                selectedDetailsSourceId = null
             }
 
             else -> {
@@ -393,9 +423,15 @@ fun LauncherApp(
 
             SearchResultKind.WatchNext -> {
                 val sourceId = result.media?.source?.sourceId
-                sourceId
+                val item = sourceId
                     ?.let { id -> homeWatchNextItems.firstOrNull { it.media.source.sourceId == id } }
-                    ?.let(openWatchNext)
+                if (item != null) {
+                    selectedHomeDetailsMedia = null
+                    selectedHomeDetailsSourceLabel = null
+                    selectedSearchDetailsMedia = null
+                    selectedSearchDetailsResultId = result.id
+                    selectedDetailsSourceId = item.media.source.sourceId
+                }
             }
 
             SearchResultKind.PreviewProgram -> {
@@ -433,14 +469,6 @@ fun LauncherApp(
                 }
             }
         }
-    }
-    val updateAttentionLabel = when (updateState) {
-        is UpdateState.Available,
-        is UpdateState.ReadyToInstall,
-        -> "Update verfügbar"
-
-        is UpdateState.SigningRequired -> "Update-Setup nötig"
-        else -> null
     }
 
     Surface(
@@ -533,11 +561,6 @@ fun LauncherApp(
                                     Text(item.label)
                                 }
                             }
-                            updateAttentionLabel?.let { label ->
-                                Button(onClick = { section = LauncherSection.Settings }) {
-                                    Text(label)
-                                }
-                            }
                         }
                     }
 
@@ -590,8 +613,8 @@ fun LauncherApp(
                         LauncherSection.Search -> SearchScreen(
                             query = searchQuery,
                             onQueryChange = { searchQuery = it },
-                            localResults = localSearchResults,
-                            tmdbResults = tmdbSearchResults,
+                            localResults = mergedLocalSearchResults,
+                            tmdbResults = pureTmdbSearchResults,
                             isTmdbLoading = isTmdbSearchLoading,
                             tmdbConfigured = searchRepository.isTmdbConfigured,
                             apps = apps,
@@ -610,6 +633,33 @@ fun LauncherApp(
                             modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
+                            Button(
+                                onClick = {
+                                    when (val state = updateState) {
+                                        is UpdateState.Available -> updateManager.startDownload(state.info)
+                                        is UpdateState.ReadyToInstall -> scope.launch {
+                                            if (!updateManager.canRequestPackageInstalls()) {
+                                                updateManager.openUnknownSourcesSettings()
+                                            } else {
+                                                updateManager.installDownloadedUpdate()
+                                            }
+                                        }
+                                        else -> scope.launch { updateManager.checkForUpdates() }
+                                    }
+                                },
+                                enabled = updateState !is UpdateState.Checking &&
+                                    updateState !is UpdateState.Downloading,
+                            ) {
+                                Text(
+                                    when (val state = updateState) {
+                                        is UpdateState.Available -> "Update ${state.info.versionName} herunterladen"
+                                        is UpdateState.ReadyToInstall -> "Update ${state.info.versionName} installieren"
+                                        is UpdateState.Downloading -> "Update wird heruntergeladen …"
+                                        UpdateState.Checking -> "Suche nach Update …"
+                                        else -> "Nach Update suchen"
+                                    },
+                                )
+                            }
                             Button(onClick = { section = LauncherSection.LiveTv }) {
                                 Text("Live TV / Gigablue")
                             }
@@ -689,4 +739,59 @@ fun LauncherApp(
             }
         }
     }
+}
+
+private fun linkTmdbResultToLocalSource(
+    result: SearchItem,
+    watchNextItems: List<EnrichedWatchNextItem>,
+    previewChannels: List<AppContentChannel>,
+    appLabels: Map<String, String>,
+): SearchItem {
+    val media = result.media ?: return result
+    val identityKey = media.tmdbIdentityKey() ?: return result
+
+    watchNextItems.firstOrNull { it.media.tmdbIdentityKey() == identityKey }?.let { item ->
+        val sourceMedia = item.media
+        val packageName = sourceMedia.source.packageName
+        return SearchItem(
+            id = "search:watch:${sourceMedia.source.sourceId}",
+            kind = SearchResultKind.WatchNext,
+            title = sourceMedia.title,
+            subtitle = sourceMedia.subtitle,
+            artworkUri = sourceMedia.preferredArtworkUri ?: result.artworkUri,
+            sourceLabel = packageName?.let { appLabels[it] ?: it },
+            media = sourceMedia,
+            packageName = packageName,
+        )
+    }
+
+    previewChannels.forEach { channel ->
+        channel.programs.firstOrNull { it.media.tmdbIdentityKey() == identityKey }?.let { program ->
+            val packageName = channel.packageName ?: program.media.source.packageName
+            val sourceLabel = packageName?.let { appLabels[it] ?: it }
+            return SearchItem(
+                id = "search:preview:${channel.id}:${program.media.source.sourceId}",
+                kind = SearchResultKind.PreviewProgram,
+                title = program.media.title,
+                subtitle = program.media.subtitle,
+                artworkUri = program.media.preferredArtworkUri ?: result.artworkUri,
+                sourceLabel = listOfNotNull(channel.title, sourceLabel).distinct().joinToString(" · "),
+                media = program.media,
+                packageName = packageName,
+                previewChannelId = channel.id,
+            )
+        }
+    }
+
+    return result
+}
+
+private fun MediaItem.tmdbIdentityKey(): String? {
+    val id = tmdbId ?: return null
+    val typeKey = when (type) {
+        MediaType.Movie -> "movie"
+        MediaType.Series, MediaType.Episode -> "tv"
+        MediaType.Unknown -> return null
+    }
+    return "$typeKey:$id"
 }
