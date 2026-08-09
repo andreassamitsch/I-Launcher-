@@ -67,9 +67,9 @@ import kotlinx.coroutines.withContext
 
 enum class LauncherSection(val label: String) {
     Home("Home"),
+    Search("Suche"),
     LiveTv("Live TV"),
     Epg("EPG"),
-    Search("Suche"),
     Apps("Apps"),
     Settings("Einstellungen"),
 }
@@ -470,13 +470,24 @@ fun LauncherApp(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 56.dp, vertical = 34.dp),
-                    verticalArrangement = Arrangement.spacedBy(30.dp),
+                        .padding(horizontal = 56.dp, vertical = 28.dp),
+                    verticalArrangement = Arrangement.spacedBy(22.dp),
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "I Launcher",
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 12.dp),
+                        )
                         LauncherSection.entries.forEach { item ->
                             Button(onClick = { section = item }) {
-                                Text(item.label)
+                                Text(
+                                    if (section == item) {
+                                        "● ${item.label}"
+                                    } else {
+                                        item.label
+                                    },
+                                )
                             }
                         }
 
@@ -520,6 +531,20 @@ fun LauncherApp(
                             watchNextFocusRestoreGeneration = watchNextFocusRestoreGeneration,
                             liveTvFocusRestoreServiceReference = liveTvFocusRestoreServiceReference,
                             liveTvFocusRestoreGeneration = liveTvFocusRestoreGeneration,
+                        )
+
+                        LauncherSection.Search -> SearchScreen(
+                            query = searchQuery,
+                            onQueryChange = { searchQuery = it },
+                            localResults = localSearchResults,
+                            tmdbResults = tmdbSearchResults,
+                            isTmdbLoading = isTmdbSearchLoading,
+                            tmdbConfigured = searchRepository.isTmdbConfigured,
+                            apps = apps,
+                            onOpenResult = openSearchResult,
+                            listState = searchListState,
+                            focusRestoreResultId = searchFocusRestoreResultId,
+                            focusRestoreGeneration = searchFocusRestoreGeneration,
                         )
 
                         LauncherSection.LiveTv -> LiveTvScreen(
@@ -601,20 +626,6 @@ fun LauncherApp(
                             },
                             channelListState = epgChannelListState,
                             programListState = epgProgramListState,
-                        )
-
-                        LauncherSection.Search -> SearchScreen(
-                            query = searchQuery,
-                            onQueryChange = { searchQuery = it },
-                            localResults = localSearchResults,
-                            tmdbResults = tmdbSearchResults,
-                            isTmdbLoading = isTmdbSearchLoading,
-                            tmdbConfigured = searchRepository.isTmdbConfigured,
-                            apps = apps,
-                            onOpenResult = openSearchResult,
-                            listState = searchListState,
-                            focusRestoreResultId = searchFocusRestoreResultId,
-                            focusRestoreGeneration = searchFocusRestoreGeneration,
                         )
 
                         LauncherSection.Apps -> AppsScreen(
