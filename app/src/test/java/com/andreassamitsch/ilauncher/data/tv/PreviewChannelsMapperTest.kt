@@ -33,7 +33,7 @@ class PreviewChannelsMapperTest {
     }
 
     @Test
-    fun `filters channels and programs Android marks hidden`() {
+    fun `filters channels and programs Android does not explicitly expose`() {
         val mapped = PreviewChannelsMapper.map(
             listOf(
                 channel(
@@ -44,6 +44,8 @@ class PreviewChannelsMapperTest {
                         program(1, 0, "Visible"),
                         program(2, 1, "Not browsable", browsable = 0),
                         program(3, 2, "Not searchable", searchable = 0),
+                        program(4, 3, "Missing browsable", browsable = null),
+                        program(5, 4, "Missing searchable", searchable = null),
                     ),
                 ),
                 channel(
@@ -51,7 +53,14 @@ class PreviewChannelsMapperTest {
                     sourceOrder = 1,
                     name = "Hidden channel",
                     browsable = 0,
-                    programs = listOf(program(4, 0, "Hidden")),
+                    programs = listOf(program(6, 0, "Hidden")),
+                ),
+                channel(
+                    id = 30,
+                    sourceOrder = 2,
+                    name = "Missing visibility",
+                    browsable = null,
+                    programs = listOf(program(7, 0, "Hidden too")),
                 ),
             ),
         )
@@ -99,7 +108,7 @@ class PreviewChannelsMapperTest {
     }
 
     @Test
-    fun `keeps channel with empty program list for diagnostics and settings`() {
+    fun `keeps browsable channel with empty program list for diagnostics and settings`() {
         val mapped = PreviewChannelsMapper.map(
             listOf(channel(id = 10, sourceOrder = 0, name = "Leer", programs = emptyList())),
         )
