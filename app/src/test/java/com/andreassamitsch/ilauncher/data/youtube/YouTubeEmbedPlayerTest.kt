@@ -6,12 +6,14 @@ import org.junit.Test
 
 class YouTubeEmbedPlayerTest {
     @Test
-    fun `builds autoplay embed for valid YouTube video id`() {
+    fun `builds autoplay German embed for valid YouTube video id`() {
         val html = YouTubeEmbedPlayer.html("M7lc1UVf-VE")
 
         assertTrue(html?.contains("https://www.youtube.com/embed/M7lc1UVf-VE") == true)
         assertTrue(html?.contains("autoplay=1") == true)
         assertTrue(html?.contains("controls=1") == true)
+        assertTrue(html?.contains("hl=de") == true)
+        assertTrue(html?.contains("cc_lang_pref=de") == true)
     }
 
     @Test
