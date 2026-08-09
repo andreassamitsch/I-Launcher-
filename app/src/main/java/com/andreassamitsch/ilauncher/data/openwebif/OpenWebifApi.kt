@@ -27,6 +27,7 @@ internal data class OpenWebifServiceDto(
     @SerializedName("servicereference") val serviceReference: String? = null,
     val picon: String? = null,
     val program: Int? = null,
+    val pos: Int? = null,
 )
 
 internal data class OpenWebifEpgResponseDto(
