@@ -1,6 +1,5 @@
 package com.andreassamitsch.ilauncher.ui.livetv
 
-import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
@@ -26,8 +25,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.nativeKeyEvent
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
@@ -58,7 +58,7 @@ import java.net.UnknownHostException
 
 @OptIn(UnstableApi::class)
 @Composable
-fun LiveTvPlayerScreen(
+internal fun LiveTvPlayerScreen(
     channels: List<LiveTvChannel>,
     initialServiceReference: String,
     onResolveStream: suspend (LiveTvChannel) -> OpenWebifResolvedStream,
@@ -109,6 +109,8 @@ fun LiveTvPlayerScreen(
         val channel = currentChannel ?: return@LaunchedEffect
         loading = true
         errorMessage = null
+        player.stop()
+        player.clearMediaItems()
         runCatching {
             val stream = onResolveStream(channel)
             val dataSourceFactory = DefaultHttpDataSource.Factory()
@@ -150,20 +152,20 @@ fun LiveTvPlayerScreen(
             .background(MaterialTheme.colorScheme.background)
             .onPreviewKeyEvent { keyEvent ->
                 if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                when (keyEvent.nativeKeyEvent.keyCode) {
-                    AndroidKeyEvent.KEYCODE_CHANNEL_UP -> {
+                when (keyEvent.key) {
+                    Key.ChannelUp -> {
                         zap(+1)
                         true
                     }
-                    AndroidKeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                    Key.ChannelDown -> {
                         zap(-1)
                         true
                     }
-                    AndroidKeyEvent.KEYCODE_DPAD_UP -> {
+                    Key.DirectionUp -> {
                         zap(-1)
                         true
                     }
-                    AndroidKeyEvent.KEYCODE_DPAD_DOWN -> {
+                    Key.DirectionDown -> {
                         zap(+1)
                         true
                     }
