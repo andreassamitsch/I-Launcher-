@@ -33,13 +33,49 @@ class PreviewChannelsMapperTest {
     }
 
     @Test
-    fun `filters channels and programs Android does not explicitly expose`() {
+    fun `system channel browsable does not hide content from I Launcher`() {
         val mapped = PreviewChannelsMapper.map(
             listOf(
                 channel(
                     id = 10,
                     sourceOrder = 0,
-                    name = "Sichtbar",
+                    name = "System sichtbar",
+                    browsable = 1,
+                    programs = listOf(program(1, 0, "A")),
+                ),
+                channel(
+                    id = 20,
+                    sourceOrder = 1,
+                    name = "System ausgeblendet",
+                    browsable = 0,
+                    programs = listOf(program(2, 0, "B")),
+                ),
+                channel(
+                    id = 30,
+                    sourceOrder = 2,
+                    name = "Systemstatus fehlt",
+                    browsable = null,
+                    programs = listOf(program(3, 0, "C")),
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf("System sichtbar", "System ausgeblendet", "Systemstatus fehlt"),
+            mapped.map { it.title },
+        )
+        assertEquals(listOf("A", "B", "C"), mapped.map { it.programs.single().media.title })
+    }
+
+    @Test
+    fun `filters preview programs Android explicitly hides`() {
+        val mapped = PreviewChannelsMapper.map(
+            listOf(
+                channel(
+                    id = 10,
+                    sourceOrder = 0,
+                    name = "Programme",
+                    browsable = 0,
                     programs = listOf(
                         program(1, 0, "Visible"),
                         program(2, 1, "Not browsable", browsable = 0),
@@ -48,25 +84,27 @@ class PreviewChannelsMapperTest {
                         program(5, 4, "Missing searchable", searchable = null),
                     ),
                 ),
+            ),
+        )
+
+        assertEquals(listOf("Visible"), mapped.single().programs.map { it.media.title })
+    }
+
+    @Test
+    fun `filters non preview channels`() {
+        val mapped = PreviewChannelsMapper.map(
+            listOf(
                 channel(
-                    id = 20,
-                    sourceOrder = 1,
-                    name = "Hidden channel",
-                    browsable = 0,
-                    programs = listOf(program(6, 0, "Hidden")),
-                ),
-                channel(
-                    id = 30,
-                    sourceOrder = 2,
-                    name = "Missing visibility",
-                    browsable = null,
-                    programs = listOf(program(7, 0, "Hidden too")),
+                    id = 10,
+                    sourceOrder = 0,
+                    name = "Kein Preview",
+                    type = TvContract.Channels.TYPE_TUNER,
+                    programs = listOf(program(1, 0, "Hidden")),
                 ),
             ),
         )
 
-        assertEquals(1, mapped.size)
-        assertEquals(listOf("Visible"), mapped.single().programs.map { it.media.title })
+        assertTrue(mapped.isEmpty())
     }
 
     @Test
@@ -108,9 +146,17 @@ class PreviewChannelsMapperTest {
     }
 
     @Test
-    fun `keeps browsable channel with empty program list for diagnostics and settings`() {
+    fun `keeps preview channel with empty program list for diagnostics and settings`() {
         val mapped = PreviewChannelsMapper.map(
-            listOf(channel(id = 10, sourceOrder = 0, name = "Leer", programs = emptyList())),
+            listOf(
+                channel(
+                    id = 10,
+                    sourceOrder = 0,
+                    name = "Leer",
+                    browsable = 0,
+                    programs = emptyList(),
+                ),
+            ),
         )
 
         assertEquals(1, mapped.size)
@@ -122,6 +168,7 @@ class PreviewChannelsMapperTest {
         sourceOrder: Int,
         name: String,
         browsable: Int? = 1,
+        type: String? = TvContract.Channels.TYPE_PREVIEW,
         programs: List<PreviewProgramRawRow>,
     ) = PreviewChannelRawRow(
         id = id,
@@ -130,7 +177,7 @@ class PreviewChannelsMapperTest {
         displayName = name,
         appLinkIntentUri = null,
         browsable = browsable,
-        type = TvContract.Channels.TYPE_PREVIEW,
+        type = type,
         programs = programs,
     )
 
