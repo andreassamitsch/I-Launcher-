@@ -31,7 +31,8 @@
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.ILauncher">
+        android:theme="@style/Theme.ILauncher"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"
