@@ -1,0 +1,349 @@
+#EXTM3U x-tvg-url="https://riedl-dach.at/epg/epg.gz"
+#EXTINF:-1 tvg-id="ORF1.at" tvg-name="ORF 1" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/orf-1-hd.png" group-title="JoynAT",ORF1
+plugin://plugin.video.joyn/?mode=play_video&stream_type=LIVE&video_id=orf1-at
+#EXTINF:-1 tvg-id="ORF2.at" tvg-name="ORF2" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/orf2-hd.png" group-title="JoynAT",ORF2
+plugin://plugin.video.joyn/?mode=play_video&stream_type=LIVE&video_id=orf2-at
+#EXTINF:-1 tvg-id="ATV.de" tvg-name="ATV" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/atv-hd.png" group-title="JoynAT",ATV
+plugin://plugin.video.joyn/?mode=play_video&stream_type=LIVE&video_id=atv
+#EXTINF:-1 tvg-id="ATV2 HD" tvg-name="ATV2" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/atv-2.png" group-title="JoynAT",ATV2
+plugin://plugin.video.joyn/?mode=play_video&stream_type=LIVE&video_id=atv2
+#EXTINF:-1 tvg-id="Puls4.at" tvg-name="PULS4" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/puls-4-hd.png" group-title="JoynAT",Puls4
+plugin://plugin.video.joyn/?mode=play_video&stream_type=LIVE&video_id=puls4-at
+#EXTINF:-1 tvg-id="ServusHD.at" tvg-name="Servus TV" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/servus-tv-%c3%b6sterreich-hd.png" group-title="JoynAT" tvg-id-ALT="ServusTV.at",ServusTV
+plugin://plugin.video.joyn/?mode=play_video&stream_type=LIVE&video_id=servustv-at
+#EXTINF:-1 tvg-id="Pro7.de" tvg-name="ProSieben" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/pro7-hd.png" group-title="#TV2" tvg-id-ALT="ProSiebenGermany.de",ProSieben
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=prosieben-de
+#EXTINF:-1 tvg-id="1:0:1:445C:453:1:C00000:0:0:0:" tvg-name="SAT.1" tvg-logo="http://192.168.1.33/picon/1:0:1:445C:453:1:C00000:0:0:0:.png" group-title="#TV2",SAT.1
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=sat1-de
+#EXTINF:-1 tvg-id="Kabel.de" tvg-name="kabel_eins" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/kabel1-hd.png" group-title="#TV2",Kabel Eins
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=kabeleins-de
+#EXTINF:-1 tvg-id="Sixx.de" tvg-name="sixx" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/sixx-hd.png" group-title="#TV2" tvg-id-ALT="SixxAustria.at",Sixx
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=sixx-de
+#EXTINF:-1 tvg-id="ZDFneo.de" tvg-name="ZDFneo" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/zdf-neo-hd.png" group-title="#TV2",ZDF neo HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=zdfneo-de-hd
+#EXTINF:-1 tvg-id="RTL.de" tvg-name="RTL" tvg-logo="http://192.168.1.33/picon/1:0:1:2EE3:441:1:C00000:0:0:0:.png" group-title="#TV2",RTL
+http://192.168.1.33:8001/1:0:1:2EE3:441:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="RTL2.de" tvg-name="RTL2" tvg-logo="http://192.168.1.33/picon/1:0:1:2EF4:441:1:C00000:0:0:0:.png" group-title="#TV2",RTL2
+http://192.168.1.33:8001/1:0:1:2EF4:441:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="Vox.de" tvg-name="Vox" tvg-logo="http://192.168.1.33/picon/1:0:1:2F1C:441:1:C00000:0:0:0:.png" group-title="#TV2",Vox
+http://192.168.1.33:8001/1:0:1:2F1C:441:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="Nitro.de" tvg-name="Nitro" tvg-logo="http://192.168.1.33/picon/1:0:1:2F1D:441:1:C00000:0:0:0:.png" group-title="#TV2",Nitro
+http://192.168.1.33:8001/1:0:1:2F1D:441:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="WELT.de" tvg-name="WELT" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/welt-hd.png" group-title="#TV2",WELT
+https://w-live2weltcms.akamaized.net/hls/live/2041019/Welt-LivePGM/playlist-1280.m3u8
+#EXTINF:-1 tvg-id="PULS24 HD" tvg-name="PULS24" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/puls-24-hd.png" group-title="JoynAT" tvg-id-ALT="Puls24.at",Puls24
+plugin://plugin.video.joyn/?mode=play_video&stream_type=LIVE&video_id=puls24-at-hd
+#EXTINF:-1 tvg-id="EuronewsDE.nws" tvg-name="euronews (D)" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/euronews-ger.png" group-title="#TV2",Euronews Deutschland HD
+https://rakuten-euronews-5-de.samsung.wurl.com/manifest/playlist.m3u8
+#EXTINF:-1 tvg-id="3sat.de" tvg-name="3sat" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/3sat-hd.png" group-title="#TV2",3sat HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=3sat-de-hd
+#EXTINF:-1 tvg-id="arte.de" tvg-name="ARTE" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/arte-hd.png" group-title="#TV2" radio="" tvg-shift="",Arte HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=arte-de-hd
+#EXTINF:-1 tvg-id="TLC.de" tvg-name="TLC" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/tlc-hd.png" group-title="#TV2",TLC
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=tlc-de
+#EXTINF:-1 tvg-id="Tele5.de" tvg-name="Tele_5" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/tele5-hd.png" group-title="#TV2",Tele 5
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=tele5-de
+#EXTINF:-1 tvg-id="DMax.de" tvg-name="DMAX HD" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/dmax-hd.png" group-title="#TV2",DMAX
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=dmax-de
+#EXTINF:-1 tvg-id="HGTV.de" tvg-name="HOME & GARDEN TV HD" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/hgtv-hd.png" group-title="#TV2",HGTV
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=hgtv-de
+#EXTINF:-1 tvg-id="Sat1Gold.de" tvg-name="SAT.1_Gold" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/sat1-gold-hd.png" group-title="#TV2",SAT.1 Gold
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=sat1gold-de
+#EXTINF:-1 tvg-id="KabelEinsDoku.de" tvg-name="Kabel Eins Doku" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/kabel1-doku-hd.png" group-title="#TV2",Kabel Eins Doku
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=kabeleinsdoku-de
+#EXTINF:-1 tvg-id="ProSiebenMaxx.de" tvg-name="ProSieben_MAXX" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/pro7-maxx-austria-hd.png" group-title="#TV2",ProSieben MAXX
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=prosiebenmaxx-de
+#EXTINF:-1 tvg-id="One.de" tvg-name="ONE" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/one-hd.png" group-title="#TV2",ONE HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=one-de-hd
+#EXTINF:-1 tvg-id="ZDFinfo.de" tvg-name="ZDFinfo" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/zdf-info-hd.png" group-title="#TV2",ZDF info HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=zdfinfo-de-hd
+#EXTINF:-1 tvg-id="tagesschau24.de" tvg-name="tagesschau24" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/tagesschau24-hd.png" group-title="#TV2",Tagesschau 24 HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=tagesschau24-de-hd
+#EXTINF:-1 tvg-id="phoenix.de" tvg-name="PHOENIX" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/phoenix-hd.png" group-title="#TV2",Phoenix HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=phoenix-de-hd
+#EXTINF:-1 tvg-id="ServusHD.de" tvg-name="ServusTV" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/servus-tv-hd.png" group-title="#TV2" tvg-id-ALT="ServusTV.de",ServusTV Deutschland HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=servustv-de-hd
+#EXTINF:-1 tvg-id="ARD-alpha.de" tvg-name="ARD_alpha" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/alpha-hd.png" group-title="#TV2",ARD-alpha HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=ard-alpha-de-hd
+#EXTINF:-1 tvg-id="BR.de" tvg-name="BR_Süd" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/br-sued-hd.png" group-title="#TV2",BR Fernsehen Süd HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=br-sued-de-hd
+#EXTINF:-1 tvg-id="HR.de" tvg-name="HR" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/hr-hd.png" group-title="#TV2",Hessischer Rundfunk HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=hr-de-hd
+#EXTINF:-1 tvg-id="MDRThuringen.de" tvg-name="MDR_Thüringen" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/mdr-hd.png" group-title="#TV2",MDR Thüringen HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=mdr-thueringen-de-hd
+#EXTINF:-1 tvg-id="ndrnds.de" tvg-name="NDR_NI" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/ndr-hd.png" group-title="#TV2",NDR Niedersachsen HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=ndr-nds-de-hd
+#EXTINF:-1 tvg-id="RadioBremen.de" tvg-name="Radio_Bremen_TV" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/radio-bremen-hd.png" group-title="#TV2",Radio Bremen HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=radio-bremen-de-hd
+#EXTINF:-1 tvg-id="rbbBerlin.de" tvg-name="RBB_Berlin" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/rbb-berlin-hd.png" group-title="#TV2",RBB Berlin HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=rbb-berlin-de-hd
+#EXTINF:-1 tvg-id="SRFernsehen.de" tvg-name="SR" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/sr-hd.png" group-title="#TV2",SR HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=sr-de-hd
+#EXTINF:-1 tvg-id="SWR.de" tvg-name="SWR_BW" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/swr-bw-hd.png" group-title="#TV2",SWR Baden-Württemberg HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=swr-bw-de-hd
+#EXTINF:-1 tvg-id="WDR.de" tvg-name="WDR_Köln" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/wdr-koeln-hd.png" group-title="#TV2",WDR Köln HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=wdr-koeln-de-hd
+#EXTINF:-1 tvg-id="Bloomberg.en" tvg-logo="https://raw.githubusercontent.com/jnk22/kodinerds-iptv/master/logos/tv/bloombergtv.png" group-title="#TV2",Bloomberg
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=bloomberg
+#EXTINF:-1 tvg-id="CNBC.en" tvg-logo="https://i.imgur.com/B6sfpDa.png" group-title="#TV2",CNBC
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=cnbc
+#EXTINF:-1 tvg-id="Kika.de" tvg-name="KiKA" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/kika_hd.png" group-title="#TV2",KiKA HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=kika-de-hd
+#EXTINF:-1 tvg-id="nickelodeon.de" tvg-name="Nick" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/nickelodeon.png" group-title="#TV2",Nick HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=nickelodeon-de
+#EXTINF:-1 tvg-id="1:0:19:283D:3FB:1:C00000:0:0:0:" tvg-name="Das_Erste" tvg-logo="http://192.168.1.33/picon/1:0:19:283D:3FB:1:C00000:0:0:0:.png" group-title="#TV2",Das Erste HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=daserste-de-hd
+#EXTINF:-1 tvg-id="1:0:19:2B66:3F3:1:C00000:0:0:0:" tvg-name="ZDF" tvg-logo="http://192.168.1.33/picon/1:0:19:2B66:3F3:1:C00000:0:0:0:.png" group-title="#TV2",ZDF HD
+plugin://plugin.video.joynde/?mode=play_video&stream_type=LIVE&video_id=zdf-de-hd
+#EXTINF:-1 tvg-id="Sat1.de" tvg-name="SAT.1" tvg-logo="http://192.168.1.33/picon/1:0:1:445C:453:1:C00000:0:0:0:.png" group-title="#TV2",SAT.1
+http://192.168.1.33:8001/1:0:1:445C:453:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="Pro7.at" tvg-name="Pro7" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/pro7-austria-hd.png" group-title="JoynAT",Pro7 Austria
+plugin://plugin.video.joyn/?mode=play_video&stream_type=LIVE&video_id=prosieben-at
+#EXTINF:-1 tvg-id="Sat1.at" tvg-name="Sat1" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/sat1-%c3%b6sterreich.png" group-title="JoynAT",Sat1 Austria
+plugin://plugin.video.joyn/?mode=play_video&stream_type=LIVE&video_id=sat1-at
+#EXTINF:-1 tvg-id="Kabel.at" tvg-name="Kabel Eins" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/kabel1-austria-hd.png" group-title="JoynAT",Kabel 1 Austria
+plugin://plugin.video.joyn/?mode=play_video&stream_type=LIVE&video_id=kabeleins-at
+#EXTINF:-1 tvg-id="SixxAustria.at" tvg-name="SixxAustria" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/sixx-austria-hd.png" group-title="JoynAT",Sixx Austria
+plugin://plugin.video.joyn/?mode=play_video&stream_type=LIVE&video_id=sixx-at
+#EXTINF:-1 tvg-id="Sat1Gold.de" tvg-name="Sat1Gold" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/sat1-gold-%c3%b6sterreich-hd.png" group-title="JoynAT",Sat1 Gold Austria
+plugin://plugin.video.joyn/?mode=play_video&stream_type=LIVE&video_id=sat1gold-at
+#EXTINF:-1 tvg-id="KabelEinsDoku.de" tvg-name="Kabel Eins Doku" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/kabel1-doku-austria-hd.png" group-title="JoynAT",Kabel Eins Doku Austria
+plugin://plugin.video.joyn/?mode=play_video&stream_type=LIVE&video_id=kabeleinsdoku-at
+#EXTINF:-1 tvg-id="ProSiebenMaxx.de" tvg-name="ProSieben Maxx" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/pro7-maxx-austria-hd.png" group-title="JoynAT",Pro7 Maxx Austria
+plugin://plugin.video.joyn/?mode=play_video&stream_type=LIVE&video_id=prosiebenmaxx-at
+#EXTINF:-1 tvg-id="oe24.at" tvg-name="oe24.TV" tvg-logo="https://raw.githubusercontent.com/jnk22/kodinerds-iptv/master/logos/tv/oe24tv.png" group-title="IPTV Austria",oe24 TV
+https://varoe24live.sf.apa.at/oe24-live1/oe24.smil/playlist.m3u8
+#EXTINF:-1 tvg-id="KroneTV.at" tvg-name="Krone.TV" tvg-logo="https://raw.githubusercontent.com/jnk22/kodinerds-iptv/master/logos/tv/kronetv.png" group-title="IPTV Austria",Krone.TV
+https://kronetv.mdn.ors.at/out/u/kronetv-nodrm.m3u8
+#EXTINF:-1 tvg-id="tagesschau24.de" tvg-name="tagesschau24" tvg-logo="https://raw.githubusercontent.com/jnk22/kodinerds-iptv/master/logos/tv/tagesschau24.png" group-title="IPTV Austria",tagesschau24
+https://tagesschau-lh.akamaihd.net/i/tagesschau_1@119231/index_3776_av-p.m3u8
+#EXTINF:-1 tvg-id="MTVGermany.de" tvg-name="MTV Germany" tvg-logo="https://raw.githubusercontent.com/jnk22/kodinerds-iptv/master/logos/tv/mtvgermany.png" group-title="IPTV Austria",MTV Germany
+http://unilivemtveu-lh.akamaihd.net/i/mtvde_1@134922/index_3500_av-b.m3u8
+#EXTINF:-1 tvg-name="Kronehit TV" tvg-logo="https://raw.githubusercontent.com/jnk22/kodinerds-iptv/master/logos/tv/kronehittv.png" group-title="IPTV Austria",Kronehit TV
+https://bitcdn-kronehit.bitmovin.com/v2/hls/chunklist_b3128000.m3u8
+#EXTINF:-1 tvg-id="ServusHD.at" tvg-name="Servus TV" tvg-logo="https://raw.githubusercontent.com/jnk22/kodinerds-iptv/master/logos/tv/servustvhd.png" group-title="IPTV Austria" tvg-id-ALT="ServusTV.at",ServusTV HD
+https://stv-live.akamaized.net/hls/live/2031021/lingeoSTVATwebBU/master.m3u8
+#EXTINF:-1 tvg-id="ORFSport.at" tvg-name="ORFSport" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/orf-sport+hd.png" group-title="JoynAT",ORF Sport+
+plugin://plugin.video.joyn/?mode=play_video&stream_type=LIVE&video_id=orf-sport-plus-at
+#EXTINF:-1 tvg-id="ORF3.at" tvg-name="ORF3" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/orf3-hd.png" group-title="JoynAT",ORF III
+plugin://plugin.video.joyn/?mode=play_video&stream_type=LIVE&video_id=orf3-at
+#EXTINF:-1 tvg-id="WELT.de" tvg-name="WELT" tvg-logo="https://raw.githubusercontent.com/jnk22/kodinerds-iptv/master/logos/tv/welt.png" group-title="IPTV Austria",WELT
+https://w-live2weltcms.akamaized.net/hls/live/2041019/Welt-LivePGM/playlist-1280.m3u8
+#EXTINF:-1 tvg-id="EuronewsDE.nws" tvg-name="euronews (D)" tvg-logo="https://riedl-dach.at/tv/tv-logos-white-main/euronews-ger.png" group-title="IPTV Austria",Euronews Deutschland HD
+https://rakuten-euronews-5-de.samsung.wurl.com/manifest/playlist.m3u8
+#EXTINF:-1 tvg-id="BILD.de" tvg-name="Bild" tvg-logo="https://raw.githubusercontent.com/jnk22/kodinerds-iptv/master/logos/tv/BildTV.png" group-title="IPTV Austria",Bild
+https://bild.personalstream.tv/v1/master.m3u8
+#EXTINF:-1 tvg-id="SkySportAustria1.at" tvg-name="SKY SPORT AUSTRIA 1" tvg-logo="https://img.sport-tv-guide.live/images/tv-station-sky-sport-austria-165.png" group-title="SKY SPORT AT",SKY SPORT AUSTRIA 1
+http://iptvtree.net:8080/friptv/AwWjvV6QuXDY84xR5meJhk/2130
+#EXTINF:-1 tvg-id="SkySportAustria2.at" tvg-name="SKY SPORT AUSTRIA 2" tvg-logo="https://img.sport-tv-guide.live/images/tv-station-sky-sport-austria-2-1814.png" group-title="SKY SPORT AT",SKY SPORT AUSTRIA 2
+http://iptvtree.net:8080/friptv/AwWjvV6QuXDY84xR5meJhk/192010
+#EXTINF:-1 tvg-id="skysportaustria3.at" tvg-name="SKY SPORT AUSTRIA 3" tvg-logo="https://img.sport-tv-guide.live/images/tv-station-sky-sport-austria-3-1815.png" group-title="SKY SPORT AT",SKY SPORT AUSTRIA 3
+http://iptvtree.net:8080/friptv/AwWjvV6QuXDY84xR5meJhk/192374
+#EXTINF:-1 tvg-id="skysportaustria4.at" tvg-name="SKY SPORT AUSTRIA 4" tvg-logo="https://img.sport-tv-guide.live/images/tv-station-sky-sport-austria-4-1816.png" group-title="SKY SPORT AT",SKY SPORT AUSTRIA 4
+http://iptvtree.net:8080/friptv/AwWjvV6QuXDY84xR5meJhk/295541
+#EXTINF:-1 tvg-id="skysportaustria5.at" tvg-name="SKY SPORT AUSTRIA 5" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-austria-5-2656.png" group-title="SKY SPORT AT",SKY SPORT AUSTRIA 5
+http://iptvtree.net:8080/friptv/AwWjvV6QuXDY84xR5meJhk/295542
+#EXTINF:-1 tvg-id="skysportaustria6.at" tvg-name="SKY SPORT AUSTRIA 6" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-austria-6-2657.png" group-title="SKY SPORT AT",SKY SPORT AUSTRIA 6
+http://iptvtree.net:8080/friptv/AwWjvV6QuXDY84xR5meJhk/295543
+#EXTINF:-1 tvg-id="SkySportAustria1.at" tvg-name="SKY SPORT AUSTRIA 1 II" tvg-logo="https://img.sport-tv-guide.live/images/tv-station-sky-sport-austria-165.png" group-title="SKY SPORT AT",SKY SPORT AUSTRIA 1 II
+http://clientportal.link:80/BlIm21564/agf7Fp264/15578
+#EXTINF:-1 tvg-id="SkySportAustria2.at" tvg-name="SKY SPORT AUSTRIA 2 II" tvg-logo="https://img.sport-tv-guide.live/images/tv-station-sky-sport-austria-2-1814.png" group-title="SKY SPORT AT",SKY SPORT AUSTRIA 2 II
+http://clientportal.link:80/BlIm21564/agf7Fp264/28374
+#EXTINF:-1 tvg-id="skysportaustria3.at" tvg-name="SKY SPORT AUSTRIA 3 II" tvg-logo="https://img.sport-tv-guide.live/images/tv-station-sky-sport-austria-3-1815.png" group-title="SKY SPORT AT",SKY SPORT AUSTRIA 3 II
+http://clientportal.link:80/BlIm21564/agf7Fp264/28375
+#EXTINF:-1 tvg-id="skysportaustria4.at" tvg-name="SKY SPORT AUSTRIA 4 II" tvg-logo="https://img.sport-tv-guide.live/images/tv-station-sky-sport-austria-4-1816.png" group-title="SKY SPORT AT",SKY SPORT AUSTRIA 4 II
+http://clientportal.link:80/BlIm21564/agf7Fp264/28376
+#EXTINF:-1 tvg-id="skysportaustria5.at" tvg-name="SKY SPORT AUSTRIA 5 II" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-austria-5-2656.png" group-title="SKY SPORT AT",SKY SPORT AUSTRIA 5 II
+http://clientportal.link:80/BlIm21564/agf7Fp264/99543
+#EXTINF:-1 tvg-id="skysportaustria6.at" tvg-name="SKY SPORT AUSTRIA 6 II" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-austria-6-2657.png" group-title="SKY SPORT AT",SKY SPORT AUSTRIA 6 II
+http://clientportal.link:80/BlIm21564/agf7Fp264/99544
+#EXTINF:-1 tvg-id="SkySportAustria7.at tvg-name=" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-austria-7-2658.png" group-title="SKY SPORT AT",SKY SPORT AUSTRIA 7 II
+http://clientportal.link:80/BlIm21564/agf7Fp264/99545
+#EXTINF:-1 tvg-id="Dazn1.de" tvg-name="DAZN 1" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-dazn-1-deutschland-2703.png" group-title="SKY SPORT AT",DE: DAZN 1
+http://kuchini.site:8080/F30140/f3de2280/48355
+#EXTINF:-1 tvg-id="Dazn2.de" tvg-name="DAZN 2" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-dazn-2-deutschland-2704.png" group-title="SKY SPORT AT",DE: DAZN 2
+http://kuchini.site:8080/F30140/f3de2280/2387
+#EXTINF:-1 tvg-id="SkySport1.de" tvg-name="SKY SPORT 1" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-hd-1-155.png" group-title="SKY SPORT AT",DE: Sky Sport 1
+http://kuchini.site:8080/F30140/f3de2280/202100
+#EXTINF:-1 tvg-id="SkySport2.de" tvg-name="SKY SPORT 2" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-hd-2-171.png" group-title="SKY SPORT AT",DE: Sky Sport 2
+http://kuchini.site:8080/F30140/f3de2280/8215
+#EXTINF:-1 tvg-id="SkySport3.de" tvg-name="SKY SPORT 3" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-3-1621.png" group-title="SKY SPORT AT",DE: Sky Sport 3
+http://kuchini.site:8080/F30140/f3de2280/72238
+#EXTINF:-1 tvg-id="SkySport4.de" tvg-name="SKY SPORT 4" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-4-de-1622.png" group-title="SKY SPORT AT",DE: Sky Sport 4
+http://kuchini.site:8080/F30140/f3de2280/32708
+#EXTINF:-1 tvg-id="SkySport5.de" tvg-name="SKY SPORT 5" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-5-1623.png" group-title="SKY SPORT AT",DE: Sky Sport 5
+http://kuchini.site:8080/F30140/f3de2280/13497
+#EXTINF:-1 tvg-id="SkySport6.de" tvg-name="SKY SPORT 6" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-6-1624.png" group-title="SKY SPORT AT",DE: Sky Sport 6
+http://kuchini.site:8080/F30140/f3de2280/31445
+#EXTINF:-1 tvg-id="SkySport7.de" tvg-name="SKY SPORT 7" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-7-1625.png" group-title="SKY SPORT AT",DE: Sky Sport 7
+http://kuchini.site:8080/F30140/f3de2280/2133
+#EXTINF:-1 tvg-id="SkySport8.de" tvg-name="SKY SPORT 8" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-8-1626.png" group-title="SKY SPORT AT",DE: Sky Sport 8
+http://kuchini.site:8080/F30140/f3de2280/4489
+#EXTINF:-1 tvg-id="SkySport9.de" tvg-name="SKY SPORT 9" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-9-1627.png" group-title="SKY SPORT AT",DE: Sky Sport 9
+http://kuchini.site:8080/F30140/f3de2280/147341
+#EXTINF:-1 tvg-id="SkySport10.de" tvg-name="SKY SPORT 10" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-10-1628.png" group-title="SKY SPORT AT",DE: Sky Sport 10
+http://kuchini.site:8080/F30140/f3de2280/147342
+#EXTINF:-1 tvg-id="SkyBundesliga.de" tvg-name="SKY SPORT BL 1" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-bundesliga-1-1804.png" group-title="SKY SPORT AT",DE: Sky Sport Bundesliga 1
+http://kuchini.site:8080/F30140/f3de2280/2431
+#EXTINF:-1 tvg-id="SkyBundesliga2.de" tvg-name="SKY SPORT BL 2" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-bundesliga-2-1805.png" group-title="SKY SPORT AT",DE: Sky Sport Bundesliga 2
+http://kuchini.site:8080/F30140/f3de2280/4493
+#EXTINF:-1 tvg-id="SkyBundesliga3.de" tvg-name="SKY SPORT BL 3" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-bundesliga-3-1806.png" group-title="SKY SPORT AT",DE: Sky Sport Bundesliga 3
+http://kuchini.site:8080/F30140/f3de2280/2135
+#EXTINF:-1 tvg-id="SkyBundesliga4.de" tvg-name="SKY SPORT BL 4" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-bundesliga-4-1807.png" group-title="SKY SPORT AT",DE: Sky Sport Bundesliga 4
+http://kuchini.site:8080/F30140/f3de2280/3513
+#EXTINF:-1 tvg-id="SkyBundesliga5.de" tvg-name="SKY SPORT BL 5" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-bundesliga-5-1808.png" group-title="SKY SPORT AT",DE: Sky Sport Bundesliga 5
+http://kuchini.site:8080/F30140/f3de2280/2136
+#EXTINF:-1 tvg-id="SkyBundesliga6.de" tvg-name="SKY SPORT BL 6" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-bundesliga-6-1809.png" group-title="SKY SPORT AT",DE: Sky Sport Bundesliga 6
+http://kuchini.site:8080/F30140/f3de2280/12638
+#EXTINF:-1 tvg-id="SkyBundesliga7.de" tvg-name="SKY SPORT BL 7" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-bundesliga-7-1810.png" group-title="SKY SPORT AT",DE: Sky Sport Bundesliga 7
+http://kuchini.site:8080/F30140/f3de2280/2433
+#EXTINF:-1 tvg-id="SkyBundesliga8.de" tvg-name="SKY SPORT BL 8" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-bundesliga-8-1811.png" group-title="SKY SPORT AT",DE: Sky Sport Bundesliga 8
+http://kuchini.site:8080/F30140/f3de2280/2434
+#EXTINF:-1 tvg-id="SkyBundesliga9.de" tvg-name="SKY SPORT BL 9" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-bundesliga-9-1812.png" group-title="SKY SPORT AT",DE: Sky Sport Bundesliga 9
+http://kuchini.site:8080/F30140/f3de2280/10051
+#EXTINF:-1 tvg-id="SkyBundesliga10.de" tvg-name="SKY SPORT BL 10" tvg-logo="https://upload.wikimedia.org/wikipedia/commons/1/1d/Sky_Sport_Bundesliga_10_Logo_2016.png" group-title="SKY SPORT AT",DE: Sky Sport Bundesliga 10
+http://kuchini.site:8080/F30140/f3de2280/2432
+#EXTINF:-1 tvg-id="SkySportF1.de" tvg-name="SKY SPORT F1" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-f1-de-2541.png" group-title="SKY SPORT AT",DE: Sky Sport F1
+http://kuchini.site:8080/F30140/f3de2280/174563
+#EXTINF:-1 tvg-id="SkySportNewsHD.de" tvg-name="SKY SPORT NEWS" tvg-logo="https://upload.wikimedia.org/wikipedia/commons/b/b2/Sky_Sport_News_Logo_2020.png" group-title="SKY SPORT AT",DE: Sky Sport News
+http://kuchini.site:8080/F30140/f3de2280/1658
+#EXTINF:-1 tvg-id="SkySportTennis.de" tvg-name="SKY SPORT Tennis" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-tennis-2767.png" group-title="SKY SPORT AT",DE: Sky Sport Tennis
+http://kuchini.site:8080/F30140/f3de2280/297552
+#EXTINF:-1 tvg-id="SkySportTopEvent.de" tvg-name="SKY SPORT Top Event" tvg-logo="https://img2.sport-tv-guide.live/images/tv-station-sky-sport-top-event-2764.png" group-title="SKY SPORT AT",DE: Sky Sport Top Event
+http://kuchini.site:8080/F30140/f3de2280/297551
+#EXTINF:-1 tvg-id="ORF1.at" tvg-name="ORF 1 HD" tvg-logo="http://192.168.1.33/picon/1_0_19_132F_3EF_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="4911",ORF 1 HD
+http://192.168.1.33:8001/1:0:19:132F:3EF:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="ORF2.at" tvg-name="ORF2St HD" tvg-logo="http://192.168.1.33/picon/1_0_19_33F5_3ED_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="13301",ORF2St HD
+http://192.168.1.33:8001/1:0:19:33F5:3ED:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="ATV.de" tvg-name="ATV HD" tvg-logo="http://192.168.1.33/picon/1_0_19_33AC_3EB_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="13228",ATV HD
+http://192.168.1.33:8001/1:0:19:33AC:3EB:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="ATV2 HD" tvg-name="ATV2 HD" tvg-logo="http://192.168.1.33/picon/1_0_19_33A7_3EB_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="13223",ATV2 HD
+http://192.168.1.33:8001/1:0:19:33A7:3EB:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="Puls4.at" tvg-name="PULS 4 HD Austria" tvg-logo="http://192.168.1.33/picon/1_0_19_14B7_407_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="5303",PULS 4 HD Austria
+http://192.168.1.33:8001/1:0:19:14B7:407:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="ServusHD.at" tvg-name="Servus TV HD" tvg-logo="http://192.168.1.33/picon/1_0_19_1331_3EF_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="4913",Servus TV HD
+http://192.168.1.33:8001/1:0:19:1331:3EF:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="ARD.de" tvg-name="Das Erste HD" tvg-logo="http://192.168.1.33/picon/1_0_19_283D_3FB_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10301",Das Erste HD
+http://192.168.1.33:8001/1:0:19:283D:3FB:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="ZDF.de" tvg-name="ZDF HD" tvg-logo="http://192.168.1.33/picon/1_0_19_2B66_3F3_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="11110",ZDF HD
+http://192.168.1.33:8001/1:0:19:2B66:3F3:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="Sat1.de" tvg-name="SAT.1 HD" tvg-logo="http://192.168.1.33/picon/1_0_19_EF74_3F9_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="61300",SAT.1 HD
+http://192.168.1.33:8001/1:0:19:EF74:3F9:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="Pro7.de" tvg-name="ProSieben HD" tvg-logo="http://192.168.1.33/picon/1_0_19_EF75_3F9_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="61301",ProSieben HD
+http://192.168.1.33:8001/1:0:19:EF75:3F9:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="Kabel.de" tvg-name="kabel eins HD" tvg-logo="http://192.168.1.33/picon/1_0_19_EF76_3F9_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="61302",kabel eins HD
+http://192.168.1.33:8001/1:0:19:EF76:3F9:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="RTL.de" tvg-name="RTL HD" tvg-logo="http://192.168.1.33/picon/1_0_19_EF10_421_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="61200",RTL HD
+http://192.168.1.33:8001/1:0:19:EF10:421:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="RTL2.de" tvg-name="RTL2 HD" tvg-logo="http://192.168.1.33/picon/1_0_19_EF15_421_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="61205",RTL2 HD
+http://192.168.1.33:8001/1:0:19:EF15:421:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="Vox.de" tvg-name="VOX HD" tvg-logo="http://192.168.1.33/picon/1_0_19_EF11_421_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="61201",VOX HD
+http://192.168.1.33:8001/1:0:19:EF11:421:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="TLC.de" tvg-name="TLC HD" tvg-logo="http://192.168.1.33/picon/1_0_19_7F8_449_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="2040",TLC HD
+http://192.168.1.33:8001/1:0:19:7F8:449:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="Sixx.de" tvg-name="SIXX HD" tvg-logo="http://192.168.1.33/picon/1_0_19_EF77_3F9_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="61303",SIXX HD
+http://192.168.1.33:8001/1:0:19:EF77:3F9:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="Nitro.de" tvg-name="NITRO HD" tvg-logo="http://192.168.1.33/picon/1_0_19_2EAF_411_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="11951",NITRO HD
+http://192.168.1.33:8001/1:0:19:2EAF:411:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="Tele5.de" tvg-name="TELE 5 HD" tvg-logo="http://192.168.1.33/picon/1_0_19_7EE_449_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="2030",TELE 5 HD
+http://192.168.1.33:8001/1:0:19:7EE:449:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="DMax.de" tvg-name="DMAX HD" tvg-logo="http://192.168.1.33/picon/1_0_19_7E4_449_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="2020",DMAX HD
+http://192.168.1.33:8001/1:0:19:7E4:449:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="ZDFneo.de" tvg-name="zdf_neo HD" tvg-logo="http://192.168.1.33/picon/1_0_19_2B7A_3F3_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="11130",zdf_neo HD
+http://192.168.1.33:8001/1:0:19:2B7A:3F3:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="3sat.de" tvg-name="3sat HD" tvg-logo="http://192.168.1.33/picon/1_0_19_2B8E_3F2_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="11150",3sat HD
+http://192.168.1.33:8001/1:0:19:2B8E:3F2:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="arte.de" tvg-name="arte HD" tvg-logo="http://192.168.1.33/picon/1_0_19_283E_3FB_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10302",arte HD
+http://192.168.1.33:8001/1:0:19:283E:3FB:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="WELT.de" tvg-name="WELT HD" tvg-logo="http://192.168.1.33/picon/1_0_19_5274_41D_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="21108",WELT HD
+http://192.168.1.33:8001/1:0:19:5274:41D:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:EF14:421:1:C00000:0:0:0:" tvg-name="n-tv HD" tvg-logo="http://192.168.1.33/picon/1_0_19_EF14_421_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="61204",n-tv HD
+http://192.168.1.33:8001/1:0:19:EF14:421:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:14B8:407:1:C00000:0:0:0:" tvg-name="PULS 24 HD" tvg-logo="http://192.168.1.33/picon/1_0_19_14B8_407_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="5304",PULS 24 HD
+http://192.168.1.33:8001/1:0:19:14B8:407:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="One.de" tvg-name="One Terra HD" tvg-logo="http://192.168.1.33/picon/1_0_19_2968_45A_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10600",One Terra HD
+http://192.168.1.33:8001/1:0:19:2968:45A:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="ProSiebenMaxx.de" tvg-name="Pro7 MAXX HD" tvg-logo="http://192.168.1.33/picon/1_0_19_EF78_3F9_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="61304",Pro7 MAXX HD
+http://192.168.1.33:8001/1:0:19:EF78:3F9:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="KabelEinsDoku.de" tvg-name="Kabel Eins Doku HD" tvg-logo="http://192.168.1.33/picon/1_0_19_EF79_3F9_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="61305",Kabel Eins Doku HD
+http://192.168.1.33:8001/1:0:19:EF79:3F9:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="ARD-alpha.de" tvg-name="ARD alpha HD" tvg-logo="http://192.168.1.33/picon/1_0_19_2889_40F_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10377",ARD alpha HD
+http://192.168.1.33:8001/1:0:19:2889:40F:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:2887:40F:1:C00000:0:0:0:" tvg-name="tagesschau24 HD" tvg-logo="http://192.168.1.33/picon/1_0_19_2887_40F_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10375",tagesschau24 HD
+http://192.168.1.33:8001/1:0:19:2887:40F:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="One.de" tvg-name="ONE HD" tvg-logo="http://192.168.1.33/picon/1_0_19_2888_40F_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10376",ONE HD
+http://192.168.1.33:8001/1:0:19:2888:40F:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:2BA2:3F2:1:C00000:0:0:0:" tvg-name="ZDFinfo HD" tvg-logo="http://192.168.1.33/picon/1_0_19_2BA2_3F2_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="11170",ZDFinfo HD
+http://192.168.1.33:8001/1:0:19:2BA2:3F2:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="phoenix.de" tvg-name="PHOENIX HD" tvg-logo="http://192.168.1.33/picon/1_0_19_285B_401_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10331",PHOENIX HD
+http://192.168.1.33:8001/1:0:19:285B:401:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:EF16:421:1:C00000:0:0:0:" tvg-name="RTLup HD" tvg-logo="http://192.168.1.33/picon/1_0_19_EF16_421_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="61206",RTLup HD
+http://192.168.1.33:8001/1:0:19:EF16:421:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:EF17:421:1:C00000:0:0:0:" tvg-name="VOXup HD" tvg-logo="http://192.168.1.33/picon/1_0_19_EF17_421_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="61207",VOXup HD
+http://192.168.1.33:8001/1:0:19:EF17:421:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:157F:41F:1:C00000:0:0:0:" tvg-name="Deluxe Music HD" tvg-logo="http://192.168.1.33/picon/1_0_19_157F_41F_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="5503",Deluxe Music HD
+http://192.168.1.33:8001/1:0:19:157F:41F:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:6FEE:436:1:C00000:0:0:0:" tvg-name="MTV HD" tvg-logo="http://192.168.1.33/picon/1_0_19_6FEE_436_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="28654",MTV HD
+http://192.168.1.33:8001/1:0:19:6FEE:436:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:157C:41F:1:C00000:0:0:0:" tvg-name="Disney Channel HD" tvg-logo="http://192.168.1.33/picon/1_0_19_157C_41F_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="5500",Disney Channel HD
+http://192.168.1.33:8001/1:0:19:157C:41F:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="Sat1Gold.de" tvg-name="SAT.1 GOLD HD" tvg-logo="http://192.168.1.33/picon/1_0_19_EF7A_3F9_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="61306",SAT.1 GOLD HD
+http://192.168.1.33:8001/1:0:19:EF7A:3F9:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:1581:41F:1:C00000:0:0:0:" tvg-name="Sport 1 HD" tvg-logo="http://192.168.1.33/picon/1_0_19_1581_41F_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="5505",Sport 1 HD
+http://192.168.1.33:8001/1:0:19:1581:41F:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:2E9B:411:1:C00000:0:0:0:" tvg-name="SUPER RTL HD" tvg-logo="http://192.168.1.33/picon/1_0_19_2E9B_411_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="11931",SUPER RTL HD
+http://192.168.1.33:8001/1:0:19:2E9B:411:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:7D0:449:1:C00000:0:0:0:" tvg-name="Eurosport 1 HD" tvg-logo="http://192.168.1.33/picon/1_0_19_7D0_449_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="2000",Eurosport 1 HD
+http://192.168.1.33:8001/1:0:19:7D0:449:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:6FEC:436:1:C00000:0:0:0:" tvg-name="Comedy Central HD" tvg-logo="http://192.168.1.33/picon/1_0_19_6FEC_436_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="28652",Comedy Central HD
+http://192.168.1.33:8001/1:0:19:6FEC:436:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:2969:45A:1:C00000:0:0:0:" tvg-name="Xplore HD" tvg-logo="http://192.168.1.33/picon/1_0_19_2969_45A_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10601",Xplore HD
+http://192.168.1.33:8001/1:0:19:2969:45A:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:296A:45A:1:C00000:0:0:0:" tvg-name="Hip Trips HD" tvg-logo="http://192.168.1.33/picon/1_0_19_296A_45A_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10602",Hip Trips HD
+http://192.168.1.33:8001/1:0:19:296A:45A:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:296B:45A:1:C00000:0:0:0:" tvg-name="Deluxe Dance by Kontor HD" tvg-logo="http://192.168.1.33/picon/1_0_19_296B_45A_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10603",Deluxe Dance by Kontor HD
+http://192.168.1.33:8001/1:0:19:296B:45A:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:29D2:407:1:C00001:0:0:0:" tvg-name="Deluxe Lounge HD" tvg-logo="http://192.168.1.33/picon/1_0_19_29D2_407_1_C00001_0_0_0.png" group-title="#SAT" tvg-chno="10706",Deluxe Lounge HD
+http://192.168.1.33:8001/1:0:19:29D2:407:1:C00001:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:296D:45A:1:C00000:0:0:0:" tvg-name="Just Cooking HD" tvg-logo="http://192.168.1.33/picon/1_0_19_296D_45A_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10605",Just Cooking HD
+http://192.168.1.33:8001/1:0:19:296D:45A:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:29D0:407:1:C00001:0:0:0:" tvg-name="Crime Time HD" tvg-logo="http://192.168.1.33/picon/1_0_19_29D0_407_1_C00001_0_0_0.png" group-title="#SAT" tvg-chno="10704",Crime Time HD
+http://192.168.1.33:8001/1:0:19:29D0:407:1:C00001:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:29D1:407:1:C00001:0:0:0:" tvg-name="SERIEN + HD" tvg-logo="http://192.168.1.33/picon/1_0_19_29D1_407_1_C00001_0_0_0.png" group-title="#SAT" tvg-chno="10705",SERIEN + HD
+http://192.168.1.33:8001/1:0:19:29D1:407:1:C00001:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:29CC:407:1:C00001:0:0:0:" tvg-name="Just Fishing HD" tvg-logo="http://192.168.1.33/picon/1_0_19_29CC_407_1_C00001_0_0_0.png" group-title="#SAT" tvg-chno="10700",Just Fishing HD
+http://192.168.1.33:8001/1:0:19:29CC:407:1:C00001:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:29D3:407:1:C00001:0:0:0:" tvg-name="Höhenrausch HD" tvg-logo="http://192.168.1.33/picon/1_0_19_29D3_407_1_C00001_0_0_0.png" group-title="#SAT" tvg-chno="10707",Höhenrausch HD
+http://192.168.1.33:8001/1:0:19:29D3:407:1:C00001:0:0:0:
+#EXTINF:-1 tvg-id="1:0:1:4E27:43A:1:C00000:0:0:0:" tvg-name="PULS 4 Austria." tvg-logo="http://192.168.1.33/picon/1_0_1_4E27_43A_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="20007",PULS 4 Austria.
+http://192.168.1.33:8001/1:0:1:4E27:43A:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="BR.de" tvg-name="BR Süd HD" tvg-logo="http://192.168.1.33/picon/1_0_19_2855_401_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10325",BR Süd HD
+http://192.168.1.33:8001/1:0:19:2855:401:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:2873:425:1:C00000:0:0:0:" tvg-name="hr-fernsehen HD" tvg-logo="http://192.168.1.33/picon/1_0_19_2873_425_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10355",hr-fernsehen HD
+http://192.168.1.33:8001/1:0:19:2873:425:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="MDRThuringen.de" tvg-name="MDR S-Anhalt HD" tvg-logo="http://192.168.1.33/picon/1_0_19_2871_425_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10353",MDR S-Anhalt HD
+http://192.168.1.33:8001/1:0:19:2871:425:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="ndrnds.de" tvg-name="NDR FS NDS HD" tvg-logo="http://192.168.1.33/picon/1_0_19_2857_401_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10327",NDR FS NDS HD
+http://192.168.1.33:8001/1:0:19:2857:401:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="rbbBerlin.de" tvg-name="rbb Berlin HD" tvg-logo="http://192.168.1.33/picon/1_0_19_286F_425_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10351",rbb Berlin HD
+http://192.168.1.33:8001/1:0:19:286F:425:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="SWR.de" tvg-name="SWR BW HD" tvg-logo="http://192.168.1.33/picon/1_0_19_283F_3FB_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="10303",SWR BW HD
+http://192.168.1.33:8001/1:0:19:283F:3FB:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="WDR.de" tvg-name="WDR HD Köln" tvg-logo="http://192.168.1.33/picon/1_0_19_6EAC_3FD_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="28332",WDR HD Köln
+http://192.168.1.33:8001/1:0:19:6EAC:3FD:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="EuronewsDE.nws" tvg-name="EURONEWS GERMAN SD" tvg-logo="http://192.168.1.33/picon/1_0_1_18F4_3F4_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="6388",EURONEWS GERMAN SD
+http://192.168.1.33:8001/1:0:1:18F4:3F4:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="Kika.de" tvg-name="KiKA HD" tvg-logo="http://192.168.1.33/picon/1_0_19_2B98_3F2_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="11160",KiKA HD
+http://192.168.1.33:8001/1:0:19:2B98:3F2:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:1:701:5:85:C00000:0:0:0:" tvg-name="Disney Channel" tvg-logo="http://192.168.1.33/picon/1_0_1_701_5_85_C00000_0_0_0.png" group-title="#SAT" tvg-chno="1793",Disney Channel
+http://192.168.1.33:8001/1:0:1:701:5:85:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:16A9:3FF:1:C00000:0:0:0:" tvg-name="münchen.tv HD" tvg-logo="http://192.168.1.33/picon/1_0_19_16A9_3FF_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="5801",münchen.tv HD
+http://192.168.1.33:8001/1:0:19:16A9:3FF:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:16B1:3FF:1:C00000:0:0:0:" tvg-name="Franken Plus HD" tvg-logo="http://192.168.1.33/picon/1_0_19_16B1_3FF_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="5809",Franken Plus HD
+http://192.168.1.33:8001/1:0:19:16B1:3FF:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:16B0:3FF:1:C00000:0:0:0:" tvg-name="OTVA HD" tvg-logo="http://192.168.1.33/picon/1_0_19_16B0_3FF_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="5808",OTVA HD
+http://192.168.1.33:8001/1:0:19:16B0:3FF:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:19:3402:3ED:1:C00000:0:0:0:" tvg-name="oe24.TV HD" tvg-logo="http://192.168.1.33/picon/1_0_19_3402_3ED_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="13314",oe24.TV HD
+http://192.168.1.33:8001/1:0:19:3402:3ED:1:C00000:0:0:0:
+#EXTINF:-1 tvg-id="1:0:16:3401:3ED:1:C00000:0:0:0:" tvg-name="krone.tv" tvg-logo="http://192.168.1.33/picon/1_0_16_3401_3ED_1_C00000_0_0_0.png" group-title="#SAT" tvg-chno="13313",krone.tv
+http://192.168.1.33:8001/1:0:16:3401:3ED:1:C00000:0:0:0:
