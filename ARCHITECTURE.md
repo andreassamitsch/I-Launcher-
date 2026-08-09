@@ -317,7 +317,7 @@ Live-TV-Streamadressen werden bewusst **nicht** gecacht: Sie können Session-Inf
 
 ## Development-Publishing
 
-Signierte Development-Builds laufen über den `downloads`-Kanal. Vor einer Test-APK laufen `testDebugUnitTest` und `assembleDebug`. Der aktuelle UI-Polish-Build ist automatisiert gebaut; Trailer-Video, Sprachsuche, neue Hero-/Navigation und eingebetteter EPG benötigen zusätzlich reale TV-Hardwarevalidierung.
+Signierte Development-Builds laufen über den `downloads`-Kanal. Vor einer Test-APK laufen `testDebugUnitTest` und `assembleDebug`. Der aktuelle UI-Polish-Code wurde als `0.1.0-dev.115` automatisiert gebaut und veröffentlicht. Trailer-Video, Sprachsuche, neue Hero-/Navigation und eingebetteter EPG benötigen zusätzlich reale TV-Hardwarevalidierung.
 
 ## Home-Tasten-Fallback
 
