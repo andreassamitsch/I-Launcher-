@@ -28,7 +28,7 @@ import com.andreassamitsch.ilauncher.model.MediaItem
 fun DetailsScreen(
     item: MediaItem,
     sourceLabel: String?,
-    onPlay: () -> Unit,
+    onPlay: (() -> Unit)?,
     onBack: () -> Unit,
     onTrailer: (() -> Unit)? = null,
     onTrailerSearch: (() -> Unit)? = null,
@@ -115,8 +115,10 @@ fun DetailsScreen(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Button(onClick = onPlay) {
-                    Text(if ((item.playbackPositionMillis ?: 0L) > 0L) "Fortsetzen" else "Wiedergeben")
+                onPlay?.let { play ->
+                    Button(onClick = play) {
+                        Text(if ((item.playbackPositionMillis ?: 0L) > 0L) "Fortsetzen" else "Wiedergeben")
+                    }
                 }
                 when {
                     onTrailer != null -> Button(onClick = onTrailer) {
