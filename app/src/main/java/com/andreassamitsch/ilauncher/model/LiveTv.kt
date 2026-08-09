@@ -7,9 +7,29 @@ data class LiveTvProgram(
     val longDescription: String? = null,
     val startUtcMillis: Long,
     val durationMillis: Long,
+    val subtitle: String? = null,
+    val categories: List<String>? = null,
+    val seasonNumber: Int? = null,
+    val episodeNumber: Int? = null,
+    val releaseYear: Int? = null,
+    val imageUri: String? = null,
+    val xmltvChannelId: String? = null,
+    val tmdbId: Int? = null,
+    val tmdbEpisodeId: Int? = null,
+    val tmdbType: MediaType? = null,
+    val posterUri: String? = null,
+    val backdropUri: String? = null,
+    val episodeStillUri: String? = null,
+    val voteAverage: Double? = null,
 ) {
     val endUtcMillis: Long
         get() = startUtcMillis + durationMillis
+
+    val preferredArtworkUri: String?
+        get() = episodeStillUri
+            ?: backdropUri
+            ?: imageUri
+            ?: posterUri
 }
 
 data class LiveTvChannel(

@@ -17,6 +17,8 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.andreassamitsch.ilauncher.data.epg.EpgSourceChannel
+import com.andreassamitsch.ilauncher.data.epg.EpgState
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifState
 import java.text.DateFormat
 import java.util.Date
@@ -24,9 +26,13 @@ import java.util.Date
 @Composable
 fun LiveTvScreen(
     state: OpenWebifState,
+    epgState: EpgState,
     onSaveConnection: (baseUrl: String, username: String, password: String) -> Unit,
     onSelectBouquet: (serviceReference: String) -> Unit,
     onRefresh: () -> Unit,
+    onSaveEpgSource: (String) -> Unit,
+    onRefreshEpg: () -> Unit,
+    onSetEpgMapping: (serviceReference: String, xmltvChannelId: String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -38,7 +44,7 @@ fun LiveTvScreen(
     ) {
         Text("Live TV / Gigablue", style = MaterialTheme.typography.displaySmall)
         Text(
-            "Direkte lokale Verbindung über Enigma2/OpenWebif. In Phase 5 werden Bouquets, Sender und EPG Now/Next eingebunden; interne Wiedergabe folgt in Phase 7.",
+            "Gigablue/OpenWebif bleibt die Quelle für Bouquet, Senderidentität und Reihenfolge. XMLTV ergänzt den EPG; interne Wiedergabe folgt in Phase 7.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -69,7 +75,7 @@ fun LiveTvScreen(
 
         if (state.configured) {
             Button(onClick = onRefresh, enabled = !state.isRefreshing) {
-                Text(if (state.isRefreshing) "Aktualisiere …" else "Verbindung testen / aktualisieren")
+                Text(if (state.isRefreshing) "Aktualisiere …" else "Gigablue aktualisieren")
             }
         }
 
@@ -83,7 +89,7 @@ fun LiveTvScreen(
 
         state.lastUpdatedUtcMillis?.let { updated ->
             Text(
-                text = "Letzte erfolgreiche Aktualisierung: ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(updated))}",
+                text = "Gigablue zuletzt: ${formatDateTime(updated)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -92,7 +98,7 @@ fun LiveTvScreen(
         if (state.bouquets.isNotEmpty()) {
             Text("Bouquet", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "Dieses Bouquet speist die Reihe „Jetzt im TV“. Die Reihenfolge der Sender wird von der Gigablue übernommen.",
+                "Dieses Bouquet speist „Jetzt im TV“ und den EPG. Die Senderreihenfolge wird unverändert von der Gigablue übernommen.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -104,6 +110,84 @@ fun LiveTvScreen(
                 ) {
                     Text(if (selected) "✓ ${bouquet.name}" else bouquet.name)
                 }
+            }
+        }
+
+        Text("EPG / XMLTV", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "M3U-Metadatenquelle: ${epgState.sourceLabel}. Aus der M3U werden nur EPG-IDs, Sendernamen, Logos und Enigma2-Service-Reference-Hinweise gelesen. Stream-Adressen werden nicht gespeichert oder verwendet.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Button(
+            onClick = {
+                showEpgSourceDialog(
+                    context = context,
+                    initialUrl = epgState.sourceUrl,
+                    onSave = onSaveEpgSource,
+                )
+            },
+        ) {
+            Text("EPG-M3U bearbeiten")
+        }
+        Button(
+            onClick = onRefreshEpg,
+            enabled = state.channels.isNotEmpty() && !epgState.isRefreshing,
+        ) {
+            Text(if (epgState.isRefreshing) "EPG wird geladen …" else "EPG jetzt aktualisieren")
+        }
+
+        if (state.channels.isNotEmpty()) {
+            Text(
+                "Senderzuordnung: ${epgState.mappedChannelCount} von ${state.channels.size}",
+                style = MaterialTheme.typography.titleMedium,
+            )
+        }
+        epgState.lastUpdatedUtcMillis?.let { updated ->
+            Text(
+                "XMLTV zuletzt: ${formatDateTime(updated)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        epgState.errorMessage?.let { error ->
+            Text(error, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+        }
+
+        val unmatched = state.channels.filter { channel ->
+            channel.serviceReference in epgState.mappingSuggestions
+        }
+        if (unmatched.isNotEmpty()) {
+            Text("Nicht sicher zugeordnete Sender", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Nur eindeutige Treffer werden automatisch übernommen. Unsichere Sender können einmal manuell einer XMLTV-ID zugeordnet werden.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            unmatched.take(10).forEach { channel ->
+                val suggestions = epgState.mappingSuggestions[channel.serviceReference].orEmpty()
+                Button(
+                    onClick = {
+                        showMappingDialog(
+                            context = context,
+                            channelName = channel.name,
+                            suggestions = suggestions,
+                            onSelected = { xmltvId ->
+                                onSetEpgMapping(channel.serviceReference, xmltvId)
+                            },
+                        )
+                    },
+                    enabled = suggestions.isNotEmpty(),
+                ) {
+                    Text("Zuordnen: ${channel.name}")
+                }
+            }
+            if (unmatched.size > 10) {
+                Text(
+                    "+ ${unmatched.size - 10} weitere nicht zugeordnete Sender",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
 
@@ -132,14 +216,14 @@ fun LiveTvScreen(
 
         if (state.configured && state.channels.isEmpty() && !state.isRefreshing && state.errorMessage == null) {
             Text(
-                "Noch keine Sender geladen. Starte „Verbindung testen / aktualisieren“.",
+                "Noch keine Sender geladen. Starte „Gigablue aktualisieren“.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
         Text(
-            "Sicherheit: Zugangsdaten werden nur lokal in I Launcher gespeichert und nie in Diagnose/Logs ausgegeben. HTTP-Basic-Authentifizierung sollte nur im vertrauenswürdigen Heimnetz verwendet werden.",
+            "Sicherheit: Receiver-Zugangsdaten bleiben lokal und werden nie in Diagnose/Logs ausgegeben. Externe EPG-Quellen erhalten keine Gigablue-Zugangsdaten.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -197,3 +281,51 @@ private fun showConnectionDialog(
         .setNegativeButton("Abbrechen", null)
         .show()
 }
+
+private fun showEpgSourceDialog(
+    context: Context,
+    initialUrl: String,
+    onSave: (String) -> Unit,
+) {
+    val input = EditText(context).apply {
+        setText(initialUrl)
+        hint = "https://…/tv.m3u"
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+        isSingleLine = true
+    }
+    val padding = (20 * context.resources.displayMetrics.density).toInt()
+    input.setPadding(padding, padding / 2, padding, 0)
+
+    AlertDialog.Builder(context)
+        .setTitle("EPG-M3U")
+        .setMessage("Die M3U muss x-tvg-url sowie tvg-id/tvg-name enthalten. Wiedergabe-URLs der M3U werden ignoriert.")
+        .setView(input)
+        .setPositiveButton("Speichern") { _, _ -> onSave(input.text.toString()) }
+        .setNegativeButton("Abbrechen", null)
+        .show()
+}
+
+private fun showMappingDialog(
+    context: Context,
+    channelName: String,
+    suggestions: List<EpgSourceChannel>,
+    onSelected: (String?) -> Unit,
+) {
+    val labels = buildList {
+        add("Automatisch neu zuordnen")
+        suggestions.forEach { source ->
+            add("${source.displayName} · ${source.xmltvChannelId}")
+        }
+    }.toTypedArray()
+
+    AlertDialog.Builder(context)
+        .setTitle("EPG für $channelName")
+        .setItems(labels) { _, which ->
+            if (which == 0) onSelected(null) else onSelected(suggestions[which - 1].xmltvChannelId)
+        }
+        .setNegativeButton("Abbrechen", null)
+        .show()
+}
+
+private fun formatDateTime(utcMillis: Long): String =
+    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(utcMillis))

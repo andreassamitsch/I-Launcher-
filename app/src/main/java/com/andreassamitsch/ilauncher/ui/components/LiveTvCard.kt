@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -30,6 +31,8 @@ fun LiveTvCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val artwork = channel.now?.preferredArtworkUri
+
     Card(
         onClick = onClick,
         modifier = modifier.width(300.dp),
@@ -39,10 +42,17 @@ fun LiveTvCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(92.dp)
+                    .height(146.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
-                if (!channel.piconUri.isNullOrBlank()) {
+                if (!artwork.isNullOrBlank()) {
+                    AsyncImage(
+                        model = artwork,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else if (!channel.piconUri.isNullOrBlank()) {
                     AsyncImage(
                         model = channel.piconUri,
                         contentDescription = channel.name,
@@ -57,6 +67,18 @@ fun LiveTvCard(
                         text = channel.name.take(1).uppercase(),
                         style = MaterialTheme.typography.displayMedium,
                         modifier = Modifier.align(Alignment.Center),
+                    )
+                }
+
+                if (!artwork.isNullOrBlank() && !channel.piconUri.isNullOrBlank()) {
+                    AsyncImage(
+                        model = channel.piconUri,
+                        contentDescription = channel.name,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(10.dp)
+                            .size(width = 82.dp, height = 38.dp),
                     )
                 }
 

@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.andreassamitsch.ilauncher.data.apps.InstalledAppsRepository
+import com.andreassamitsch.ilauncher.data.epg.EpgRepository
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifRepository
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextEnrichmentRepository
@@ -21,6 +22,7 @@ class MainActivity : ComponentActivity() {
         val tmdbRepository = TmdbRepository(applicationContext)
         val watchNextEnrichmentRepository = WatchNextEnrichmentRepository(tmdbRepository)
         val openWebifRepository = OpenWebifRepository(applicationContext)
+        val epgRepository = EpgRepository(applicationContext, tmdbRepository)
         val updateManager = UpdateManager(applicationContext)
 
         setContent {
@@ -30,6 +32,7 @@ class MainActivity : ComponentActivity() {
                     watchNextRepository = watchNextRepository,
                     watchNextEnrichmentRepository = watchNextEnrichmentRepository,
                     openWebifRepository = openWebifRepository,
+                    epgRepository = epgRepository,
                     updateManager = updateManager,
                 )
             }
