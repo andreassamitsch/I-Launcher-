@@ -11,6 +11,7 @@ internal data class EpgMergeResult(
 
 internal object EpgMerger {
     private const val START_TOLERANCE_MILLIS = 20L * 60L * 1_000L
+    private const val MIN_TEMPORAL_OVERLAP_RATIO = 0.70
 
     fun merge(
         channels: List<LiveTvChannel>,
@@ -61,12 +62,21 @@ internal object EpgMerger {
     }
 
     private fun sameSlot(base: LiveTvProgram, xml: XmlTvProgram): Boolean {
-        val startClose = abs(base.startUtcMillis - xml.startUtcMillis) <= START_TOLERANCE_MILLIS
         val overlap = minOf(base.endUtcMillis, xml.stopUtcMillis) -
             maxOf(base.startUtcMillis, xml.startUtcMillis)
+        if (overlap <= 0L) return false
+
         val titleEqual = EpgChannelMatcher.normalizeName(base.title) ==
             EpgChannelMatcher.normalizeName(xml.title)
-        return startClose || (titleEqual && overlap > 0L)
+        if (titleEqual) return true
+
+        val startClose = abs(base.startUtcMillis - xml.startUtcMillis) <= START_TOLERANCE_MILLIS
+        if (!startClose) return false
+
+        val xmlDuration = (xml.stopUtcMillis - xml.startUtcMillis).coerceAtLeast(1L)
+        val shorterDuration = minOf(base.durationMillis.coerceAtLeast(1L), xmlDuration)
+        val overlapRatio = overlap.toDouble() / shorterDuration.toDouble()
+        return overlapRatio >= MIN_TEMPORAL_OVERLAP_RATIO
     }
 
     private fun mergeMetadata(base: LiveTvProgram, xml: XmlTvProgram): LiveTvProgram = base.copy(
