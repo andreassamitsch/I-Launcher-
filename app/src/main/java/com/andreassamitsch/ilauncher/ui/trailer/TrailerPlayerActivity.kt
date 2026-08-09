@@ -45,7 +45,8 @@ class TrailerPlayerActivity : ComponentActivity() {
             settings.allowFileAccess = false
             settings.allowContentAccess = false
             settings.useWideViewPort = true
-            settings.loadWithOverviewMode = true
+            settings.loadWithOverviewMode = false
+            settings.setSupportZoom(false)
             webViewClient = WebViewClient()
             webChromeClient = object : WebChromeClient() {
                 override fun onShowCustomView(
