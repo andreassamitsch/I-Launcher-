@@ -41,13 +41,14 @@ internal data class PreviewProgramRawRow(
 
 internal object PreviewChannelsMapper {
     fun map(rows: List<PreviewChannelRawRow>): List<AppContentChannel> = rows.mapNotNull { channel ->
-        if (
-            channel.type != TvContract.Channels.TYPE_PREVIEW ||
-            channel.browsable != 1
-        ) {
+        if (channel.type != TvContract.Channels.TYPE_PREVIEW) {
             return@mapNotNull null
         }
 
+        // Channel.COLUMN_BROWSABLE describes whether Android's system Home currently
+        // includes this channel. I Launcher is itself a launcher and therefore keeps
+        // its own channel visibility preference. Program-level browsable/searchable
+        // flags remain authoritative for whether individual cards may be exposed.
         val programs = channel.programs.mapNotNull { program ->
             if (program.browsable != 1 || program.searchable != 1) {
                 null
