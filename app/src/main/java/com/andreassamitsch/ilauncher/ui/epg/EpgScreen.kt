@@ -15,7 +15,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -26,6 +29,7 @@ import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.data.epg.EpgState
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
+import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
 
@@ -41,20 +45,43 @@ fun EpgScreen(
     modifier: Modifier = Modifier,
     channelListState: LazyListState = rememberLazyListState(),
     programListState: LazyListState = rememberLazyListState(),
+    requestedProgramStartUtcMillis: Long? = null,
+    onProgramFocusRequestConsumed: () -> Unit = {},
 ) {
     val selectedChannel = channels.firstOrNull { it.serviceReference == selectedServiceReference }
         ?: channels.firstOrNull()
     val guide = state.guide(selectedChannel?.serviceReference)
     val nowUtcMillis = System.currentTimeMillis()
+    val requestedProgramFocusRequester = remember(requestedProgramStartUtcMillis) { FocusRequester() }
 
     LaunchedEffect(
         selectedChannel?.serviceReference,
         guide.firstOrNull()?.startUtcMillis,
         guide.lastOrNull()?.startUtcMillis,
+        requestedProgramStartUtcMillis,
     ) {
-        val targetIndex = initialProgramIndex(guide, System.currentTimeMillis())
+        val requestedIndex = requestedProgramStartUtcMillis?.let { requestedStart ->
+            guide.indexOfFirst { it.startUtcMillis == requestedStart }
+        } ?: -1
+        val targetIndex = if (requestedIndex >= 0) {
+            requestedIndex
+        } else {
+            initialProgramIndex(guide, System.currentTimeMillis())
+        }
         if (targetIndex >= 0) {
             programListState.scrollToItem(targetIndex)
+        }
+
+        if (requestedIndex >= 0) {
+            val channelIndex = channels.indexOfFirst {
+                it.serviceReference == selectedChannel?.serviceReference
+            }
+            if (channelIndex >= 0) {
+                channelListState.scrollToItem(channelIndex)
+            }
+            delay(50)
+            runCatching { requestedProgramFocusRequester.requestFocus() }
+            onProgramFocusRequestConsumed()
         }
     }
 
@@ -159,13 +186,22 @@ fun EpgScreen(
                         ) { program ->
                             val isCurrent = nowUtcMillis >= program.startUtcMillis &&
                                 nowUtcMillis < program.endUtcMillis
+                            val isRequested = program.startUtcMillis == requestedProgramStartUtcMillis
                             Button(
                                 onClick = {
                                     selectedChannel?.let { channel ->
                                         onSelectProgram(channel.serviceReference, program)
                                     }
                                 },
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(
+                                        if (isRequested) {
+                                            Modifier.focusRequester(requestedProgramFocusRequester)
+                                        } else {
+                                            Modifier
+                                        },
+                                    ),
                             ) {
                                 Column(
                                     modifier = Modifier.fillMaxWidth(),
