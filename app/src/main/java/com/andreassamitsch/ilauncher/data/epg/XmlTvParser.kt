@@ -210,7 +210,7 @@ internal object XmlTvParser {
 }
 
 internal object XmlTvTime {
-    private val pattern = Regex("^(\\d{8}|\\d{12}|\\d{14})(?:\\s*([+-]\\d{4}|Z))?")
+    private val pattern = Regex("^(\\d{14}|\\d{12}|\\d{8})(?:\\s*([+-]\\d{4}|Z))?")
     private val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
 
     fun parse(raw: String?, defaultZone: ZoneId = ZoneId.systemDefault()): Long? {
