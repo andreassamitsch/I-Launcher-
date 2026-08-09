@@ -16,7 +16,7 @@
 - Gigablue bleibt für Live-TV die Identitäts-, Reihenfolge- und Streamquelle; externe EPG-Quellen ergänzen nur Metadaten
 - Stream-Adressen, Session-IDs und Streaming-Zugangsdaten werden nicht persistiert oder geloggt
 
-## Aktueller Stand: Phase 7 in Entwicklung
+## Aktueller Stand: Phase 7 abgeschlossen
 
 Die Gradle-Struktur bleibt vorerst bewusst bei einem `app`-Modul. Die Provider-Grenzen sind paketweise getrennt:
 
@@ -249,7 +249,7 @@ Die Stream-Playlist selbst ist auf 64 KiB begrenzt. Der Player verwendet kurze L
 
 Zapping arbeitet ausschließlich auf der bereits von der Gigablue gelieferten Senderliste; die Reihenfolge wird nicht neu sortiert. Unterstützt werden D-Pad ↑/↓ und die TV-Tasten CH+/CH−. Die Key-Behandlung verwendet die Compose-`Key`-Abstraktion, nicht gerätespezifische Keycodes.
 
-Beim Verlassen des Players wird die Service Reference des zuletzt aus Home gestarteten Senders verwendet, um die horizontale `Jetzt im TV`-Liste zurück an die entsprechende Karte zu scrollen und den Focus explizit wiederherzustellen. Das reale Verhalten muss auf dem TCL bestätigt werden.
+Beim Verlassen des Players wird die Service Reference des zuletzt aus Home gestarteten Senders verwendet, um die horizontale `Jetzt im TV`-Liste zurück an die entsprechende Karte zu scrollen und den Focus explizit wiederherzustellen. Dieses Verhalten ist auf dem TCL bestätigt.
 
 ### Player UI und Diagnose
 
@@ -284,7 +284,7 @@ Kurzes `OK` auf Watch Next startet den vorhandenen Source-/Playback-Intent. `INF
 
 ## Development-Publishing
 
-Signierte Development-Builds laufen über den `downloads`-Kanal. Phase 7 veröffentlicht aus `agent/phase-7-live-tv`. Vor einer Test-APK laufen `testDebugUnitTest` und `assembleDebug`. Phasen 1 bis 6 sind hardwarebestätigt; Phase 7 gilt erst nach dem realen TCL-/Gigablue-Streamingtest als hardwareverifiziert.
+Signierte Development-Builds laufen über den `downloads`-Kanal. Phase 7 wurde aus `agent/phase-7-live-tv` veröffentlicht. Vor einer Test-APK laufen `testDebugUnitTest` und `assembleDebug`. Phasen 1 bis 7 sind hardwarebestätigt.
 
 ## Home-Tasten-Fallback
 
