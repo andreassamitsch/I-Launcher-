@@ -16,28 +16,32 @@
 - Gigablue bleibt für Live-TV die Identitäts-, Reihenfolge- und Streamquelle; externe EPG-Quellen ergänzen nur Metadaten
 - Stream-Adressen, Session-IDs und Streaming-Zugangsdaten werden nicht persistiert oder geloggt
 
-## Aktueller Stand: Phase 7 abgeschlossen
+## Aktueller Stand
 
 Die Gradle-Struktur bleibt vorerst bewusst bei einem `app`-Modul. Die Provider-Grenzen sind paketweise getrennt:
 
 ```text
 app/
   data/apps/       installierte Apps / PackageManager
-  data/tv/         Android TvProvider / Watch Next / Quellenpräferenzen / Medienmapping
+  data/tv/         Android TvProvider / Watch Next / Preview Channels / Quellenpräferenzen / Medienmapping
   data/tmdb/       TMDB API / Parser / Resolver / Metadaten / Trailer-Metadaten
-  data/youtube/    YouTube-Wiedergabe und Such-Fallback über Android-Intents
+  data/youtube/    YouTube-Trailerreferenzen und Embed-Helfer
+  data/search/     lokale globale Suche + TMDB-Suche
+  data/handoff/    optionale externe Suchübergabe, z. B. CloudStream/Kodi
   data/openwebif/  Gigablue/OpenWebif Verbindung, Cache, Bouquets, Sender, EPG und Streamauflösung
   data/epg/        M3U-Metadaten, Sender-Mapping, XMLTV-Streaming, EPG-Merge und TMDB-EPG-Anreicherung
   data/database/   Room / TMDB- und EPG-Cache
   data/update/     Development-Updatekanal
   model/           gemeinsame Media- und Live-TV-Modelle
   system/          Home-Rolle / Accessibility / TvProvider-Berechtigungen
-  ui/home/         Home inklusive Watch Next und Jetzt im TV
+  ui/home/         Home inklusive Hero, Watch Next, Jetzt im TV und Preview Channels
   ui/details/      provider-neutrale Medien-Detailseite inklusive Traileraktion
-  ui/livetv/       Gigablue-Einrichtung, EPG-Diagnose und interner Media3-Live-TV-Player
-  ui/epg/          vollständige Sender-/Programmübersicht
+  ui/trailer/      interne Trailerwiedergabe
+  ui/livetv/       Gigablue-Einrichtung und interner Media3-Live-TV-Player mit eingebettetem Guide
+  ui/epg/          wiederverwendbare Guide-UI, im aktuellen UX vom Live-TV-Player aus geöffnet
   ui/apps/         App-Übersicht
-  ui/settings/     Einstellungen, Diagnose und Credits
+  ui/search/       lokale/TMDB-Suche und Sprachsuche
+  ui/settings/     Einstellungen, Diagnose, Live-TV-Unterpunkt und Credits
   ui/components/   TV-Cards
   ui/theme/        TV-Material-Theme
 ```
@@ -71,7 +75,7 @@ playback
 ## Content-Datenfluss
 
 ```text
-Android TvProvider / spätere Provider
+Android TvProvider / weitere Provider
         ↓
 Quellmodell + stabiler Source-Key
         ↓
@@ -94,6 +98,8 @@ Für das Lesen von TV-Daten anderer Apps verwendet I Launcher `android.permissio
 
 Watch Next wird aus `TvContract.WatchNextPrograms.CONTENT_URI` gelesen. Die Query fordert `last_engagement_time_utc_millis DESC` an. Die resultierende Reihenfolge wird im Mapper nicht verändert; Quellenfilter entfernen nur Zeilen.
 
+Preview Channels werden als eigene Content-Reihen normalisiert. Der auf dem Zielgerät beobachtete Android-Systemwert `Channels.COLUMN_BROWSABLE=0` ist keine I-Launcher-Ausblendentscheidung: I Launcher verwaltet seine Home-Reihen lokal pro Channel-ID. Program-Level-Sichtbarkeit bleibt konservativ.
+
 ## Gemeinsame Medien- und Live-TV-Modelle
 
 `MediaItem` ist die provider-neutrale Darstellung für Filme, Serien und Episoden. Die Quellinformation bleibt auch nach TMDB-Anreicherung erhalten. Trailer sind über eine provider-neutrale `TrailerRef` angebunden.
@@ -111,7 +117,7 @@ OpenWebifRepository
         ├── /api/getservices          → Bouquets
         ├── /api/getservices?sRef=…   → Sender + Picons
         ├── /api/epgnownext?bRef=…    → aktuelle/nächste Sendung
-        └── /web/stream.m3u?ref=…     → flüchtige Streamauflösung für Phase 7
+        └── /web/stream.m3u?ref=…     → flüchtige Streamauflösung
         ↓
 LiveTvChannel / LiveTvProgram
 ```
@@ -130,7 +136,7 @@ Ein `getservices`-Aufruf ohne `sRef` liefert die TV-Bouquets. Das ausgewählte B
 
 `/api/epgnownext` liefert aktuelle und folgende Events des Bouquets. Die Zuordnung erfolgt über die Enigma2-Service-Reference. OpenWebif-Zeitfenster/Event-IDs bleiben die bevorzugte Primärinformation für Now/Next.
 
-## Phase-6-EPG-Pipeline
+## EPG-Pipeline
 
 Die externe M3U/XMLTV-Quelle wird **nur als Metadatenquelle** verwendet:
 
@@ -162,7 +168,7 @@ Room EPG Cache
 OpenWebif + XMLTV Merge
            │
            ├─ Home: Jetzt im TV
-           └─ EPG Guide
+           └─ wiederverwendbarer TV-Guide
            │
            ▼
 konservativer TMDB Resolver
@@ -175,7 +181,7 @@ Bilder / Episodendaten / Details
 
 Die konfigurierte EPG-M3U wird zeilenweise nur nach Metadaten ausgewertet. Wiedergabe-URLs, Plugin-URLs oder enthaltene IPTV-Streamdaten werden nicht persistiert und nicht zur Wiedergabe verwendet. Der Parser kann aus `tvg-id`, Picon- oder Streampfaden eine Enigma2-Service-Reference als **Mapping-Hinweis** extrahieren; die URL selbst wird danach verworfen.
 
-Phase 7 verwendet ausdrücklich **nicht** diese IPTV-URLs, sondern löst den Stream des ausgewählten Gigablue-Senders direkt über OpenWebif auf.
+Die Live-TV-Wiedergabe verwendet ausdrücklich **nicht** diese IPTV-URLs, sondern löst den Stream des ausgewählten Gigablue-Senders direkt über OpenWebif auf.
 
 ### Senderzuordnung
 
@@ -212,7 +218,7 @@ OpenWebif bleibt bei einer übereinstimmenden Sendung maßgeblich für Event-ID,
 
 TMDB wird nicht blind für jede TV-Sendung aufgerufen. Automatische Auflösung erfolgt nur, wenn XMLTV-Informationen einen Film-/Seriencharakter plausibel machen. Aktuelle Programme werden progressiv in begrenzter Zahl angereichert; weitere Guide-Einträge bei Auswahl. TMDB überschreibt keine zuverlässigen EPG-Zeitdaten.
 
-## Phase-7-Live-TV-Pipeline
+## Live-TV-Pipeline
 
 Der interne Player startet direkt aus einer `Jetzt im TV`-Karte. Entscheidend ist, dass I Launcher den finalen Stream-Port oder die endgültige Stream-Adresse nicht selbst rät:
 
@@ -240,20 +246,24 @@ OpenWebifResolvedStream (nur RAM)
    ▼
 ExoPlayer → PlayerView
    +
-Compose-TV-Overlay
+Compose-TV-Overlay / integrierter EPG
 ```
 
 Die Stream-Playlist selbst ist auf 64 KiB begrenzt. Der Player verwendet kurze LAN-Timeouts und erlaubt HTTP/HTTPS-Redirects. Bei einem Senderwechsel wird der alte Stream sofort gestoppt, danach wird der Zielsender neu über OpenWebif aufgelöst.
 
-### Zapping und TV-Focus
+### Zapping, Overlay und TV-Focus
 
-Zapping arbeitet ausschließlich auf der bereits von der Gigablue gelieferten Senderliste; die Reihenfolge wird nicht neu sortiert. Unterstützt werden D-Pad ↑/↓ und die TV-Tasten CH+/CH−. Die Key-Behandlung verwendet die Compose-`Key`-Abstraktion, nicht gerätespezifische Keycodes.
+Zapping arbeitet ausschließlich auf der bereits von der Gigablue gelieferten Senderliste; die Reihenfolge wird nicht neu sortiert. Unterstützt werden D-Pad ↑/↓ und die TV-Tasten CH+/CH−.
 
-Beim Verlassen des Players wird die Service Reference des zuletzt aus Home gestarteten Senders verwendet, um die horizontale `Jetzt im TV`-Liste zurück an die entsprechende Karte zu scrollen und den Focus explizit wiederherzustellen. Dieses Verhalten ist auf dem TCL bestätigt.
+Die Player-Informationen werden nach erfolgreichem Streamstart nach drei Sekunden ausgeblendet. `OK` blendet sie wieder ein; `Zurück` blendet sichtbare Infos zuerst aus und verlässt erst beim folgenden Zurück den Player. Laden, Fehler und Zapping machen die Informationsebene erneut sichtbar.
+
+Der bestehende EPG-Guide wird über einen `EPG`-Punkt im Player geöffnet und als Overlay über der laufenden Playeransicht dargestellt. D-Pad-Ereignisse gehören währenddessen dem Guide. Zurück schließt zunächst den Guide und kehrt zum TV-Bild zurück. EPG-Suchergebnisse öffnen den Player mit dem passenden Sender und dem Guide-Kontext statt eine eigene Hauptnavigation zu benötigen.
+
+Beim Verlassen des Players wird die Service Reference des zuletzt aus Home gestarteten Senders verwendet, um die horizontale `Jetzt im TV`-Liste zurück an die entsprechende Karte zu scrollen und den Focus explizit wiederherzustellen.
 
 ### Player UI und Diagnose
 
-Der Player zeigt als Overlay:
+Der Player zeigt bei eingeblendeter Information:
 
 - Sender-Picon
 - Sendername
@@ -262,9 +272,42 @@ Der Player zeigt als Overlay:
 - Position im Bouquet
 - Ladezustand
 - sichere Fehlerkategorie ohne Stream-URL oder Zugangsdaten
-- Zurück sowie Sender − / Sender +
+- Zurück, Sender − / Sender + und EPG
 
 Media3-Playbackfehler zeigen nur den Media3-Fehlernamen. Private Streamdaten werden weder in der UI noch in Logs ausgegeben.
+
+## Globale Suche
+
+Die globale Suche arbeitet Local First. Ab zwei Zeichen werden lokale Treffer auf einem Hintergrund-Dispatcher ermittelt; längere Metadaten werden erst ab drei Zeichen einbezogen. TMDB läuft getrennt und verzögert ab drei Zeichen.
+
+Lokale Quellen:
+
+- installierte Apps
+- sichtbare Watch-Next-Einträge
+- sichtbare Preview Programs
+- aktueller/gecachter Gigablue/XMLTV-EPG
+
+Bei Watch Next werden sowohl das angereicherte gemeinsame `MediaItem` als auch die unveränderten TvProvider-Quellfelder wie Show-Titel, Episodentitel und Subtitle durchsucht. Preview Programs können zusätzlich über Channel- und Quell-App-Namen gefunden werden. Damit darf TMDB-Anreicherung die Suchbarkeit der Android-Quellidentität nicht verschlechtern.
+
+Sprachsuche delegiert an die auf dem Gerät vorhandene Android-Spracherkennungsaktivität und übernimmt das erkannte Ergebnis in dieselbe Suchpipeline.
+
+TMDB-only-Treffer können optional an installierte Ziel-Apps übergeben werden. CloudStream wird über dessen `cloudstreamsearch`-Intent erkannt; die tatsächliche installierte Stable-/Prerelease-/Debug-Paketvariante wird dynamisch aufgelöst. Kodi verwendet seine Android-Suchschnittstelle. I Launcher baut keine Providerlogik dieser Apps nach.
+
+## Home und Navigation
+
+Home besteht aus einem Hero und darunter den Content-Reihen. Der Hero liegt **außerhalb** des vertikalen Reihen-Scrollcontainers und bleibt daher sichtbar, während der Benutzer durch Watch Next, `Jetzt im TV`, Preview Channels und Apps navigiert. Fokusänderungen der Karten aktualisieren nur den Hero-Inhalt, nicht die Quellreihenfolge.
+
+Der Hero selbst ist fokussierbar. Bei Medien öffnet `OK` die vorhandene provider-neutrale Detailansicht; bei Apps wird die App geöffnet. Das Hero-Artwork bevorzugt verfügbare Backdrops/Programm-Artwork und ergänzt Logo/Picon, Titel, Beschreibung und vorhandene Zusatzinformationen.
+
+Die primäre Navigation ist bewusst klein: `Home · Suche · Apps · Einstellungen`. Der aktive Punkt wird nur durch einen Rahmen markiert. Auf Home darf die Navigationszeile verschwinden, sobald der Benutzer die vertikalen Content-Reihen nach unten scrollt. Live-TV-/Gigablue-Konfiguration liegt unter Einstellungen; EPG ist eine Player-Funktion und kein eigener Hauptpunkt.
+
+## Detailnavigation und Trailer
+
+Kurzes `OK` auf Watch Next startet weiterhin den vorhandenen Source-/Playback-Intent. `INFO` oder lange `OK` öffnet Details. Hero-Medien öffnen ebenfalls die provider-neutrale Detailansicht.
+
+Trailer werden bevorzugt aus TMDB-Video-Metadaten aufgelöst. Wenn eine konkrete YouTube-ID vorhanden ist, startet der aktuelle UI-Polish eine eigene interne Trailer-Activity mit WebView und `WebChromeClient`-Fullscreen-Custom-View-Unterstützung, damit die Videooberfläche nicht von der Compose-Hostansicht verschluckt wird. Es findet keine Stream-Extraktion statt. Wenn keine konkrete Video-ID vorhanden ist, bleibt die externe YouTube-Suche der Fallback.
+
+Die interne Trailer-Activity ist eine UX-Erweiterung gegenüber dem bereits hardwarebestätigten externen Trailerstart und bleibt bis zum aktuellen Gerätetest als noch nicht hardwarebestätigt gekennzeichnet.
 
 ## Room Cache und Local First
 
@@ -272,19 +315,9 @@ Room-Version 3 enthält `epg_channel_mappings` und `epg_programs`; Migration `2 
 
 Live-TV-Streamadressen werden bewusst **nicht** gecacht: Sie können Session-Informationen enthalten und werden pro Senderstart/-wechsel frisch über OpenWebif aufgelöst.
 
-## Home und EPG UI
-
-`Jetzt im TV` behält die Gigablue-Senderreihenfolge. Wenn XMLTV/TMDB ein passendes Programmbild liefert, wird dieses als Card-Artwork verwendet und das Sender-Picon darüber eingeblendet; ohne Programmbild bleibt die Picon-Karte erhalten. In Phase 7 startet `OK` auf der Karte den internen Media3-Player.
-
-Der Bereich `EPG` zeigt links Sender und rechts das Programm des ausgewählten Senders. Auswahl eines Programmeintrags zeigt Beschreibung, Staffel/Episode, Kategorien und verfügbares Artwork und kann die TMDB-Auflösung dieses Eintrags auslösen.
-
-## Detailnavigation und Trailer
-
-Kurzes `OK` auf Watch Next startet den vorhandenen Source-/Playback-Intent. `INFO` oder lange `OK` öffnet Details. Trailer werden bevorzugt aus TMDB-Video-Metadaten aufgelöst und an YouTube delegiert; bei fehlender ID gibt es einen gezielten YouTube-Suchfallback. Focus-Rückgabe nach Details und Rückkehr aus YouTube sind auf TCL bestätigt.
-
 ## Development-Publishing
 
-Signierte Development-Builds laufen über den `downloads`-Kanal. Phase 7 wurde aus `agent/phase-7-live-tv` veröffentlicht. Vor einer Test-APK laufen `testDebugUnitTest` und `assembleDebug`. Phasen 1 bis 7 sind hardwarebestätigt.
+Signierte Development-Builds laufen über den `downloads`-Kanal. Vor einer Test-APK laufen `testDebugUnitTest` und `assembleDebug`. Der aktuelle UI-Polish-Build ist automatisiert gebaut; Trailer-Video, Sprachsuche, neue Hero-/Navigation und eingebetteter EPG benötigen zusätzlich reale TV-Hardwarevalidierung.
 
 ## Home-Tasten-Fallback
 
