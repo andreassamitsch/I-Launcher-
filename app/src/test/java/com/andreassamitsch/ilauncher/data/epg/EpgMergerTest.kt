@@ -61,4 +61,46 @@ class EpgMergerTest {
         assertEquals(1, result.guideByServiceReference[channel.serviceReference]?.size)
         assertNull(result.channels.single().next)
     }
+
+    @Test
+    fun `does not merge different current programmes on weak time overlap`() {
+        val now = 10_000_000L
+        val base = LiveTvProgram(
+            eventId = 88,
+            title = "Nachrichten",
+            startUtcMillis = now - 5 * 60_000L,
+            durationMillis = 60 * 60_000L,
+        )
+        val channel = LiveTvChannel(
+            serviceReference = "1:0:1:ABC:DEF:1:C00000:0:0:0:",
+            name = "Test HD",
+            now = base,
+        )
+        val xml = XmlTvProgram(
+            xmltvChannelId = "Test.de",
+            startUtcMillis = now - 15 * 60_000L,
+            stopUtcMillis = now + 60_000L,
+            title = "Wetter",
+            description = "Darf nicht übernommen werden",
+        )
+
+        val result = EpgMerger.merge(
+            channels = listOf(channel),
+            mappings = listOf(
+                EpgChannelMapping(
+                    serviceReference = channel.serviceReference,
+                    xmltvChannelId = "Test.de",
+                    matchMethod = EpgChannelMatcher.METHOD_EXACT_NAME,
+                    confidence = 0.98f,
+                ),
+            ),
+            programmes = listOf(xml),
+            nowUtcMillis = now,
+        )
+
+        val merged = result.channels.single().now!!
+        assertEquals("Nachrichten", merged.title)
+        assertNull(merged.longDescription)
+        assertNull(merged.xmltvChannelId)
+    }
 }
