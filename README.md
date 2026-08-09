@@ -16,9 +16,9 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phase 4 – Trailer ist funktional abgeschlossen und auf realer TCL-Hardware bestätigt. Phase 5 – Gigablue/OpenWebif ist der nächste Entwicklungsabschnitt.**
+**Phase 4 – Trailer ist abgeschlossen. Phase 5 – Gigablue/OpenWebif ist implementiert und befindet sich im Build-/Gerätetest.**
 
-Der bestätigte Unterbau umfasst inzwischen:
+Der bestätigte Unterbau umfasst:
 
 - Android-TV-Launcher/Home-App mit D-Pad-Focus
 - Android Watch Next über TvProvider einschließlich CloudStream
@@ -26,30 +26,27 @@ Der bestätigte Unterbau umfasst inzwischen:
 - konservative TMDB-Auflösung mit Room-Cache
 - Film-/Serien-/Episodendaten und Artwork
 - provider-neutrale Detailseite mit Focus-Rückgabe
-- TMDB-Trailerauflösung mit YouTube-ID
-- Episode-Trailer vor Serien-Trailer
-- `Trailer` sowie `Trailer suchen` als Fallback
-- Trailerstart per Android `ACTION_VIEW`
-- Room-Migration von Phase 3 auf Phase 4 ohne Verlust bestehender Cache-Daten
+- TMDB-/YouTube-Trailer mit Such-Fallback
 
-Der TMDB-Token wird **nicht** im Repository abgelegt. Der signierte Development-Publisher konsumiert `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich als GitHub-Secret.
+Phase 5 ergänzt direkt über Enigma2/OpenWebif:
 
-Auf dem TCL verifiziert:
+- lokale Receiver-Konfiguration mit optionaler HTTP-Basic-Authentifizierung
+- Bouquets und Sender über OpenWebif
+- Picons
+- EPG Now/Next
+- auswählbares Bouquet
+- Local-First-Snapshot für die zuletzt bekannten TV-Daten
+- eigene `Live TV`-Ansicht für Einrichtung und Diagnose
+- `Jetzt im TV` auf Home mit Senderlogo, aktueller Sendung, Zeit, Fortschritt und nächster Sendung
+- fünfminütige Hintergrundaktualisierung ohne den Launcher-Start zu blockieren
 
-- Launcher-/Home-Funktion und D-Pad-Navigation
-- Watch-Next-Reihenfolge, Quellenfilter und Deep-Links
-- Direktstart und Detailseite
-- Focus-Rückkehr nach Details
-- TMDB-Anreicherung für Filme, Serien und Episoden
-- Poster/Backdrops/Logos/Episodenbilder
-- progressives Nachladen über die gesamte Watch-Next-Liste
-- Update `dev.45` → `dev.47` einschließlich Room-Migration
-- TMDB-Trailerbutton
-- YouTube-Trailerstart
-- Such-Fallback bei fehlendem TMDB-Trailer
-- Rückkehr aus YouTube ohne Navigation-/Focus-Regression
+OpenWebif-Zugangsdaten werden nur lokal gespeichert, nicht geloggt und durch `allowBackup=false` nicht über Android Auto Backup ausgelagert. Normale lokale OpenWebif-Installationen über HTTP werden unterstützt; bei Verwendung von HTTP-Basic sollten Zugangsdaten nur im vertrauenswürdigen Heimnetz verwendet werden.
+
+Auf dem TCL bereits verifiziert sind Launcher, Watch Next, TMDB, Detailnavigation, Focus-Rückgabe und Trailer einschließlich Update `dev.45` → `dev.47`.
 
 Bestätigter Phase-4-Build: **`0.1.0-dev.47` (`26000047`)**, `updateCompatible=true`, `tmdbConfigured=true`.
+
+Der Phase-5-Build gilt erst nach erfolgreichem CI-Build und anschließendem realen TCL + Gigablue-X3-Test als abgeschlossen.
 
 Watch Next liefert CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Eine CloudStream-spezifische Integration bleibt deshalb bewusst außen vor.
 
