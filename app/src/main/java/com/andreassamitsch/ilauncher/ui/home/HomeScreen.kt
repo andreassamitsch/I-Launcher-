@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -23,6 +24,8 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifState
 import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
+import com.andreassamitsch.ilauncher.model.AppContentChannel
+import com.andreassamitsch.ilauncher.model.AppContentProgram
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.ui.components.AppCard
@@ -34,12 +37,15 @@ fun HomeScreen(
     apps: List<InstalledApp>,
     watchNextItems: List<EnrichedWatchNextItem>,
     watchNextError: String?,
+    previewChannels: List<AppContentChannel>,
+    previewChannelsError: String?,
     hasTvListingsPermission: Boolean,
     liveTvState: OpenWebifState,
     onRequestTvListingsPermission: () -> Unit,
     onOpenApp: (InstalledApp) -> Unit,
     onOpenWatchNext: (EnrichedWatchNextItem) -> Unit,
     onOpenWatchNextDetails: (EnrichedWatchNextItem) -> Unit,
+    onOpenPreviewProgram: (AppContentChannel, AppContentProgram) -> Unit,
     onOpenLiveTv: () -> Unit,
     onPlayLiveTvChannel: (LiveTvChannel) -> Unit,
     modifier: Modifier = Modifier,
@@ -54,6 +60,10 @@ fun HomeScreen(
     val watchNextRestoreFocusRequester = remember { FocusRequester() }
     val liveTvRestoreFocusRequester = remember { FocusRequester() }
     val homeScrollState = rememberScrollState()
+    val appLabels = remember(apps) { apps.associate { it.packageName to it.label } }
+    val visiblePreviewChannels = remember(previewChannels) {
+        previewChannels.filter { it.programs.isNotEmpty() }
+    }
 
     LaunchedEffect(
         watchNextFocusRestoreSourceId,
@@ -230,6 +240,56 @@ fun HomeScreen(
                 else -> {
                     Button(onClick = onOpenLiveTv) {
                         Text("Live TV öffnen / Verbindung prüfen")
+                    }
+                }
+            }
+        }
+
+        if (hasTvListingsPermission && previewChannelsError != null) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "App-Kanäle",
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(
+                    text = previewChannelsError,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+
+        visiblePreviewChannels.forEach { channel ->
+            key(channel.id) {
+                val channelListState = rememberLazyListState()
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = channel.title,
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                    val sourceLabel = channel.packageName?.let(appLabels::get)
+                    if (!sourceLabel.isNullOrBlank() && sourceLabel != channel.title) {
+                        Text(
+                            text = sourceLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                LazyRow(
+                    state = channelListState,
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    items(
+                        items = channel.programs,
+                        key = { it.media.id },
+                    ) { program ->
+                        WatchNextCard(
+                            item = program.media,
+                            onClick = { onOpenPreviewProgram(channel, program) },
+                        )
                     }
                 }
             }
