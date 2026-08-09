@@ -35,9 +35,11 @@ internal object OpenWebifMapper {
                 duration > 0L && nowSeconds >= start && nowSeconds < start + duration
             } ?: matchingEvents.firstOrNull()
 
-            val nextDto = when {
-                currentDto == null -> null
-                else -> matchingEvents.firstOrNull { event -> event !== currentDto }
+            val currentIndex = currentDto?.let(matchingEvents::indexOf) ?: -1
+            val nextDto = if (currentIndex >= 0) {
+                matchingEvents.drop(currentIndex + 1).firstOrNull()
+            } else {
+                null
             }
 
             LiveTvChannel(
