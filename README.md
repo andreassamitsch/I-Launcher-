@@ -19,72 +19,31 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 **Phasen 1 bis 7 sind funktional abgeschlossen und auf dem Zielgerät bestätigt.**
 
-Der bestätigte Unterbau umfasst:
-
-- Android-TV-Launcher/Home-App mit D-Pad-Focus
-- Android Watch Next über TvProvider einschließlich CloudStream
-- gemeinsames provider-neutrales `MediaItem`-/`MediaSource`-Modell
-- konservative TMDB-Auflösung mit Room-Cache
-- Film-/Serien-/Episodendaten und Artwork
-- provider-neutrale Detailseite mit Focus-Rückgabe
-- TMDB-/YouTube-Trailer mit Such-Fallback
-- direkte Gigablue-/OpenWebif-Verbindung
-- Bouquets und Sender in Receiver-Reihenfolge
-- Picons und OpenWebif Now/Next
-- `Jetzt im TV` auf Home
-- M3U/XMLTV-Senderzuordnung einschließlich Enigma2-Service-Reference und manueller Zuordnung
-- vollständiger XMLTV-EPG mit Local-First-Room-Cache
-- XMLTV/OpenWebif-Merge und konservative TMDB-Anreicherung für TV-Programme
-- interner Media3-Live-TV-Player mit OpenWebif-Streamauflösung und Zapping
-- D-Pad-Navigation und Focus-Rückgabe auf Home, EPG und Live TV
-
-Phase 5 und Phase 6 wurden gemeinsam auf realer TCL-/Gigablue-X3-Hardware gegen die reale `riedl-dach.at` M3U/XMLTV-Quelle verifiziert. Dazu gehören Receiver-Verbindung, Bouquet-/Senderreihenfolge, Picons, Now/Next, XMLTV-Mapping, vollständiger EPG, TMDB-Artwork, D-Pad/Focus, Update/Migration und Offline-/Cache-Verhalten.
+Der bestätigte Unterbau umfasst Android-TV-Launcher/Home-App, Android Watch Next über TvProvider, gemeinsame Medienmodelle, TMDB-Anreicherung, direkte Gigablue/OpenWebif-Integration, XMLTV/EPG, internen Media3-Live-TV-Player und bestätigte D-Pad-/Focus-Grundfunktionen.
 
 ## Aktueller Entwicklungszweig – Suche / Preview Channels / UI-Polish
 
-Der aktuelle gestapelte Entwicklungsstand ergänzt Preview Channels, globale Suche und eine überarbeitete Content-Home-Oberfläche. Diese Bereiche bleiben bis zum abschließenden Gerätetest bewusst in Draft-PRs.
+Der aktuelle gestapelte Entwicklungsstand ergänzt Preview Channels, globale Suche und die nächste Home-/Player-UX. Diese Änderungen bleiben bis zum neuen Gerätetest in Draft-PRs.
 
-Der UI-Polish-Stand umfasst zusätzlich:
+Aktuell umgesetzt:
 
-- fest sichtbaren, fokussierbaren Hero-Bereich auf Home; der Inhalt folgt dem fokussierten Content und `OK` öffnet bei Medien die Detailansicht
-- kompaktere Hauptnavigation `Home · Suche · Apps · Einstellungen`, nur mit Rahmenmarkierung für den aktiven Bereich; auf Home kann die Navigation beim Scrollen der Reihen ausblenden
-- Live-TV-/Gigablue-Konfiguration als Unterpunkt der Einstellungen statt eigener Hauptnavigation
+- fest sichtbarer, fokussierbarer Hero außerhalb des vertikalen Reihen-Scrolls; Fokus auf Watch Next, Live-TV, Preview Channels oder Apps aktualisiert Inhalt/Artwork; Medien-Hero öffnet per OK die Detailansicht
+- kompakte Hauptnavigation `Home · Suche · Apps · Einstellungen`; aktiver Bereich nur per Rahmen; Navigation kann auf Home beim Scrollen der Reihen ausblenden
+- Live-TV-/Gigablue-Konfiguration als Unterpunkt der Einstellungen
 - EPG als TV-Guide direkt im laufenden Live-TV-Player statt eigener Hauptnavigation
-- Live-TV-Infoleisten mit automatischem Ausblenden nach drei Sekunden, `OK` zum Einblenden und Back-First-Hide-Verhalten
-- interne Trailerwiedergabe in einer eigenen Launcher-Activity mit WebView-Fullscreen-Videooberfläche; externe YouTube-Suche bleibt Fallback, wenn keine konkrete TMDB-Video-ID vorliegt
-- lokale Suche berücksichtigt zusätzlich die unveränderten Android-Watch-Next-Quelltitel und Preview-Channel-Namen
-- Sprachsuche über die auf dem TV verfügbare Android-Spracherkennungsaktivität
+- Live-TV-Infoleisten blenden nach drei Sekunden aus; OK zeigt sie, erstes Zurück versteckt sie
+- direkte TMDB-/YouTube-Trailer starten in einer eigenen internen Trailer-Activity mit Fullscreen-WebView-Unterstützung; externe YouTube-Suche bleibt Fallback ohne konkrete Trailer-ID
+- lokale Suche berücksichtigt unveränderte Android-Watch-Next-Quelltitel sowie Preview-Channel-/Quellnamen zusätzlich zu angereicherten Medienfeldern
+- Android-Sprachsuche übernimmt erkannte Sprache in dieselbe Suchpipeline
 - CloudStream-Suchhandoff erkennt Stable-, Prerelease-, Debug- und kombinierte Development-Paketvarianten dynamisch über den `cloudstreamsearch`-Intent
 
-Automatisiert geprüft und veröffentlicht ist der aktuelle Code als Development-Testbuild **`0.1.0-dev.115` (`26000115`)**. Build und Unit-Tests sind grün; die oben genannten UI-/Hardwareänderungen sind ausdrücklich noch nicht als Gerätetest bestätigt.
-
-## Phase 7 – Live TV
-
-Phase 7 ergänzt:
-
-- Media3/ExoPlayer als internen Player
-- Streamauflösung über OpenWebifs eigenes `web/stream.m3u?ref=…`, damit der Receiver selbst den tatsächlichen Stream-Port bzw. direkten Stream bestimmt
-- keine Persistierung oder Protokollierung von Stream-URLs, Session-IDs oder Stream-Zugangsdaten
-- MPEG-TS-Wiedergabe über Media3 Progressive Media Source
-- HLS-Wiedergabe, falls OpenWebif einen HLS-Stream zurückliefert
-- temporäre Streaming-Authentifizierung wird aus URL-Userinfo entfernt und nur flüchtig als HTTP-Header an Media3 weitergegeben
-- Start des internen Players direkt aus `Jetzt im TV`
-- Zapping in unveränderter Gigablue-Senderreihenfolge
-- D-Pad ↑/↓ sowie CH+/CH− für Senderwechsel
-- alter Stream wird beim Zappen sofort gestoppt, bevor der Zielstream neu aufgelöst wird
-- TV-Overlay mit Picon, aktueller/nächster Sendung, Bouquet-Position, Lade- und Fehlerstatus
-- exakte Focus-Rückgabe auf die zuvor gestartete `Jetzt im TV`-Karte
-- Unit-Tests für Stream-Parsing, Auth-/Session-Sanitizing und Zapping
-
-Android CI und der signierte Development-Publisher laufen für diesen Stand erfolgreich durch. Hardware-Testbuild **`0.1.0-dev.68` (`26000068`)** wurde auf TCL + Gigablue X3 erfolgreich getestet: interner Streamstart, Video/Audio, Zapping, Overlay und Rückkehrverhalten funktionieren auf dem Zielgerät.
+Automatisiert geprüft und veröffentlicht ist der aktuelle Code als Development-Testbuild **`0.1.0-dev.115` (`26000115`)**. Build und Unit-Tests sind grün; Trailer-Video, Sprachsuche, Hero-/Navigation und eingebetteter EPG sind damit ausdrücklich noch nicht als realer Gerätetest bestätigt.
 
 ## Datenschutz / Sicherheit
 
-OpenWebif-Zugangsdaten werden nur lokal gespeichert, nicht geloggt und durch `allowBackup=false` nicht über Android Auto Backup ausgelagert. Externe EPG-Quellen erhalten keine Receiver-Zugangsdaten. Phase 7 behandelt vom Receiver gelieferte Stream-Adressen und temporäre Streaming-Authentifizierung ausschließlich flüchtig im Arbeitsspeicher.
+OpenWebif-Zugangsdaten werden nur lokal gespeichert, nicht geloggt und durch `allowBackup=false` nicht über Android Auto Backup ausgelagert. Externe EPG-Quellen erhalten keine Receiver-Zugangsdaten. Stream-Adressen und temporäre Streaming-Authentifizierung bleiben flüchtig im Arbeitsspeicher.
 
-Watch Next liefert CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Eine CloudStream-spezifische Integration bleibt deshalb für das Einlesen von Watch Next bewusst außen vor; der optionale Suchhandoff aus TMDB-Ergebnissen verwendet ausschließlich die von CloudStream bereitgestellte externe Suchschnittstelle.
-
-Das TCL-/Google-TV-Thema rund um Android 13+ `Covered Applications` / `Restricted Settings` bei lokal installierten APKs bleibt als separates Distributionsthema offen und blockiert die Content-Phasen nicht.
+Watch Next liefert CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Der optionale Suchhandoff aus TMDB-Ergebnissen verwendet nur die von CloudStream bereitgestellte externe Suchschnittstelle; I Launcher baut keine CloudStream-Provider nach.
 
 Siehe:
 
