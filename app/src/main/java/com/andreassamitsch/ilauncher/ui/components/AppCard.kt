@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -23,13 +24,18 @@ import com.andreassamitsch.ilauncher.model.InstalledApp
 fun AppCard(
     app: InstalledApp,
     onClick: () -> Unit,
+    onFocused: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val icon = remember(app.icon) { app.icon.asImageBitmap() }
 
     Card(
         onClick = onClick,
-        modifier = modifier.width(176.dp),
+        modifier = modifier
+            .width(176.dp)
+            .onFocusChanged { focusState ->
+                if (focusState.isFocused) onFocused?.invoke()
+            },
         scale = CardDefaults.scale(focusedScale = 1.06f),
     ) {
         Column(
