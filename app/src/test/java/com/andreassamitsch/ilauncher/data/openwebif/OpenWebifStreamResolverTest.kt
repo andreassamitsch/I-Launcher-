@@ -42,6 +42,32 @@ class OpenWebifStreamResolverTest {
     }
 
     @Test
+    fun `decodes escaped credentials without treating plus as form space`() {
+        val stream = OpenWebifStreamPlaylist.parse(
+            "http://user:p%40ss%2Bword@gigablue.local:8001/1:0:1:ABC:DEF:1:C00000:0:0:0:",
+        )
+
+        requireNotNull(stream)
+        assertEquals(Credentials.basic("user", "p@ss+word"), stream.requestHeaders["Authorization"])
+        assertFalse(stream.url.contains("user"))
+        assertFalse(stream.url.contains("p%40ss"))
+    }
+
+    @Test
+    fun `preserves OpenWebif session auth as an ephemeral basic header`() {
+        val stream = OpenWebifStreamPlaylist.parse(
+            "http://-sid:session123@gigablue.local:8001/1:0:1:ABC:DEF:1:C00000:0:0:0:",
+        )
+
+        requireNotNull(stream)
+        assertEquals(Credentials.basic("-sid", "session123"), stream.requestHeaders["Authorization"])
+        assertEquals(
+            "http://gigablue.local:8001/1:0:1:ABC:DEF:1:C00000:0:0:0:",
+            stream.url,
+        )
+    }
+
+    @Test
     fun `recognizes HLS playback URL`() {
         val stream = OpenWebifStreamPlaylist.parse(
             "https://example.test/live/channel/playlist.m3u8?token=temporary",
