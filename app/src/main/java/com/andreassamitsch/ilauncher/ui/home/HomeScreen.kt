@@ -3,10 +3,13 @@ package com.andreassamitsch.ilauncher.ui.home
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -45,6 +48,7 @@ fun HomeScreen(
     watchNextFocusRestoreGeneration: Int = 0,
 ) {
     val watchNextRestoreFocusRequester = remember { FocusRequester() }
+    val homeScrollState = rememberScrollState()
 
     LaunchedEffect(
         watchNextFocusRestoreSourceId,
@@ -64,7 +68,9 @@ fun HomeScreen(
     }
 
     Column(
-        modifier = modifier,
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(homeScrollState),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
