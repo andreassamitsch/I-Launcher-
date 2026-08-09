@@ -98,7 +98,7 @@ class PreviewChannelsMapperTest {
                     id = 10,
                     sourceOrder = 0,
                     name = "Kein Preview",
-                    type = TvContract.Channels.TYPE_TUNER,
+                    type = "TYPE_NON_PREVIEW_TEST",
                     programs = listOf(program(1, 0, "Hidden")),
                 ),
             ),
