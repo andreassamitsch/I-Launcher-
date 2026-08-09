@@ -42,7 +42,7 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] dauerhafter Development-Signing-Key als geschützte GitHub-Secrets hinterlegt (`updateCompatible=true` verifiziert)
 - [x] Development-Downloadkanal auf den aktiven Entwicklungsbranch umstellbar
 - [x] Publisher-Concurrency verhindert, dass ältere parallele CI-Läufe einen neueren Development-Build überschreiben
-- [ ] realen Update-von-Version-A-auf-Version-B-Gerätetest als eigener Distributionstest dokumentieren
+- [x] realer Update-von-Version-A-auf-Version-B-Gerätetest im Übergang `dev.45` → `dev.47` erfolgreich; Room-Migration und Update-Signatur bestätigt
 
 ## Phase 2 – Watch Next
 
@@ -65,7 +65,7 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Watch-Next-Daten inklusive CloudStream werden über Android TvProvider sichtbar; kein CloudStream-Sonderweg nötig
 - [x] D-Pad/Scroll/Fokus der aktuellen Watch-Next-Reihe im Gerätetest ohne blockierenden Fehler
 
-**Phase 2 ist funktional abgeschlossen.** Das separate TCL-/Covered-Applications-Thema des Accessibility-Fallbacks bleibt als Distribution-/Gerätebesonderheit offen und blockiert die Content-Phasen nicht.
+**Phase 2 ist funktional abgeschlossen.** Das separate TCL-/Covered-Applications-Thema des Accessibility-Fallbacks bleibt als Distribution-/Gerätebesonderheit offen und blockiert Phase 3 nicht.
 
 ## Phase 3 – TMDB
 
@@ -109,9 +109,9 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Trailer/YouTube-Suche über Android `ACTION_VIEW` delegieren; keine YouTube-Stream-Extraktion
 - [x] Unit-Tests für Trailer-Auswahl und Episode-vor-Serie-Priorität
 - [x] signierten Development-Build `0.1.0-dev.47` erfolgreich mit Unit-Tests und `assembleDebug` veröffentlicht
-- [ ] realen TCL-Gerätetest von Datenbankmigration, Trailerstart, Such-Fallback und Rückkehrverhalten durchführen
+- [x] realer TCL-Gerätetest von Datenbankmigration, Trailerstart, Such-Fallback und Rückkehrverhalten bestanden
 
-**Phase 4 ist implementiert und gebaut, bleibt aber bis zum TCL-Gerätetest offen.**
+**Phase 4 ist funktional abgeschlossen und auf realer TCL-Hardware bestätigt.**
 
 ## Phase 5 – Gigablue / OpenWebif
 
