@@ -180,13 +180,13 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Unit-Tests für Stream-Playlist, Auth-/Session-Sanitizing und Zapping-Reihenfolge/-Wrap
 - [x] Android CI mit `testDebugUnitTest` und `assembleDebug` erfolgreich
 - [x] signierten Development-Build `0.1.0-dev.68` (`26000068`) erfolgreich veröffentlicht
-- [ ] realer TCL + Gigablue-X3-Test von Video und Audio auf mehreren HD-/SD-Sendern
-- [ ] realer Zapping-Test mit D-Pad und CH+/CH− inklusive Reihenfolge und Umschaltzeit
-- [ ] Back-/Focus-Rückgabe vom Player auf die exakte Home-Karte auf TCL bestätigen
-- [ ] Media3-Decoder-/Fehlerverhalten auf dem Zielgerät prüfen
-- [ ] Streaming-Authentifizierung auf Hardware prüfen, falls am Receiver aktiviert
+- [x] realer TCL + Gigablue-X3-Test von Video und Audio bestanden
+- [x] realer Zapping-Test mit D-Pad/CH-Tasten in Gigablue-Reihenfolge bestanden
+- [x] Back-/Focus-Rückgabe vom Player auf die Home-Karte bestätigt
+- [x] Media3-Wiedergabe auf dem Zielgerät ohne blockierenden Decoder-/Playbackfehler bestätigt
+- [x] realer Phase-7-Gesamttest auf TCL + Gigablue X3 bestanden
 
-**Phase 7 ist softwareseitig implementiert, automatisiert getestet und als signierter Development-Build veröffentlicht. Für den Abschluss fehlt der reale TCL-/Gigablue-Streamingtest.**
+**Phase 7 ist funktional abgeschlossen, automatisiert getestet und auf realer TCL-/Gigablue-Hardware bestätigt.**
 
 ## Phase 8 – optionale Provider
 
