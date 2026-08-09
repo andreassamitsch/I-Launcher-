@@ -1,8 +1,10 @@
 package com.andreassamitsch.ilauncher.ui.livetv
 
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +23,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -55,6 +58,9 @@ import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import kotlinx.coroutines.delay
+
+private const val PLAYER_OVERLAY_TIMEOUT_MILLIS = 3_000L
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -71,7 +77,9 @@ internal fun LiveTvPlayerScreen(
     var currentIndex by remember(channels, initialServiceReference) { mutableIntStateOf(initialIndex) }
     var loading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    val focusRequester = remember { FocusRequester() }
+    var overlayVisible by remember { mutableStateOf(true) }
+    val rootFocusRequester = remember { FocusRequester() }
+    val overlayFocusRequester = remember { FocusRequester() }
     val player = remember {
         ExoPlayer.Builder(context).build().apply {
             playWhenReady = true
@@ -81,20 +89,29 @@ internal fun LiveTvPlayerScreen(
 
     fun zap(delta: Int) {
         if (channels.isEmpty()) return
+        overlayVisible = true
         currentIndex = LiveTvZapping.nextIndex(currentIndex, channels.size, delta)
     }
 
-    BackHandler(onBack = onBack)
+    BackHandler {
+        if (overlayVisible) {
+            overlayVisible = false
+        } else {
+            onBack()
+        }
+    }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 loading = playbackState == Player.STATE_BUFFERING || playbackState == Player.STATE_IDLE
+                if (loading) overlayVisible = true
                 if (playbackState == Player.STATE_READY) errorMessage = null
             }
 
             override fun onPlayerError(error: PlaybackException) {
                 loading = false
+                overlayVisible = true
                 errorMessage = "Live-TV-Wiedergabe fehlgeschlagen (${error.errorCodeName})."
             }
         }
@@ -108,6 +125,7 @@ internal fun LiveTvPlayerScreen(
     LaunchedEffect(currentChannel?.serviceReference) {
         val channel = currentChannel ?: return@LaunchedEffect
         loading = true
+        overlayVisible = true
         errorMessage = null
         player.stop()
         player.clearMediaItems()
@@ -138,20 +156,45 @@ internal fun LiveTvPlayerScreen(
             player.playWhenReady = true
         }.onFailure { throwable ->
             loading = false
+            overlayVisible = true
             errorMessage = playbackErrorMessage(throwable)
         }
     }
 
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+    LaunchedEffect(overlayVisible, currentChannel?.serviceReference, loading, errorMessage) {
+        if (overlayVisible && !loading && errorMessage == null) {
+            delay(PLAYER_OVERLAY_TIMEOUT_MILLIS)
+            overlayVisible = false
+        }
+    }
+
+    LaunchedEffect(overlayVisible) {
+        withFrameNanos { }
+        if (overlayVisible) {
+            overlayFocusRequester.requestFocus()
+        } else {
+            rootFocusRequester.requestFocus()
+        }
     }
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .focusRequester(rootFocusRequester)
+            .focusable()
             .onPreviewKeyEvent { keyEvent ->
                 if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                val nativeEvent = keyEvent.nativeKeyEvent
+                val isConfirmKey = nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
+                    nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
+                    nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
+
+                if (!overlayVisible && isConfirmKey) {
+                    overlayVisible = true
+                    return@onPreviewKeyEvent true
+                }
+
                 when (keyEvent.key) {
                     Key.ChannelUp -> {
                         zap(+1)
@@ -185,81 +228,83 @@ internal fun LiveTvPlayerScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
-        currentChannel?.let { channel ->
-            Row(
+        if (overlayVisible) {
+            currentChannel?.let { channel ->
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f))
+                        .padding(horizontal = 36.dp, vertical = 22.dp),
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    channel.piconUri?.let { picon ->
+                        AsyncImage(
+                            model = picon,
+                            contentDescription = null,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(width = 110.dp, height = 62.dp),
+                        )
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(channel.name, style = MaterialTheme.typography.headlineSmall)
+                        channel.now?.let { now ->
+                            Text(now.title, style = MaterialTheme.typography.titleMedium)
+                        }
+                        channel.next?.let { next ->
+                            Text(
+                                "Danach: ${next.title}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+
+            Column(
                 modifier = Modifier
-                    .align(Alignment.TopStart)
+                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f))
-                    .padding(horizontal = 36.dp, vertical = 22.dp),
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f))
+                    .padding(horizontal = 36.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                channel.piconUri?.let { picon ->
-                    AsyncImage(
-                        model = picon,
-                        contentDescription = null,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.size(width = 110.dp, height = 62.dp),
+                errorMessage?.let { error ->
+                    Text(error, color = MaterialTheme.colorScheme.error)
+                }
+                if (loading && errorMessage == null) {
+                    Text(
+                        "Live TV wird geladen …",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(channel.name, style = MaterialTheme.typography.headlineSmall)
-                    channel.now?.let { now ->
-                        Text(now.title, style = MaterialTheme.typography.titleMedium)
-                    }
-                    channel.next?.let { next ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Button(onClick = onBack) { Text("Zurück") }
+                    Button(onClick = { zap(-1) }) { Text("Sender −") }
+                    Button(
+                        onClick = { zap(+1) },
+                        modifier = Modifier.focusRequester(overlayFocusRequester),
+                    ) { Text("Sender +") }
+                    currentChannel?.let {
                         Text(
-                            "Danach: ${next.title}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            "${currentIndex + 1}/${channels.size} · ${it.name}",
+                            style = MaterialTheme.typography.bodyMedium,
                         )
                     }
                 }
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f))
-                .padding(horizontal = 36.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            errorMessage?.let { error ->
-                Text(error, color = MaterialTheme.colorScheme.error)
-            }
-            if (loading && errorMessage == null) {
                 Text(
-                    "Live TV wird geladen …",
+                    "OK: Info einblenden · Zurück: Info ausblenden · D-Pad ↑/↓ oder CH+/CH−: Sender wechseln",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Spacer(Modifier.height(1.dp))
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Button(onClick = onBack) { Text("Zurück") }
-                Button(onClick = { zap(-1) }) { Text("Sender −") }
-                Button(
-                    onClick = { zap(+1) },
-                    modifier = Modifier.focusRequester(focusRequester),
-                ) { Text("Sender +") }
-                currentChannel?.let {
-                    Text(
-                        "${currentIndex + 1}/${channels.size} · ${it.name}",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
-            Text(
-                "D-Pad ↑/↓ oder CH+/CH−: Sender wechseln",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(1.dp))
         }
     }
 }
