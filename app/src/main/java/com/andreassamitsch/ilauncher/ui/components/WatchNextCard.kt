@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -33,6 +34,7 @@ fun WatchNextCard(
     item: MediaItem,
     onClick: () -> Unit,
     onDetails: (() -> Unit)? = null,
+    onFocused: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     var longPressHandled by remember(item.id) { mutableStateOf(false) }
@@ -41,6 +43,9 @@ fun WatchNextCard(
         onClick = onClick,
         modifier = modifier
             .width(300.dp)
+            .onFocusChanged { focusState ->
+                if (focusState.isFocused) onFocused?.invoke()
+            }
             .onPreviewKeyEvent { composeEvent ->
                 val event = composeEvent.nativeKeyEvent
                 val isConfirmKey = event.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
