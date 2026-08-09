@@ -3,7 +3,7 @@ name: Publish TV Downloader APK
 on:
   push:
     branches:
-      - agent/phase-5-openwebif
+      - agent/phase-6-epg
     paths:
       - "app/**"
       - "build.gradle.kts"
@@ -82,7 +82,7 @@ jobs:
             exit 1
           fi
           echo "TMDB_CONFIGURED=true" >> "$GITHUB_ENV"
-          echo "TMDB enrichment and trailer metadata are enabled in this signed Development build."
+          echo "TMDB enrichment, trailer metadata and EPG enrichment are enabled in this signed Development build."
 
       - name: Test and build debug APK
         env:
