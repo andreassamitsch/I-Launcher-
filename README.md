@@ -17,7 +17,7 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phase 4 – Trailer ist abgeschlossen. Phase 5 – Gigablue/OpenWebif ist implementiert und gebaut, der reale Gigablue-Gerätetest ist noch offen. Phase 6 – EPG befindet sich in Entwicklung und baut auf Phase 5 auf.**
+**Phase 4 – Trailer ist abgeschlossen. Phase 5 – Gigablue/OpenWebif und Phase 6 – EPG sind vollständig implementiert und gebaut. Für beide Phasen steht noch der gemeinsame reale TCL-/Gigablue-/XMLTV-Gerätetest aus.**
 
 Der bestätigte Unterbau umfasst:
 
@@ -48,14 +48,17 @@ Phase 6 ergänzt auf dem Branch `agent/phase-6-epg` eine zweite, reine Metadaten
 - Wiedergabe-/IPTV-URLs aus dieser M3U werden weder als Live-TV-Quelle verwendet noch persistiert
 - Gigablue/OpenWebif bleibt maßgeblich für Bouquet, Senderidentität, Reihenfolge und späteren Stream
 - Senderzuordnung erfolgt bevorzugt über die Enigma2-Service-Reference, danach über konservatives Namensmatching; unsichere Treffer können manuell zugeordnet werden
+- die Live-TV-Diagnose zeigt für den Gerätetest XMLTV-ID und Match-Methode pro Sender, ohne Receiver-Adresse oder Zugangsdaten offenzulegen
 - die referenzierte XMLTV-Datei wird als Stream verarbeitet; GZIP wird automatisch erkannt
 - nur die tatsächlich gemappten XMLTV-Sender und ein begrenztes Zeitfenster werden in den Speicher übernommen
-- XMLTV-Metadaten ergänzen OpenWebif-Programme, überschreiben aber nicht zuverlässig vorhandene OpenWebif-Zeit-/Eventdaten
-- vollständiger EPG je Sender ist als eigener TV-Bereich verfügbar
+- XMLTV-Metadaten ergänzen OpenWebif-Programme, überschreiben aber nicht zuverlässig vorhandene OpenWebif-Zeit-/Eventdaten; schwache zeitliche Überschneidungen werden nicht als Match akzeptiert
+- vollständiger EPG je Sender ist als eigener TV-Bereich verfügbar und öffnet beim aktuell laufenden Programm
 - XMLTV-Programm, Sendermapping und Metadaten werden lokal gecacht
+- der Cache wird beim Start parallel zum Receiver-Netzwerkrefresh veröffentlicht, damit vorhandene EPG-Daten Local First sichtbar werden
 - Room wird verlustfrei von Version 2 auf 3 migriert
 - aktuelle Film-/Serienprogramme werden konservativ über den vorhandenen TMDB-Resolver mit Artwork/Details angereichert; weitere Guide-Einträge bei Auswahl
 - `Jetzt im TV` kann dadurch Programm-Artwork erhalten, das Sender-Picon bleibt erhalten
+- die Home-Seite ist vertikal scrollbar, sodass `Weiterschauen`, `Jetzt im TV` und `Apps` per D-Pad erreichbar sind
 
 OpenWebif-Zugangsdaten werden nur lokal gespeichert, nicht geloggt und durch `allowBackup=false` nicht über Android Auto Backup ausgelagert. Externe EPG-Quellen erhalten keine Receiver-Zugangsdaten.
 
@@ -65,7 +68,7 @@ Bestätigter Phase-4-Build: **`0.1.0-dev.47` (`26000047`)**.
 
 Bestätigter Phase-5-Build: **`0.1.0-dev.51` (`26000051`)**, `updateCompatible=true`, `tmdbConfigured=true`; Unit-Tests und `assembleDebug` liefen im signierten Publisher erfolgreich. Die Phase-5-Funktionen gelten erst nach dem realen TCL + Gigablue-X3-Test als hardwareverifiziert.
 
-Für Phase 6 ist der reale XMLTV-Inhalt von `epg.gz` bewusst noch nicht als getestet dokumentiert: Die Referenzdatei ist binär komprimiert und wird im Zielbuild direkt gestreamt/dekomprimiert. Parser, Matching und Merge werden automatisiert mit repräsentativen XMLTV-/M3U-Testdaten geprüft; zusätzlich ist ein Test gegen die reale Quelle auf dem TV erforderlich.
+Für Phase 6 sind `testDebugUnitTest`, `assembleDebug`, Development-Signierung und Veröffentlichung im Downloadkanal erfolgreich. Der reale XMLTV-Inhalt von `epg.gz` ist bewusst noch nicht als hardwaregetestet dokumentiert: Die Referenzdatei ist binär komprimiert und wird im Zielbuild direkt gestreamt/dekomprimiert. Parser, Matching, Merge und EPG-Startposition werden automatisiert mit repräsentativen XMLTV-/M3U-Testdaten geprüft; zusätzlich ist der Test gegen die reale Quelle auf dem TV erforderlich.
 
 Watch Next liefert CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Eine CloudStream-spezifische Integration bleibt deshalb bewusst außen vor.
 
