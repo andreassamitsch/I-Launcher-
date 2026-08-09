@@ -17,7 +17,7 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phasen 1 bis 6 sind funktional abgeschlossen und auf dem Zielgerät bestätigt. Phase 7 – interner Live-TV-Player ist softwareseitig implementiert und wartet auf den realen TCL-/Gigablue-Streamingtest.**
+**Phasen 1 bis 7 sind funktional abgeschlossen und auf dem Zielgerät bestätigt.**
 
 Der bestätigte Unterbau umfasst:
 
@@ -35,13 +35,14 @@ Der bestätigte Unterbau umfasst:
 - M3U/XMLTV-Senderzuordnung einschließlich Enigma2-Service-Reference und manueller Zuordnung
 - vollständiger XMLTV-EPG mit Local-First-Room-Cache
 - XMLTV/OpenWebif-Merge und konservative TMDB-Anreicherung für TV-Programme
-- D-Pad-Navigation auf Home bis `Jetzt im TV` und Apps
+- interner Media3-Live-TV-Player mit OpenWebif-Streamauflösung und Zapping
+- D-Pad-Navigation und Focus-Rückgabe auf Home, EPG und Live TV
 
 Phase 5 und Phase 6 wurden gemeinsam auf realer TCL-/Gigablue-X3-Hardware gegen die reale `riedl-dach.at` M3U/XMLTV-Quelle verifiziert. Dazu gehören Receiver-Verbindung, Bouquet-/Senderreihenfolge, Picons, Now/Next, XMLTV-Mapping, vollständiger EPG, TMDB-Artwork, D-Pad/Focus, Update/Migration und Offline-/Cache-Verhalten.
 
 ## Phase 7 – Live TV
 
-Der aktuelle Phase-7-Unterbau ergänzt:
+Phase 7 ergänzt:
 
 - Media3/ExoPlayer als internen Player
 - Streamauflösung über OpenWebifs eigenes `web/stream.m3u?ref=…`, damit der Receiver selbst den tatsächlichen Stream-Port bzw. direkten Stream bestimmt
@@ -57,9 +58,7 @@ Der aktuelle Phase-7-Unterbau ergänzt:
 - exakte Focus-Rückgabe auf die zuvor gestartete `Jetzt im TV`-Karte
 - Unit-Tests für Stream-Parsing, Auth-/Session-Sanitizing und Zapping
 
-Android CI und der signierte Development-Publisher laufen für diesen Stand erfolgreich durch. Aktueller Phase-7-Testbuild: **`0.1.0-dev.68` (`26000068`)**, `updateCompatible=true`, `tmdbConfigured=true`.
-
-Dieser Stand gilt erst nach dem realen TCL-/Gigablue-Streamingtest als hardwareverifiziert.
+Android CI und der signierte Development-Publisher laufen für diesen Stand erfolgreich durch. Hardware-Testbuild **`0.1.0-dev.68` (`26000068`)** wurde auf TCL + Gigablue X3 erfolgreich getestet: interner Streamstart, Video/Audio, Zapping, Overlay und Rückkehrverhalten funktionieren auf dem Zielgerät.
 
 ## Datenschutz / Sicherheit
 
