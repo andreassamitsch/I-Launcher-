@@ -3,7 +3,7 @@ name: Publish TV Downloader APK
 on:
   push:
     branches:
-      - agent/phase-4-trailers
+      - agent/phase-5-openwebif
     paths:
       - "app/**"
       - "build.gradle.kts"
@@ -78,7 +78,7 @@ jobs:
           IL_TMDB_READ_ACCESS_TOKEN: ${{ secrets.IL_TMDB_READ_ACCESS_TOKEN }}
         run: |
           if [ -z "$IL_TMDB_READ_ACCESS_TOKEN" ]; then
-            echo "::error::IL_TMDB_READ_ACCESS_TOKEN is required for Phase 4 Development publishing."
+            echo "::error::IL_TMDB_READ_ACCESS_TOKEN is required for active Development publishing."
             exit 1
           fi
           echo "TMDB_CONFIGURED=true" >> "$GITHUB_ENV"
