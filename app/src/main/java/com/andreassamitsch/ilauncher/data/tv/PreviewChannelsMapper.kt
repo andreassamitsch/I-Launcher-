@@ -51,7 +51,7 @@ internal object PreviewChannelsMapper {
             } else {
                 AppContentProgram(
                     sourceOrder = program.sourceOrder,
-                    media = program.toMediaItem(channel.id),
+                    media = program.toMediaItem(channel.id, channel.packageName),
                     weight = program.weight,
                 )
             }
@@ -69,7 +69,12 @@ internal object PreviewChannelsMapper {
         )
     }
 
-    private fun PreviewProgramRawRow.toMediaItem(channelId: Long): MediaItem {
+    private fun PreviewProgramRawRow.toMediaItem(
+        channelId: Long,
+        channelPackageName: String?,
+    ): MediaItem {
+        val effectivePackageName = packageName?.takeIf { it.isNotBlank() }
+            ?: channelPackageName?.takeIf { it.isNotBlank() }
         val season = seasonDisplayNumber?.toIntOrNull()
         val episode = episodeDisplayNumber?.toIntOrNull()
         val type = if (season != null || episode != null) {
@@ -90,7 +95,7 @@ internal object PreviewChannelsMapper {
         ).joinToString(" · ").ifBlank { null }
 
         return MediaItem(
-            id = "preview:${packageName ?: "unknown"}:$channelId:$id",
+            id = "preview:${effectivePackageName ?: "unknown"}:$channelId:$id",
             type = type,
             title = displayTitle,
             subtitle = subtitle,
@@ -105,8 +110,8 @@ internal object PreviewChannelsMapper {
             durationMillis = durationMillis,
             source = MediaSource(
                 provider = "android_preview_channel",
-                sourceId = "${packageName ?: "unknown"}:$channelId:$id",
-                packageName = packageName,
+                sourceId = "${effectivePackageName ?: "unknown"}:$channelId:$id",
+                packageName = effectivePackageName,
                 intentUri = intentUri,
             ),
         )
