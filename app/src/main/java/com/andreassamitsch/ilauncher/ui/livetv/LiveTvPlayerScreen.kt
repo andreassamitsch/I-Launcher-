@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -52,9 +54,11 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
+import com.andreassamitsch.ilauncher.data.epg.EpgState
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifResolvedStream
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifStreamHttpException
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
+import com.andreassamitsch.ilauncher.ui.epg.EpgScreen
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -68,6 +72,11 @@ internal fun LiveTvPlayerScreen(
     channels: List<LiveTvChannel>,
     initialServiceReference: String,
     onResolveStream: suspend (LiveTvChannel) -> OpenWebifResolvedStream,
+    epgState: EpgState,
+    initialShowEpg: Boolean = false,
+    initialEpgProgramStartUtcMillis: Long? = null,
+    onRefreshEpg: () -> Unit,
+    onEnrichEpgProgram: (serviceReference: String, startUtcMillis: Long) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -78,14 +87,33 @@ internal fun LiveTvPlayerScreen(
     var loading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var overlayVisible by remember { mutableStateOf(true) }
+    var showEpg by remember(initialShowEpg, initialServiceReference) {
+        mutableStateOf(initialShowEpg)
+    }
+    var selectedEpgServiceReference by remember(initialServiceReference) {
+        mutableStateOf(initialServiceReference)
+    }
+    var selectedEpgProgramStartUtcMillis by remember(
+        initialServiceReference,
+        initialEpgProgramStartUtcMillis,
+    ) {
+        mutableStateOf(initialEpgProgramStartUtcMillis)
+    }
+    val epgChannelListState = rememberLazyListState()
+    val epgProgramListState = rememberLazyListState()
     val rootFocusRequester = remember { FocusRequester() }
     val overlayFocusRequester = remember { FocusRequester() }
+    val epgBackFocusRequester = remember { FocusRequester() }
     val player = remember {
         ExoPlayer.Builder(context).build().apply {
             playWhenReady = true
         }
     }
     val currentChannel = channels.getOrNull(currentIndex)
+    val selectedEpgProgram = selectedEpgProgramStartUtcMillis?.let { start ->
+        epgState.guide(selectedEpgServiceReference)
+            .firstOrNull { it.startUtcMillis == start }
+    }
 
     fun zap(delta: Int) {
         if (channels.isEmpty()) return
@@ -93,11 +121,18 @@ internal fun LiveTvPlayerScreen(
         currentIndex = LiveTvZapping.nextIndex(currentIndex, channels.size, delta)
     }
 
+    fun openEpg() {
+        val channel = currentChannel ?: return
+        selectedEpgServiceReference = channel.serviceReference
+        selectedEpgProgramStartUtcMillis = null
+        showEpg = true
+    }
+
     BackHandler {
-        if (overlayVisible) {
-            overlayVisible = false
-        } else {
-            onBack()
+        when {
+            showEpg -> showEpg = false
+            overlayVisible -> overlayVisible = false
+            else -> onBack()
         }
     }
 
@@ -124,6 +159,10 @@ internal fun LiveTvPlayerScreen(
 
     LaunchedEffect(currentChannel?.serviceReference) {
         val channel = currentChannel ?: return@LaunchedEffect
+        if (!showEpg) {
+            selectedEpgServiceReference = channel.serviceReference
+            selectedEpgProgramStartUtcMillis = null
+        }
         loading = true
         overlayVisible = true
         errorMessage = null
@@ -161,19 +200,19 @@ internal fun LiveTvPlayerScreen(
         }
     }
 
-    LaunchedEffect(overlayVisible, currentChannel?.serviceReference, loading, errorMessage) {
-        if (overlayVisible && !loading && errorMessage == null) {
+    LaunchedEffect(overlayVisible, currentChannel?.serviceReference, loading, errorMessage, showEpg) {
+        if (overlayVisible && !loading && errorMessage == null && !showEpg) {
             delay(PLAYER_OVERLAY_TIMEOUT_MILLIS)
             overlayVisible = false
         }
     }
 
-    LaunchedEffect(overlayVisible) {
+    LaunchedEffect(overlayVisible, showEpg) {
         withFrameNanos { }
-        if (overlayVisible) {
-            overlayFocusRequester.requestFocus()
-        } else {
-            rootFocusRequester.requestFocus()
+        when {
+            showEpg -> epgBackFocusRequester.requestFocus()
+            overlayVisible -> overlayFocusRequester.requestFocus()
+            else -> rootFocusRequester.requestFocus()
         }
     }
 
@@ -184,7 +223,9 @@ internal fun LiveTvPlayerScreen(
             .focusRequester(rootFocusRequester)
             .focusable()
             .onPreviewKeyEvent { keyEvent ->
-                if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                if (showEpg || keyEvent.type != KeyEventType.KeyDown) {
+                    return@onPreviewKeyEvent false
+                }
                 val nativeEvent = keyEvent.nativeKeyEvent
                 val isConfirmKey = nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
                     nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
@@ -228,7 +269,7 @@ internal fun LiveTvPlayerScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
-        if (overlayVisible) {
+        if (overlayVisible && !showEpg) {
             currentChannel?.let { channel ->
                 Row(
                     modifier = Modifier
@@ -291,6 +332,7 @@ internal fun LiveTvPlayerScreen(
                         onClick = { zap(+1) },
                         modifier = Modifier.focusRequester(overlayFocusRequester),
                     ) { Text("Sender +") }
+                    Button(onClick = ::openEpg) { Text("EPG") }
                     currentChannel?.let {
                         Text(
                             "${currentIndex + 1}/${channels.size} · ${it.name}",
@@ -304,6 +346,53 @@ internal fun LiveTvPlayerScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(1.dp))
+            }
+        }
+
+        if (showEpg) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.97f))
+                    .padding(horizontal = 36.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = currentChannel?.let { "TV-Guide · ${it.name}" } ?: "TV-Guide",
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                    Button(
+                        onClick = { showEpg = false },
+                        modifier = Modifier.focusRequester(epgBackFocusRequester),
+                    ) {
+                        Text("Zurück zum TV")
+                    }
+                }
+
+                EpgScreen(
+                    state = epgState,
+                    channels = channels,
+                    selectedServiceReference = selectedEpgServiceReference,
+                    selectedProgram = selectedEpgProgram,
+                    onSelectChannel = { serviceReference ->
+                        selectedEpgServiceReference = serviceReference
+                        selectedEpgProgramStartUtcMillis = null
+                    },
+                    onSelectProgram = { serviceReference, program ->
+                        selectedEpgServiceReference = serviceReference
+                        selectedEpgProgramStartUtcMillis = program.startUtcMillis
+                        onEnrichEpgProgram(serviceReference, program.startUtcMillis)
+                    },
+                    onRefresh = onRefreshEpg,
+                    channelListState = epgChannelListState,
+                    programListState = epgProgramListState,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }
