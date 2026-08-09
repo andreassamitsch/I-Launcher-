@@ -19,6 +19,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -32,6 +33,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.apps.InstalledAppsRepository
+import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifRepository
 import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.data.tv.WatchNextEnrichmentRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextRepository
@@ -45,36 +47,44 @@ import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import com.andreassamitsch.ilauncher.ui.apps.AppsScreen
 import com.andreassamitsch.ilauncher.ui.details.DetailsScreen
 import com.andreassamitsch.ilauncher.ui.home.HomeScreen
+import com.andreassamitsch.ilauncher.ui.livetv.LiveTvScreen
 import com.andreassamitsch.ilauncher.ui.settings.SettingsScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 enum class LauncherSection(val label: String) {
     Home("Home"),
+    LiveTv("Live TV"),
     Apps("Apps"),
     Settings("Einstellungen"),
 }
 
 private const val TMDB_ENRICHMENT_BATCH_SIZE = 4
 private const val TMDB_ENRICHMENT_RETRY_DELAY_MILLIS = 1_500L
+private const val OPENWEBIF_REFRESH_INTERVAL_MILLIS = 5L * 60L * 1_000L
 
 @Composable
 fun LauncherApp(
     installedAppsRepository: InstalledAppsRepository,
     watchNextRepository: WatchNextRepository,
     watchNextEnrichmentRepository: WatchNextEnrichmentRepository,
+    openWebifRepository: OpenWebifRepository,
     updateManager: UpdateManager,
 ) {
     val context = LocalContext.current
     val activity = context as? ComponentActivity
+    val scope = rememberCoroutineScope()
     var section by rememberSaveable { mutableStateOf(LauncherSection.Home) }
     var selectedDetailsSourceId by rememberSaveable { mutableStateOf<String?>(null) }
     var watchNextFocusRestoreSourceId by rememberSaveable { mutableStateOf<String?>(null) }
     var watchNextFocusRestoreGeneration by rememberSaveable { mutableIntStateOf(0) }
     val watchNextListState = rememberLazyListState()
     val appsListState = rememberLazyListState()
+    val liveTvListState = rememberLazyListState()
     val updateState by updateManager.state.collectAsState()
+    val openWebifState by openWebifRepository.state.collectAsState()
     var hasTvListingsPermission by remember {
         mutableStateOf(TvProviderPermissionManager.hasReadTvListings(context))
     }
@@ -135,6 +145,13 @@ fun LauncherApp(
                 delay(TMDB_ENRICHMENT_RETRY_DELAY_MILLIS)
                 enrichBatches(unresolvedItems)
             }
+        }
+    }
+
+    LaunchedEffect(openWebifRepository) {
+        while (true) {
+            openWebifRepository.refresh()
+            delay(OPENWEBIF_REFRESH_INTERVAL_MILLIS)
         }
     }
 
@@ -260,16 +277,35 @@ fun LauncherApp(
                         watchNextItems = homeWatchNextItems,
                         watchNextError = watchNextResult.errorMessage,
                         hasTvListingsPermission = hasTvListingsPermission,
+                        liveTvState = openWebifState,
                         onRequestTvListingsPermission = requestTvListingsPermission,
                         onOpenApp = openApp,
                         onOpenWatchNext = openWatchNext,
                         onOpenWatchNextDetails = { item ->
                             selectedDetailsSourceId = item.media.source.sourceId
                         },
+                        onOpenLiveTv = { section = LauncherSection.LiveTv },
                         watchNextListState = watchNextListState,
+                        liveTvListState = liveTvListState,
                         appsListState = appsListState,
                         watchNextFocusRestoreSourceId = watchNextFocusRestoreSourceId,
                         watchNextFocusRestoreGeneration = watchNextFocusRestoreGeneration,
+                    )
+
+                    LauncherSection.LiveTv -> LiveTvScreen(
+                        state = openWebifState,
+                        onSaveConnection = { baseUrl, username, password ->
+                            if (openWebifRepository.updateConnection(baseUrl, username, password)) {
+                                scope.launch { openWebifRepository.refresh() }
+                            }
+                        },
+                        onSelectBouquet = { serviceReference ->
+                            openWebifRepository.selectBouquet(serviceReference)
+                            scope.launch { openWebifRepository.refresh() }
+                        },
+                        onRefresh = {
+                            scope.launch { openWebifRepository.refresh() }
+                        },
                     )
 
                     LauncherSection.Apps -> AppsScreen(
