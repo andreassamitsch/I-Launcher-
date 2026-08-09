@@ -23,9 +23,17 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="cloudstreamsearch" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
         <package android:name="com.lagradost.cloudstream3" />
         <package android:name="com.lagradost.cloudstream3.prerelease" />
         <package android:name="com.lagradost.cloudstream3.debug" />
+        <package android:name="com.lagradost.cloudstream3.prerelease.debug" />
         <package android:name="org.xbmc.kodi" />
     </queries>
 
@@ -37,6 +45,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ILauncher"
         android:usesCleartextTraffic="true">
+
+        <activity
+            android:name=".ui.trailer.TrailerPlayerActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
 
         <activity
             android:name=".MainActivity"
