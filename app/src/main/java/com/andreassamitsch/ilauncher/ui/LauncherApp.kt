@@ -158,6 +158,9 @@ fun LauncherApp(
     }
 
     LaunchedEffect(openWebifRepository, epgRepository) {
+        launch {
+            epgRepository.refresh(openWebifRepository.state.value.channels)
+        }
         while (true) {
             openWebifRepository.refresh()
             epgRepository.refresh(openWebifRepository.state.value.channels)
@@ -276,13 +279,11 @@ fun LauncherApp(
                 onTrailer = detailsMedia.trailer?.let {
                     {
                         YouTubeLauncher.playTrailer(context, detailsMedia)
-                        Unit
                     }
                 },
                 onTrailerSearch = if (detailsMedia.trailer == null) {
                     {
                         YouTubeLauncher.searchTrailer(context, detailsMedia)
-                        Unit
                     }
                 } else {
                     null
