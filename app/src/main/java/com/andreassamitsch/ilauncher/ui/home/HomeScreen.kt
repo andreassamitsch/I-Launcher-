@@ -24,6 +24,7 @@ import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifState
 import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.model.InstalledApp
+import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.ui.components.AppCard
 import com.andreassamitsch.ilauncher.ui.components.LiveTvCard
 import com.andreassamitsch.ilauncher.ui.components.WatchNextCard
@@ -40,14 +41,18 @@ fun HomeScreen(
     onOpenWatchNext: (EnrichedWatchNextItem) -> Unit,
     onOpenWatchNextDetails: (EnrichedWatchNextItem) -> Unit,
     onOpenLiveTv: () -> Unit,
+    onPlayLiveTvChannel: (LiveTvChannel) -> Unit,
     modifier: Modifier = Modifier,
     watchNextListState: LazyListState = rememberLazyListState(),
     liveTvListState: LazyListState = rememberLazyListState(),
     appsListState: LazyListState = rememberLazyListState(),
     watchNextFocusRestoreSourceId: String? = null,
     watchNextFocusRestoreGeneration: Int = 0,
+    liveTvFocusRestoreServiceReference: String? = null,
+    liveTvFocusRestoreGeneration: Int = 0,
 ) {
     val watchNextRestoreFocusRequester = remember { FocusRequester() }
+    val liveTvRestoreFocusRequester = remember { FocusRequester() }
     val homeScrollState = rememberScrollState()
 
     LaunchedEffect(
@@ -65,6 +70,23 @@ fun HomeScreen(
         watchNextListState.scrollToItem(targetIndex)
         withFrameNanos { }
         watchNextRestoreFocusRequester.requestFocus()
+    }
+
+    LaunchedEffect(
+        liveTvFocusRestoreServiceReference,
+        liveTvFocusRestoreGeneration,
+    ) {
+        val serviceReference = liveTvFocusRestoreServiceReference ?: return@LaunchedEffect
+        if (liveTvFocusRestoreGeneration <= 0) return@LaunchedEffect
+
+        val targetIndex = liveTvState.channels.indexOfFirst { channel ->
+            channel.serviceReference == serviceReference
+        }
+        if (targetIndex < 0) return@LaunchedEffect
+
+        liveTvListState.scrollToItem(targetIndex)
+        withFrameNanos { }
+        liveTvRestoreFocusRequester.requestFocus()
     }
 
     Column(
@@ -181,9 +203,17 @@ fun HomeScreen(
                             items = liveTvState.channels,
                             key = { it.serviceReference },
                         ) { channel ->
+                            val cardModifier = if (
+                                channel.serviceReference == liveTvFocusRestoreServiceReference
+                            ) {
+                                Modifier.focusRequester(liveTvRestoreFocusRequester)
+                            } else {
+                                Modifier
+                            }
                             LiveTvCard(
                                 channel = channel,
-                                onClick = onOpenLiveTv,
+                                onClick = { onPlayLiveTvChannel(channel) },
+                                modifier = cardModifier,
                             )
                         }
                     }

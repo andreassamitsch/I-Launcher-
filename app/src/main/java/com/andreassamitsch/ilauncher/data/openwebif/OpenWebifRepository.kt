@@ -15,6 +15,7 @@ import javax.net.ssl.SSLException
 
 class OpenWebifRepository(context: Context) {
     private val store = OpenWebifStore(context.applicationContext)
+    private val streamResolver = OpenWebifStreamResolver()
     private val _state = MutableStateFlow(initialState())
     val state: StateFlow<OpenWebifState> = _state.asStateFlow()
 
@@ -41,6 +42,17 @@ class OpenWebifRepository(context: Context) {
             current.copy(selectedBouquetRef = serviceReference, errorMessage = null)
         }
     }
+
+    internal suspend fun resolveStream(channel: com.andreassamitsch.ilauncher.model.LiveTvChannel): OpenWebifResolvedStream =
+        withContext(Dispatchers.IO) {
+            val config = store.loadConfig()
+                ?: throw OpenWebifStreamException("No OpenWebif receiver configured")
+            streamResolver.resolve(
+                config = config,
+                serviceReference = channel.serviceReference,
+                channelName = channel.name,
+            )
+        }
 
     suspend fun refresh() = withContext(Dispatchers.IO) {
         val config = store.loadConfig()
