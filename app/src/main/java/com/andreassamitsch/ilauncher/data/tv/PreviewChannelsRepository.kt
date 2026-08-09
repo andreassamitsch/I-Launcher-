@@ -86,7 +86,7 @@ class PreviewChannelsRepository(context: Context) {
 
             Log.d(
                 PREVIEW_TAG,
-                "Preview channel query succeeded: $rawPreviewChannels preview channels, $rawProgramCount programs readable across all preview channels, ${mapped.size} browsable channels",
+                "Preview channel query succeeded: $rawPreviewChannels preview channels, $rawProgramCount raw preview programs readable across all TYPE_PREVIEW channels, ${mapped.size} browsable channels",
             )
             AppContentChannelsLoadResult(
                 channels = mapped,
