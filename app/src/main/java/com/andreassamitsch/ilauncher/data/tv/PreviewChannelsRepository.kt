@@ -68,23 +68,29 @@ class PreviewChannelsRepository(context: Context) {
         }
 
         return try {
+            // TvContract.Channels.CONTENT_URI explicitly does not support SQL selection.
+            // Read the local provider in its returned order and filter TYPE_PREVIEW in the mapper.
             val rawChannels = resolver.query(
                 TvContract.Channels.CONTENT_URI,
                 CHANNEL_PROJECTION,
-                CHANNEL_SELECTION,
-                arrayOf(TvContract.Channels.TYPE_PREVIEW),
+                null,
+                null,
                 null,
             )?.use(::readChannels).orEmpty()
             val mapped = PreviewChannelsMapper.map(rawChannels)
-            val rawProgramCount = rawChannels.sumOf { it.programs.size }
+            val rawPreviewChannels = rawChannels.count { it.type == TvContract.Channels.TYPE_PREVIEW }
+            val rawProgramCount = rawChannels
+                .asSequence()
+                .filter { it.type == TvContract.Channels.TYPE_PREVIEW }
+                .sumOf { it.programs.size }
 
             Log.d(
                 PREVIEW_TAG,
-                "Preview channel query succeeded: ${rawChannels.size} channels, $rawProgramCount programs, ${mapped.size} browsable channels",
+                "Preview channel query succeeded: $rawPreviewChannels preview channels, $rawProgramCount programs, ${mapped.size} browsable channels",
             )
             AppContentChannelsLoadResult(
                 channels = mapped,
-                queriedChannelCount = rawChannels.size,
+                queriedChannelCount = rawPreviewChannels,
                 queriedProgramCount = rawProgramCount,
             )
         } catch (securityException: SecurityException) {
@@ -140,6 +146,7 @@ class PreviewChannelsRepository(context: Context) {
         var sourceOrder = 0
         while (cursor.moveToNext()) {
             val channelId = cursor.long(BaseColumns._ID) ?: continue
+            val type = cursor.string(TvContract.Channels.COLUMN_TYPE)
             rows += PreviewChannelRawRow(
                 id = channelId,
                 sourceOrder = sourceOrder++,
@@ -147,8 +154,12 @@ class PreviewChannelsRepository(context: Context) {
                 displayName = cursor.string(TvContract.Channels.COLUMN_DISPLAY_NAME),
                 appLinkIntentUri = cursor.string(TvContract.Channels.COLUMN_APP_LINK_INTENT_URI),
                 browsable = cursor.int(TvContract.Channels.COLUMN_BROWSABLE),
-                type = cursor.string(TvContract.Channels.COLUMN_TYPE),
-                programs = loadPrograms(channelId),
+                type = type,
+                programs = if (type == TvContract.Channels.TYPE_PREVIEW) {
+                    loadPrograms(channelId)
+                } else {
+                    emptyList()
+                },
             )
         }
         return rows
@@ -208,8 +219,6 @@ class PreviewChannelsRepository(context: Context) {
 
     companion object {
         internal const val PROGRAM_SORT_ORDER = "weight DESC"
-
-        private const val CHANNEL_SELECTION = "type = ?"
 
         private val CHANNEL_PROJECTION = arrayOf(
             BaseColumns._ID,
