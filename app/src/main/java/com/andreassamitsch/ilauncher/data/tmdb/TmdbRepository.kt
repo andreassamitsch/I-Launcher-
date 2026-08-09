@@ -192,8 +192,13 @@ class TmdbRepository(
         } else {
             null
         }
+        val mediaTrailerPolicyFresh = media.updatedAtUtcMillis >= TRAILER_LANGUAGE_POLICY_CUTOFF_UTC_MILLIS
+        val episodeTrailerPolicyFresh = !needsEpisodeDetails ||
+            (episodeEntity?.updatedAtUtcMillis ?: 0L) >= TRAILER_LANGUAGE_POLICY_CUTOFF_UTC_MILLIS
         val videoLookupComplete = media.videoLookupComplete &&
-            (!needsEpisodeDetails || episodeEntity?.videoLookupComplete == true)
+            mediaTrailerPolicyFresh &&
+            (!needsEpisodeDetails || episodeEntity?.videoLookupComplete == true) &&
+            episodeTrailerPolicyFresh
 
         return media.toMetadata(
             confidence = mapping.confidence ?: 1f,
@@ -384,6 +389,7 @@ class TmdbRepository(
         tmdbEpisodeId = tmdbEpisodeId,
         seasonNumber = seasonNumber,
         episodeNumber = episodeNumber,
+        tmdbEpisodeId = tmdbEpisodeId,
         title = title,
         overview = overview,
         airYear = airYear,
@@ -409,6 +415,7 @@ class TmdbRepository(
         private const val REFRESH_AFTER_MILLIS = 30L * 24L * 60L * 60L * 1_000L
         private const val MAPPING_MAX_AGE_MILLIS = 30L * 24L * 60L * 60L * 1_000L
         private const val CACHE_MAX_AGE_MILLIS = 180L * 24L * 60L * 60L * 1_000L
+        private const val TRAILER_LANGUAGE_POLICY_CUTOFF_UTC_MILLIS = 1_786_233_600_000L
 
         internal fun mediaKey(type: MediaType, tmdbId: Int): String = "${type.name}:$tmdbId"
 
@@ -418,5 +425,6 @@ class TmdbRepository(
         internal fun yearOf(date: String?): Int? = date
             ?.take(4)
             ?.toIntOrNull()
+            ?: return null
     }
 }
