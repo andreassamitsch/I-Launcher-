@@ -29,7 +29,7 @@ internal object EpgMerger {
             val xmlPrograms = programmesByChannel[mapping.xmltvChannelId].orEmpty()
             if (xmlPrograms.isEmpty()) return@map channel
 
-            guide[channel.serviceReference] = xmlPrograms.map(XmlTvProgram::toLiveTvProgram)
+            guide[channel.serviceReference] = xmlPrograms.map { it.toLiveTvProgram() }
 
             val xmlNow = xmlPrograms.firstOrNull { programme ->
                 nowUtcMillis >= programme.startUtcMillis && nowUtcMillis < programme.stopUtcMillis
