@@ -30,6 +30,7 @@ Aktuell umgesetzt:
 - Live-TV-Infoleisten blenden nach drei Sekunden aus; OK zeigt sie, erstes Zurück versteckt sie
 - kompakte `Jetzt im TV`-Senderreihe im Player zum direkten Zappen; D-Pad hoch erhöht, D-Pad runter verringert die Sendernummer
 - direkte TMDB-/YouTube-Trailer starten in einer eigenen hardwarebeschleunigten Trailer-Activity; deutsche TMDB-Videos werden bevorzugt, YouTube-UI/Untertitelpräferenz ist Deutsch; externe YouTube-Suche bleibt Fallback ohne konkrete Trailer-ID
+- bestehende TMDB-Trailer-Caches aus älteren Development-Builds werden einmalig neu aufgelöst, damit die neue deutsche Trailerpräferenz auch bei bereits bekannten Filmen/Serien wirksam wird
 - lokale Suche berücksichtigt unveränderte Android-Watch-Next-Quelltitel sowie Preview-Channel-/Quellnamen zusätzlich zu angereicherten Medienfeldern
 - TMDB-Suchergebnisse werden bei identischer TMDB-Identität wieder mit vorhandenen Watch-Next-/Preview-Quellen verknüpft; source-backed Watch-Next-Treffer öffnen Details mit `Fortsetzen`
 - Suchergebnisliste springt bei einer neuen Suchanfrage wieder an den Anfang, damit lokale Treffer nicht unterhalb eines zuvor sichtbaren TMDB-Blocks verborgen bleiben
