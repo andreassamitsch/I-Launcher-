@@ -115,11 +115,20 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 
 ## Phase 5 – Gigablue / OpenWebif
 
-- [ ] Verbindung und Authentifizierung
-- [ ] Bouquets
-- [ ] Sender
-- [ ] EPG Now/Next
-- [ ] `Jetzt im TV` auf Home
+- [x] direkte OpenWebif-Verbindung mit validierter lokaler HTTP/HTTPS-Receiver-Adresse
+- [x] optionale HTTP-Basic-Authentifizierung; Zugangsdaten bleiben lokal und werden nicht geloggt
+- [x] Bouquets über `/api/getservices` einlesen und auswählbar machen
+- [x] Sender des gewählten Bouquets in Receiver-Reihenfolge einlesen; Marker ausfiltern
+- [x] Picons über OpenWebif auflösen
+- [x] EPG Now/Next über `/api/epgnownext` lesen und sendergenau zuordnen
+- [x] Local-First-Snapshot für Bouquet/Sender/Now-Next; Netzwerk aktualisiert nach Start und periodisch
+- [x] eigene D-Pad-bedienbare `Live TV`-Ansicht für Konfiguration, Bouquetwahl und Diagnose
+- [x] `Jetzt im TV` auf Home mit Senderlogo, aktueller Sendung, Zeit, Fortschritt und nächster Sendung
+- [x] Unit-Tests für URL-Normalisierung, Bouquet-Reihenfolge, EPG-Zuordnung und Fortschritt
+- [ ] signierten Phase-5-Development-Build erfolgreich veröffentlichen
+- [ ] realen TCL + Gigablue-X3-Gerätetest von Verbindung/Auth, Bouquet, Sendern, Picons, Now/Next, Home-Reihe und Offline-Cache durchführen
+
+**Phase 5 ist implementiert und bleibt bis zum grünen Build sowie realen Gigablue-Gerätetest offen.**
 
 ## Phase 6 – EPG
 

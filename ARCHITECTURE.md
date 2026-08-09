@@ -14,7 +14,7 @@
 - unsichere Metadaten-Treffer dürfen Quelldaten nicht überschreiben
 - Trailerauflösung nutzt vorhandene Metadaten vor zusätzlichen Such-APIs
 
-## Aktueller Stand: Phase 4 abgeschlossen
+## Aktueller Stand: Phase 5 in Gerätetest
 
 Die Gradle-Struktur bleibt vorerst bewusst bei einem `app`-Modul. Die Provider-Grenzen sind paketweise getrennt:
 
@@ -24,12 +24,14 @@ app/
   data/tv/         Android TvProvider / Watch Next / Quellenpräferenzen / Medienmapping
   data/tmdb/       TMDB API / Parser / Resolver / Metadaten / Trailer-Metadaten
   data/youtube/    YouTube-Wiedergabe und Such-Fallback über Android-Intents
+  data/openwebif/  Gigablue/OpenWebif Verbindung, Cache, Bouquets, Sender und Now/Next
   data/database/   Room / TMDB-Mappings / Medien-, Episoden- und Trailer-Cache
   data/update/     Development-Updatekanal
-  model/           WatchNextItem + gemeinsames MediaItem/MediaSource/Trailer-Modell
+  model/           gemeinsame Media- und Live-TV-Modelle
   system/          Home-Rolle / Accessibility / TvProvider-Berechtigungen
-  ui/home/         Home inklusive Watch-Next-Reihe
+  ui/home/         Home inklusive Watch Next und Jetzt im TV
   ui/details/      provider-neutrale Medien-Detailseite inklusive Traileraktion
+  ui/livetv/       Gigablue-Einrichtung, Bouquetwahl und Live-TV-Diagnose
   ui/apps/         App-Übersicht
   ui/settings/     Einstellungen, Diagnose und Credits
   ui/components/   TV-Cards
@@ -62,7 +64,7 @@ feature:settings
 playback
 ```
 
-## Datenfluss
+## Content-Datenfluss
 
 ```text
 Android TvProvider / spätere Provider
@@ -88,63 +90,78 @@ Für das Lesen von TV-Daten anderer Apps verwendet I Launcher `android.permissio
 
 Watch Next wird aus `TvContract.WatchNextPrograms.CONTENT_URI` gelesen. Die Query fordert `last_engagement_time_utc_millis DESC` an. Die resultierende Reihenfolge wird im Mapper nicht verändert; Quellenfilter entfernen nur Zeilen.
 
-Androids `COLUMN_TYPE` und `COLUMN_RELEASE_DATE` werden als Resolver-Hinweise übernommen, ohne app-spezifische Sonderlogik einzuführen.
-
 ## Gemeinsames Medienmodell
 
-`MediaItem` ist die provider-neutrale Darstellung für Filme, Serien und Episoden. Das Modell enthält unter anderem Medientyp, Titel, Beschreibung, Jahr, Staffel/Episode, TMDB-/Episode-ID, Bilder, Fortschritt, Quellprovider, Playback-Intent, Resolver-Confidence und eine optionale provider-neutrale `TrailerRef`.
+`MediaItem` ist die provider-neutrale Darstellung für Filme, Serien und Episoden. Die Quellinformation bleibt auch nach TMDB-Anreicherung erhalten. Trailer sind über eine provider-neutrale `TrailerRef` angebunden.
 
-Eine Trailerreferenz besteht aus Provider und externer ID. Phase 4 verwendet `TrailerProvider.YouTube`; die UI kennt keine TMDB-Video-DTOs.
+Für Phase 5 kommen provider-neutrale Live-TV-Modelle hinzu:
 
-## Detailnavigation und Focus-Rückkehr
+- `LiveTvChannel`: Service Reference, Sendername, Picon, aktuelle und nächste Sendung
+- `LiveTvProgram`: Event-ID, Titel/Beschreibung, Start und Dauer
+- Fortschritt wird aus Start, Dauer und aktueller Zeit abgeleitet
 
-- kurzes `OK` auf einer Watch-Next-Karte startet den vorhandenen Source-/Playback-Intent
-- `KEYCODE_INFO` oder lange `OK` öffnet die provider-neutrale Detailseite
-- die Detailseite bietet `Fortsetzen`/`Wiedergeben`, Traileraktion und `Zurück`
-- Watch-Next- und App-LazyList-State behalten ihre Scrollposition
-- die stabile `MediaSource.sourceId` dient zur expliziten Focus-Rückgabe nach Details
+Die Home-UI kennt damit keine OpenWebif-DTOs.
 
-Dieser Pfad ist auf dem TCL real verifiziert, einschließlich Rückkehr aus externer YouTube-Wiedergabe.
+## Detailnavigation und Trailer
 
-## TMDB Resolver
+Kurzes `OK` auf Watch Next startet den vorhandenen Source-/Playback-Intent. `INFO` oder lange `OK` öffnet Details. Trailer werden bevorzugt aus TMDB-Video-Metadaten aufgelöst und an YouTube delegiert; bei fehlender ID gibt es einen gezielten YouTube-Suchfallback. Focus-Rückgabe nach Details und Rückkehr aus YouTube sind auf TCL bestätigt.
 
-Der Resolver verarbeitet lokal und deterministisch Titel, Jahr, Staffel und Episode. Danach werden TMDB-Kandidaten nach Titelähnlichkeit, Typ und Jahr bewertet. Nur Treffer oberhalb der konservativen Confidence-Schwelle werden übernommen. Andernfalls bleiben die Android-Quelldaten unverändert.
+## OpenWebif / Gigablue Provider
 
-Für Episoden wird zuerst die Serie aufgelöst und bei bekannter Staffel/Episode anschließend der TMDB-Episode-Endpoint verwendet. Ein gespeichertes Source-Key-Mapping wird nur wiederverwendet, wenn normalisierter Titel, Jahr, Staffel und Episode weiterhin mit der aktuellen Quelle übereinstimmen.
-
-## Trailer-Pipeline
+Phase 5 kommuniziert direkt mit der Gigablue X3 über die offizielle OpenWebif-JSON-Schnittstelle:
 
 ```text
-TMDB-Match
-   ↓
-Movie/TV/Episode Details + videos
-   ↓
-YouTube Trailer/Teaser auswählen
-   ↓
-YouTube-ID in Room cachen
-   ↓
-MediaItem.trailer
-   ↓
-Details → Trailer
+lokale Receiver-Konfiguration
+        ↓
+OpenWebifRepository
+        ├── /api/getservices          → Bouquets
+        ├── /api/getservices?sRef=…   → Sender + Picons
+        └── /api/epgnownext?bRef=…    → aktuelle/nächste Sendung
+        ↓
+OpenWebifMapper
+        ↓
+LiveTvChannel / LiveTvProgram
+        ↓
+Home: Jetzt im TV + Live-TV-Diagnose
 ```
 
-Auswahlregeln: nur YouTube-Videos mit ID; Trailer vor Teaser; offiziell vor inoffiziell; deutsch vor englisch, danach sprachneutral; bei Episoden Episode-Trailer vor Serien-Trailer.
+`OpenWebifRepository` ist die Provider-Grenze. Retrofit/OkHttp-Details und OpenWebif-Feldnamen bleiben unter `data/openwebif`.
 
-Falls TMDB keine verwertbare YouTube-ID liefert, wird keine zusätzliche YouTube-Data-API-Suche gestartet. Die Detailseite bietet `Trailer suchen`, das eine gezielte YouTube-Suche über Android `ACTION_VIEW` öffnet. Die Trailerwiedergabe wird ebenfalls an YouTube bzw. einen geeigneten Handler delegiert; der Launcher extrahiert keine YouTube-Streams.
+### Verbindung und Authentifizierung
 
-## TMDB Netzwerk und Secrets
+Die Receiver-Adresse wird lokal eingegeben und deterministisch normalisiert. Ohne Schema wird `http://` verwendet; HTTP und HTTPS sind erlaubt. Eingebettete Zugangsdaten in URLs werden abgelehnt. Optional wird HTTP Basic Authentication über einen Authorization-Header verwendet.
 
-TMDB wird über Retrofit/OkHttp mit Bearer-Token angesprochen. Der Token wird nicht im Repository gespeichert. Der signierte Development-Publisher liest `IL_TMDB_READ_ACCESS_TOKEN` ausschließlich aus GitHub Actions Secrets.
+Normale OpenWebif-LAN-Installationen verwenden häufig unverschlüsseltes HTTP. Deshalb erlaubt die App Cleartext-Traffic. Die UI weist darauf hin, Zugangsdaten über HTTP nur im vertrauenswürdigen Heimnetz zu verwenden.
 
-## Room Cache
+Receiver-Adresse, Benutzername und Passwort werden ausschließlich lokal gespeichert. Passwort und vollständige private Receiver-URL werden weder geloggt noch in Diagnosemeldungen ausgegeben. `android:allowBackup=false` verhindert, dass diese lokalen Zugangsdaten über Android Auto Backup ausgelagert werden.
 
-Room speichert Source-Key-Mappings, negative Treffer, Film-/Serienmetadaten, Episodenmetadaten sowie ausgewählte YouTube-Trailer-ID und Lookup-Status. Phase 4 migriert die Datenbank von Version 1 auf 2. Der reale Update-Test `dev.45` → `dev.47` bestätigte die Migration ohne Cache-Verlust.
+### Bouquets und Sender
 
-Cache-Policy: Resolver-/Metadaten-Refresh nach 30 Tagen, harte Löschung spätestens nach 180 Tagen, Netzwerkfehler nutzen vorhandene Cache-Daten.
+Ein `getservices`-Aufruf ohne `sRef` liefert die TV-Bouquets. Das ausgewählte Bouquet wird lokal gespeichert. Ein zweiter `getservices`-Aufruf mit der Bouquet-Service-Reference liefert Sender in Receiver-Reihenfolge. OpenWebif-Marker mit `pos=0` werden aus der Content-Reihe entfernt, echte Sender bleiben in Quellreihenfolge erhalten.
+
+Picons werden als relative OpenWebif-Pfade geliefert und gegen die konfigurierte Receiver-Basisadresse aufgelöst.
+
+### EPG Now/Next
+
+`/api/epgnownext` liefert die aktuellen und folgenden Events des Bouquets. Die Zuordnung erfolgt ausschließlich über die Enigma2-Service-Reference. Aktuelle Sendung wird anhand des Epoch-Zeitfensters ermittelt; der nächste spätere Event wird als `next` übernommen.
+
+### Local First und Aktualisierung
+
+Der letzte erfolgreich geladene Snapshot aus Bouquet, ausgewähltem Bouquet, Sendern und Now/Next wird lokal gecacht. Beim App-Start kann `Jetzt im TV` deshalb sofort aus dem letzten Snapshot erscheinen. Anschließend aktualisiert der Repository-Pfad im Hintergrund; während der Launcher sichtbar bleibt wird alle fünf Minuten erneut aktualisiert.
+
+Ein Netzwerkfehler überschreibt vorhandene lokale Sender/EPG-Daten nicht. Fehler werden nur als sanitisierte Zustände wie HTTP-Code, Timeout, DNS- oder Verbindungsfehler dargestellt.
+
+### Scope-Grenze Phase 5
+
+Die `Jetzt im TV`-Karten sind noch keine Player-Einstiegspunkte. Auswahl öffnet die Live-TV-Ansicht. Interne Stream-URLs, Media3-Wiedergabe und Zapping folgen bewusst erst in Phase 7.
+
+## TMDB Resolver und Cache
+
+Der Resolver verarbeitet lokal und deterministisch Titel, Jahr, Staffel und Episode und übernimmt nur Treffer oberhalb der konservativen Confidence-Schwelle. Room speichert Source-Mappings, negative Treffer, Film-/Serienmetadaten, Episodenmetadaten und Trailer-IDs. Cache-Refresh erfolgt nach 30 Tagen, harte Löschung spätestens nach 180 Tagen.
 
 ## Bilder
 
-TMDB-Bild-URLs werden aus `/configuration` erzeugt und lokal gecacht. Artwork-Priorität: Episode Still → Backdrop → Poster → Quellbild; Film/Serie: Backdrop → Poster → Quellbild.
+TMDB-Bild-URLs werden aus `/configuration` erzeugt und lokal gecacht. Artwork-Priorität: Episode Still → Backdrop → Poster → Quellbild; Film/Serie: Backdrop → Poster → Quellbild. OpenWebif-Picons bleiben eine separate lokale Senderbildquelle.
 
 ## TMDB Attribution und Diagnose
 
@@ -152,15 +169,11 @@ Der Bereich `Über / Credits` zeigt das TMDB-Logo und den vorgeschriebenen Hinwe
 
 ## Development-Publishing
 
-Signierte Development-Builds laufen über den `downloads`-Kanal. Build und Unit-Tests werden vor jeder Veröffentlichung ausgeführt. Der bestätigte Phase-4-Build ist `0.1.0-dev.47` (`26000047`).
+Signierte Development-Builds laufen über den `downloads`-Kanal. Build und Unit-Tests werden vor jeder Veröffentlichung ausgeführt. Phase 5 wird über `agent/phase-5-openwebif` veröffentlicht und gilt erst nach realem TCL-/Gigablue-Test als abgeschlossen.
 
 ## Home-Tasten-Fallback
 
 Der Google-TV-/TCL-Home-Fallback basiert auf einem `AccessibilityService` mit `BIND_ACCESSIBILITY_SERVICE` und `canRequestFilterKeyEvents=true`. Das TCL-/Android-13+-Restricted-Settings-Verhalten bei lokal installierten APKs bleibt ein separates Distributionsthema.
-
-## Gigablue / nächste Phase
-
-Phase 5 integriert die Gigablue X3 direkt über Enigma2/OpenWebif. Verbindung, optionale HTTP-Authentifizierung, Bouquets, Sender und EPG Now/Next werden hinter einer eigenen Provider-/Repository-Grenze implementiert. Zugangsdaten bleiben lokal und dürfen weder in Logs noch im Repository landen. Die Home-UI erhält daraus eine Reihe `Jetzt im TV`; vollständiger EPG-Guide und interner Live-TV-Player folgen erst in Phase 6/7.
 
 ## Build-Basis
 

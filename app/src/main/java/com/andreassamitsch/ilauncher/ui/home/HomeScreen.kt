@@ -3,7 +3,6 @@ package com.andreassamitsch.ilauncher.ui.home
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -19,9 +18,11 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifState
 import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.ui.components.AppCard
+import com.andreassamitsch.ilauncher.ui.components.LiveTvCard
 import com.andreassamitsch.ilauncher.ui.components.WatchNextCard
 
 @Composable
@@ -30,12 +31,15 @@ fun HomeScreen(
     watchNextItems: List<EnrichedWatchNextItem>,
     watchNextError: String?,
     hasTvListingsPermission: Boolean,
+    liveTvState: OpenWebifState,
     onRequestTvListingsPermission: () -> Unit,
     onOpenApp: (InstalledApp) -> Unit,
     onOpenWatchNext: (EnrichedWatchNextItem) -> Unit,
     onOpenWatchNextDetails: (EnrichedWatchNextItem) -> Unit,
+    onOpenLiveTv: () -> Unit,
     modifier: Modifier = Modifier,
     watchNextListState: LazyListState = rememberLazyListState(),
+    liveTvListState: LazyListState = rememberLazyListState(),
     appsListState: LazyListState = rememberLazyListState(),
     watchNextFocusRestoreSourceId: String? = null,
     watchNextFocusRestoreGeneration: Int = 0,
@@ -54,20 +58,16 @@ fun HomeScreen(
         }
         if (targetIndex < 0) return@LaunchedEffect
 
-        // The Home subtree is removed while Details is visible, so preserving only
-        // LazyListState cannot preserve the actual Compose focus owner. Recompose
-        // the target item first, wait for the following frame, then explicitly
-        // restore focus to the exact Watch Next source card that opened Details.
         watchNextListState.scrollToItem(targetIndex)
         withFrameNanos { }
         watchNextRestoreFocusRequester.requestFocus()
     }
 
     Column(
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 text = "I Launcher",
                 style = MaterialTheme.typography.displayMedium,
@@ -94,9 +94,9 @@ fun HomeScreen(
 
         when {
             !hasTvListingsPermission -> {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "I Launcher benötigt Androids Berechtigung „TV-Programme/Kanäle lesen“, um Watch Next und später Preview Channels anderer Apps anzuzeigen.",
+                        text = "TV-Inhalte-Berechtigung fehlt. Watch Next und Preview Channels anderer Apps sind dadurch nicht verfügbar.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -125,7 +125,7 @@ fun HomeScreen(
             else -> {
                 LazyRow(
                     state = watchNextListState,
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
                     items(
@@ -151,6 +151,54 @@ fun HomeScreen(
             }
         }
 
+        if (liveTvState.configured) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Jetzt im TV",
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(
+                    text = liveTvState.receiverLabel?.let { "Gigablue · $it" } ?: "Gigablue / OpenWebif",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            when {
+                liveTvState.channels.isNotEmpty() -> {
+                    LazyRow(
+                        state = liveTvListState,
+                        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    ) {
+                        items(
+                            items = liveTvState.channels,
+                            key = { it.serviceReference },
+                        ) { channel ->
+                            LiveTvCard(
+                                channel = channel,
+                                onClick = onOpenLiveTv,
+                            )
+                        }
+                    }
+                }
+
+                liveTvState.isRefreshing -> {
+                    Text(
+                        "Gigablue wird aktualisiert …",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                else -> {
+                    Button(onClick = onOpenLiveTv) {
+                        Text("Live TV öffnen / Verbindung prüfen")
+                    }
+                }
+            }
+        }
+
         Text(
             text = "Apps",
             style = MaterialTheme.typography.headlineSmall,
@@ -161,7 +209,7 @@ fun HomeScreen(
         } else {
             LazyRow(
                 state = appsListState,
-                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
             ) {
                 items(
