@@ -1,24 +1,35 @@
 package com.andreassamitsch.ilauncher.ui.epg
 
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -30,6 +41,7 @@ import com.andreassamitsch.ilauncher.data.epg.EpgState
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 
@@ -169,7 +181,7 @@ fun EpgScreen(
 
                 if (guide.isEmpty()) {
                     Text(
-                        "Für diesen Sender sind noch keine zugeordneten XMLTV-Programmdaten vorhanden. Die Senderzuordnung kann unter Live TV geprüft werden.",
+                        "Für diesen Sender sind noch keine zugeordneten XMLTV-Programmdaten vorhanden.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
@@ -300,15 +312,42 @@ private fun ProgramDetails(program: LiveTvProgram) {
                 )
             }
             val description = program.longDescription ?: program.shortDescription
-            description?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            description?.let { ScrollableDescription(it) }
         }
+    }
+}
+
+@Composable
+private fun ScrollableDescription(text: String) {
+    val scrollState = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 104.dp)
+            .verticalScroll(scrollState)
+            .focusable()
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (event.key) {
+                    Key.DirectionDown -> {
+                        if (!scrollState.canScrollForward) return@onPreviewKeyEvent false
+                        scope.launch { scrollState.animateScrollTo((scrollState.value + 80).coerceAtMost(scrollState.maxValue)) }
+                        true
+                    }
+                    Key.DirectionUp -> {
+                        if (!scrollState.canScrollBackward) return@onPreviewKeyEvent false
+                        scope.launch { scrollState.animateScrollTo((scrollState.value - 80).coerceAtLeast(0)) }
+                        true
+                    }
+                    else -> false
+                }
+            },
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
 }
 
