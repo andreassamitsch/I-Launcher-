@@ -13,10 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -31,7 +28,7 @@ import com.andreassamitsch.ilauncher.data.handoff.ContentSearchHandoff
 import com.andreassamitsch.ilauncher.data.youtube.YouTubeEmbedPlayer
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.TrailerProvider
-import com.andreassamitsch.ilauncher.ui.trailer.TrailerPlayerScreen
+import com.andreassamitsch.ilauncher.ui.trailer.TrailerPlayerActivity
 
 @Composable
 fun DetailsScreen(
@@ -44,23 +41,12 @@ fun DetailsScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    var internalTrailerVideoId by remember(item.id) { mutableStateOf<String?>(null) }
     val internalTrailerId = remember(item.trailer) {
         item.trailer
             ?.takeIf { it.provider == TrailerProvider.YouTube }
             ?.externalId
             ?.takeIf { YouTubeEmbedPlayer.html(it) != null }
     }
-
-    internalTrailerVideoId?.let { videoId ->
-        TrailerPlayerScreen(
-            videoId = videoId,
-            onBack = { internalTrailerVideoId = null },
-            modifier = modifier,
-        )
-        return
-    }
-
     val contentSearchHandoff = remember(context) {
         ContentSearchHandoff(context.applicationContext)
     }
@@ -160,7 +146,7 @@ fun DetailsScreen(
                 }
                 when {
                     internalTrailerId != null -> Button(
-                        onClick = { internalTrailerVideoId = internalTrailerId },
+                        onClick = { TrailerPlayerActivity.start(context, internalTrailerId) },
                     ) {
                         Text("Trailer")
                     }
