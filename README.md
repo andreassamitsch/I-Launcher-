@@ -17,21 +17,26 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phasen 1 bis 7 sind funktional abgeschlossen und auf dem Zielgerät bestätigt.** Der aktuelle gestapelte Entwicklungsstand ergänzt Preview Channels, globale Suche und die nächste Home-/Player-UX. Diese Änderungen bleiben bis zum neuen Gerätetest in Draft-PRs.
+**Phasen 1 bis 7 sind funktional abgeschlossen und auf dem Zielgerät bestätigt.** Der aktuelle gestapelte Entwicklungsstand ergänzt Preview Channels, globale Suche und die nächste Home-/Player-UX. Diese Änderungen bleiben bis zum jeweils aktuellen Gerätetest in Draft-PRs.
 
 Aktuell umgesetzt:
 
 - fest sichtbarer, fokussierbarer Hero außerhalb des vertikalen Reihen-Scrolls; Fokus auf Watch Next, Live-TV, Preview Channels oder Apps aktualisiert Inhalt/Artwork; Medien-Hero öffnet per OK die Detailansicht
-- kompakte Hauptnavigation `Home · Suche · Apps · Einstellungen`; aktiver Bereich nur per Rahmen; Navigation kann auf Home beim Scrollen der Reihen ausblenden
+- Hero-Artwork mit zweistufiger Darstellung: dezenter vollflächiger Hintergrund plus unbeschnittenes `Fit`-Motiv, damit auch 4:3-, 16:9- und hochformatige Quellen nicht unnötig abgeschnitten werden
+- kompakte Hauptnavigation `Home · Suche · Apps · Einstellungen`; aktiver Bereich nur per Rahmen; Navigation kann auf Home beim Scrollen der Reihen ausblenden und wird beim Zurücknavigieren zum Hero wieder eingeblendet
 - Live-TV-/Gigablue-Konfiguration als Unterpunkt der Einstellungen
-- EPG als TV-Guide direkt im laufenden Live-TV-Player statt eigener Hauptnavigation
+- Update-Schnellaktion ganz oben in den Einstellungen
+- EPG als TV-Guide direkt im laufenden Live-TV-Player statt eigener Hauptnavigation; lange Programmbeschreibungen sind per D-Pad scrollbar
 - Live-TV-Infoleisten blenden nach drei Sekunden aus; OK zeigt sie, erstes Zurück versteckt sie
-- direkte TMDB-/YouTube-Trailer starten in einer eigenen internen Trailer-Activity mit Fullscreen-WebView-Unterstützung; externe YouTube-Suche bleibt Fallback ohne konkrete Trailer-ID
+- kompakte `Jetzt im TV`-Senderreihe im Player zum direkten Zappen; D-Pad hoch erhöht, D-Pad runter verringert die Sendernummer
+- direkte TMDB-/YouTube-Trailer starten in einer eigenen hardwarebeschleunigten Trailer-Activity; deutsche TMDB-Videos werden bevorzugt, YouTube-UI/Untertitelpräferenz ist Deutsch; externe YouTube-Suche bleibt Fallback ohne konkrete Trailer-ID
 - lokale Suche berücksichtigt unveränderte Android-Watch-Next-Quelltitel sowie Preview-Channel-/Quellnamen zusätzlich zu angereicherten Medienfeldern
-- Android-Sprachsuche übernimmt erkannte Sprache in dieselbe Suchpipeline
+- TMDB-Suchergebnisse werden bei identischer TMDB-Identität wieder mit vorhandenen Watch-Next-/Preview-Quellen verknüpft; source-backed Watch-Next-Treffer öffnen Details mit `Fortsetzen`
+- Suchergebnisliste springt bei einer neuen Suchanfrage wieder an den Anfang, damit lokale Treffer nicht unterhalb eines zuvor sichtbaren TMDB-Blocks verborgen bleiben
+- Android-Sprachsuche über einen kompakten Mikrofon-Button übernimmt erkannte Sprache in dieselbe Suchpipeline
 - CloudStream-Suchhandoff erkennt Stable-, Prerelease-, Debug- und kombinierte Development-Paketvarianten dynamisch über den `cloudstreamsearch`-Intent
 
-Automatisiert geprüft und veröffentlicht ist der aktuelle Code als Development-Testbuild **`0.1.0-dev.115` (`26000115`)**. Build und Unit-Tests sind grün; Trailer-Video, Sprachsuche, Hero-/Navigation und eingebetteter EPG sind damit ausdrücklich noch nicht als realer Gerätetest bestätigt.
+Die interne Trailerwiedergabe mit Bild und Ton sowie die EPG-Integration im Live-TV-Player wurden auf realer TV-Hardware bestätigt. Die danach ergänzten Änderungen an Hero-Darstellung, Menü-Rückkehr, Suche, Sprachsuche, EPG-Textscroll, kompakter Zapping-Reihe und Update-Schnellaktion benötigen noch den nächsten Gerätetest.
 
 ## Datenschutz / Sicherheit
 
