@@ -3,7 +3,7 @@ name: Publish TV Downloader APK
 on:
   push:
     branches:
-      - agent/global-search
+      - agent/ui-player-polish
     paths:
       - "app/**"
       - "build.gradle.kts"
