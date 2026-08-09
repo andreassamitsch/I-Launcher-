@@ -88,10 +88,26 @@ jobs:
         env:
           IL_TMDB_READ_ACCESS_TOKEN: ${{ secrets.IL_TMDB_READ_ACCESS_TOKEN }}
         run: |
+          set +e
           gradle :app:testDebugUnitTest :app:assembleDebug \
             -PiLauncherVersionCode="$VERSION_CODE" \
             -PiLauncherVersionName="$VERSION_NAME" \
-            --stacktrace
+            --stacktrace 2>&1 | tee /tmp/gradle-build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            echo "### Gradle failure extract" >> "$GITHUB_STEP_SUMMARY"
+            grep -E '(^e: |^FAILURE:|^\* What went wrong:|^Execution failed for task|^> Task .*FAILED|^[[:space:]]*> )' /tmp/gradle-build.log \
+              | tail -n 80 \
+              | tee -a "$GITHUB_STEP_SUMMARY" \
+              | while IFS= read -r line; do
+                  safe=${line//'%'/'%25'}
+                  safe=${safe//$'\r'/'%0D'}
+                  safe=${safe//$'\n'/'%0A'}
+                  echo "::error::$safe"
+                done
+            exit "$STATUS"
+          fi
 
       - name: Prepare APK and update manifest
         run: |
