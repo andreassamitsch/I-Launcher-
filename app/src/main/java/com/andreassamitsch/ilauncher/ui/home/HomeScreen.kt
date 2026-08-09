@@ -48,8 +48,11 @@ fun HomeScreen(
     appsListState: LazyListState = rememberLazyListState(),
     watchNextFocusRestoreSourceId: String? = null,
     watchNextFocusRestoreGeneration: Int = 0,
+    liveTvFocusRestoreServiceReference: String? = null,
+    liveTvFocusRestoreGeneration: Int = 0,
 ) {
     val watchNextRestoreFocusRequester = remember { FocusRequester() }
+    val liveTvRestoreFocusRequester = remember { FocusRequester() }
     val homeScrollState = rememberScrollState()
 
     LaunchedEffect(
@@ -67,6 +70,23 @@ fun HomeScreen(
         watchNextListState.scrollToItem(targetIndex)
         withFrameNanos { }
         watchNextRestoreFocusRequester.requestFocus()
+    }
+
+    LaunchedEffect(
+        liveTvFocusRestoreServiceReference,
+        liveTvFocusRestoreGeneration,
+    ) {
+        val serviceReference = liveTvFocusRestoreServiceReference ?: return@LaunchedEffect
+        if (liveTvFocusRestoreGeneration <= 0) return@LaunchedEffect
+
+        val targetIndex = liveTvState.channels.indexOfFirst { channel ->
+            channel.serviceReference == serviceReference
+        }
+        if (targetIndex < 0) return@LaunchedEffect
+
+        liveTvListState.scrollToItem(targetIndex)
+        withFrameNanos { }
+        liveTvRestoreFocusRequester.requestFocus()
     }
 
     Column(
@@ -183,9 +203,17 @@ fun HomeScreen(
                             items = liveTvState.channels,
                             key = { it.serviceReference },
                         ) { channel ->
+                            val cardModifier = if (
+                                channel.serviceReference == liveTvFocusRestoreServiceReference
+                            ) {
+                                Modifier.focusRequester(liveTvRestoreFocusRequester)
+                            } else {
+                                Modifier
+                            }
                             LiveTvCard(
                                 channel = channel,
                                 onClick = { onPlayLiveTvChannel(channel) },
+                                modifier = cardModifier,
                             )
                         }
                     }
