@@ -110,8 +110,9 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Unit-Tests für Trailer-Auswahl und Episode-vor-Serie-Priorität
 - [x] signierten Development-Build `0.1.0-dev.47` erfolgreich mit Unit-Tests und `assembleDebug` veröffentlicht
 - [x] realer TCL-Gerätetest von Datenbankmigration, Trailerstart, Such-Fallback und Rückkehrverhalten bestanden
+- [ ] aktueller UI-Polish: direkte TMDB-YouTube-Trailer intern in eigener Launcher-Activity wiedergeben; Audio-only-Fehler des ersten Compose-WebView-Versuchs auf Hardware nachtesten
 
-**Phase 4 ist funktional abgeschlossen und auf realer TCL-Hardware bestätigt.**
+**Phase 4 bleibt funktional abgeschlossen; die interne Trailerwiedergabe ist eine spätere UX-Verbesserung und aktuell erneut im Gerätetest.**
 
 ## Phase 5 – Gigablue / OpenWebif
 
@@ -160,8 +161,9 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] reale `riedl-dach.at` M3U/XMLTV-Quelle auf TCL gegen Gigablue-Sender getestet
 - [x] D-Pad-/Focus-Test auf Home sowie im vollständigen EPG bestanden
 - [x] Offline-/Cache-Test und Update/Migration vom bestehenden Build bestanden
+- [ ] aktueller UI-Polish: EPG aus der Hauptnavigation entfernen und als Guide direkt im laufenden Live-TV-Player öffnen; Hardware-Focus/Back prüfen
 
-**Phase 6 ist funktional abgeschlossen und auf realer TCL-/Gigablue-/XMLTV-Hardware bestätigt.**
+**Phase 6 ist funktional abgeschlossen und auf realer TCL-/Gigablue-/XMLTV-Hardware bestätigt. Die spätere Einbettung des bestehenden Guides in den Player ist aktuell im Gerätetest.**
 
 ## Phase 7 – Live TV
 
@@ -175,8 +177,9 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Senderwechsel in unveränderter Gigablue-Bouquet-Reihenfolge
 - [x] Zapping über D-Pad ↑/↓ und CH+/CH− implementieren
 - [x] alten Stream beim Zappen sofort stoppen und Zielstream neu über OpenWebif auflösen
-- [x] Player-UI mit Sender-Picon, Sendername, Jetzt/Danach, Bouquet-Position, Ladezustand und sicheren Fehlern
-- [x] exakte Focus-Rückgabe auf die zuvor gestartete `Jetzt im TV`-Karte implementieren
+- [x] Player-UI mit Sender-Picon, Name, aktueller/nächster Sendung, Bouquet-Position und sicherem Fehlerstatus
+- [x] Player-Overlay und Android-`PlayerView` sauber schichten; Media3-Controller deaktivieren, eigene TV-Steuerung verwenden
+- [x] Back beendet Player und stellt Focus auf exakt derselben `Jetzt im TV`-Karte wieder her
 - [x] Unit-Tests für Stream-Playlist, Auth-/Session-Sanitizing und Zapping-Reihenfolge/-Wrap
 - [x] Android CI mit `testDebugUnitTest` und `assembleDebug` erfolgreich
 - [x] signierten Development-Build `0.1.0-dev.68` (`26000068`) erfolgreich veröffentlicht
@@ -185,8 +188,37 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Back-/Focus-Rückgabe vom Player auf die Home-Karte bestätigt
 - [x] Media3-Wiedergabe auf dem Zielgerät ohne blockierenden Decoder-/Playbackfehler bestätigt
 - [x] realer Phase-7-Gesamttest auf TCL + Gigablue X3 bestanden
+- [ ] aktueller UI-Polish: Infoleisten nach 3 Sekunden ausblenden, OK einblenden, erstes Back ausblenden
+- [ ] aktueller UI-Polish: TV-Guide/EPG als Player-Funktion hardwarevalidieren
 
-**Phase 7 ist funktional abgeschlossen, automatisiert getestet und auf realer TCL-/Gigablue-Hardware bestätigt.**
+**Phase 7 ist funktional abgeschlossen, automatisiert getestet und auf realer TCL-/Gigablue-Hardware bestätigt. Die nachträglichen Player-UX-Verbesserungen bleiben bis zum neuen Gerätetest offen.**
+
+## Preview Channels / globale Suche – aktueller Entwicklungsstand
+
+- [x] Android Preview Channels / Preview Programs über TvProvider lesen
+- [x] systemseitiges Channel-`browsable=0` nicht mehr fälschlich als I-Launcher-Ausblendung behandeln
+- [x] lokale Ein-/Ausblendung pro App-Kanal
+- [x] globale lokale Suche über Apps, Watch Next, Preview Programs und EPG
+- [x] TMDB-Suche ab drei Zeichen
+- [x] lokale Suche ab zwei Zeichen vom UI-Thread entkoppelt
+- [x] rohe Watch-Next-Titel/Episodentitel zusätzlich zur TMDB-angereicherten Medienidentität durchsuchen
+- [x] Preview-Channel-Titel/Quell-App als Suchmetadaten einbeziehen
+- [x] CloudStream-/Kodi-Suchhandoff für TMDB-Treffer
+- [x] CloudStream-Development-Paketvarianten dynamisch über den Search-Intent erkennen
+- [x] Android-Sprachsuche als Suchaktion integrieren
+- [ ] kombinierter Gerätetest von Suchquellen, Sprachsuche und CloudStream-Handoff
+
+## Home / Navigation – aktueller UI-Polish
+
+- [x] Hero-Bereich folgt dem fokussierten Inhalt
+- [x] Hero außerhalb des vertikalen Reihen-Scrolls halten, damit er beim Navigieren sichtbar bleibt
+- [x] Hero selbst fokussierbar machen; Medien öffnen per OK die Detailansicht
+- [x] Hauptnavigation auf `Home · Suche · Apps · Einstellungen` reduzieren
+- [x] aktiven Hauptpunkt nur per Border markieren
+- [x] Launcher-Name aus der Navigationszeile entfernen
+- [x] Navigationszeile auf Home beim Herunterscrollen der Content-Reihen ausblenden
+- [x] Live-TV-/Gigablue-Konfiguration unter Einstellungen verschieben
+- [ ] vollständigen D-Pad-/Focus-Gerätetest für den neuen Home-/Nav-Aufbau durchführen
 
 ## Phase 8 – optionale Provider
 
