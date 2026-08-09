@@ -140,14 +140,14 @@ class SearchRepositoryTest {
                     media = media(
                         title = "Tatort",
                         sourceId = "preview-1",
-                        overview = "OR steckt nur in einer langen Beschreibung.",
+                        overview = "XY steckt nur in einer langen Beschreibung.",
                     ),
                 ),
             ),
         )
 
         val results = repository.searchLocal(
-            query = "or",
+            query = "xy",
             apps = emptyList(),
             watchNextItems = emptyList(),
             previewChannels = listOf(preview),
