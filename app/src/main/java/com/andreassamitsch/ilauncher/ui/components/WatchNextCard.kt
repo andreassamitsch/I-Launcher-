@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
@@ -38,14 +39,16 @@ fun WatchNextCard(
     modifier: Modifier = Modifier,
 ) {
     var longPressHandled by remember(item.id) { mutableStateOf(false) }
+    var focused by remember(item.id) { mutableStateOf(false) }
 
     TouchCard(
         onClick = onClick,
         onLongClick = onDetails,
         handleTvLongClick = false,
         modifier = modifier
-            .width(252.dp)
+            .width(236.dp)
             .onFocusChanged { focusState ->
+                focused = focusState.isFocused
                 if (focusState.isFocused) onFocused?.invoke()
             }
             .onPreviewKeyEvent { composeEvent ->
@@ -81,13 +84,13 @@ fun WatchNextCard(
                     else -> false
                 }
             },
-        scale = CardDefaults.scale(focusedScale = 1.035f),
+        scale = CardDefaults.scale(focusedScale = 1.028f),
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(142.dp)
+                    .height(133.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
                 val artwork = item.preferredArtworkUri
@@ -113,8 +116,8 @@ fun WatchNextCard(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                            .size(width = 66.dp, height = 28.dp),
+                            .padding(7.dp)
+                            .size(width = 62.dp, height = 26.dp),
                     )
                 }
 
@@ -123,7 +126,7 @@ fun WatchNextCard(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .fillMaxWidth()
-                            .height(4.dp)
+                            .height(3.dp)
                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f)),
                     ) {
                         Box(
@@ -137,7 +140,7 @@ fun WatchNextCard(
             }
 
             Column(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
             ) {
                 Text(
                     text = item.title,
@@ -152,6 +155,7 @@ fun WatchNextCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.alpha(if (focused) 1f else 0.58f),
                     )
                 }
             }
