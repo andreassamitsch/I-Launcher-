@@ -282,9 +282,18 @@ internal fun LiveTvPlayerScreen(
                     useController = false
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     this.player = player
+                    isClickable = true
+                    setOnClickListener {
+                        if (!showEpg) overlayVisible = true
+                    }
                 }
             },
-            update = { it.player = player },
+            update = {
+                it.player = player
+                it.setOnClickListener {
+                    if (!showEpg) overlayVisible = true
+                }
+            },
             modifier = Modifier.fillMaxSize(),
         )
 
