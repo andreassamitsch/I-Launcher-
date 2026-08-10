@@ -194,21 +194,33 @@ class SearchRepository(
         if (!provider.isConfigured || normalize(query).length < MIN_TMDB_QUERY_LENGTH) return emptyList()
         return provider.search(query)
             .take(MAX_TMDB_RESULTS)
-            .map { media ->
-                SearchItem(
-                    id = "search:tmdb:${media.type}:${media.tmdbId}",
-                    kind = SearchResultKind.Tmdb,
-                    title = media.title,
-                    subtitle = media.releaseYear?.toString(),
-                    artworkUri = media.preferredArtworkUri,
-                    sourceLabel = "TMDB",
-                    media = media,
-                )
-            }
+            .map(::tmdbSearchItem)
+    }
+
+    suspend fun browseTmdb(): List<SearchBrowseSection> {
+        val provider = tmdbSearchRepository ?: return emptyList()
+        if (!provider.isConfigured) return emptyList()
+        return provider.browse().map { section ->
+            SearchBrowseSection(
+                key = section.key,
+                title = section.title,
+                items = section.items.map(::tmdbSearchItem),
+            )
+        }
     }
 
     suspend fun loadTmdbDetails(item: MediaItem): MediaItem =
         tmdbSearchRepository?.loadDetails(item) ?: item
+
+    private fun tmdbSearchItem(media: MediaItem): SearchItem = SearchItem(
+        id = "search:tmdb:${media.type}:${media.tmdbId}",
+        kind = SearchResultKind.Tmdb,
+        title = media.title,
+        subtitle = media.releaseYear?.toString(),
+        artworkUri = media.preferredArtworkUri,
+        sourceLabel = "TMDB",
+        media = media,
+    )
 
     private fun scoreMedia(
         query: String,
