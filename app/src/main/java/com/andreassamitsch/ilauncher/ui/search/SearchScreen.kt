@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,7 +44,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -52,6 +52,8 @@ import com.andreassamitsch.ilauncher.R
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.model.SearchResultKind
+import com.andreassamitsch.ilauncher.ui.components.TouchCard
+import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import java.util.Locale
 import kotlinx.coroutines.delay
 
@@ -135,7 +137,7 @@ fun SearchScreen(
                 onQueryChange = onQueryChange,
                 modifier = Modifier.weight(1f),
             )
-            Card(
+            TouchCard(
                 onClick = {
                     val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                         putExtra(
@@ -199,7 +201,9 @@ fun SearchScreen(
             else -> {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .touchScrollFallback(listState, Orientation.Vertical),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     if (localResults.isNotEmpty()) {
@@ -315,7 +319,7 @@ private fun SearchResultCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
+    TouchCard(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
