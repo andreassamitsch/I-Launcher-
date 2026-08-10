@@ -22,7 +22,9 @@ Der Hero ist eine cinematische Vollbreitenfläche. Echte Backdrops füllen die B
 
 Media-Rails verwenden ein einheitliches ungefähr 16:9-Raster mit kleinem Fokus-Zoom. Titel bleiben sichtbar, Sekundärinformationen werden außerhalb des Fokus bewusst zurückgenommen. Watch Next, Preview Channels und Live TV teilen dadurch dieselbe visuelle Sprache. Die Apps-Reihe ist als kompakter Icon-Dock gestaltet: große runde App-Icons, Labels nur bei Fokus oder Verschiebemodus.
 
-Die primäre Navigation bleibt klein: `Home · Suche · Apps · Einstellungen`. Auf Home wird sie sichtbar, wenn der Fokus ganz oben im Hero-/Navigationsbereich liegt, und ausgeblendet, sobald der Fokus in eine Inhaltsreihe wechselt. Live-TV-Konfiguration liegt unter Einstellungen; der EPG ist Player-Funktion und kein eigener Hauptpunkt.
+Die primäre Navigation bleibt klein: `Home · Suche · Apps · Einstellungen`. Im Ruhezustand sind die Buttonflächen transparent; der aktuell aktive Bereich bleibt durch einen dezenten Rahmen erkennbar. Der tatsächliche D-Pad-Fokus wird als helle kompakte Pill mit geringer Größenänderung dargestellt. Der Fokuspfad selbst bleibt unverändert. Auf Home wird die Navigation sichtbar, wenn der Fokus ganz oben im Hero-/Navigationsbereich liegt, und ausgeblendet, sobald der Fokus in eine Inhaltsreihe wechselt. Live-TV-Konfiguration liegt unter Einstellungen; der EPG ist Player-Funktion und kein eigener Hauptpunkt.
+
+Die separate `Alle Apps`-Ansicht verwendet dasselbe App-Kartenmodell wie Home, aber mit dauerhaft sichtbaren Labels. Das Grid ist adaptiv statt auf eine feste Spaltenzahl festgelegt, damit TV-, Tablet- und Smoke-Test-Breiten sinnvoll genutzt werden, ohne die reduzierte Home-App-Reihe aufzublähen.
 
 ## Suche und Discover
 
