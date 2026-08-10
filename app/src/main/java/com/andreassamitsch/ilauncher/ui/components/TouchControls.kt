@@ -1,5 +1,6 @@
 package com.andreassamitsch.ilauncher.ui.components
 
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -8,8 +9,13 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.tv.material3.Card as TvCard
@@ -17,21 +23,45 @@ import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.CardScale
 import androidx.tv.material3.Button as TvButton
 
-/**
- * Compose for TV keeps its existing D-Pad/focus handling. These wrappers add pointer taps only,
- * so phone/tablet smoke tests do not change the remote-control behaviour on Android TV.
- */
 @Composable
 fun TouchButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
+    var longPressHandled by remember(onLongClick) { mutableStateOf(false) }
+    val remoteLongPressModifier = if (onLongClick == null) {
+        Modifier
+    } else {
+        Modifier.onPreviewKeyEvent { composeEvent ->
+            val event = composeEvent.nativeKeyEvent
+            val isConfirm = event.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
+                event.keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
+                event.keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
+            when {
+                !enabled || !isConfirm -> false
+                event.action == AndroidKeyEvent.ACTION_DOWN && event.repeatCount > 0 -> {
+                    longPressHandled = true
+                    true
+                }
+                event.action == AndroidKeyEvent.ACTION_UP && longPressHandled -> {
+                    longPressHandled = false
+                    onLongClick()
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
     TvButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.touchTap(onClick = onClick, enabled = enabled),
+        modifier = modifier
+            .then(remoteLongPressModifier)
+            .touchTap(onClick = onClick, enabled = enabled, onLongClick = onLongClick),
         content = content,
     )
 }
@@ -76,11 +106,6 @@ fun Modifier.touchTap(
     )
 }
 
-/**
- * Normal Compose scroll containers get first chance to consume drag events. This final-pass fallback
- * only handles an otherwise unconsumed drag. dispatchRawDelta is deliberately limited to this
- * low-level compatibility path; regular TV/D-Pad and native Compose scrolling stay unchanged.
- */
 fun Modifier.touchScrollFallback(
     state: ScrollableState,
     orientation: Orientation,
