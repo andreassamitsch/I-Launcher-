@@ -1,6 +1,7 @@
 package com.andreassamitsch.ilauncher.ui.epg
 
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,13 +34,14 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.data.epg.EpgState
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
+import com.andreassamitsch.ilauncher.ui.components.TouchButton
+import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.DateFormat
@@ -111,7 +113,7 @@ fun EpgScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Button(onClick = onRefresh, enabled = !state.isRefreshing && channels.isNotEmpty()) {
+            TouchButton(onClick = onRefresh, enabled = !state.isRefreshing && channels.isNotEmpty()) {
                 Text(if (state.isRefreshing) "Aktualisiere …" else "EPG aktualisieren")
             }
         }
@@ -141,10 +143,14 @@ fun EpgScreen(
                 Text("Sender", style = MaterialTheme.typography.headlineSmall)
                 LazyColumn(
                     state = channelListState,
+                    modifier = Modifier.touchScrollFallback(
+                        channelListState,
+                        Orientation.Vertical,
+                    ),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(channels, key = LiveTvChannel::serviceReference) { channel ->
-                        Button(
+                        TouchButton(
                             onClick = { onSelectChannel(channel.serviceReference) },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
@@ -187,6 +193,10 @@ fun EpgScreen(
                 } else {
                     LazyColumn(
                         state = programListState,
+                        modifier = Modifier.touchScrollFallback(
+                            programListState,
+                            Orientation.Vertical,
+                        ),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(
@@ -196,7 +206,7 @@ fun EpgScreen(
                             val isCurrent = nowUtcMillis >= program.startUtcMillis &&
                                 nowUtcMillis < program.endUtcMillis
                             val isSelected = program.startUtcMillis == selectedProgramStart
-                            Button(
+                            TouchButton(
                                 onClick = {
                                     selectedChannel?.let { channel ->
                                         onSelectProgram(channel.serviceReference, program)
@@ -326,6 +336,7 @@ private fun ScrollableDescription(text: String) {
             .fillMaxWidth()
             .heightIn(max = 104.dp)
             .verticalScroll(scrollState)
+            .touchScrollFallback(scrollState, Orientation.Vertical)
             .focusable()
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
