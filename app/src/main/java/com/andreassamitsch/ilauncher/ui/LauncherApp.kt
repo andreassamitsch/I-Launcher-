@@ -7,8 +7,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,10 +27,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
@@ -538,13 +542,27 @@ fun LauncherApp(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 20.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(if (navigationVisible) 8.dp else 0.dp),
+                verticalArrangement = Arrangement.spacedBy(if (navigationVisible) 5.dp else 0.dp),
             ) {
                 if (navigationVisible) {
                     val activePrimarySection = if (section == LauncherSection.LiveTv) LauncherSection.Settings else section
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         PRIMARY_SECTIONS.forEach { item ->
                             val active = activePrimarySection == item
+                            val navColors = ButtonDefaults.colors(
+                                containerColor = Color.Transparent,
+                                contentColor = if (active) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f)
+                                },
+                                focusedContainerColor = MaterialTheme.colorScheme.onSurface,
+                                focusedContentColor = MaterialTheme.colorScheme.surface,
+                                pressedContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.88f),
+                                pressedContentColor = MaterialTheme.colorScheme.surface,
+                                disabledContainerColor = Color.Transparent,
+                                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                            )
                             TouchButton(
                                 onClick = {
                                     showHomeSettings = false
@@ -557,14 +575,31 @@ fun LauncherApp(
                                         showHomeSettings = true
                                     }
                                 } else null,
-                                modifier = if (active) {
-                                    Modifier.border(
-                                        width = 2.dp,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        shape = RoundedCornerShape(50),
-                                    )
-                                } else Modifier,
-                            ) { Text(item.label) }
+                                scale = ButtonDefaults.scale(
+                                    focusedScale = 1.025f,
+                                    pressedScale = 0.985f,
+                                ),
+                                colors = navColors,
+                                contentPadding = PaddingValues(horizontal = 15.dp, vertical = 0.dp),
+                                modifier = Modifier
+                                    .height(40.dp)
+                                    .then(
+                                        if (active) {
+                                            Modifier.border(
+                                                width = 1.5.dp,
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.82f),
+                                                shape = RoundedCornerShape(50),
+                                            )
+                                        } else {
+                                            Modifier
+                                        },
+                                    ),
+                            ) {
+                                Text(
+                                    text = item.label,
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            }
                         }
                     }
                 }
