@@ -15,7 +15,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.model.InstalledApp
@@ -29,7 +28,7 @@ fun AppCard(
 ) {
     val icon = remember(app.icon) { app.icon.asImageBitmap() }
 
-    Card(
+    TouchCard(
         onClick = onClick,
         modifier = modifier
             .width(176.dp)
