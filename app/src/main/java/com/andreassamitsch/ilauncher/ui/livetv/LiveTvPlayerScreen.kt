@@ -6,6 +6,7 @@ import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,8 +55,6 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
-import androidx.tv.material3.Button
-import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -64,6 +63,9 @@ import com.andreassamitsch.ilauncher.data.epg.EpgState
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifResolvedStream
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifStreamHttpException
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
+import com.andreassamitsch.ilauncher.ui.components.TouchButton
+import com.andreassamitsch.ilauncher.ui.components.TouchCard
+import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import com.andreassamitsch.ilauncher.ui.epg.EpgScreen
 import java.net.ConnectException
 import java.net.SocketTimeoutException
@@ -356,6 +358,10 @@ internal fun LiveTvPlayerScreen(
                 Text("Jetzt im TV", style = MaterialTheme.typography.titleMedium)
                 LazyRow(
                     state = zapListState,
+                    modifier = Modifier.touchScrollFallback(
+                        zapListState,
+                        Orientation.Horizontal,
+                    ),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     itemsIndexed(
@@ -381,8 +387,8 @@ internal fun LiveTvPlayerScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Button(onClick = onBack) { Text("Zurück") }
-                    Button(onClick = ::openEpg) { Text("EPG") }
+                    TouchButton(onClick = onBack) { Text("Zurück") }
+                    TouchButton(onClick = ::openEpg) { Text("EPG") }
                     currentChannel?.let {
                         Text(
                             "${currentIndex + 1}/${channels.size} · ${it.name}",
@@ -410,7 +416,7 @@ internal fun LiveTvPlayerScreen(
                         text = currentChannel?.let { "TV-Guide · ${it.name}" } ?: "TV-Guide",
                         style = MaterialTheme.typography.headlineSmall,
                     )
-                    Button(
+                    TouchButton(
                         onClick = { showEpg = false },
                         modifier = Modifier.focusRequester(epgBackFocusRequester),
                     ) {
@@ -452,7 +458,7 @@ private fun CompactLiveTvCard(
 ) {
     val shape = RoundedCornerShape(10.dp)
     val artwork = channel.now?.preferredArtworkUri
-    Card(
+    TouchCard(
         onClick = onClick,
         modifier = modifier
             .width(190.dp)
