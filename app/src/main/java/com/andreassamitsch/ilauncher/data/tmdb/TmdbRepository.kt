@@ -8,9 +8,9 @@ import com.andreassamitsch.ilauncher.data.database.TmdbEpisodeEntity
 import com.andreassamitsch.ilauncher.data.database.TmdbMappingEntity
 import com.andreassamitsch.ilauncher.data.database.TmdbMediaEntity
 import com.andreassamitsch.ilauncher.model.MediaType
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAG = "TMDB_RESOLVER"
 
@@ -42,16 +42,21 @@ class TmdbRepository(
 
         if (cachedMapping != null) {
             if (cachedMapping.tmdbId == null || cachedMapping.mediaType == null) {
-                return@withContext null
+                if (!network.isConfigured || !shouldRetryNegativeMapping(cachedMapping.updatedAtUtcMillis, now)) {
+                    return@withContext null
+                }
+                return@withContext runCatching {
+                    resolveFromNetwork(sourceKey, parsed, now)
+                }.onFailure { throwable ->
+                    Log.w(TAG, "TMDB negative-mapping retry failed (${throwable.javaClass.simpleName})")
+                }.getOrNull()
             }
 
             val cached = cachedMetadata(cachedMapping, parsed, now)
             if (cached != null && now - cached.second <= REFRESH_AFTER_MILLIS) {
                 return@withContext cached.first
             }
-            if (!network.isConfigured) {
-                return@withContext cached?.first
-            }
+            if (!network.isConfigured) return@withContext cached?.first
 
             val refreshed = runCatching {
                 refreshKnownMapping(cachedMapping, parsed, now)
@@ -189,9 +194,7 @@ class TmdbRepository(
                     episode = parsed.episodeNumber!!,
                 ),
             )
-        } else {
-            null
-        }
+        } else null
         val mediaTrailerPolicyFresh = media.updatedAtUtcMillis >= TRAILER_LANGUAGE_POLICY_CUTOFF_UTC_MILLIS
         val episodeTrailerPolicyFresh = !needsEpisodeDetails ||
             (episodeEntity?.updatedAtUtcMillis ?: 0L) >= TRAILER_LANGUAGE_POLICY_CUTOFF_UTC_MILLIS
@@ -389,6 +392,7 @@ class TmdbRepository(
         tmdbEpisodeId = tmdbEpisodeId,
         seasonNumber = seasonNumber,
         episodeNumber = episodeNumber,
+        tmdbEpisodeId = tmdbEpisodeId,
         title = title,
         overview = overview,
         airYear = airYear,
@@ -415,6 +419,12 @@ class TmdbRepository(
         private const val MAPPING_MAX_AGE_MILLIS = 30L * 24L * 60L * 60L * 1_000L
         private const val CACHE_MAX_AGE_MILLIS = 180L * 24L * 60L * 60L * 1_000L
         private const val TRAILER_LANGUAGE_POLICY_CUTOFF_UTC_MILLIS = 1_786_233_600_000L
+        internal const val RESOLVER_POLICY_CUTOFF_UTC_MILLIS = 1_786_363_200_000L
+        internal const val NEGATIVE_MAPPING_RETRY_MILLIS = 6L * 60L * 60L * 1_000L
+
+        internal fun shouldRetryNegativeMapping(updatedAtUtcMillis: Long, nowUtcMillis: Long): Boolean =
+            updatedAtUtcMillis < RESOLVER_POLICY_CUTOFF_UTC_MILLIS ||
+                nowUtcMillis - updatedAtUtcMillis >= NEGATIVE_MAPPING_RETRY_MILLIS
 
         internal fun mediaKey(type: MediaType, tmdbId: Int): String = "${type.name}:$tmdbId"
 
