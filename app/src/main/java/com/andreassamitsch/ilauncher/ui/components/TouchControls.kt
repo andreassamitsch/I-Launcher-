@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -18,10 +19,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.tv.material3.Button as TvButton
+import androidx.tv.material3.ButtonColors
+import androidx.tv.material3.ButtonDefaults
+import androidx.tv.material3.ButtonScale
 import androidx.tv.material3.Card as TvCard
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.CardScale
-import androidx.tv.material3.Button as TvButton
 
 @Composable
 fun TouchButton(
@@ -29,6 +33,9 @@ fun TouchButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     onLongClick: (() -> Unit)? = null,
+    scale: ButtonScale = ButtonDefaults.scale(),
+    colors: ButtonColors = ButtonDefaults.colors(),
+    contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
     content: @Composable RowScope.() -> Unit,
 ) {
     var longPressHandled by remember(onLongClick) { mutableStateOf(false) }
@@ -62,6 +69,9 @@ fun TouchButton(
         modifier = modifier
             .then(remoteLongPressModifier)
             .touchTap(onClick = onClick, enabled = enabled, onLongClick = onLongClick),
+        scale = scale,
+        colors = colors,
+        contentPadding = contentPadding,
         content = content,
     )
 }
