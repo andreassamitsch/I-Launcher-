@@ -29,7 +29,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
@@ -57,6 +56,7 @@ import com.andreassamitsch.ilauncher.model.SearchResultKind
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import com.andreassamitsch.ilauncher.ui.apps.AppsScreen
+import com.andreassamitsch.ilauncher.ui.components.TouchButton
 import com.andreassamitsch.ilauncher.ui.details.DetailsScreen
 import com.andreassamitsch.ilauncher.ui.home.HomeScreen
 import com.andreassamitsch.ilauncher.ui.livetv.LiveTvPlayerScreen
@@ -546,7 +546,7 @@ fun LauncherApp(
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             PRIMARY_SECTIONS.forEach { item ->
                                 val active = activePrimarySection == item
-                                Button(
+                                TouchButton(
                                     onClick = { section = item },
                                     modifier = if (active) {
                                         Modifier.border(
@@ -633,7 +633,7 @@ fun LauncherApp(
                             modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            Button(
+                            TouchButton(
                                 onClick = {
                                     when (val state = updateState) {
                                         is UpdateState.Available -> updateManager.startDownload(state.info)
@@ -660,7 +660,7 @@ fun LauncherApp(
                                     },
                                 )
                             }
-                            Button(onClick = { section = LauncherSection.LiveTv }) {
+                            TouchButton(onClick = { section = LauncherSection.LiveTv }) {
                                 Text("Live TV / Gigablue")
                             }
                             SettingsScreen(
