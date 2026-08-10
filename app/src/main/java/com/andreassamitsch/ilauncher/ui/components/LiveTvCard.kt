@@ -22,8 +22,6 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
-import java.text.DateFormat
-import java.util.Date
 
 @Composable
 fun LiveTvCard(
@@ -37,17 +35,17 @@ fun LiveTvCard(
     TouchCard(
         onClick = onClick,
         modifier = modifier
-            .width(300.dp)
+            .width(276.dp)
             .onFocusChanged { focusState ->
                 if (focusState.isFocused) onFocused?.invoke()
             },
-        scale = CardDefaults.scale(focusedScale = 1.05f),
+        scale = CardDefaults.scale(focusedScale = 1.045f),
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(146.dp)
+                    .height(132.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
                 if (!artwork.isNullOrBlank()) {
@@ -65,7 +63,7 @@ fun LiveTvCard(
                         modifier = Modifier
                             .align(Alignment.Center)
                             .padding(14.dp)
-                            .size(width = 180.dp, height = 62.dp),
+                            .size(width = 170.dp, height = 58.dp),
                     )
                 } else {
                     Text(
@@ -82,8 +80,8 @@ fun LiveTvCard(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(10.dp)
-                            .size(width = 82.dp, height = 38.dp),
+                            .padding(9.dp)
+                            .size(width = 76.dp, height = 34.dp),
                     )
                 }
 
@@ -92,7 +90,7 @@ fun LiveTvCard(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .fillMaxWidth()
-                            .height(5.dp)
+                            .height(4.dp)
                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.88f)),
                     ) {
                         Box(
@@ -105,10 +103,10 @@ fun LiveTvCard(
                 }
             }
 
-            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                 Text(
                     text = channel.name,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -119,26 +117,7 @@ fun LiveTvCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                channel.now?.let { program ->
-                    Text(
-                        text = "${formatTime(program.startUtcMillis)}–${formatTime(program.endUtcMillis)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                channel.next?.let { next ->
-                    Text(
-                        text = "Danach: ${next.title}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
             }
         }
     }
 }
-
-private fun formatTime(utcMillis: Long): String =
-    DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(utcMillis))
