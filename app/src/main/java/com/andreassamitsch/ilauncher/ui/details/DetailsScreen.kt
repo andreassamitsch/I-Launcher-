@@ -25,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -80,6 +82,11 @@ fun DetailsScreen(
         hasTrailerAction -> "trailer"
         else -> "back"
     }
+    val detailArtwork = item.backdropUri
+        ?: item.episodeStillUri
+        ?: item.sourceArtworkUri
+        ?: item.posterUri
+        ?: item.preferredArtworkUri
 
     LaunchedEffect(item.id, firstActionKey) {
         withFrameNanos { }
@@ -90,7 +97,7 @@ fun DetailsScreen(
         if (firstActionKey == key) focusRequester(firstActionFocusRequester) else this
 
     Box(modifier = modifier.fillMaxSize()) {
-        item.preferredArtworkUri?.let { artwork ->
+        detailArtwork?.let { artwork ->
             AsyncImage(
                 model = artwork,
                 contentDescription = null,
@@ -103,7 +110,30 @@ fun DetailsScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.76f)),
+                    .background(
+                        Brush.horizontalGradient(
+                            colorStops = arrayOf(
+                                0.00f to MaterialTheme.colorScheme.background,
+                                0.34f to MaterialTheme.colorScheme.background.copy(alpha = 0.98f),
+                                0.58f to MaterialTheme.colorScheme.background.copy(alpha = 0.78f),
+                                0.82f to MaterialTheme.colorScheme.background.copy(alpha = 0.24f),
+                                1.00f to Color.Transparent,
+                            ),
+                        ),
+                    ),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to Color.Transparent,
+                                0.72f to Color.Transparent,
+                                1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
+                            ),
+                        ),
+                    ),
             )
         }
 
@@ -112,7 +142,7 @@ fun DetailsScreen(
                 .fillMaxSize()
                 .verticalScroll(scrollState)
                 .touchScrollFallback(scrollState, Orientation.Vertical)
-                .padding(horizontal = 48.dp, vertical = 28.dp),
+                .padding(horizontal = 44.dp, vertical = 26.dp),
             verticalArrangement = Arrangement.Center,
         ) {
             item.logoUri?.let { logo ->
@@ -120,9 +150,9 @@ fun DetailsScreen(
                     model = logo,
                     contentDescription = null,
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(width = 220.dp, height = 84.dp),
+                    modifier = Modifier.size(width = 238.dp, height = 88.dp),
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
             }
 
             Text(
@@ -130,6 +160,7 @@ fun DetailsScreen(
                 style = MaterialTheme.typography.displaySmall,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(0.62f),
             )
 
             val metadataLine = buildList {
@@ -139,27 +170,30 @@ fun DetailsScreen(
             }.joinToString(" · ")
 
             if (metadataLine.isNotBlank()) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(7.dp))
                 Text(
                     text = metadataLine,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth(0.62f),
                 )
             }
 
-            sourceLabel?.takeIf { it.isNotBlank() }?.let { label ->
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            if (item.source.provider == "epg") {
+                sourceLabel?.takeIf { it.isNotBlank() }?.let { label ->
+                    Spacer(Modifier.height(5.dp))
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(16.dp))
             FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(9.dp),
             ) {
                 onPlay?.let { play ->
                     TouchButton(
@@ -222,15 +256,16 @@ fun DetailsScreen(
             }
 
             item.overview?.takeIf { it.isNotBlank() }?.let { overview ->
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(18.dp))
                 Text(
                     text = overview,
                     style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.fillMaxWidth(0.72f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.94f),
+                    modifier = Modifier.fillMaxWidth(0.60f),
                 )
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(22.dp))
         }
     }
 }
