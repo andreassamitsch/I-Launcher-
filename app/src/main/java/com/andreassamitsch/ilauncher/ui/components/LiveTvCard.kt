@@ -35,17 +35,17 @@ fun LiveTvCard(
     TouchCard(
         onClick = onClick,
         modifier = modifier
-            .width(276.dp)
+            .width(252.dp)
             .onFocusChanged { focusState ->
                 if (focusState.isFocused) onFocused?.invoke()
             },
-        scale = CardDefaults.scale(focusedScale = 1.045f),
+        scale = CardDefaults.scale(focusedScale = 1.035f),
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(132.dp)
+                    .height(142.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
                 if (!artwork.isNullOrBlank()) {
@@ -62,8 +62,8 @@ fun LiveTvCard(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .align(Alignment.Center)
-                            .padding(14.dp)
-                            .size(width = 170.dp, height = 58.dp),
+                            .padding(18.dp)
+                            .size(width = 168.dp, height = 58.dp),
                     )
                 } else {
                     Text(
@@ -80,8 +80,8 @@ fun LiveTvCard(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(9.dp)
-                            .size(width = 76.dp, height = 34.dp),
+                            .padding(8.dp)
+                            .size(width = 68.dp, height = 30.dp),
                     )
                 }
 
@@ -91,7 +91,7 @@ fun LiveTvCard(
                             .align(Alignment.BottomStart)
                             .fillMaxWidth()
                             .height(4.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.88f)),
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f)),
                     ) {
                         Box(
                             modifier = Modifier
@@ -103,20 +103,22 @@ fun LiveTvCard(
                 }
             }
 
-            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
                 Text(
-                    text = channel.name,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = channel.now?.title ?: channel.name,
+                    style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = channel.now?.title ?: "Keine EPG-Daten",
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (channel.now != null) {
+                    Text(
+                        text = channel.name,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
