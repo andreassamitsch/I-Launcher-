@@ -42,7 +42,7 @@ app/
   ui/apps/         App-Übersicht
   ui/search/       lokale/TMDB-Suche und Sprachsuche
   ui/settings/     Einstellungen, Diagnose, Live-TV-Unterpunkt und Credits
-  ui/components/   TV-Cards
+  ui/components/   TV-Cards + Touch-Kompatibilitätswrapper für Smartphone-/Tablet-Smoke-Tests
   ui/theme/        TV-Material-Theme
 ```
 
@@ -182,6 +182,12 @@ Der Hero selbst ist fokussierbar. Bei Medien öffnet `OK` die vorhandene provide
 
 Die primäre Navigation ist bewusst klein: `Home · Suche · Apps · Einstellungen`. Der aktive Punkt wird nur durch einen Rahmen markiert. Auf Home darf die Navigationszeile verschwinden, sobald der Benutzer die vertikalen Content-Reihen nach unten scrollt. Live-TV-/Gigablue-Konfiguration liegt unter Einstellungen; EPG ist eine Player-Funktion und kein eigener Hauptpunkt.
 
+## Touch-Smoke-Tests
+
+TV-/D-Pad-Bedienung bleibt die Produktquelle der Wahrheit. Für schnellere UI-Smoke-Tests kann derselbe Development-Build zusätzlich auf Smartphone/Tablet installiert werden; `android.software.leanback` ist dafür nicht zwingend erforderlich.
+
+Compose-for-TV-Komponenten bleiben für TV-Fokus und Fernbedienung erhalten. Ein kleiner `TouchButton`-/`TouchCard`-Wrapper ergänzt ausschließlich Pointer-Taps. Scrollbare Home-, Such-, Apps-, Einstellungen-, EPG- und Live-TV-Bereiche bekommen zusätzlich einen Pointer-Drag-Fallback, ohne die bestehende D-Pad-Navigation oder Quellreihenfolge umzubauen. Watch Next und Preview Channels können auf Nicht-TV-Geräten andere bzw. keine Daten liefern, weil TvProvider-Inhalte gerätelokal sind.
+
 ## Detailnavigation und Trailer
 
 Kurzes `OK` auf Watch Next startet weiterhin den vorhandenen Source-/Playback-Intent. `INFO` oder lange `OK` öffnet Details. Hero-Medien öffnen ebenfalls die provider-neutrale Detailansicht.
@@ -198,7 +204,7 @@ Live-TV-Streamadressen werden bewusst **nicht** gecacht.
 
 ## Development-Publishing
 
-Signierte Development-Builds laufen über den `downloads`-Kanal. Vor einer Test-APK laufen `testDebugUnitTest` und `assembleDebug`. Der aktuelle UI-Polish-Code wurde als **`0.1.0-dev.115` (`26000115`)** automatisiert gebaut und veröffentlicht. Trailer-Video, Sprachsuche, neue Hero-/Navigation und eingebetteter EPG benötigen zusätzlich reale TV-Hardwarevalidierung.
+Signierte Development-Builds laufen über den `downloads`-Kanal. Vor einer Test-APK laufen `testDebugUnitTest` und `assembleDebug`. Der aktuelle Touch-Kompatibilitätsstand wurde automatisiert gebaut; reale Pointer-/Scroll-Bedienung muss zusätzlich auf einem Smartphone/Tablet bestätigt werden.
 
 ## Home-Tasten-Fallback
 
