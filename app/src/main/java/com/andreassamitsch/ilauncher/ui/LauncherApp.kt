@@ -49,7 +49,10 @@ import com.andreassamitsch.ilauncher.data.youtube.YouTubeLauncher
 import com.andreassamitsch.ilauncher.model.AppContentChannel
 import com.andreassamitsch.ilauncher.model.AppContentChannelsLoadResult
 import com.andreassamitsch.ilauncher.model.InstalledApp
+import com.andreassamitsch.ilauncher.model.LiveTvChannel
+import com.andreassamitsch.ilauncher.model.LiveTvProgram
 import com.andreassamitsch.ilauncher.model.MediaItem
+import com.andreassamitsch.ilauncher.model.MediaSource
 import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.model.SearchResultKind
@@ -479,31 +482,6 @@ fun LauncherApp(
         ),
     ) {
         when {
-            selectedLiveTvServiceReference != null && displayLiveTvChannels.isNotEmpty() -> {
-                LiveTvPlayerScreen(
-                    channels = displayLiveTvChannels,
-                    initialServiceReference = requireNotNull(selectedLiveTvServiceReference),
-                    onResolveStream = openWebifRepository::resolveStream,
-                    epgState = epgState,
-                    initialShowEpg = openPlayerEpgInitially,
-                    initialEpgProgramStartUtcMillis = initialPlayerEpgProgramStartUtcMillis,
-                    onRefreshEpg = {
-                        scope.launch {
-                            epgRepository.refresh(
-                                channels = openWebifRepository.state.value.channels,
-                                force = true,
-                            )
-                        }
-                    },
-                    onEnrichEpgProgram = { serviceReference, startUtcMillis ->
-                        scope.launch {
-                            epgRepository.enrichProgram(serviceReference, startUtcMillis)
-                        }
-                    },
-                    onBack = closeLiveTvPlayer,
-                )
-            }
-
             selectedDetailsMedia != null -> {
                 val detailsMedia = selectedDetailsMedia
                 val packageName = detailsMedia.source.packageName
@@ -527,6 +505,40 @@ fun LauncherApp(
                     } else {
                         null
                     },
+                )
+            }
+
+            selectedLiveTvServiceReference != null && displayLiveTvChannels.isNotEmpty() -> {
+                LiveTvPlayerScreen(
+                    channels = displayLiveTvChannels,
+                    initialServiceReference = requireNotNull(selectedLiveTvServiceReference),
+                    onResolveStream = openWebifRepository::resolveStream,
+                    epgState = epgState,
+                    initialShowEpg = openPlayerEpgInitially,
+                    initialEpgProgramStartUtcMillis = initialPlayerEpgProgramStartUtcMillis,
+                    onRefreshEpg = {
+                        scope.launch {
+                            epgRepository.refresh(
+                                channels = openWebifRepository.state.value.channels,
+                                force = true,
+                            )
+                        }
+                    },
+                    onEnrichEpgProgram = { serviceReference, startUtcMillis ->
+                        scope.launch {
+                            epgRepository.enrichProgram(serviceReference, startUtcMillis)
+                        }
+                    },
+                    onOpenEpgProgramDetails = { channel, program ->
+                        selectedDetailsSourceId = null
+                        selectedSearchDetailsMedia = null
+                        selectedSearchDetailsResultId = null
+                        selectedHomeDetailsMedia = epgProgramMedia(channel, program)
+                        selectedHomeDetailsSourceLabel = channel.name
+                        openPlayerEpgInitially = true
+                        initialPlayerEpgProgramStartUtcMillis = program.startUtcMillis
+                    },
+                    onBack = closeLiveTvPlayer,
                 )
             }
 
@@ -740,6 +752,31 @@ fun LauncherApp(
         }
     }
 }
+
+private fun epgProgramMedia(
+    channel: LiveTvChannel,
+    program: LiveTvProgram,
+): MediaItem = MediaItem(
+    id = "epg:${channel.serviceReference}:${program.startUtcMillis}",
+    type = program.tmdbType ?: MediaType.Unknown,
+    title = program.title,
+    subtitle = program.subtitle,
+    overview = program.longDescription ?: program.shortDescription,
+    releaseYear = program.releaseYear,
+    tmdbId = program.tmdbId,
+    tmdbEpisodeId = program.tmdbEpisodeId,
+    seasonNumber = program.seasonNumber,
+    episodeNumber = program.episodeNumber,
+    posterUri = program.posterUri,
+    backdropUri = program.backdropUri,
+    episodeStillUri = program.episodeStillUri,
+    sourceArtworkUri = program.imageUri,
+    voteAverage = program.voteAverage,
+    source = MediaSource(
+        provider = "epg",
+        sourceId = "${channel.serviceReference}:${program.startUtcMillis}",
+    ),
+)
 
 private fun linkTmdbResultToLocalSource(
     result: SearchItem,
