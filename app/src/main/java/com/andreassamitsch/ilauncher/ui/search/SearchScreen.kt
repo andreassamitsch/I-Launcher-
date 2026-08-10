@@ -16,10 +16,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -38,7 +38,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
@@ -98,8 +97,8 @@ fun SearchScreen(
                 }
             }
             addSection(SearchResultKind.WatchNext, "Weiterschauen", "watch-next")
-            addSection(SearchResultKind.PreviewProgram, "App-Kanäle", "preview")
-            addSection(SearchResultKind.EpgProgram, "TV-Programm", "epg")
+            addSection(SearchResultKind.PreviewProgram, "Aus deinen Apps", "preview")
+            addSection(SearchResultKind.EpgProgram, "Im TV", "epg")
             addSection(SearchResultKind.App, "Apps", "apps")
         }
     }
@@ -166,11 +165,11 @@ fun SearchScreen(
 
     Column(
         modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SearchInput(
@@ -195,8 +194,8 @@ fun SearchScreen(
                         voiceError = "Sprachsuche ist auf diesem Gerät nicht verfügbar."
                     }
                 },
-                modifier = Modifier.size(54.dp),
-                scale = CardDefaults.scale(focusedScale = 1.08f),
+                modifier = Modifier.size(48.dp),
+                scale = CardDefaults.scale(focusedScale = 1.06f),
             ) {
                 Box(
                     modifier = Modifier
@@ -207,7 +206,7 @@ fun SearchScreen(
                     Image(
                         painter = painterResource(R.drawable.ic_mic),
                         contentDescription = "Sprachsuche",
-                        modifier = Modifier.size(25.dp),
+                        modifier = Modifier.size(23.dp),
                         colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
                     )
                 }
@@ -234,16 +233,16 @@ fun SearchScreen(
             )
 
             query.isBlank() && isBrowseLoading -> Text(
-                text = "Empfehlungen werden geladen …",
+                text = "Entdecken wird geladen …",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             query.isBlank() -> Text(
                 text = if (tmdbConfigured) {
-                    "Suche starten oder aktuelle Filme und Serien entdecken."
+                    "Suche starten oder Filme und Serien entdecken."
                 } else {
-                    "Filme, Serien, Weiterschauen, App-Kanäle, Apps und TV-Programm durchsuchen."
+                    "Filme, Serien, Weiterschauen, Apps und TV-Programm durchsuchen."
                 },
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -289,8 +288,8 @@ private fun SearchSectionsList(
         modifier = Modifier
             .fillMaxSize()
             .touchScrollFallback(listState, Orientation.Vertical),
-        contentPadding = PaddingValues(bottom = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(top = 4.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(sections, key = SearchSection::key) { section ->
             SearchResultSection(
@@ -312,41 +311,41 @@ private fun SearchInput(
     modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(24.dp)
 
     BasicTextField(
         value = query,
         onValueChange = onQueryChange,
         singleLine = true,
-        textStyle = MaterialTheme.typography.titleLarge.copy(
+        textStyle = MaterialTheme.typography.titleMedium.copy(
             color = MaterialTheme.colorScheme.onSurface,
         ),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
         modifier = modifier
             .onFocusChanged { focused = it.isFocused }
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f))
             .border(
                 width = if (focused) 2.dp else 1.dp,
                 color = if (focused) {
-                    MaterialTheme.colorScheme.primary
+                    MaterialTheme.colorScheme.onSurface
                 } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.30f)
                 },
                 shape = shape,
             )
-            .padding(horizontal = 18.dp, vertical = 12.dp),
+            .padding(horizontal = 18.dp, vertical = 10.dp),
         decorationBox = { innerTextField ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(11.dp),
             ) {
                 Image(
                     painter = painterResource(R.drawable.ic_search),
                     contentDescription = null,
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(22.dp),
                     colorFilter = ColorFilter.tint(
-                        if (focused) MaterialTheme.colorScheme.primary
+                        if (focused) MaterialTheme.colorScheme.onSurface
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                     ),
                 )
@@ -356,8 +355,8 @@ private fun SearchInput(
                 ) {
                     if (query.isBlank()) {
                         Text(
-                            text = "Suchen …",
-                            style = MaterialTheme.typography.titleLarge,
+                            text = "Filme, Serien, Apps und TV durchsuchen",
+                            style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -377,10 +376,11 @@ private fun SearchResultSection(
     restoreRequester: FocusRequester,
     onOpenResult: (SearchItem) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Text(
             text = section.title,
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(start = 6.dp),
         )
 
         if (section.items.isEmpty()) {
@@ -388,14 +388,15 @@ private fun SearchResultSection(
                 text = if (isLoading) "Lädt …" else "Keine Einträge",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 6.dp),
             )
         } else {
             val rowState = androidx.compose.foundation.lazy.rememberLazyListState()
             LazyRow(
                 state = rowState,
                 modifier = Modifier.touchScrollFallback(rowState, Orientation.Horizontal),
-                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 7.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 items(section.items, key = SearchItem::id) { item ->
                     SearchResultCard(
@@ -423,66 +424,49 @@ private fun SearchResultCard(
 ) {
     TouchCard(
         onClick = onClick,
-        modifier = modifier
-            .width(254.dp)
-            .height(142.dp),
-        scale = CardDefaults.scale(focusedScale = 1.045f),
+        modifier = modifier.width(248.dp),
+        scale = CardDefaults.scale(focusedScale = 1.035f),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        ) {
-            when {
-                item.kind == SearchResultKind.App && app != null -> {
-                    val icon = remember(app.icon) { app.icon.asImageBitmap() }
-                    Image(
-                        bitmap = icon,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .size(72.dp),
-                    )
-                }
-
-                !item.artworkUri.isNullOrBlank() -> AsyncImage(
-                    model = item.artworkUri,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-
+        Column {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.18f),
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
-                            ),
-                        ),
-                    ),
-            )
+                    .fillMaxWidth()
+                    .height(140.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                when {
+                    item.kind == SearchResultKind.App && app != null -> {
+                        val icon = remember(app.icon) { app.icon.asImageBitmap() }
+                        Image(
+                            bitmap = icon,
+                            contentDescription = null,
+                            modifier = Modifier.size(78.dp),
+                        )
+                    }
+
+                    !item.artworkUri.isNullOrBlank() -> AsyncImage(
+                        model = item.artworkUri,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
 
             Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .padding(horizontal = 11.dp, vertical = 9.dp),
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
                     text = item.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 val detail = listOfNotNull(
                     item.sourceLabel?.takeIf { it.isNotBlank() && it != "TMDB" },
-                    item.subtitle?.takeIf { it.isNotBlank() },
+                    item.subtitle?.takeIf { it.isNotBlank() && it != item.title },
                 ).distinct().joinToString(" · ")
                 if (detail.isNotBlank()) {
                     Text(
