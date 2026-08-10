@@ -1,5 +1,7 @@
 package com.andreassamitsch.ilauncher.ui.home
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
@@ -29,7 +31,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -59,6 +60,7 @@ import com.andreassamitsch.ilauncher.ui.components.WatchNextCard
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.delay
 
 @Composable
 fun HomeScreen(
@@ -94,27 +96,36 @@ fun HomeScreen(
     val visiblePreviewChannels = remember(previewChannels) {
         previewChannels.filter { it.programs.isNotEmpty() }
     }
-    val defaultHero = remember(watchNextItems, liveTvState.channels, apps, appLabels) {
+    val defaultHero = remember(watchNextItems, visiblePreviewChannels, appLabels) {
         watchNextItems.firstOrNull()?.let { item ->
             mediaHero(
                 item = item.media,
                 sourceLabel = item.media.source.packageName?.let(appLabels::get),
             )
-        } ?: liveTvState.channels.firstOrNull()?.let(::liveTvHero)
-            ?: apps.firstOrNull()?.let(::appHero)
-            ?: HomeHeroContent(
-                key = "launcher",
-                eyebrow = "Home",
-                title = "Deine Inhalte. Deine Apps. Keine Werbung.",
-                description = "Content zuerst – schnell, ruhig und für die Fernbedienung gebaut.",
-            )
+        } ?: visiblePreviewChannels.firstOrNull()?.let { channel ->
+            channel.programs.firstOrNull()?.let { program ->
+                mediaHero(
+                    item = program.media,
+                    sourceLabel = channel.packageName?.let(appLabels::get) ?: channel.title,
+                )
+            }
+        } ?: HomeHeroContent(
+            key = "launcher",
+            eyebrow = "Für dich",
+            title = "Inhalte zuerst",
+            description = "Weiterschauen, App-Kanäle und Live-TV an einem Ort – ohne Werbung.",
+        )
     }
     var hero by remember { mutableStateOf(defaultHero) }
+    var heroSelectedByUser by remember { mutableStateOf(false) }
 
-    LaunchedEffect(defaultHero) {
-        if (hero.key == "launcher" || hero.key == defaultHero.key) {
-            hero = defaultHero
-        }
+    fun selectHero(content: HomeHeroContent) {
+        heroSelectedByUser = true
+        hero = content
+    }
+
+    LaunchedEffect(defaultHero, heroSelectedByUser) {
+        if (!heroSelectedByUser) hero = defaultHero
     }
 
     LaunchedEffect(contentScrollState.value) {
@@ -155,7 +166,7 @@ fun HomeScreen(
         modifier = modifier
             .fillMaxSize()
             .touchScrollFallback(contentScrollState, Orientation.Vertical),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         HomeHero(
             content = hero,
@@ -227,7 +238,7 @@ fun HomeScreen(
                             item = item.media,
                             onClick = { onOpenWatchNext(item) },
                             onDetails = { onOpenWatchNextDetails(item) },
-                            onFocused = { hero = mediaHero(item.media, sourceLabel) },
+                            onFocused = { selectHero(mediaHero(item.media, sourceLabel)) },
                             modifier = cardModifier,
                         )
                     }
@@ -268,7 +279,7 @@ fun HomeScreen(
                             LiveTvCard(
                                 channel = channel,
                                 onClick = { onPlayLiveTvChannel(channel) },
-                                onFocused = { hero = liveTvHero(channel) },
+                                onFocused = { selectHero(liveTvHero(channel)) },
                                 modifier = cardModifier,
                             )
                         }
@@ -330,9 +341,11 @@ fun HomeScreen(
                                 item = program.media,
                                 onClick = { onOpenPreviewProgram(channel, program) },
                                 onFocused = {
-                                    hero = mediaHero(
-                                        item = program.media,
-                                        sourceLabel = sourceLabel,
+                                    selectHero(
+                                        mediaHero(
+                                            item = program.media,
+                                            sourceLabel = sourceLabel,
+                                        ),
                                     )
                                 },
                             )
@@ -361,7 +374,7 @@ fun HomeScreen(
                         AppCard(
                             app = app,
                             onClick = { onOpenApp(app) },
-                            onFocused = { hero = appHero(app) },
+                            onFocused = { selectHero(appHero(app)) },
                         )
                     }
                 }
@@ -390,35 +403,27 @@ private fun HomeHero(
         },
         modifier = Modifier
             .fillMaxWidth()
-            .height(250.dp)
+            .height(292.dp)
             .onFocusChanged { if (it.isFocused) onFocused() },
-        scale = CardDefaults.scale(focusedScale = 1.01f),
+        scale = CardDefaults.scale(focusedScale = 1.008f),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(MaterialTheme.colorScheme.background),
         ) {
             content.artworkUri?.takeIf { it.isNotBlank() }?.let { artwork ->
-                AsyncImage(
-                    model = artwork,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .alpha(0.32f),
-                )
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .fillMaxWidth(0.62f)
+                        .fillMaxWidth(0.64f)
                         .fillMaxHeight(),
-                    contentAlignment = Alignment.Center,
+                    contentAlignment = Alignment.CenterEnd,
                 ) {
                     AsyncImage(
                         model = artwork,
                         contentDescription = null,
-                        contentScale = ContentScale.Fit,
+                        contentScale = if (content.fitArtwork) ContentScale.Fit else ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -429,11 +434,26 @@ private fun HomeHero(
                     .fillMaxSize()
                     .background(
                         Brush.horizontalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.98f),
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.80f),
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.34f),
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.04f),
+                            colorStops = arrayOf(
+                                0.00f to MaterialTheme.colorScheme.background,
+                                0.34f to MaterialTheme.colorScheme.background,
+                                0.48f to MaterialTheme.colorScheme.background.copy(alpha = 0.94f),
+                                0.62f to MaterialTheme.colorScheme.background.copy(alpha = 0.52f),
+                                0.76f to MaterialTheme.colorScheme.background.copy(alpha = 0.08f),
+                                1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
+                            ),
+                        ),
+                    ),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
+                                0.78f to MaterialTheme.colorScheme.background.copy(alpha = 0.05f),
+                                1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
                             ),
                         ),
                     ),
@@ -442,8 +462,8 @@ private fun HomeHero(
             Column(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .fillMaxWidth(0.60f)
-                    .padding(horizontal = 30.dp, vertical = 20.dp),
+                    .fillMaxWidth(0.53f)
+                    .padding(start = 32.dp, end = 18.dp, top = 22.dp, bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 content.logoUri?.takeIf { it.isNotBlank() }?.let { logo ->
@@ -451,7 +471,7 @@ private fun HomeHero(
                         model = logo,
                         contentDescription = null,
                         contentScale = ContentScale.Fit,
-                        modifier = Modifier.size(width = 190.dp, height = 58.dp),
+                        modifier = Modifier.size(width = 190.dp, height = 54.dp),
                     )
                 }
                 content.eyebrow?.takeIf { it.isNotBlank() }?.let { eyebrow ->
@@ -479,15 +499,46 @@ private fun HomeHero(
                     )
                 }
                 content.description?.takeIf { it.isNotBlank() }?.let { description ->
-                    Text(
+                    AutoScrollingHeroDescription(
+                        key = content.key,
                         text = description,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AutoScrollingHeroDescription(
+    key: String,
+    text: String,
+) {
+    val scrollState = remember(key, text) { androidx.compose.foundation.ScrollState(0) }
+    LaunchedEffect(key, text, scrollState.maxValue) {
+        if (scrollState.maxValue <= 0) return@LaunchedEffect
+        delay(2_800)
+        while (true) {
+            val duration = (scrollState.maxValue * 18).coerceIn(2_800, 8_000)
+            scrollState.animateScrollTo(
+                scrollState.maxValue,
+                animationSpec = tween(durationMillis = duration, easing = LinearEasing),
+            )
+            delay(2_000)
+            scrollState.scrollTo(0)
+            delay(3_000)
+        }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(54.dp)
+            .verticalScroll(scrollState),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
 }
 
@@ -498,6 +549,7 @@ private data class HomeHeroContent(
     val metadata: String? = null,
     val description: String? = null,
     val artworkUri: String? = null,
+    val fitArtwork: Boolean = false,
     val logoUri: String? = null,
     val detailsMedia: MediaItem? = null,
     val sourceLabel: String? = null,
@@ -520,19 +572,22 @@ private fun mediaHero(item: MediaItem, sourceLabel: String?): HomeHeroContent {
         }
         item.releaseYear?.let { add(it.toString()) }
         item.voteAverage?.takeIf { it > 0.0 }?.let { add("TMDB %.1f".format(it)) }
-        item.progressFraction?.let { add("${(it * 100).toInt()} % gesehen") }
     }.joinToString(" · ")
+    val artwork = when {
+        !item.backdropUri.isNullOrBlank() -> item.backdropUri to false
+        !item.episodeStillUri.isNullOrBlank() -> item.episodeStillUri to false
+        !item.sourceArtworkUri.isNullOrBlank() -> item.sourceArtworkUri to true
+        else -> item.posterUri to true
+    }
 
     return HomeHeroContent(
         key = "media:${item.source.provider}:${item.source.sourceId}",
-        eyebrow = sourceLabel ?: item.subtitle,
+        eyebrow = sourceLabel,
         title = item.title,
         metadata = metadata.takeIf { it.isNotBlank() },
         description = item.overview ?: item.episodeTitle,
-        artworkUri = item.backdropUri
-            ?: item.episodeStillUri
-            ?: item.sourceArtworkUri
-            ?: item.posterUri,
+        artworkUri = artwork.first,
+        fitArtwork = artwork.second,
         logoUri = item.logoUri,
         detailsMedia = item,
         sourceLabel = sourceLabel,
@@ -554,6 +609,12 @@ private fun liveTvHero(channel: LiveTvChannel): HomeHeroContent {
     val description = now?.longDescription
         ?: now?.shortDescription
         ?: channel.next?.let { "Danach: ${it.title}" }
+    val artwork = when {
+        !now?.backdropUri.isNullOrBlank() -> now?.backdropUri to false
+        !now?.episodeStillUri.isNullOrBlank() -> now?.episodeStillUri to false
+        !now?.imageUri.isNullOrBlank() -> now?.imageUri to true
+        else -> now?.posterUri to true
+    }
 
     return HomeHeroContent(
         key = "live:${channel.serviceReference}",
@@ -561,7 +622,8 @@ private fun liveTvHero(channel: LiveTvChannel): HomeHeroContent {
         title = now?.title ?: channel.name,
         metadata = metadata.takeIf { it.isNotBlank() },
         description = description,
-        artworkUri = now?.preferredArtworkUri,
+        artworkUri = artwork.first,
+        fitArtwork = artwork.second,
         logoUri = channel.piconUri,
         detailsMedia = now?.let { liveProgramMedia(channel, it) },
         sourceLabel = channel.name,
