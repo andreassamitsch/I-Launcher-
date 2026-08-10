@@ -1,10 +1,11 @@
 package com.andreassamitsch.ilauncher.ui.details
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -28,6 +31,7 @@ import com.andreassamitsch.ilauncher.data.youtube.YouTubeEmbedPlayer
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.TrailerProvider
 import com.andreassamitsch.ilauncher.ui.components.TouchButton
+import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import com.andreassamitsch.ilauncher.ui.trailer.TrailerPlayerActivity
 
 @Composable
@@ -41,6 +45,7 @@ fun DetailsScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val scrollState = rememberScrollState()
     val internalTrailerId = remember(item.trailer) {
         item.trailer
             ?.takeIf { it.provider == TrailerProvider.YouTube }
@@ -79,6 +84,8 @@ fun DetailsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(scrollState)
+                .touchScrollFallback(scrollState, Orientation.Vertical)
                 .padding(horizontal = 48.dp, vertical = 28.dp),
             verticalArrangement = Arrangement.Center,
         ) {
@@ -119,8 +126,6 @@ fun DetailsScreen(
                 Text(
                     text = overview,
                     style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 6,
-                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth(0.68f),
                 )
             }
@@ -135,8 +140,9 @@ fun DetailsScreen(
             }
 
             Spacer(Modifier.height(24.dp))
-            Row(
+            FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 onPlay?.let { play ->
