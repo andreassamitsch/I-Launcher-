@@ -65,8 +65,8 @@ fun DetailsScreen(
     val contentSearchHandoff = remember(context) {
         ContentSearchHandoff(context.applicationContext)
     }
-    val externalSearchTargets = remember(item.tmdbId, onPlay, contentSearchHandoff) {
-        if (item.tmdbId != null && onPlay == null) {
+    val externalSearchTargets = remember(item.tmdbId, item.tmdbEpisodeId, onPlay, contentSearchHandoff) {
+        if ((item.tmdbId != null || item.tmdbEpisodeId != null) && onPlay == null) {
             contentSearchHandoff.availableTargets()
         } else {
             emptyList()
