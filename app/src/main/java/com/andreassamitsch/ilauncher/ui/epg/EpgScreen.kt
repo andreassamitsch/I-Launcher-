@@ -55,6 +55,7 @@ fun EpgScreen(
     selectedProgram: LiveTvProgram?,
     onSelectChannel: (String) -> Unit,
     onSelectProgram: (serviceReference: String, program: LiveTvProgram) -> Unit,
+    onOpenProgramDetails: ((serviceReference: String, program: LiveTvProgram) -> Unit)? = null,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
     channelListState: LazyListState = rememberLazyListState(),
@@ -182,7 +183,14 @@ fun EpgScreen(
                 selectedProgram?.takeIf {
                     selectedChannel != null && it in guide
                 }?.let { program ->
-                    ProgramDetails(program)
+                    ProgramDetails(
+                        program = program,
+                        onOpenDetails = onOpenProgramDetails
+                            ?.takeIf { program.tmdbId != null || program.tmdbEpisodeId != null }
+                            ?.let { callback ->
+                                { callback(selectedChannel.serviceReference, program) }
+                            },
+                    )
                 }
 
                 if (guide.isEmpty()) {
@@ -287,7 +295,10 @@ internal fun initialProgramIndex(
 }
 
 @Composable
-private fun ProgramDetails(program: LiveTvProgram) {
+private fun ProgramDetails(
+    program: LiveTvProgram,
+    onOpenDetails: (() -> Unit)?,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -321,6 +332,11 @@ private fun ProgramDetails(program: LiveTvProgram) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            onOpenDetails?.let { openDetails ->
+                TouchButton(onClick = openDetails) {
+                    Text("Details")
+                }
+            }
             val description = program.longDescription ?: program.shortDescription
             description?.let { ScrollableDescription(it) }
         }
@@ -343,12 +359,20 @@ private fun ScrollableDescription(text: String) {
                 when (event.key) {
                     Key.DirectionDown -> {
                         if (!scrollState.canScrollForward) return@onPreviewKeyEvent false
-                        scope.launch { scrollState.animateScrollTo((scrollState.value + 80).coerceAtMost(scrollState.maxValue)) }
+                        scope.launch {
+                            scrollState.animateScrollTo(
+                                (scrollState.value + 80).coerceAtMost(scrollState.maxValue),
+                            )
+                        }
                         true
                     }
                     Key.DirectionUp -> {
                         if (!scrollState.canScrollBackward) return@onPreviewKeyEvent false
-                        scope.launch { scrollState.animateScrollTo((scrollState.value - 80).coerceAtLeast(0)) }
+                        scope.launch {
+                            scrollState.animateScrollTo(
+                                (scrollState.value - 80).coerceAtLeast(0),
+                            )
+                        }
                         true
                     }
                     else -> false
