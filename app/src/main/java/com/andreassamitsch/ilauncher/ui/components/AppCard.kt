@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.asImageBitmap
@@ -46,15 +47,15 @@ fun AppCard(
     modifier: Modifier = Modifier,
 ) {
     val icon = remember(app.icon) { app.icon.asImageBitmap() }
-    val moveShape = RoundedCornerShape(18.dp)
+    val moveShape = RoundedCornerShape(22.dp)
     var focused by remember(app.packageName) { mutableStateOf(false) }
 
     TouchCard(
         onClick = onClick,
         onLongClick = onLongClick,
         modifier = modifier
-            .width(112.dp)
-            .height(116.dp)
+            .width(104.dp)
+            .height(112.dp)
             .then(
                 if (moveMode) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, moveShape)
                 else Modifier,
@@ -79,38 +80,35 @@ fun AppCard(
                     else -> false
                 }
             },
-        scale = CardDefaults.scale(focusedScale = 1.045f),
+        scale = CardDefaults.scale(focusedScale = 1.055f),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
+                .padding(horizontal = 6.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(5.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Box(
                 modifier = Modifier
-                    .size(76.dp)
+                    .size(82.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f)),
                 contentAlignment = Alignment.Center,
             ) {
                 Image(
                     bitmap = icon,
                     contentDescription = null,
-                    modifier = Modifier.size(68.dp),
+                    modifier = Modifier.size(74.dp),
                 )
             }
             Text(
                 text = if (moveMode) "↔ ${app.label}" else app.label,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.labelMedium,
-                color = if (moveMode || focused) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.alpha(if (focused || moveMode) 1f else 0.0f),
             )
         }
     }
