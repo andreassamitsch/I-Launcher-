@@ -12,6 +12,7 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,8 +20,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -36,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
@@ -57,6 +61,13 @@ import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import java.util.Locale
 import kotlinx.coroutines.delay
 
+private data class SearchSection(
+    val key: String,
+    val title: String,
+    val items: List<SearchItem>,
+    val online: Boolean = false,
+)
+
 @Composable
 fun SearchScreen(
     query: String,
@@ -77,6 +88,34 @@ fun SearchScreen(
     val restoreRequester = remember(focusRestoreResultId) { FocusRequester() }
     var voiceError by remember { mutableStateOf<String?>(null) }
     var previousQuery by remember { mutableStateOf(query) }
+    val localSections = remember(localResults) {
+        buildList {
+            fun addSection(kind: SearchResultKind, title: String, key: String) {
+                localResults.filter { it.kind == kind }.takeIf { it.isNotEmpty() }?.let {
+                    add(SearchSection(key = key, title = title, items = it))
+                }
+            }
+            addSection(SearchResultKind.WatchNext, "Weiterschauen", "watch-next")
+            addSection(SearchResultKind.PreviewProgram, "App-Kanäle", "preview")
+            addSection(SearchResultKind.EpgProgram, "TV-Programm", "epg")
+            addSection(SearchResultKind.App, "Apps", "apps")
+        }
+    }
+    val sections = remember(localSections, tmdbResults, isTmdbLoading, tmdbConfigured, query) {
+        buildList {
+            addAll(localSections)
+            if (tmdbConfigured && query.trim().length >= 3 && (tmdbResults.isNotEmpty() || isTmdbLoading)) {
+                add(
+                    SearchSection(
+                        key = "tmdb",
+                        title = "Filme & Serien",
+                        items = tmdbResults,
+                        online = true,
+                    ),
+                )
+            }
+        }
+    }
     val voiceSearchLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
@@ -99,21 +138,14 @@ fun SearchScreen(
         }
     }
 
-    LaunchedEffect(focusRestoreGeneration, focusRestoreResultId) {
+    LaunchedEffect(focusRestoreGeneration, focusRestoreResultId, sections) {
         if (focusRestoreGeneration <= 0 || focusRestoreResultId == null) return@LaunchedEffect
-        val localIndex = localResults.indexOfFirst { it.id == focusRestoreResultId }
-        val tmdbIndex = tmdbResults.indexOfFirst { it.id == focusRestoreResultId }
-        val lazyIndex = when {
-            localIndex >= 0 -> 1 + localIndex
-            tmdbIndex >= 0 -> {
-                val localBlockSize = if (localResults.isNotEmpty()) 1 + localResults.size else 0
-                localBlockSize + 1 + tmdbIndex
-            }
-            else -> -1
+        val sectionIndex = sections.indexOfFirst { section ->
+            section.items.any { it.id == focusRestoreResultId }
         }
-        if (lazyIndex >= 0) {
-            listState.scrollToItem(lazyIndex)
-            delay(40)
+        if (sectionIndex >= 0) {
+            listState.scrollToItem(sectionIndex)
+            delay(50)
             runCatching { restoreRequester.requestFocus() }
         }
     }
@@ -122,11 +154,6 @@ fun SearchScreen(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text(
-            text = "Globale Suche",
-            style = MaterialTheme.typography.headlineLarge,
-        )
-
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -166,7 +193,7 @@ fun SearchScreen(
                     Image(
                         painter = painterResource(R.drawable.ic_mic),
                         contentDescription = "Sprachsuche",
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(27.dp),
                         colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
                     )
                 }
@@ -184,13 +211,13 @@ fun SearchScreen(
         when {
             query.trim().length < 2 -> {
                 Text(
-                    text = "Suche nach Filmen, Serien, Apps und TV-Inhalten.",
+                    text = "Filme, Serien, Weiterschauen, App-Kanäle, Apps und TV-Programm durchsuchen.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
-            localResults.isEmpty() && tmdbResults.isEmpty() && !isTmdbLoading -> {
+            sections.isEmpty() && !isTmdbLoading -> {
                 Text(
                     text = "Keine Treffer gefunden.",
                     style = MaterialTheme.typography.titleMedium,
@@ -204,61 +231,18 @@ fun SearchScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .touchScrollFallback(listState, Orientation.Vertical),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
-                    if (localResults.isNotEmpty()) {
-                        item(key = "local-heading") {
-                            Text(
-                                text = "Auf diesem TV · ${localResults.size} Treffer",
-                                style = MaterialTheme.typography.headlineSmall,
-                            )
-                        }
-                        items(localResults, key = SearchItem::id) { item ->
-                            SearchResultCard(
-                                item = item,
-                                app = item.packageName?.let(appsByPackage::get),
-                                onClick = { onOpenResult(item) },
-                                modifier = if (item.id == focusRestoreResultId) {
-                                    Modifier.focusRequester(restoreRequester)
-                                } else {
-                                    Modifier
-                                },
-                            )
-                        }
-                    }
-
-                    if (tmdbConfigured && query.trim().length >= 3 && (tmdbResults.isNotEmpty() || isTmdbLoading)) {
-                        item(key = "tmdb-heading") {
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(
-                                    text = "TMDB",
-                                    style = MaterialTheme.typography.headlineSmall,
-                                )
-                                if (isTmdbLoading) {
-                                    Text(
-                                        text = "Online-Treffer werden geladen …",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        }
-                        items(tmdbResults, key = SearchItem::id) { item ->
-                            SearchResultCard(
-                                item = item,
-                                app = null,
-                                onClick = { onOpenResult(item) },
-                                modifier = if (item.id == focusRestoreResultId) {
-                                    Modifier.focusRequester(restoreRequester)
-                                } else {
-                                    Modifier
-                                },
-                            )
-                        }
-                    }
-
-                    item(key = "bottom-space") {
-                        Spacer(Modifier.height(24.dp))
+                    items(sections, key = SearchSection::key) { section ->
+                        SearchResultSection(
+                            section = section,
+                            appsByPackage = appsByPackage,
+                            isLoading = section.online && isTmdbLoading,
+                            focusRestoreResultId = focusRestoreResultId,
+                            restoreRequester = restoreRequester,
+                            onOpenResult = onOpenResult,
+                        )
                     }
                 }
             }
@@ -273,7 +257,7 @@ private fun SearchInput(
     modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(14.dp)
 
     BasicTextField(
         value = query,
@@ -288,28 +272,103 @@ private fun SearchInput(
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .border(
-                width = if (focused) 3.dp else 1.dp,
+                width = if (focused) 2.dp else 1.dp,
                 color = if (focused) {
                     MaterialTheme.colorScheme.primary
                 } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
                 },
                 shape = shape,
             )
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = 18.dp, vertical = 14.dp),
         decorationBox = { innerTextField ->
-            Box(contentAlignment = Alignment.CenterStart) {
-                if (query.isBlank()) {
-                    Text(
-                        text = "Film, Serie, App oder TV-Sendung suchen …",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_search),
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurfaceVariant),
+                )
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    if (query.isBlank()) {
+                        Text(
+                            text = "Suchen …",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    innerTextField()
                 }
-                innerTextField()
             }
         },
     )
+}
+
+@Composable
+private fun SearchResultSection(
+    section: SearchSection,
+    appsByPackage: Map<String, InstalledApp>,
+    isLoading: Boolean,
+    focusRestoreResultId: String?,
+    restoreRequester: FocusRequester,
+    onOpenResult: (SearchItem) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = section.title,
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            Text(
+                text = if (isLoading && section.items.isEmpty()) {
+                    "Lädt …"
+                } else {
+                    "${section.items.size}"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        if (section.items.isEmpty()) {
+            Text(
+                text = "Online-Treffer werden geladen …",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            val rowState = androidx.compose.foundation.lazy.rememberLazyListState()
+            LazyRow(
+                state = rowState,
+                modifier = Modifier.touchScrollFallback(rowState, Orientation.Horizontal),
+                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(section.items, key = SearchItem::id) { item ->
+                    SearchResultCard(
+                        item = item,
+                        app = item.packageName?.let(appsByPackage::get),
+                        onClick = { onOpenResult(item) },
+                        modifier = if (item.id == focusRestoreResultId) {
+                            Modifier.focusRequester(restoreRequester)
+                        } else {
+                            Modifier
+                        },
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -319,99 +378,82 @@ private fun SearchResultCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val shape = RoundedCornerShape(12.dp)
     TouchCard(
         onClick = onClick,
         modifier = modifier
-            .fillMaxWidth()
-            .height(104.dp),
-        scale = CardDefaults.scale(focusedScale = 1.015f),
+            .width(270.dp)
+            .height(152.dp),
+        scale = CardDefaults.scale(focusedScale = 1.045f),
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
-            SearchArtwork(item = item, app = app)
+            when {
+                item.kind == SearchResultKind.App && app != null -> {
+                    val icon = remember(app.icon) { app.icon.asImageBitmap() }
+                    Image(
+                        bitmap = icon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(76.dp),
+                    )
+                }
+
+                !item.artworkUri.isNullOrBlank() -> {
+                    AsyncImage(
+                        model = item.artworkUri,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.02f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.18f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
+                            ),
+                        ),
+                    ),
+            )
 
             Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
                     text = item.title,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-
-                val metadata = listOfNotNull(
-                    resultKindLabel(item.kind),
+                val detail = listOfNotNull(
                     item.sourceLabel?.takeIf { it.isNotBlank() },
                     item.subtitle?.takeIf { it.isNotBlank() },
                 ).distinct().joinToString(" · ")
-                if (metadata.isNotBlank()) {
+                if (detail.isNotBlank()) {
                     Text(
-                        text = metadata,
-                        style = MaterialTheme.typography.bodyMedium,
+                        text = detail,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
         }
     }
-}
-
-@Composable
-private fun SearchArtwork(
-    item: SearchItem,
-    app: InstalledApp?,
-) {
-    val modifier = Modifier
-        .size(width = 148.dp, height = 84.dp)
-        .clip(RoundedCornerShape(8.dp))
-        .background(MaterialTheme.colorScheme.surfaceVariant)
-
-    when {
-        item.kind == SearchResultKind.App && app != null -> {
-            val icon = remember(app.icon) { app.icon.asImageBitmap() }
-            Box(modifier = modifier, contentAlignment = Alignment.Center) {
-                Image(
-                    bitmap = icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(60.dp),
-                )
-            }
-        }
-
-        !item.artworkUri.isNullOrBlank() -> {
-            AsyncImage(
-                model = item.artworkUri,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = modifier,
-            )
-        }
-
-        else -> {
-            Box(modifier = modifier, contentAlignment = Alignment.Center) {
-                Text(
-                    text = resultKindLabel(item.kind),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-private fun resultKindLabel(kind: SearchResultKind): String = when (kind) {
-    SearchResultKind.App -> "App"
-    SearchResultKind.WatchNext -> "Weiterschauen"
-    SearchResultKind.PreviewProgram -> "App-Kanal"
-    SearchResultKind.EpgProgram -> "TV-Programm"
-    SearchResultKind.Tmdb -> "TMDB"
 }
