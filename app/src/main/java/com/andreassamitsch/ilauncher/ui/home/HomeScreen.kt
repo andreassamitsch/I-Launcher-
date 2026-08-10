@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +36,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -160,7 +162,7 @@ fun HomeScreen(
         modifier = modifier
             .fillMaxSize()
             .touchScrollFallback(contentScrollState, Orientation.Vertical),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         HomeHero(
             content = hero,
@@ -174,7 +176,7 @@ fun HomeScreen(
                 .weight(1f)
                 .verticalScroll(contentScrollState)
                 .touchScrollFallback(contentScrollState, Orientation.Vertical),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             homeRowOrder.forEach { rowKey ->
                 when (rowKey) {
@@ -211,7 +213,7 @@ fun HomeScreen(
                         onMoveMode = { movingAppPackage = it },
                         onMove = onMoveHomeApp,
                         onOpen = onOpenApp,
-                        onFocused = { app -> selectHero(appHero(app)) },
+                        onFocused = { onNavigationVisibilityChange(false) },
                     )
 
                     else -> previewByRowKey[rowKey]?.let { channel ->
@@ -233,7 +235,7 @@ fun HomeScreen(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
         }
     }
 }
@@ -266,8 +268,8 @@ private fun WatchNextHomeRow(
         else -> LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(horizontal = 7.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(
                 items = items,
@@ -304,8 +306,8 @@ private fun LiveTvHomeRow(
         state.channels.isNotEmpty() -> LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(horizontal = 7.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(state.channels, key = LiveTvChannel::serviceReference) { channel ->
                 val cardModifier = if (channel.serviceReference == restoreServiceReference) {
@@ -338,8 +340,8 @@ private fun PreviewHomeRow(
         LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(horizontal = 7.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(channel.programs, key = { it.media.id }) { program ->
                 WatchNextCard(
@@ -360,7 +362,7 @@ private fun AppsHomeRow(
     onMoveMode: (String?) -> Unit,
     onMove: (String, Int) -> Unit,
     onOpen: (InstalledApp) -> Unit,
-    onFocused: (InstalledApp) -> Unit,
+    onFocused: () -> Unit,
 ) {
     HomeRowHeader("Meine Apps")
     if (apps.isEmpty()) {
@@ -369,8 +371,8 @@ private fun AppsHomeRow(
         LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(horizontal = 7.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             items(apps, key = InstalledApp::packageName) { app ->
                 val moveMode = movingAppPackage == app.packageName
@@ -382,7 +384,7 @@ private fun AppsHomeRow(
                     onLongClick = { onMoveMode(app.packageName) },
                     moveMode = moveMode,
                     onMove = { delta -> onMove(app.packageName, delta) },
-                    onFocused = { onFocused(app) },
+                    onFocused = onFocused,
                 )
             }
         }
@@ -392,15 +394,15 @@ private fun AppsHomeRow(
 @Composable
 private fun HomeRowHeader(title: String, sourceApp: InstalledApp? = null) {
     Row(
-        modifier = Modifier.padding(start = 8.dp, top = 2.dp),
+        modifier = Modifier.padding(start = 10.dp, top = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         sourceApp?.let { app ->
             val icon = remember(app.icon) { app.icon.asImageBitmap() }
-            Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(22.dp))
+            Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(20.dp))
         }
-        Text(title, style = MaterialTheme.typography.titleLarge)
+        Text(title, style = MaterialTheme.typography.titleMedium)
     }
 }
 
@@ -420,13 +422,13 @@ private fun HomeHero(
         },
         modifier = Modifier
             .fillMaxWidth()
-            .height(268.dp)
+            .height(300.dp)
             .onFocusChanged { if (it.isFocused) onFocused() },
         scale = CardDefaults.scale(focusedScale = 1.0f),
     ) {
         Crossfade(
             targetState = content,
-            animationSpec = tween(durationMillis = 280),
+            animationSpec = tween(durationMillis = 230),
             label = "home-hero",
         ) { heroContent ->
             Box(
@@ -442,14 +444,14 @@ private fun HomeHero(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .alpha(0.22f),
+                                .alpha(0.28f),
                         )
                         Box(
                             modifier = Modifier
                                 .align(Alignment.CenterEnd)
-                                .fillMaxWidth(0.66f)
+                                .fillMaxWidth(0.60f)
                                 .fillMaxHeight()
-                                .padding(end = 8.dp),
+                                .padding(end = 6.dp, top = 8.dp, bottom = 8.dp),
                             contentAlignment = Alignment.CenterEnd,
                         ) {
                             AsyncImage(
@@ -475,11 +477,11 @@ private fun HomeHero(
                         .background(
                             Brush.horizontalGradient(
                                 colorStops = arrayOf(
-                                    0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.98f),
-                                    0.28f to MaterialTheme.colorScheme.background.copy(alpha = 0.94f),
-                                    0.46f to MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
-                                    0.64f to MaterialTheme.colorScheme.background.copy(alpha = 0.30f),
-                                    0.82f to MaterialTheme.colorScheme.background.copy(alpha = 0.04f),
+                                    0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.97f),
+                                    0.24f to MaterialTheme.colorScheme.background.copy(alpha = 0.91f),
+                                    0.43f to MaterialTheme.colorScheme.background.copy(alpha = 0.66f),
+                                    0.63f to MaterialTheme.colorScheme.background.copy(alpha = 0.24f),
+                                    0.82f to MaterialTheme.colorScheme.background.copy(alpha = 0.03f),
                                     1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
                                 ),
                             ),
@@ -491,9 +493,9 @@ private fun HomeHero(
                         .background(
                             Brush.verticalGradient(
                                 colorStops = arrayOf(
-                                    0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.04f),
-                                    0.70f to MaterialTheme.colorScheme.background.copy(alpha = 0.02f),
-                                    1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
+                                    0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.02f),
+                                    0.62f to MaterialTheme.colorScheme.background.copy(alpha = 0.03f),
+                                    1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
                                 ),
                             ),
                         ),
@@ -501,23 +503,23 @@ private fun HomeHero(
 
                 Column(
                     modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .fillMaxWidth(0.47f)
-                        .padding(start = 34.dp, end = 12.dp, top = 18.dp, bottom = 18.dp),
-                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth(0.43f)
+                        .padding(start = 38.dp, end = 12.dp, bottom = 26.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     heroContent.logoUri?.takeIf { it.isNotBlank() }?.let { logo ->
                         AsyncImage(
                             model = logo,
                             contentDescription = null,
                             contentScale = ContentScale.Fit,
-                            modifier = Modifier.size(width = 230.dp, height = 72.dp),
+                            modifier = Modifier.size(width = 240.dp, height = 76.dp),
                         )
                     }
                     heroContent.eyebrow?.takeIf { it.isNotBlank() }?.let { eyebrow ->
                         Text(
                             text = eyebrow,
-                            style = MaterialTheme.typography.titleSmall,
+                            style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -534,7 +536,7 @@ private fun HomeHero(
                     heroContent.metadata?.takeIf { it.isNotBlank() }?.let { metadata ->
                         Text(
                             text = metadata,
-                            style = MaterialTheme.typography.titleSmall,
+                            style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -542,6 +544,20 @@ private fun HomeHero(
                     }
                     heroContent.description?.takeIf { it.isNotBlank() }?.let { description ->
                         AutoScrollingHeroDescription(heroContent.key, description)
+                    }
+                    if (heroContent.detailsMedia != null || heroContent.app != null) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.92f))
+                                .padding(horizontal = 15.dp, vertical = 7.dp),
+                        ) {
+                            Text(
+                                text = if (heroContent.app != null) "Öffnen" else "Details",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.background,
+                            )
+                        }
                     }
                 }
             }
@@ -554,22 +570,22 @@ private fun AutoScrollingHeroDescription(key: String, text: String) {
     val scrollState = remember(key, text) { androidx.compose.foundation.ScrollState(0) }
     LaunchedEffect(key, text, scrollState.maxValue) {
         if (scrollState.maxValue <= 0) return@LaunchedEffect
-        delay(6_500)
+        delay(7_500)
         while (true) {
-            val duration = (scrollState.maxValue * 100).coerceIn(14_000, 46_000)
+            val duration = (scrollState.maxValue * 125).coerceIn(16_000, 52_000)
             scrollState.animateScrollTo(
                 scrollState.maxValue,
                 animationSpec = tween(durationMillis = duration, easing = LinearEasing),
             )
-            delay(5_000)
+            delay(5_500)
             scrollState.scrollTo(0)
-            delay(6_500)
+            delay(7_500)
         }
     }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(52.dp)
+            .height(48.dp)
             .verticalScroll(scrollState),
     ) {
         Text(
