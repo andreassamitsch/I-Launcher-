@@ -41,12 +41,13 @@ fun TouchCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
+    handleTvLongClick: Boolean = true,
     scale: CardScale = CardDefaults.scale(),
     content: @Composable ColumnScope.() -> Unit,
 ) {
     TvCard(
         onClick = onClick,
-        onLongClick = onLongClick,
+        onLongClick = if (handleTvLongClick) onLongClick else null,
         modifier = modifier.touchTap(
             onClick = onClick,
             onLongClick = onLongClick,
