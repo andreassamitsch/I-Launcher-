@@ -41,11 +41,9 @@ fun WatchNextCard(
     TouchCard(
         onClick = onClick,
         onLongClick = onDetails,
-        // Remote long-OK is handled below so navigation only happens on ACTION_UP. That consumes
-        // the physical key release before the details screen and its newly focused first button exist.
         handleTvLongClick = false,
         modifier = modifier
-            .width(300.dp)
+            .width(276.dp)
             .onFocusChanged { focusState ->
                 if (focusState.isFocused) onFocused?.invoke()
             }
@@ -82,13 +80,13 @@ fun WatchNextCard(
                     else -> false
                 }
             },
-        scale = CardDefaults.scale(focusedScale = 1.05f),
+        scale = CardDefaults.scale(focusedScale = 1.045f),
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(156.dp)
+                    .height(138.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
                 val artwork = item.preferredArtworkUri
@@ -114,8 +112,8 @@ fun WatchNextCard(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(10.dp)
-                            .size(width = 72.dp, height = 32.dp),
+                            .padding(9.dp)
+                            .size(width = 68.dp, height = 30.dp),
                     )
                 }
 
@@ -124,7 +122,7 @@ fun WatchNextCard(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .fillMaxWidth()
-                            .height(5.dp)
+                            .height(4.dp)
                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.88f)),
                     ) {
                         Box(
@@ -138,7 +136,7 @@ fun WatchNextCard(
             }
 
             Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
             ) {
                 Text(
                     text = item.title,
@@ -149,7 +147,7 @@ fun WatchNextCard(
                 item.subtitle?.let { subtitle ->
                     Text(
                         text = subtitle,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
