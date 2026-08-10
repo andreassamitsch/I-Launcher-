@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -165,10 +166,12 @@ fun SearchScreen(
 
     Column(
         modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -194,23 +197,31 @@ fun SearchScreen(
                         voiceError = "Sprachsuche ist auf diesem Gerät nicht verfügbar."
                     }
                 },
-                modifier = Modifier.size(48.dp),
-                scale = CardDefaults.scale(focusedScale = 1.06f),
+                modifier = Modifier.size(44.dp),
+                scale = CardDefaults.scale(focusedScale = 1.05f),
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Image(
                         painter = painterResource(R.drawable.ic_mic),
                         contentDescription = "Sprachsuche",
-                        modifier = Modifier.size(23.dp),
+                        modifier = Modifier.size(21.dp),
                         colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
                     )
                 }
             }
+        }
+
+        if (query.isBlank()) {
+            Text(
+                text = "Entdecken",
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(start = 12.dp),
+            )
         }
 
         voiceError?.let { error ->
@@ -218,6 +229,7 @@ fun SearchScreen(
                 text = error,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(start = 12.dp),
             )
         }
 
@@ -236,28 +248,32 @@ fun SearchScreen(
                 text = "Entdecken wird geladen …",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 12.dp),
             )
 
             query.isBlank() -> Text(
                 text = if (tmdbConfigured) {
-                    "Suche starten oder Filme und Serien entdecken."
+                    "Filme und Serien entdecken oder direkt suchen."
                 } else {
                     "Filme, Serien, Weiterschauen, Apps und TV-Programm durchsuchen."
                 },
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 12.dp),
             )
 
             query.trim().length < 2 -> Text(
                 text = "Mindestens zwei Zeichen eingeben.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 12.dp),
             )
 
             visibleSections.isEmpty() && !isTmdbLoading -> Text(
                 text = "Keine Treffer gefunden.",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 12.dp),
             )
 
             else -> SearchSectionsList(
@@ -288,8 +304,8 @@ private fun SearchSectionsList(
         modifier = Modifier
             .fillMaxSize()
             .touchScrollFallback(listState, Orientation.Vertical),
-        contentPadding = PaddingValues(top = 4.dp, bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(top = 2.dp, bottom = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         items(sections, key = SearchSection::key) { section ->
             SearchResultSection(
@@ -324,26 +340,26 @@ private fun SearchInput(
         modifier = modifier
             .onFocusChanged { focused = it.isFocused }
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.68f))
             .border(
                 width = if (focused) 2.dp else 1.dp,
                 color = if (focused) {
                     MaterialTheme.colorScheme.onSurface
                 } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.30f)
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.22f)
                 },
                 shape = shape,
             )
-            .padding(horizontal = 18.dp, vertical = 10.dp),
+            .padding(horizontal = 17.dp, vertical = 9.dp),
         decorationBox = { innerTextField ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(11.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Image(
                     painter = painterResource(R.drawable.ic_search),
                     contentDescription = null,
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier.size(21.dp),
                     colorFilter = ColorFilter.tint(
                         if (focused) MaterialTheme.colorScheme.onSurface
                         else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -376,11 +392,11 @@ private fun SearchResultSection(
     restoreRequester: FocusRequester,
     onOpenResult: (SearchItem) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             text = section.title,
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(start = 6.dp),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(start = 10.dp),
         )
 
         if (section.items.isEmpty()) {
@@ -388,15 +404,15 @@ private fun SearchResultSection(
                 text = if (isLoading) "Lädt …" else "Keine Einträge",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 6.dp),
+                modifier = Modifier.padding(start = 10.dp),
             )
         } else {
             val rowState = androidx.compose.foundation.lazy.rememberLazyListState()
             LazyRow(
                 state = rowState,
                 modifier = Modifier.touchScrollFallback(rowState, Orientation.Horizontal),
-                contentPadding = PaddingValues(horizontal = 7.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(section.items, key = SearchItem::id) { item ->
                     SearchResultCard(
@@ -422,16 +438,19 @@ private fun SearchResultCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var focused by remember(item.id) { mutableStateOf(false) }
     TouchCard(
         onClick = onClick,
-        modifier = modifier.width(248.dp),
-        scale = CardDefaults.scale(focusedScale = 1.035f),
+        modifier = modifier
+            .width(232.dp)
+            .onFocusChanged { focused = it.isFocused },
+        scale = CardDefaults.scale(focusedScale = 1.028f),
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(140.dp)
+                    .height(130.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center,
             ) {
@@ -441,7 +460,7 @@ private fun SearchResultCard(
                         Image(
                             bitmap = icon,
                             contentDescription = null,
-                            modifier = Modifier.size(78.dp),
+                            modifier = Modifier.size(76.dp),
                         )
                     }
 
@@ -455,8 +474,8 @@ private fun SearchResultCard(
             }
 
             Column(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
+                verticalArrangement = Arrangement.spacedBy(1.dp),
             ) {
                 Text(
                     text = item.title,
@@ -475,6 +494,7 @@ private fun SearchResultCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.alpha(if (focused) 1f else 0.55f),
                     )
                 }
             }
