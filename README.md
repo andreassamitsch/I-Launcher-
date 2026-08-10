@@ -36,8 +36,9 @@ Aktuell umgesetzt:
 - Suchergebnisliste springt bei einer neuen Suchanfrage wieder an den Anfang, damit lokale Treffer nicht unterhalb eines zuvor sichtbaren TMDB-Blocks verborgen bleiben
 - Android-Sprachsuche über einen kompakten Mikrofon-Button übernimmt erkannte Sprache in dieselbe Suchpipeline
 - CloudStream-Suchhandoff erkennt Stable-, Prerelease-, Debug- und kombinierte Development-Paketvarianten dynamisch über den `cloudstreamsearch`-Intent
+- zusätzlicher Touch-Kompatibilitätslayer für Handy-/Tablet-Smoke-Tests: TV-Material-Buttons und -Cards behalten D-Pad/Fokus, erhalten aber explizite Pointer-Taps; Home, Suche, Apps, Einstellungen, EPG und Live-TV-Listen erhalten Touch-Scroll-Fallbacks; `leanback` ist für die Testinstallation auf Nicht-TV-Geräten optional
 
-Die interne Trailerwiedergabe mit Bild und Ton sowie die EPG-Integration im Live-TV-Player wurden auf realer TV-Hardware bestätigt. Die danach ergänzten Änderungen an Hero-Darstellung, Menü-Rückkehr, Suche, Sprachsuche, EPG-Textscroll, kompakter Zapping-Reihe und Update-Schnellaktion benötigen noch den nächsten Gerätetest.
+Die interne Trailerwiedergabe mit Bild und Ton sowie die EPG-Integration im Live-TV-Player wurden auf realer TV-Hardware bestätigt. Die danach ergänzten Änderungen an Hero-Darstellung, Menü-Rückkehr, Suche, Sprachsuche, EPG-Textscroll, kompakter Zapping-Reihe, Update-Schnellaktion und Touch-Kompatibilität benötigen noch den nächsten Geräte-/Touchtest.
 
 ## Datenschutz / Sicherheit
 
