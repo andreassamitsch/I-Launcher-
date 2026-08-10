@@ -7,9 +7,14 @@
     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
     <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA" />
 
+    <!--
+        TV remains the primary target, but leanback is optional so the same development APK can
+        also be installed on a phone/tablet for touchscreen UI smoke tests. D-Pad/TV hardware
+        validation remains authoritative for launcher behaviour.
+    -->
     <uses-feature
         android:name="android.software.leanback"
-        android:required="true" />
+        android:required="false" />
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
