@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -43,7 +44,7 @@ fun WatchNextCard(
         onLongClick = onDetails,
         handleTvLongClick = false,
         modifier = modifier
-            .width(276.dp)
+            .width(252.dp)
             .onFocusChanged { focusState ->
                 if (focusState.isFocused) onFocused?.invoke()
             }
@@ -80,13 +81,13 @@ fun WatchNextCard(
                     else -> false
                 }
             },
-        scale = CardDefaults.scale(focusedScale = 1.045f),
+        scale = CardDefaults.scale(focusedScale = 1.035f),
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(138.dp)
+                    .height(142.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
                 val artwork = item.preferredArtworkUri
@@ -95,7 +96,7 @@ fun WatchNextCard(
                         model = artwork,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                        modifier = Modifier.fillMaxSize(),
                     )
                 } else {
                     Text(
@@ -112,8 +113,8 @@ fun WatchNextCard(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(9.dp)
-                            .size(width = 68.dp, height = 30.dp),
+                            .padding(8.dp)
+                            .size(width = 66.dp, height = 28.dp),
                     )
                 }
 
@@ -123,7 +124,7 @@ fun WatchNextCard(
                             .align(Alignment.BottomStart)
                             .fillMaxWidth()
                             .height(4.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.88f)),
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f)),
                     ) {
                         Box(
                             modifier = Modifier
@@ -136,15 +137,15 @@ fun WatchNextCard(
             }
 
             Column(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
             ) {
                 Text(
                     text = item.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                item.subtitle?.let { subtitle ->
+                item.subtitle?.takeIf { it.isNotBlank() && it != item.title }?.let { subtitle ->
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
