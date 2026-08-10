@@ -17,42 +17,46 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phasen 1 bis 7 sind funktional abgeschlossen und auf dem Zielgerät bestätigt.** Der aktuelle gestapelte Entwicklungsstand ergänzt Preview Channels, globale Suche und die nächste Home-/Player-UX. Diese Änderungen bleiben bis zum jeweils aktuellen Gerätetest in Draft-PRs.
+**Phasen 1 bis 7 sind funktional abgeschlossen und auf dem Zielgerät bestätigt.** Der aktuelle gestapelte Entwicklungsstand ergänzt Preview Channels, globale Suche und einen Google-TV-inspirierten Home-/Search-/Player-UX-Pass. Diese Änderungen bleiben bis zum jeweils aktuellen Gerätetest in Draft-PRs.
 
 Aktuell umgesetzt:
 
-- TV-first Hero mit Artwork auf der rechten Seite und weichem Verlauf in den linken Textbereich; echte Backdrops werden flächig genutzt, ungeeignete Quellbilder/Poster möglichst unbeschnitten dargestellt
-- Hero startet nicht mehr automatisch mit dem ersten TV-Sender: zunächst wird Local First ein Watch-Next-Inhalt, danach ein Preview-Channel-Inhalt und sonst ein neutraler Launcher-Hero verwendet; erst aktive Fokusbewegung übernimmt den Hero
-- Hero vermeidet doppelte Medienidentität: bei vorhandenem Titellogo wird der gleiche Titel nicht noch einmal als große Überschrift gezeigt; Quell-App-Namen wie CloudStream werden im Medien-Hero nicht wiederholt
-- Hero zeigt gegenüber der fokussierten Karte ergänzende Metadaten statt Fortschritt/Karteninhalt zu duplizieren; längere Beschreibungen laufen nach einer Lesepause langsam durch einen begrenzten Textbereich
-- kompakte Hauptnavigation `Home · Suche · Apps · Einstellungen`; aktiver Bereich nur per Rahmen. Die Navigation wird fokusgetrieben ausgeblendet, sobald der Nutzer in eine Inhaltsreihe geht, und erst beim Fokus auf den oberen Hero wieder eingeblendet
-- Home nutzt den TV-Bildschirm deutlich vollständiger mit kleinen Safe-Area-Rändern; Hero und Karten sind kompakter, Fokus-Skalierung erhält eigenen Innenraum und schneidet Karten nicht mehr an den Reihenrändern ab
+- TV-first Hero als cinematische Vollbreitenfläche: echte Backdrops füllen den Hero; ungeeignete Quellbilder/Poster werden über einen dezenten Crop-Hintergrund plus möglichst unbeschnittenes `Fit`-Motiv rechts dargestellt
+- mehrstufige horizontale und vertikale Verläufe lassen das Artwork weich in den linken Textbereich und nach unten in die Content-Reihen auslaufen; Hero-Wechsel blenden weich über statt hart zu springen
+- Hero startet nicht mit dem ersten TV-Sender: zunächst wird Local First ein Watch-Next-Inhalt, danach ein Preview-Channel-Inhalt und sonst ein neutraler Launcher-Hero verwendet; ein automatisch rotierendes Netzwerk-/Werbekarussell gibt es bewusst nicht
+- Hero vermeidet doppelte Medienidentität: bei vorhandenem Titellogo wird derselbe Titel nicht noch einmal als große Überschrift gezeigt; Quell-App-Namen wie CloudStream werden im Medien-Hero nicht wiederholt
+- Hero zeigt kompakte ergänzende Metadaten statt Kartenwerte zu duplizieren; längere Beschreibungen starten erst nach einer Lesepause und scrollen bewusst langsam
+- Home-Medienreihen verwenden ein einheitlicheres 16:9-Raster, kleinere Fokus-Skalierung, ruhigere Überschriften und kompaktere Abstände nach Vorbild moderner TV-Oberflächen
+- Home nutzt den TV-Bildschirm mit kleinen Safe-Area-Rändern; Fokus-Skalierung erhält eigenen Innenraum und soll Karten nicht an Reihenrändern abschneiden
 - Home-Reihen sind persistent sortierbar. Langes OK auf `Home` öffnet die versteckte Home-Anpassung mit Reihenfolge, Watch-Next-Quellen, App-Kanälen und Reset-Funktionen
-- Home besitzt eine eigene App-Reihe mit App-Symbolen. Langes OK auf einer App aktiviert den Verschiebemodus; links/rechts verschiebt die App, OK beendet den Modus. Die Reihenfolge wird lokal gespeichert
-- Preview-Channel-Reihen zeigen keinen zusätzlichen Quell-Untertitel mehr. Wenn die Quell-App installiert ist, steht ihr App-Symbol kompakt links neben der Hauptüberschrift
+- eigene Home-Reihe `Meine Apps` mit großen App-Icons. Langes OK auf einer App aktiviert den Verschiebemodus; links/rechts verschiebt die App, OK beendet den Modus; die Reihenfolge wird lokal gespeichert
+- Preview-Channel-Reihen zeigen keinen zusätzlichen Quell-Untertitel. Wenn die Quell-App installiert ist, steht ihr App-Symbol kompakt links neben der Hauptüberschrift
+- kompakte Hauptnavigation `Home · Suche · Apps · Einstellungen`; aktiver Bereich nur per Rahmen. Die Navigation wird fokusgetrieben ausgeblendet, sobald der Nutzer in eine Inhaltsreihe geht, und erst beim Fokus auf den oberen Hero wieder eingeblendet
 - Live-TV-/Gigablue-Konfiguration als Unterpunkt der Einstellungen und Update-Schnellaktion ganz oben
 - EPG als TV-Guide direkt im laufenden Live-TV-Player statt eigener Hauptnavigation; lange Programmbeschreibungen sind per D-Pad scrollbar
 - Live-TV-Overlay blendet nach drei Sekunden aus; bei sichtbarem Overlay gehören Hoch/Runter der UI-Navigation, bei ausgeblendetem Overlay dienen Hoch/Runter zum Zappen; CH+/CH− bleiben Senderwechsel
 - langes OK im Live-TV-Player öffnet direkt den EPG; der EPG-Button ist aus der Senderreihe per D-Pad erreichbar
 - Verlassen des Live-TV-Players erfordert eine Bestätigung. Im Dialog steht `TV verlassen` vor `Abbrechen` und ist standardmäßig fokussiert
-- EPG-TMDB-Anreicherung bleibt nicht mehr an fehlenden/unklaren XMLTV-Kategorien hängen: nicht typisierte Programme laufen über TMDB-Multi-Search und müssen weiterhin die bestehende strenge Confidence-Schwelle erfüllen
+- EPG-TMDB-Anreicherung bleibt nicht an fehlenden/unklaren XMLTV-Kategorien hängen: nicht typisierte Programme laufen über TMDB-Multi-Search und müssen weiterhin die bestehende strenge Confidence-Schwelle erfüllen
 - der EPG verfolgt das ausgewählte Programm über Senderreferenz und Startzeit statt über die alte Objektinstanz; dadurch kann eine asynchron nachgeladene TMDB-Kopie den `Details`-Button zuverlässig einblenden
-- alte negative TMDB-Zuordnungen aus einer früheren Resolver-Policy werden erneut geprüft; neue negative Treffer bleiben nur kurz gecacht. Damit können zuvor fälschlich ungelöste Titel wie `ZeroZeroZero` nach Resolver-Verbesserungen wieder aufgelöst werden
+- alte negative TMDB-Zuordnungen aus einer früheren Resolver-Policy werden erneut geprüft; neue negative Treffer bleiben nur kurz gecacht. Damit können zuvor fälschlich ungelöste Titel nach Resolver-Verbesserungen wieder aufgelöst werden
 - direkte TMDB-/YouTube-Trailer starten in einer eigenen hardwarebeschleunigten Trailer-Activity; deutsche TMDB-Videos werden bevorzugt, YouTube-UI/Untertitelpräferenz ist Deutsch
-- globale Suche zeigt lokale Quellen und TMDB nicht mehr als eine lange gemischte Liste, sondern als TV-Reihen `Weiterschauen`, `App-Kanäle`, `TV-Programm`, `Apps` und `Filme & Serien`
+- globale Suche zeigt lokale Quellen und TMDB als getrennte TV-Reihen statt als lange gemischte Liste
+- Suche ist als Browse-Hub gestaltet: kompaktes rundes Suchfeld, Mikrofon-Aktion, konsistente 16:9-Karten mit Text unter dem Artwork und ruhige horizontale Content-Reihen
 - bei leerer Suche zeigt I Launcher TMDB-Browse-Reihen: `Serien im Trend`, `Filme im Trend`, `Top Science-Fiction-Serien` und `Top Science-Fiction-Filme`. Diese Online-Reihen werden nur im Suchbereich geladen und eine Stunde lokal gecacht
+- lokale Suchreihen sind `Weiterschauen`, `Aus deinen Apps`, `Im TV`, `Apps` und `Filme & Serien`; lokale Quellen bleiben damit visuell von reinen TMDB-Treffern unterscheidbar
 - lokale Suche berücksichtigt unveränderte Android-Watch-Next-Quelltitel sowie Preview-Channel-/Quellnamen zusätzlich zu angereicherten Medienfeldern; TMDB-Suchergebnisse werden bei identischer TMDB-Identität wieder mit lokalen Quellen verknüpft
 - Android-Sprachsuche über einen kompakten Mikrofon-Button übernimmt erkannte Sprache in dieselbe Suchpipeline
 - Detailseiten fokussieren beim Öffnen direkt die erste sinnvolle Aktion; Watch-Next-Details werden nach langem OK erst nach konsumiertem OK-Release geöffnet, damit der frisch fokussierte Wiedergabe-Button nicht unbeabsichtigt ausgelöst wird
 - Suchziele erscheinen als Suchsymbol plus App-Name; das Symbol übernimmt wie der Text die aktuelle TV-Material-Fokusfarbe
 - CloudStream-Suchhandoff erkennt Stable-, Prerelease-, Debug- und kombinierte Development-Paketvarianten dynamisch über den `cloudstreamsearch`-Intent
 - Kodi-Core-`ACTION_SEARCH` wird nicht mehr verwendet: I Launcher fragt stattdessen Kodis exportierten Suggestions-Provider ab und öffnet nur einen starken Kodi-Bibliothekstreffer über die von Kodi selbst zurückgegebene Referenz; ohne sicheren Treffer wird Kodi normal geöffnet
-- der Kodi-Handoff durchsucht damit nur die Kodi-Core-Bibliothek, keine beliebigen Kodi-Add-ons; Add-on-spezifische Suche bleibt eine eigene spätere Integration und wird nicht geraten
+- der Kodi-Handoff durchsucht nur die Kodi-Core-Bibliothek, keine beliebigen Kodi-Add-ons; Add-on-spezifische Suche bleibt eine eigene spätere Integration und wird nicht geraten
 - CloudStreams aktuelle Such-Activity erzwingt beim Öffnen selbst die Soft-Tastatur; die externe `cloudstreamsearch`-Schnittstelle bietet keinen dokumentierten Parameter zum Unterdrücken, daher implementiert I Launcher keinen timing-basierten Back-Workaround
-- zusätzlicher Touch-Kompatibilitätslayer für Handy-/Tablet-Smoke-Tests: TV-Material-Buttons und -Cards behalten D-Pad/Fokus, erhalten aber explizite Pointer-Taps und Scroll-Fallbacks; `leanback` ist für die Testinstallation auf Nicht-TV-Geräten optional
+- zusätzlicher Touch-Kompatibilitätslayer für Handy-/Tablet-Smoke-Tests; TV-/D-Pad-Bedienung bleibt die Produktquelle der Wahrheit
 - Medien-Detailansicht ist vertikal per Touch scrollbar; lange Beschreibungen und umgebrochene Aktionsbuttons sind auf dem Handy praktisch bestätigt
 
-Die interne Trailerwiedergabe mit Bild und Ton, die EPG-Integration im Live-TV-Player, die neue Suchreihen-Struktur sowie mehrere Player-Aktionen wurden auf realer TV-Hardware bestätigt. Die jüngsten Korrekturen an Home-Sortierung/Vollbildnutzung, EPG-Details, ZeroZeroZero-Negativcache und TMDB-Browse benötigen noch den nächsten TV-Gerätetest.
+Die interne Trailerwiedergabe mit Bild und Ton, die EPG-Integration im Live-TV-Player, Suchreihen sowie mehrere Player-Aktionen wurden auf realer TV-Hardware bestätigt. Der jüngste Google-TV-inspirierte Home-/Search-Feinschliff sowie die aktuellen EPG-/TMDB-Korrekturen benötigen noch den nächsten TCL-Gerätetest.
 
 ## Datenschutz / Sicherheit
 
