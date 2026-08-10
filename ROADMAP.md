@@ -158,13 +158,16 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] aktuelle Programme progressiv, weitere Guide-Einträge bei Auswahl mit TMDB anreichern
 - [x] Unit-Tests für M3U-Parsing, Sender-Mapping, XMLTV-Zeit/Episoden-Parsing, OpenWebif/XMLTV-Merge und EPG-Startposition hinzufügen
 - [x] signierten Phase-6-Development-Build mit `testDebugUnitTest` und `assembleDebug` erfolgreich veröffentlichen
-- [x] reale `riedl-dach.at` M3U/XMLTV-Quelle auf TCL gegen Gigablue-Sender getestet
+- [x] reale XMLTV-Quelle auf TCL gegen Gigablue-Sender getestet
 - [x] D-Pad-/Focus-Test auf Home sowie im vollständigen EPG bestanden
 - [x] Offline-/Cache-Test und Update/Migration vom bestehenden Build bestanden
 - [x] EPG aus der Hauptnavigation entfernt und als Guide direkt im laufenden Live-TV-Player geöffnet
-- [ ] neuer UI-Polish: D-Pad-EPG-Zugang, langes OK sowie EPG→TMDB-Details auf TV-Hardware prüfen
+- [x] langes OK als EPG-Direktzugang auf TV-Hardware bestätigt
+- [x] EPG-Programme ohne eindeutige XMLTV-Kategorie nicht mehr vor TMDB verwerfen; `Unknown` nutzt Multi-Search mit unveränderter Confidence-Schwelle
+- [x] beim Öffnen des Guides das bereits ausgewählte aktuelle/angesprungene Programm sofort zur TMDB-Anreicherung anstoßen
+- [ ] EPG→TMDB-Details mit bekannten Serien wie CSI / Two and a Half Men auf TV-Hardware erneut prüfen
 
-**Phase 6 ist funktional abgeschlossen und auf realer TCL-/Gigablue-/XMLTV-Hardware bestätigt. Die neuen Guide-/Detail-Navigationspfade bleiben bis zum nächsten TV-Test offen.**
+**Phase 6 ist funktional abgeschlossen und auf realer TCL-/Gigablue-/XMLTV-Hardware bestätigt. Der korrigierte EPG→TMDB-Detailpfad wartet auf den nächsten TV-Test.**
 
 ## Phase 7 – Live TV
 
@@ -195,9 +198,10 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] bei ausgeblendetem Overlay D-Pad Hoch/Runter zum Zappen; CH+/CH− bleiben explizite Senderwechsel
 - [x] langes OK als Direktzugang zum EPG
 - [x] explizite Exit-Bestätigung mit `Abbrechen` als Standardfokus
-- [ ] neuen Player-Focus-/Long-OK-/Exit-Dialog auf TV-Hardware validieren
+- [x] Exit-Bestätigung auf TV-Hardware bestätigt
+- [ ] neuesten D-Pad-Overlay-Fokus nach dem Regression-Pass noch einmal vollständig prüfen
 
-**Phase 7 bleibt funktional abgeschlossen und hardwarebestätigt; die jüngsten Player-UX-Erweiterungen sind automatisiert gebaut und warten auf den neuen Gerätetest.**
+**Phase 7 bleibt funktional abgeschlossen und hardwarebestätigt; der Exit-Schutz und lange EPG-Direktzugang sind bestätigt, der jüngste D-Pad-Regressionspass bleibt offen.**
 
 ## Preview Channels / globale Suche – aktueller Entwicklungsstand
 
@@ -210,13 +214,18 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] rohe Watch-Next-Titel/Episodentitel zusätzlich zur TMDB-angereicherten Medienidentität durchsuchen
 - [x] Preview-Channel-Titel/Quell-App als Suchmetadaten einbeziehen
 - [x] Suchergebnisse in getrennte horizontale TV-Reihen für Weiterschauen, App-Kanäle, TV-Programm, Apps und TMDB gliedern
+- [x] getrennte Suchreihen auf TV-Hardware bestätigt
 - [x] CloudStream-/Kodi-Suchhandoff für TMDB-/EPG-Treffer
 - [x] CloudStream-Development-Paketvarianten dynamisch über den Search-Intent erkennen
-- [x] Kodi-Handoff gegen aktuelle `XBMCSearchableActivity` korrigieren (`ACTION_SEARCH` + Query + nicht-null Data-URI)
+- [x] CloudStream-Handoff auf TV-Hardware bestätigt
+- [x] defekten Kodi-Core-`ACTION_SEARCH`-Pfad verworfen; stattdessen exportierten Suggestions-Provider + von Kodi zurückgegebene `ACTION_GET_CONTENT`-/`videodb://`-Referenz verwenden
+- [x] Kodi-Titelauswahl konservativ normalisieren (`&`/`and`, exakte bzw. starke Präfix-Treffer) und schwache Treffer ablehnen
 - [x] externe Suchbuttons auf Suchsymbol + App-Name reduzieren und erste Detailaktion direkt fokussieren
+- [x] Suchsymbol an TV-Material-`LocalContentColor` koppeln, damit Symbol und Text gemeinsam die Fokusfarbe wechseln
+- [x] Watch-Next-Long-OK erst nach konsumiertem OK-Release in Details navigieren, damit der neue Wiedergabebutton nicht automatisch ausgelöst wird
 - [x] Android-Sprachsuche als kompakte Suchaktion integrieren
 - [x] Touch-Detailseite inklusive langer Texte und Aktionsbuttons auf Smartphone bestätigt
-- [ ] TV-Gerätetest von lokalen Suchreihen, Kodi-Handoff, Sprachsuche und Detailfokus
+- [ ] TV-Gerätetest des neuen Kodi-Handoffs, Suchsymbol-Fokus und Watch-Next-Long-OK-Release-Fix
 - [ ] CloudStream-Tastatur nur upstream lösbar, solange CloudStream seine Search-Activity selbst mit sichtbarer Soft-Tastatur öffnet
 
 ## Home / Navigation – aktueller UI-Polish
@@ -226,13 +235,14 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Hero selbst fokussierbar machen; Medien öffnen per OK die Detailansicht
 - [x] Start-Hero nicht mehr mit erstem TV-Sender initialisieren; Local-First Watch Next → Preview Program → neutraler Hero
 - [x] Hero-Artwork rechts mit weichem Verlauf in den linken Textbereich; Backdrops crop, ungeeignete Quellbilder möglichst fit
-- [x] ergänzende Hero-Metadaten statt Kartenwerte zu duplizieren; lange Beschreibung automatisch im begrenzten Bereich scrollen
+- [x] Titellogo nicht zusätzlich als große Titelüberschrift wiederholen; Quell-App-Namen aus dem Medien-Hero entfernen
+- [x] ergänzende Hero-Metadaten statt Kartenwerte zu duplizieren; lange Beschreibung mit längerer Lesepause deutlich langsamer scrollen
 - [x] Hauptnavigation auf `Home · Suche · Apps · Einstellungen` reduzieren
 - [x] aktiven Hauptpunkt nur per Border markieren
 - [x] Launcher-Name aus der Navigationszeile entfernen
-- [x] Navigationszeile auf Home beim Herunterscrollen der Content-Reihen ausblenden
+- [x] Navigation erst nach echter vertikaler Scrollbewegung ausblenden; kleine Fokus-/Bring-into-view-Nudges ignorieren
 - [x] Live-TV-/Gigablue-Konfiguration unter Einstellungen verschieben
-- [ ] vollständigen D-Pad-/Focus-Gerätetest für den neuen Hero-/Search-/Player-Aufbau durchführen
+- [ ] TV-Gerätetest für Nav-Jitter, Hero-Duplikate und neues Scrolltempo durchführen
 
 ## Phase 8 – optionale Provider
 
