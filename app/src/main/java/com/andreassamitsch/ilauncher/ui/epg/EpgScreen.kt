@@ -86,6 +86,13 @@ fun EpgScreen(
         }
 
         if (selectedProgramStart != null && targetIndex >= 0) {
+            val channel = selectedChannel
+            val program = guide.getOrNull(targetIndex)
+            if (channel != null && program != null && program.startUtcMillis == selectedProgramStart) {
+                // Opening the guide already selects the current/requested programme. Trigger the same
+                // enrichment path immediately; the user should not have to click an already-selected row.
+                onSelectProgram(channel.serviceReference, program)
+            }
             val channelIndex = channels.indexOfFirst {
                 it.serviceReference == selectedChannel?.serviceReference
             }
