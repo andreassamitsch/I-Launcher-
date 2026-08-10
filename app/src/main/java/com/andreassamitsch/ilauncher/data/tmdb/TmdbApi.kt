@@ -34,6 +34,39 @@ internal interface TmdbApi {
         @Query("page") page: Int = 1,
     ): TmdbSearchResponseDto
 
+    @GET("3/trending/movie/{timeWindow}")
+    suspend fun trendingMovies(
+        @Path("timeWindow") timeWindow: String = "week",
+        @Query("language") language: String,
+    ): TmdbSearchResponseDto
+
+    @GET("3/trending/tv/{timeWindow}")
+    suspend fun trendingTv(
+        @Path("timeWindow") timeWindow: String = "week",
+        @Query("language") language: String,
+    ): TmdbSearchResponseDto
+
+    @GET("3/discover/movie")
+    suspend fun discoverMovies(
+        @Query("language") language: String,
+        @Query("include_adult") includeAdult: Boolean = false,
+        @Query("include_video") includeVideo: Boolean = false,
+        @Query("sort_by") sortBy: String = "vote_average.desc",
+        @Query("with_genres") withGenres: String,
+        @Query("vote_count.gte") voteCountGte: Int = 300,
+        @Query("page") page: Int = 1,
+    ): TmdbSearchResponseDto
+
+    @GET("3/discover/tv")
+    suspend fun discoverTv(
+        @Query("language") language: String,
+        @Query("include_adult") includeAdult: Boolean = false,
+        @Query("sort_by") sortBy: String = "vote_average.desc",
+        @Query("with_genres") withGenres: String,
+        @Query("vote_count.gte") voteCountGte: Int = 200,
+        @Query("page") page: Int = 1,
+    ): TmdbSearchResponseDto
+
     @GET("3/movie/{movieId}")
     suspend fun movieDetails(
         @Path("movieId") movieId: Int,
