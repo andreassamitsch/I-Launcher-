@@ -35,7 +35,9 @@ import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.apps.InstalledAppsRepository
 import com.andreassamitsch.ilauncher.data.epg.EpgRepository
+import com.andreassamitsch.ilauncher.data.home.HomePreferences
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifRepository
+import com.andreassamitsch.ilauncher.data.search.SearchBrowseSection
 import com.andreassamitsch.ilauncher.data.search.SearchRepository
 import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.data.tv.PreviewChannelPreferences
@@ -61,7 +63,9 @@ import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import com.andreassamitsch.ilauncher.ui.apps.AppsScreen
 import com.andreassamitsch.ilauncher.ui.components.TouchButton
 import com.andreassamitsch.ilauncher.ui.details.DetailsScreen
+import com.andreassamitsch.ilauncher.ui.home.HomeRowOption
 import com.andreassamitsch.ilauncher.ui.home.HomeScreen
+import com.andreassamitsch.ilauncher.ui.home.HomeSettingsScreen
 import com.andreassamitsch.ilauncher.ui.livetv.LiveTvPlayerScreen
 import com.andreassamitsch.ilauncher.ui.livetv.LiveTvScreen
 import com.andreassamitsch.ilauncher.ui.search.SearchScreen
@@ -108,6 +112,7 @@ fun LauncherApp(
     val scope = rememberCoroutineScope()
     var section by rememberSaveable { mutableStateOf(LauncherSection.Home) }
     var navigationVisible by rememberSaveable { mutableStateOf(true) }
+    var showHomeSettings by rememberSaveable { mutableStateOf(false) }
     var selectedDetailsSourceId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedSearchDetailsMedia by remember { mutableStateOf<MediaItem?>(null) }
     var selectedSearchDetailsResultId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -125,7 +130,9 @@ fun LauncherApp(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var localSearchResults by remember { mutableStateOf<List<SearchItem>>(emptyList()) }
     var tmdbSearchResults by remember { mutableStateOf<List<SearchItem>>(emptyList()) }
+    var browseSections by remember { mutableStateOf<List<SearchBrowseSection>>(emptyList()) }
     var isTmdbSearchLoading by remember { mutableStateOf(false) }
+    var isBrowseLoading by remember { mutableStateOf(false) }
     val watchNextListState = rememberLazyListState()
     val appsListState = rememberLazyListState()
     val liveTvListState = rememberLazyListState()
@@ -141,6 +148,9 @@ fun LauncherApp(
     val hiddenWatchNextPackages by watchNextSourcePreferences.hiddenPackages.collectAsState()
     val previewChannelPreferences = remember(context) { PreviewChannelPreferences(context) }
     val hiddenPreviewChannelIds by previewChannelPreferences.hiddenChannelIds.collectAsState()
+    val homePreferences = remember(context) { HomePreferences(context) }
+    val savedHomeRowOrder by homePreferences.rowOrder.collectAsState()
+    val savedHomeAppOrder by homePreferences.appOrder.collectAsState()
 
     val tvListingsPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -148,22 +158,15 @@ fun LauncherApp(
         hasTvListingsPermission = TvProviderPermissionManager.hasReadTvListings(context)
         tvProviderRefreshGeneration += 1
     }
-
     val requestTvListingsPermission: () -> Unit = {
         TvProviderPermissionManager.markInitialRequestShown(context)
         tvListingsPermissionLauncher.launch(TvProviderPermissionManager.READ_TV_LISTINGS)
     }
 
-    val watchNextFlow = remember(
-        watchNextRepository,
-        hasTvListingsPermission,
-        tvProviderRefreshGeneration,
-    ) {
+    val watchNextFlow = remember(watchNextRepository, hasTvListingsPermission, tvProviderRefreshGeneration) {
         watchNextRepository.observe()
     }
-    val watchNextResult by watchNextFlow.collectAsState(
-        initial = WatchNextLoadResult(items = emptyList()),
-    )
+    val watchNextResult by watchNextFlow.collectAsState(initial = WatchNextLoadResult(items = emptyList()))
     val visibleWatchNextItems = remember(watchNextResult.items, hiddenWatchNextPackages) {
         watchNextResult.items.filter { item ->
             val packageName = item.packageName
@@ -171,11 +174,7 @@ fun LauncherApp(
         }
     }
 
-    val previewChannelsFlow = remember(
-        previewChannelsRepository,
-        hasTvListingsPermission,
-        tvProviderRefreshGeneration,
-    ) {
+    val previewChannelsFlow = remember(previewChannelsRepository, hasTvListingsPermission, tvProviderRefreshGeneration) {
         previewChannelsRepository.observe()
     }
     val previewChannelsResult by previewChannelsFlow.collectAsState(
@@ -185,10 +184,7 @@ fun LauncherApp(
         previewChannelsResult.channels.filter { it.id !in hiddenPreviewChannelIds }
     }
 
-    var homeWatchNextItems by remember {
-        mutableStateOf<List<EnrichedWatchNextItem>>(emptyList())
-    }
-
+    var homeWatchNextItems by remember { mutableStateOf<List<EnrichedWatchNextItem>>(emptyList()) }
     LaunchedEffect(visibleWatchNextItems, watchNextEnrichmentRepository) {
         val baseItems = watchNextEnrichmentRepository.base(visibleWatchNextItems)
         homeWatchNextItems = baseItems
@@ -202,7 +198,6 @@ fun LauncherApp(
                     }
                 }
             }
-
             enrichBatches(baseItems)
             val unresolvedItems = homeWatchNextItems.filter { it.media.tmdbId == null }
             if (unresolvedItems.isNotEmpty()) {
@@ -213,9 +208,7 @@ fun LauncherApp(
     }
 
     LaunchedEffect(openWebifRepository, epgRepository) {
-        launch {
-            epgRepository.refresh(openWebifRepository.state.value.channels)
-        }
+        launch { epgRepository.refresh(openWebifRepository.state.value.channels) }
         while (true) {
             openWebifRepository.refresh()
             epgRepository.refresh(openWebifRepository.state.value.channels)
@@ -223,13 +216,11 @@ fun LauncherApp(
         }
     }
 
-    val apps by produceState<List<InstalledApp>>(
-        initialValue = emptyList(),
-        key1 = installedAppsRepository,
-    ) {
-        value = withContext(Dispatchers.IO) {
-            installedAppsRepository.loadApps()
-        }
+    val apps by produceState<List<InstalledApp>>(initialValue = emptyList(), key1 = installedAppsRepository) {
+        value = withContext(Dispatchers.IO) { installedAppsRepository.loadApps() }
+    }
+    val orderedHomeApps = remember(apps, savedHomeAppOrder) {
+        HomePreferences.orderApps(apps, savedHomeAppOrder)
     }
     val appLabels = remember(apps) { apps.associate { it.packageName to it.label } }
 
@@ -237,23 +228,41 @@ fun LauncherApp(
         epgState.enrichedChannels.associateBy { it.serviceReference }
     }
     val displayLiveTvChannels = remember(openWebifState.channels, enrichedLiveTvByRef) {
-        openWebifState.channels.map { channel ->
-            enrichedLiveTvByRef[channel.serviceReference] ?: channel
-        }
+        openWebifState.channels.map { channel -> enrichedLiveTvByRef[channel.serviceReference] ?: channel }
     }
     val displayLiveTvState = remember(openWebifState, displayLiveTvChannels) {
         openWebifState.copy(channels = displayLiveTvChannels)
     }
 
-    LaunchedEffect(
-        searchQuery,
-        apps,
-        homeWatchNextItems,
-        visiblePreviewChannels,
-        displayLiveTvChannels,
-        epgState,
-        searchRepository,
-    ) {
+    val availableHomeRowKeys = remember(displayLiveTvState.configured, visiblePreviewChannels, orderedHomeApps) {
+        buildList {
+            add(HomePreferences.ROW_WATCH_NEXT)
+            if (displayLiveTvState.configured) add(HomePreferences.ROW_LIVE_TV)
+            visiblePreviewChannels.filter { it.programs.isNotEmpty() }.forEach {
+                add(HomePreferences.previewRowKey(it.id))
+            }
+            if (orderedHomeApps.isNotEmpty()) add(HomePreferences.ROW_APPS)
+        }
+    }
+    val homeRowOrder = remember(savedHomeRowOrder, availableHomeRowKeys) {
+        HomePreferences.mergeOrder(savedHomeRowOrder, availableHomeRowKeys)
+    }
+    val homeRowOptions = remember(homeRowOrder, visiblePreviewChannels) {
+        val previewTitles = visiblePreviewChannels.associate { HomePreferences.previewRowKey(it.id) to it.title }
+        homeRowOrder.map { key ->
+            HomeRowOption(
+                key = key,
+                title = when (key) {
+                    HomePreferences.ROW_WATCH_NEXT -> "Weiterschauen"
+                    HomePreferences.ROW_LIVE_TV -> "Jetzt im TV"
+                    HomePreferences.ROW_APPS -> "Apps"
+                    else -> previewTitles[key] ?: "App-Kanal"
+                },
+            )
+        }
+    }
+
+    LaunchedEffect(searchQuery, apps, homeWatchNextItems, visiblePreviewChannels, displayLiveTvChannels, epgState, searchRepository) {
         val requestedQuery = searchQuery
         if (requestedQuery.trim().length < 2) {
             localSearchResults = emptyList()
@@ -270,9 +279,7 @@ fun LauncherApp(
                 epgState = epgState,
             )
         }
-        if (searchQuery == requestedQuery) {
-            localSearchResults = results
-        }
+        if (searchQuery == requestedQuery) localSearchResults = results
     }
 
     LaunchedEffect(searchQuery, searchRepository) {
@@ -291,19 +298,18 @@ fun LauncherApp(
         }
     }
 
-    val sourceLinkedTmdbResults = remember(
-        tmdbSearchResults,
-        homeWatchNextItems,
-        visiblePreviewChannels,
-        appLabels,
-    ) {
+    LaunchedEffect(section, searchQuery, searchRepository) {
+        if (section != LauncherSection.Search || searchQuery.isNotBlank() || !searchRepository.isTmdbConfigured) {
+            return@LaunchedEffect
+        }
+        isBrowseLoading = true
+        browseSections = searchRepository.browseTmdb()
+        isBrowseLoading = false
+    }
+
+    val sourceLinkedTmdbResults = remember(tmdbSearchResults, homeWatchNextItems, visiblePreviewChannels, appLabels) {
         tmdbSearchResults.map { result ->
-            linkTmdbResultToLocalSource(
-                result = result,
-                watchNextItems = homeWatchNextItems,
-                previewChannels = visiblePreviewChannels,
-                appLabels = appLabels,
-            )
+            linkTmdbResultToLocalSource(result, homeWatchNextItems, visiblePreviewChannels, appLabels)
         }
     }
     val mergedLocalSearchResults = remember(localSearchResults, sourceLinkedTmdbResults) {
@@ -326,17 +332,13 @@ fun LauncherApp(
             }
         }
     }
-
-    LaunchedEffect(section) {
-        if (section != LauncherSection.Home) navigationVisible = true
-    }
+    LaunchedEffect(section) { if (section != LauncherSection.Home) navigationVisible = true }
 
     val selectedDetailsItem = selectedDetailsSourceId?.let { selectedSourceId ->
         homeWatchNextItems.firstOrNull { it.media.source.sourceId == selectedSourceId }
     }
-    val selectedDetailsMedia = selectedDetailsItem?.media
-        ?: selectedSearchDetailsMedia
-        ?: selectedHomeDetailsMedia
+    val selectedDetailsMedia = selectedDetailsItem?.media ?: selectedSearchDetailsMedia ?: selectedHomeDetailsMedia
+
     val closeDetails: () -> Unit = {
         when {
             selectedSearchDetailsResultId != null -> {
@@ -348,7 +350,6 @@ fun LauncherApp(
                 selectedSearchDetailsMedia = null
                 selectedDetailsSourceId = null
             }
-
             selectedDetailsItem != null -> {
                 selectedDetailsSourceId?.let { sourceId ->
                     watchNextFocusRestoreSourceId = sourceId
@@ -356,7 +357,6 @@ fun LauncherApp(
                 }
                 selectedDetailsSourceId = null
             }
-
             else -> {
                 selectedHomeDetailsMedia = null
                 selectedHomeDetailsSourceLabel = null
@@ -374,19 +374,19 @@ fun LauncherApp(
         openPlayerEpgInitially = false
         initialPlayerEpgProgramStartUtcMillis = null
     }
+
     BackHandler(enabled = selectedDetailsMedia != null, onBack = closeDetails)
-    BackHandler(
-        enabled = selectedDetailsMedia == null &&
-            selectedLiveTvServiceReference == null &&
-            section == LauncherSection.LiveTv,
-    ) {
-        section = LauncherSection.Settings
+    BackHandler(enabled = showHomeSettings && selectedDetailsMedia == null && selectedLiveTvServiceReference == null) {
+        showHomeSettings = false
+        section = LauncherSection.Home
+        navigationVisible = true
     }
+    BackHandler(
+        enabled = !showHomeSettings && selectedDetailsMedia == null && selectedLiveTvServiceReference == null && section == LauncherSection.LiveTv,
+    ) { section = LauncherSection.Settings }
 
     DisposableEffect(activity) {
-        if (activity == null) {
-            onDispose { }
-        } else {
+        if (activity == null) onDispose { } else {
             val observer = LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_RESUME) {
                     val granted = TvProviderPermissionManager.hasReadTvListings(context)
@@ -407,27 +407,19 @@ fun LauncherApp(
             tvListingsPermissionLauncher.launch(TvProviderPermissionManager.READ_TV_LISTINGS)
         }
     }
-
-    LaunchedEffect(updateManager) {
-        updateManager.checkForUpdates()
-    }
+    LaunchedEffect(updateManager) { updateManager.checkForUpdates() }
 
     val openApp: (InstalledApp) -> Unit = { app -> installedAppsRepository.launch(app) }
-    val openWatchNext: (EnrichedWatchNextItem) -> Unit = { item ->
-        watchNextRepository.launch(item.sourceItem)
-    }
+    val openWatchNext: (EnrichedWatchNextItem) -> Unit = { item -> watchNextRepository.launch(item.sourceItem) }
     val openSearchResult: (SearchItem) -> Unit = { result ->
         when (result.kind) {
-            SearchResultKind.App -> {
-                result.packageName
-                    ?.let { packageName -> apps.firstOrNull { it.packageName == packageName } }
-                    ?.let(openApp)
-            }
+            SearchResultKind.App -> result.packageName
+                ?.let { packageName -> apps.firstOrNull { it.packageName == packageName } }
+                ?.let(openApp)
 
             SearchResultKind.WatchNext -> {
                 val sourceId = result.media?.source?.sourceId
-                val item = sourceId
-                    ?.let { id -> homeWatchNextItems.firstOrNull { it.media.source.sourceId == id } }
+                val item = sourceId?.let { id -> homeWatchNextItems.firstOrNull { it.media.source.sourceId == id } }
                 if (item != null) {
                     selectedHomeDetailsMedia = null
                     selectedHomeDetailsSourceLabel = null
@@ -451,24 +443,18 @@ fun LauncherApp(
                     selectedLiveTvServiceReference = serviceReference
                     openPlayerEpgInitially = true
                     initialPlayerEpgProgramStartUtcMillis = startUtcMillis
-                    scope.launch {
-                        epgRepository.enrichProgram(serviceReference, startUtcMillis)
-                    }
+                    scope.launch { epgRepository.enrichProgram(serviceReference, startUtcMillis) }
                 }
             }
 
-            SearchResultKind.Tmdb -> {
-                result.media?.let { media ->
-                    selectedDetailsSourceId = null
-                    selectedHomeDetailsMedia = null
-                    selectedSearchDetailsResultId = result.id
-                    selectedSearchDetailsMedia = media
-                    scope.launch {
-                        val detailed = searchRepository.loadTmdbDetails(media)
-                        if (selectedSearchDetailsResultId == result.id) {
-                            selectedSearchDetailsMedia = detailed
-                        }
-                    }
+            SearchResultKind.Tmdb -> result.media?.let { media ->
+                selectedDetailsSourceId = null
+                selectedHomeDetailsMedia = null
+                selectedSearchDetailsResultId = result.id
+                selectedSearchDetailsMedia = media
+                scope.launch {
+                    val detailed = searchRepository.loadTmdbDetails(media)
+                    if (selectedSearchDetailsResultId == result.id) selectedSearchDetailsMedia = detailed
                 }
             }
         }
@@ -486,9 +472,7 @@ fun LauncherApp(
                 val detailsMedia = selectedDetailsMedia
                 val packageName = detailsMedia.source.packageName
                 val sourceLabel = when {
-                    selectedDetailsItem != null -> {
-                        apps.firstOrNull { it.packageName == packageName }?.label ?: packageName
-                    }
+                    selectedDetailsItem != null -> apps.firstOrNull { it.packageName == packageName }?.label ?: packageName
                     selectedSearchDetailsResultId != null -> "TMDB"
                     else -> selectedHomeDetailsSourceLabel
                 }
@@ -497,266 +481,255 @@ fun LauncherApp(
                     sourceLabel = sourceLabel,
                     onPlay = selectedDetailsItem?.let { item -> { openWatchNext(item) } },
                     onBack = closeDetails,
-                    onTrailer = detailsMedia.trailer?.let {
-                        { YouTubeLauncher.playTrailer(context, detailsMedia) }
-                    },
+                    onTrailer = detailsMedia.trailer?.let { { YouTubeLauncher.playTrailer(context, detailsMedia) } },
                     onTrailerSearch = if (detailsMedia.trailer == null) {
                         { YouTubeLauncher.searchTrailer(context, detailsMedia) }
-                    } else {
-                        null
-                    },
+                    } else null,
                 )
             }
 
-            selectedLiveTvServiceReference != null && displayLiveTvChannels.isNotEmpty() -> {
-                LiveTvPlayerScreen(
-                    channels = displayLiveTvChannels,
-                    initialServiceReference = requireNotNull(selectedLiveTvServiceReference),
-                    onResolveStream = openWebifRepository::resolveStream,
-                    epgState = epgState,
-                    initialShowEpg = openPlayerEpgInitially,
-                    initialEpgProgramStartUtcMillis = initialPlayerEpgProgramStartUtcMillis,
-                    onRefreshEpg = {
-                        scope.launch {
-                            epgRepository.refresh(
-                                channels = openWebifRepository.state.value.channels,
-                                force = true,
-                            )
-                        }
-                    },
-                    onEnrichEpgProgram = { serviceReference, startUtcMillis ->
-                        scope.launch {
-                            epgRepository.enrichProgram(serviceReference, startUtcMillis)
-                        }
-                    },
-                    onOpenEpgProgramDetails = { channel, program ->
-                        selectedDetailsSourceId = null
-                        selectedSearchDetailsMedia = null
-                        selectedSearchDetailsResultId = null
-                        selectedHomeDetailsMedia = epgProgramMedia(channel, program)
-                        selectedHomeDetailsSourceLabel = channel.name
-                        openPlayerEpgInitially = true
-                        initialPlayerEpgProgramStartUtcMillis = program.startUtcMillis
-                    },
-                    onBack = closeLiveTvPlayer,
-                )
-            }
+            selectedLiveTvServiceReference != null && displayLiveTvChannels.isNotEmpty() -> LiveTvPlayerScreen(
+                channels = displayLiveTvChannels,
+                initialServiceReference = requireNotNull(selectedLiveTvServiceReference),
+                onResolveStream = openWebifRepository::resolveStream,
+                epgState = epgState,
+                initialShowEpg = openPlayerEpgInitially,
+                initialEpgProgramStartUtcMillis = initialPlayerEpgProgramStartUtcMillis,
+                onRefreshEpg = {
+                    scope.launch { epgRepository.refresh(openWebifRepository.state.value.channels, force = true) }
+                },
+                onEnrichEpgProgram = { serviceReference, startUtcMillis ->
+                    scope.launch { epgRepository.enrichProgram(serviceReference, startUtcMillis) }
+                },
+                onOpenEpgProgramDetails = { channel, program ->
+                    selectedDetailsSourceId = null
+                    selectedSearchDetailsMedia = null
+                    selectedSearchDetailsResultId = null
+                    selectedHomeDetailsMedia = epgProgramMedia(channel, program)
+                    selectedHomeDetailsSourceLabel = channel.name
+                    openPlayerEpgInitially = true
+                    initialPlayerEpgProgramStartUtcMillis = program.startUtcMillis
+                },
+                onBack = closeLiveTvPlayer,
+            )
 
-            else -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 56.dp, vertical = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(if (navigationVisible) 18.dp else 0.dp),
-                ) {
-                    if (navigationVisible) {
-                        val activePrimarySection = if (section == LauncherSection.LiveTv) {
-                            LauncherSection.Settings
-                        } else {
-                            section
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            PRIMARY_SECTIONS.forEach { item ->
-                                val active = activePrimarySection == item
-                                TouchButton(
-                                    onClick = { section = item },
-                                    modifier = if (active) {
-                                        Modifier.border(
-                                            width = 2.dp,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            shape = RoundedCornerShape(50),
-                                        )
-                                    } else {
-                                        Modifier
-                                    },
-                                ) {
-                                    Text(item.label)
-                                }
-                            }
-                        }
-                    }
+            showHomeSettings -> HomeSettingsScreen(
+                rowOptions = homeRowOptions,
+                onMoveRow = { key, delta -> homePreferences.moveRow(availableHomeRowKeys, key, delta) },
+                onResetRows = homePreferences::resetRows,
+                onResetApps = homePreferences::resetApps,
+                watchNextResult = watchNextResult,
+                previewChannelsResult = previewChannelsResult,
+                installedApps = apps,
+                hiddenWatchNextPackages = hiddenWatchNextPackages,
+                onSetWatchNextSourceVisible = watchNextSourcePreferences::setVisible,
+                onShowAllWatchNextSources = watchNextSourcePreferences::showAll,
+                hiddenPreviewChannelIds = hiddenPreviewChannelIds,
+                onSetPreviewChannelVisible = previewChannelPreferences::setVisible,
+                onShowAllPreviewChannels = previewChannelPreferences::showAll,
+                onBack = {
+                    showHomeSettings = false
+                    navigationVisible = true
+                },
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
 
-                    when (section) {
-                        LauncherSection.Home -> HomeScreen(
-                            apps = apps,
-                            watchNextItems = homeWatchNextItems,
-                            watchNextError = watchNextResult.errorMessage,
-                            previewChannels = visiblePreviewChannels,
-                            previewChannelsError = previewChannelsResult.errorMessage,
-                            hasTvListingsPermission = hasTvListingsPermission,
-                            liveTvState = displayLiveTvState,
-                            onRequestTvListingsPermission = requestTvListingsPermission,
-                            onOpenApp = openApp,
-                            onOpenWatchNext = openWatchNext,
-                            onOpenWatchNextDetails = { item ->
-                                liveTvFocusRestoreServiceReference = null
-                                selectedSearchDetailsMedia = null
-                                selectedSearchDetailsResultId = null
-                                selectedHomeDetailsMedia = null
-                                selectedDetailsSourceId = item.media.source.sourceId
-                            },
-                            onOpenMediaDetails = { media, label ->
-                                selectedDetailsSourceId = null
-                                selectedSearchDetailsMedia = null
-                                selectedSearchDetailsResultId = null
-                                selectedHomeDetailsMedia = media
-                                selectedHomeDetailsSourceLabel = label
-                            },
-                            onOpenPreviewProgram = { _, program ->
-                                previewChannelsRepository.launch(program)
-                            },
-                            onOpenLiveTv = { section = LauncherSection.LiveTv },
-                            onPlayLiveTvChannel = { channel ->
-                                watchNextFocusRestoreSourceId = null
-                                openPlayerEpgInitially = false
-                                initialPlayerEpgProgramStartUtcMillis = null
-                                selectedLiveTvServiceReference = channel.serviceReference
-                            },
-                            onNavigationVisibilityChange = { navigationVisible = it },
-                            watchNextListState = watchNextListState,
-                            liveTvListState = liveTvListState,
-                            appsListState = appsListState,
-                            watchNextFocusRestoreSourceId = watchNextFocusRestoreSourceId,
-                            watchNextFocusRestoreGeneration = watchNextFocusRestoreGeneration,
-                            liveTvFocusRestoreServiceReference = liveTvFocusRestoreServiceReference,
-                            liveTvFocusRestoreGeneration = liveTvFocusRestoreGeneration,
-                        )
-
-                        LauncherSection.Search -> SearchScreen(
-                            query = searchQuery,
-                            onQueryChange = { searchQuery = it },
-                            localResults = mergedLocalSearchResults,
-                            tmdbResults = pureTmdbSearchResults,
-                            isTmdbLoading = isTmdbSearchLoading,
-                            tmdbConfigured = searchRepository.isTmdbConfigured,
-                            apps = apps,
-                            onOpenResult = openSearchResult,
-                            listState = searchListState,
-                            focusRestoreResultId = searchFocusRestoreResultId,
-                            focusRestoreGeneration = searchFocusRestoreGeneration,
-                        )
-
-                        LauncherSection.Apps -> AppsScreen(
-                            apps = apps,
-                            onOpenApp = openApp,
-                        )
-
-                        LauncherSection.Settings -> Column(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
+            else -> Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(if (navigationVisible) 8.dp else 0.dp),
+            ) {
+                if (navigationVisible) {
+                    val activePrimarySection = if (section == LauncherSection.LiveTv) LauncherSection.Settings else section
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PRIMARY_SECTIONS.forEach { item ->
+                            val active = activePrimarySection == item
                             TouchButton(
                                 onClick = {
-                                    when (val state = updateState) {
-                                        is UpdateState.Available -> updateManager.startDownload(state.info)
-                                        is UpdateState.ReadyToInstall -> scope.launch {
-                                            if (!updateManager.canRequestPackageInstalls()) {
-                                                updateManager.openUnknownSourcesSettings()
-                                            } else {
-                                                updateManager.installDownloadedUpdate()
-                                            }
-                                        }
-                                        else -> scope.launch { updateManager.checkForUpdates() }
-                                    }
+                                    showHomeSettings = false
+                                    section = item
                                 },
-                                enabled = updateState !is UpdateState.Checking &&
-                                    updateState !is UpdateState.Downloading,
-                            ) {
-                                Text(
-                                    when (val state = updateState) {
-                                        is UpdateState.Available -> "Update ${state.info.versionName} herunterladen"
-                                        is UpdateState.ReadyToInstall -> "Update ${state.info.versionName} installieren"
-                                        is UpdateState.Downloading -> "Update wird heruntergeladen …"
-                                        UpdateState.Checking -> "Suche nach Update …"
-                                        else -> "Nach Update suchen"
-                                    },
-                                )
-                            }
-                            TouchButton(onClick = { section = LauncherSection.LiveTv }) {
-                                Text("Live TV / Gigablue")
-                            }
-                            SettingsScreen(
-                                updateManager = updateManager,
-                                watchNextResult = watchNextResult,
-                                previewChannelsResult = previewChannelsResult,
-                                installedApps = apps,
-                                hiddenWatchNextPackages = hiddenWatchNextPackages,
-                                onSetWatchNextSourceVisible = watchNextSourcePreferences::setVisible,
-                                onShowAllWatchNextSources = watchNextSourcePreferences::showAll,
-                                hiddenPreviewChannelIds = hiddenPreviewChannelIds,
-                                onSetPreviewChannelVisible = previewChannelPreferences::setVisible,
-                                onShowAllPreviewChannels = previewChannelPreferences::showAll,
-                                hasTvListingsPermission = hasTvListingsPermission,
-                                onRequestTvListingsPermission = requestTvListingsPermission,
-                                tmdbConfigured = watchNextEnrichmentRepository.isTmdbConfigured,
-                                enrichedWatchNextItems = homeWatchNextItems,
-                                modifier = Modifier.weight(1f),
+                                onLongClick = if (item == LauncherSection.Home) {
+                                    {
+                                        section = LauncherSection.Home
+                                        navigationVisible = true
+                                        showHomeSettings = true
+                                    }
+                                } else null,
+                                modifier = if (active) {
+                                    Modifier.border(
+                                        width = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        shape = RoundedCornerShape(50),
+                                    )
+                                } else Modifier,
+                            ) { Text(item.label) }
+                        }
+                    }
+                }
+
+                when (section) {
+                    LauncherSection.Home -> HomeScreen(
+                        apps = orderedHomeApps,
+                        watchNextItems = homeWatchNextItems,
+                        watchNextError = watchNextResult.errorMessage,
+                        previewChannels = visiblePreviewChannels,
+                        previewChannelsError = previewChannelsResult.errorMessage,
+                        hasTvListingsPermission = hasTvListingsPermission,
+                        liveTvState = displayLiveTvState,
+                        homeRowOrder = homeRowOrder,
+                        onMoveHomeApp = { packageName, delta ->
+                            homePreferences.moveApp(apps.map(InstalledApp::packageName), packageName, delta)
+                        },
+                        onRequestTvListingsPermission = requestTvListingsPermission,
+                        onOpenApp = openApp,
+                        onOpenWatchNext = openWatchNext,
+                        onOpenWatchNextDetails = { item ->
+                            liveTvFocusRestoreServiceReference = null
+                            selectedSearchDetailsMedia = null
+                            selectedSearchDetailsResultId = null
+                            selectedHomeDetailsMedia = null
+                            selectedDetailsSourceId = item.media.source.sourceId
+                        },
+                        onOpenMediaDetails = { media, label ->
+                            selectedDetailsSourceId = null
+                            selectedSearchDetailsMedia = null
+                            selectedSearchDetailsResultId = null
+                            selectedHomeDetailsMedia = media
+                            selectedHomeDetailsSourceLabel = label
+                        },
+                        onOpenPreviewProgram = { _, program -> previewChannelsRepository.launch(program) },
+                        onOpenLiveTv = { section = LauncherSection.LiveTv },
+                        onPlayLiveTvChannel = { channel ->
+                            watchNextFocusRestoreSourceId = null
+                            openPlayerEpgInitially = false
+                            initialPlayerEpgProgramStartUtcMillis = null
+                            selectedLiveTvServiceReference = channel.serviceReference
+                        },
+                        onNavigationVisibilityChange = { navigationVisible = it },
+                        watchNextListState = watchNextListState,
+                        liveTvListState = liveTvListState,
+                        appsListState = appsListState,
+                        watchNextFocusRestoreSourceId = watchNextFocusRestoreSourceId,
+                        watchNextFocusRestoreGeneration = watchNextFocusRestoreGeneration,
+                        liveTvFocusRestoreServiceReference = liveTvFocusRestoreServiceReference,
+                        liveTvFocusRestoreGeneration = liveTvFocusRestoreGeneration,
+                    )
+
+                    LauncherSection.Search -> SearchScreen(
+                        query = searchQuery,
+                        onQueryChange = { searchQuery = it },
+                        localResults = mergedLocalSearchResults,
+                        tmdbResults = pureTmdbSearchResults,
+                        browseSections = browseSections,
+                        isTmdbLoading = isTmdbSearchLoading,
+                        isBrowseLoading = isBrowseLoading,
+                        tmdbConfigured = searchRepository.isTmdbConfigured,
+                        apps = apps,
+                        onOpenResult = openSearchResult,
+                        listState = searchListState,
+                        focusRestoreResultId = searchFocusRestoreResultId,
+                        focusRestoreGeneration = searchFocusRestoreGeneration,
+                    )
+
+                    LauncherSection.Apps -> AppsScreen(apps = apps, onOpenApp = openApp)
+
+                    LauncherSection.Settings -> Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        TouchButton(
+                            onClick = {
+                                when (val state = updateState) {
+                                    is UpdateState.Available -> updateManager.startDownload(state.info)
+                                    is UpdateState.ReadyToInstall -> scope.launch {
+                                        if (!updateManager.canRequestPackageInstalls()) updateManager.openUnknownSourcesSettings()
+                                        else updateManager.installDownloadedUpdate()
+                                    }
+                                    else -> scope.launch { updateManager.checkForUpdates() }
+                                }
+                            },
+                            enabled = updateState !is UpdateState.Checking && updateState !is UpdateState.Downloading,
+                        ) {
+                            Text(
+                                when (val state = updateState) {
+                                    is UpdateState.Available -> "Update ${state.info.versionName} herunterladen"
+                                    is UpdateState.ReadyToInstall -> "Update ${state.info.versionName} installieren"
+                                    is UpdateState.Downloading -> "Update wird heruntergeladen …"
+                                    UpdateState.Checking -> "Suche nach Update …"
+                                    else -> "Nach Update suchen"
+                                },
                             )
                         }
-
-                        LauncherSection.LiveTv -> LiveTvScreen(
-                            state = displayLiveTvState,
-                            epgState = epgState,
-                            onSaveConnection = { baseUrl, username, password ->
-                                if (openWebifRepository.updateConnection(baseUrl, username, password)) {
-                                    scope.launch {
-                                        openWebifRepository.refresh()
-                                        epgRepository.refresh(openWebifRepository.state.value.channels)
-                                    }
-                                }
-                            },
-                            onSelectBouquet = { serviceReference ->
-                                openWebifRepository.selectBouquet(serviceReference)
-                                scope.launch {
-                                    openWebifRepository.refresh()
-                                    epgRepository.refresh(openWebifRepository.state.value.channels)
-                                }
-                            },
-                            onRefresh = {
-                                scope.launch {
-                                    openWebifRepository.refresh()
-                                    epgRepository.refresh(openWebifRepository.state.value.channels)
-                                }
-                            },
-                            onSaveEpgSource = { sourceUrl ->
-                                scope.launch {
-                                    if (epgRepository.updateSource(sourceUrl)) {
-                                        epgRepository.refresh(
-                                            channels = openWebifRepository.state.value.channels,
-                                            force = true,
-                                        )
-                                    }
-                                }
-                            },
-                            onRefreshEpg = {
-                                scope.launch {
-                                    epgRepository.refresh(
-                                        channels = openWebifRepository.state.value.channels,
-                                        force = true,
-                                    )
-                                }
-                            },
-                            onSetEpgMapping = { serviceReference, xmltvChannelId ->
-                                scope.launch {
-                                    epgRepository.setManualMapping(serviceReference, xmltvChannelId)
-                                    epgRepository.refresh(
-                                        channels = openWebifRepository.state.value.channels,
-                                        force = true,
-                                    )
-                                }
-                            },
+                        TouchButton(onClick = { section = LauncherSection.LiveTv }) { Text("Live TV / Gigablue") }
+                        SettingsScreen(
+                            updateManager = updateManager,
+                            watchNextResult = watchNextResult,
+                            previewChannelsResult = previewChannelsResult,
+                            installedApps = apps,
+                            hiddenWatchNextPackages = hiddenWatchNextPackages,
+                            onSetWatchNextSourceVisible = watchNextSourcePreferences::setVisible,
+                            onShowAllWatchNextSources = watchNextSourcePreferences::showAll,
+                            hiddenPreviewChannelIds = hiddenPreviewChannelIds,
+                            onSetPreviewChannelVisible = previewChannelPreferences::setVisible,
+                            onShowAllPreviewChannels = previewChannelPreferences::showAll,
+                            hasTvListingsPermission = hasTvListingsPermission,
+                            onRequestTvListingsPermission = requestTvListingsPermission,
+                            tmdbConfigured = watchNextEnrichmentRepository.isTmdbConfigured,
+                            enrichedWatchNextItems = homeWatchNextItems,
+                            modifier = Modifier.weight(1f),
                         )
                     }
+
+                    LauncherSection.LiveTv -> LiveTvScreen(
+                        state = displayLiveTvState,
+                        epgState = epgState,
+                        onSaveConnection = { baseUrl, username, password ->
+                            if (openWebifRepository.updateConnection(baseUrl, username, password)) {
+                                scope.launch {
+                                    openWebifRepository.refresh()
+                                    epgRepository.refresh(openWebifRepository.state.value.channels)
+                                }
+                            }
+                        },
+                        onSelectBouquet = { serviceReference ->
+                            openWebifRepository.selectBouquet(serviceReference)
+                            scope.launch {
+                                openWebifRepository.refresh()
+                                epgRepository.refresh(openWebifRepository.state.value.channels)
+                            }
+                        },
+                        onRefresh = {
+                            scope.launch {
+                                openWebifRepository.refresh()
+                                epgRepository.refresh(openWebifRepository.state.value.channels)
+                            }
+                        },
+                        onSaveEpgSource = { sourceUrl ->
+                            scope.launch {
+                                if (epgRepository.updateSource(sourceUrl)) {
+                                    epgRepository.refresh(openWebifRepository.state.value.channels, force = true)
+                                }
+                            }
+                        },
+                        onRefreshEpg = {
+                            scope.launch { epgRepository.refresh(openWebifRepository.state.value.channels, force = true) }
+                        },
+                        onSetEpgMapping = { serviceReference, xmltvChannelId ->
+                            scope.launch {
+                                epgRepository.setManualMapping(serviceReference, xmltvChannelId)
+                                epgRepository.refresh(openWebifRepository.state.value.channels, force = true)
+                            }
+                        },
+                    )
                 }
             }
         }
     }
 }
 
-private fun epgProgramMedia(
-    channel: LiveTvChannel,
-    program: LiveTvProgram,
-): MediaItem = MediaItem(
+private fun epgProgramMedia(channel: LiveTvChannel, program: LiveTvProgram): MediaItem = MediaItem(
     id = "epg:${channel.serviceReference}:${program.startUtcMillis}",
     type = program.tmdbType ?: MediaType.Unknown,
     title = program.title,
