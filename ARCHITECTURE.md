@@ -188,6 +188,8 @@ TV-/D-Pad-Bedienung bleibt die Produktquelle der Wahrheit. Für schnellere UI-Sm
 
 Compose-for-TV-Komponenten bleiben für TV-Fokus und Fernbedienung erhalten. Ein kleiner `TouchButton`-/`TouchCard`-Wrapper ergänzt ausschließlich Pointer-Taps. Scrollbare Home-, Such-, Apps-, Einstellungen-, EPG- und Live-TV-Bereiche bekommen zusätzlich einen Pointer-Drag-Fallback, ohne die bestehende D-Pad-Navigation oder Quellreihenfolge umzubauen. Watch Next und Preview Channels können auf Nicht-TV-Geräten andere bzw. keine Daten liefern, weil TvProvider-Inhalte gerätelokal sind.
 
+Die provider-neutrale Medien-Detailseite verwendet ebenfalls einen echten vertikalen Scroll-Container mit demselben Touch-Fallback. Lange Beschreibungen werden nicht mehr auf sechs Zeilen abgeschnitten. Aktionsbuttons liegen in einem `FlowRow`, sodass sie auf schmalen Testgeräten umbrechen und weiterhin erreichbar bleiben; auf TV-Breite bleibt die bestehende fokussierbare Button-Struktur erhalten.
+
 ## Detailnavigation und Trailer
 
 Kurzes `OK` auf Watch Next startet weiterhin den vorhandenen Source-/Playback-Intent. `INFO` oder lange `OK` öffnet Details. Hero-Medien öffnen ebenfalls die provider-neutrale Detailansicht.
