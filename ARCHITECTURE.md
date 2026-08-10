@@ -128,7 +128,9 @@ LiveTvChannel / LiveTvProgram
 
 Die externe M3U/XMLTV-Quelle wird **nur als Metadatenquelle** verwendet. Gigablue/OpenWebif bleibt für Senderidentität, Reihenfolge und Wiedergabe maßgeblich. XMLTV liefert Guide-Metadaten und Room-Cache, TMDB ergänzt konservativ Bilder und Medieninformationen.
 
-Der wiederverwendbare `EpgScreen` ist weiterhin eine eigene UI-Komponente, wird im aktuellen UX aber aus dem laufenden Live-TV-Player als Guide geöffnet. EPG-Suchergebnisse öffnen den passenden Sender im Player und den Guide-Kontext statt einen eigenen Hauptnavigationspunkt zu verwenden. Hat das gewählte EPG-Programm eine TMDB-Serien-/Film- oder Episodenreferenz, kann die gemeinsame Medien-Detailansicht geöffnet werden; Back stellt anschließend wieder Player + Guide-Kontext her.
+XMLTV-Kategorien werden weiterhin als Typ-Hinweis genutzt. Staffel+Episode ergibt `Episode`, eindeutige Film-/Serienkategorien ergeben `Movie` bzw. `Series`. Fehlt eine belastbare Kategorie, wird der Treffer nicht mehr vorzeitig verworfen: der vorhandene TMDB-Multi-Search läuft mit `MediaType.Unknown`, anschließend gilt unverändert die zentrale strenge Confidence-Schwelle. Dadurch können bekannte Programme ohne brauchbare XMLTV-Kategorie angereichert werden, ohne schwache Treffer zu übernehmen.
+
+Der wiederverwendbare `EpgScreen` ist weiterhin eine eigene UI-Komponente, wird im aktuellen UX aber aus dem laufenden Live-TV-Player als Guide geöffnet. Das beim Öffnen bereits ausgewählte aktuelle bzw. angesprungene Programm stößt sofort denselben TMDB-Anreicherungspfad an wie eine manuell ausgewählte Programmzeile. EPG-Suchergebnisse öffnen den passenden Sender im Player und den Guide-Kontext statt einen eigenen Hauptnavigationspunkt zu verwenden. Hat das gewählte EPG-Programm eine TMDB-Serien-/Film- oder Episodenreferenz, kann die gemeinsame Medien-Detailansicht geöffnet werden; Back stellt anschließend wieder Player + Guide-Kontext her.
 
 ## Live-TV-Pipeline
 
@@ -178,7 +180,7 @@ Sprachsuche delegiert an die auf dem Gerät vorhandene Android-Spracherkennungsa
 
 TMDB-/EPG-Treffer ohne direkten Playback-Intent können optional an installierte Ziel-Apps übergeben werden. CloudStream wird über dessen `cloudstreamsearch`-Intent erkannt; die tatsächlich installierte Stable-/Prerelease-/Debug-Paketvariante wird dynamisch aufgelöst. Die aktuelle CloudStream-Such-Activity erzwingt selbst eine sichtbare Soft-Tastatur und bietet über den externen Search-Intent keinen dokumentierten Schalter zum Unterdrücken; I Launcher sendet deshalb keinen timing-basierten Back-Key-Workaround.
 
-Kodi verwendet die exportierte `XBMCSearchableActivity` mit explizitem `ACTION_SEARCH`, `SearchManager.QUERY` und einer nicht-null, inerten Data-URI. Die Data-URI ist nötig, weil die aktuelle Kodi-Activity `intent.data` bereits vor dem `ACTION_SEARCH`-Zweig dereferenziert. Kodi Core durchsucht auf diesem Weg seine Medienbibliothek; Add-on-spezifische Suchrouten bleiben separate optionale Providerintegrationen.
+Kodis aktuelle Android-`ACTION_SEARCH`-Activity wird bewusst **nicht** mehr als Handoff verwendet: sie fragt intern einen `content://…media/search/<query>`-Pfad ab, den Kodis eigener Media-Provider nicht registriert. Der Adapter verwendet stattdessen Kodis exportierten Suggestions-Provider `suggestions/search_suggest_query`, führt die Provider-Abfrage außerhalb des UI-Threads aus und akzeptiert nur einen starken normalisierten Bibliothekstitel-Treffer. Für diesen Treffer wird ausschließlich die von Kodi selbst zurückgegebene `ACTION_GET_CONTENT`-/`videodb://`-Referenz an `XBMCSearchableActivity` übergeben. Liefert Kodi keinen sicheren Treffer oder ist der Provider nicht nutzbar, wird Kodi normal geöffnet. Das bleibt eine Kodi-Core-Bibliothekssuche; Add-on-spezifische Suchen sind eine getrennte spätere Integration.
 
 ## Home und Navigation
 
@@ -186,11 +188,11 @@ Home besteht aus einem Hero und darunter den Content-Reihen. Der Hero liegt **au
 
 Der Start-Hero wird Local First bestimmt: erster vorhandener Watch-Next-Inhalt, danach erster sichtbarer Preview-Program-Inhalt, sonst ein neutraler Launcher-Hero. Live TV übernimmt den Hero erst, wenn der Benutzer tatsächlich einen Sender fokussiert. Ein automatisch rotierendes Netzwerk-/Trend-Karussell wird bewusst nicht verwendet; das entspricht dem Produktprinzip eines ruhigen, lokalen Hero-Bereichs ohne Werbekarussell.
 
-Artwork liegt im aktuellen TV-Layout rechts und läuft mit einem mehrstufigen horizontalen Verlauf weich in den linken Textbereich aus. Echte Backdrops werden flächig dargestellt; Poster, 4:3- und andere Quellbilder werden nach Möglichkeit `Fit` behandelt, damit zentrale Bildinhalte nicht unnötig abgeschnitten werden. Der Textbereich zeigt ergänzende Informationen wie Medientyp/Staffel-Episode, Jahr und Bewertung statt Fortschritt oder andere unmittelbar auf der fokussierten Karte sichtbare Werte zu duplizieren. Lange Beschreibungen scrollen nach einer Lesepause automatisch innerhalb eines begrenzten Textfensters.
+Artwork liegt im aktuellen TV-Layout rechts und läuft mit einem mehrstufigen horizontalen Verlauf weich in den linken Textbereich aus. Echte Backdrops werden flächig dargestellt; Poster, 4:3- und andere Quellbilder werden nach Möglichkeit `Fit` behandelt, damit zentrale Bildinhalte nicht unnötig abgeschnitten werden. Hat ein Medium ein Titellogo, wird derselbe Titel nicht zusätzlich als große Überschrift wiederholt; Quell-App-Namen werden im Medien-Hero nicht erneut eingeblendet. Der Textbereich zeigt ergänzende Informationen wie Medientyp/Staffel-Episode, Jahr und Bewertung statt Fortschritt oder andere unmittelbar auf der fokussierten Karte sichtbare Werte zu duplizieren. Lange Beschreibungen starten erst nach einer Lesepause und scrollen langsam innerhalb eines begrenzten Textfensters.
 
 Der Hero selbst ist fokussierbar. Bei Medien öffnet `OK` die vorhandene provider-neutrale Detailansicht; bei Apps wird die App geöffnet.
 
-Die primäre Navigation ist bewusst klein: `Home · Suche · Apps · Einstellungen`. Der aktive Punkt wird nur durch einen Rahmen markiert. Auf Home darf die Navigationszeile verschwinden, sobald der Benutzer die vertikalen Content-Reihen nach unten scrollt. Live-TV-/Gigablue-Konfiguration liegt unter Einstellungen; EPG ist eine Player-Funktion und kein eigener Hauptpunkt.
+Die primäre Navigation ist bewusst klein: `Home · Suche · Apps · Einstellungen`. Der aktive Punkt wird nur durch einen Rahmen markiert. Auf Home darf die Navigationszeile verschwinden, sobald der Benutzer tatsächlich vertikal in die Content-Reihen scrollt; kleine Layout-/Bring-into-view-Bewegungen beim horizontalen Kartenfokus werden durch eine kleine Scrollschwelle ignoriert, damit die Navigation beim Links/Rechts-Navigieren nicht springt. Live-TV-/Gigablue-Konfiguration liegt unter Einstellungen; EPG ist eine Player-Funktion und kein eigener Hauptpunkt.
 
 ## Touch-Smoke-Tests
 
@@ -202,9 +204,9 @@ Die provider-neutrale Medien-Detailseite verwendet ebenfalls einen echten vertik
 
 ## Detailnavigation und Trailer
 
-Kurzes `OK` auf Watch Next startet weiterhin den vorhandenen Source-/Playback-Intent. `INFO` oder lange `OK` öffnet Details. Hero-Medien und TMDB-verknüpfte EPG-Programme öffnen ebenfalls die provider-neutrale Detailansicht.
+Kurzes `OK` auf Watch Next startet weiterhin den vorhandenen Source-/Playback-Intent. `INFO` oder lange `OK` öffnet Details. Beim langen TV-OK wird die Navigation erst nach dem konsumierten `ACTION_UP` ausgeführt. Damit kann der physische OK-Release nicht mehr den frisch fokussierten `Fortsetzen/Wiedergeben`-Button der neu aufgebauten Detailseite auslösen. Pointer-Long-Press bleibt davon unabhängig.
 
-Beim Öffnen einer Detailseite wird die erste sinnvolle Aktion fokussiert. Bei direkt abspielbaren Watch-Next-Inhalten bleibt `Fortsetzen/Wiedergeben` vorn. Bei TMDB-/EPG-Details ohne direkten Player folgen verfügbare externe Suchziele in der Reihenfolge CloudStream, Kodi, danach Trailer und Zurück. Externe Suchbuttons verwenden Suchsymbol + App-Name statt erklärender Langtexte.
+Hero-Medien und TMDB-verknüpfte EPG-Programme öffnen ebenfalls die provider-neutrale Detailansicht. Beim Öffnen wird die erste sinnvolle Aktion fokussiert. Bei direkt abspielbaren Watch-Next-Inhalten bleibt `Fortsetzen/Wiedergeben` vorn. Bei TMDB-/EPG-Details ohne direkten Player folgen verfügbare externe Suchziele in der Reihenfolge CloudStream, Kodi, danach Trailer und Zurück. Externe Suchbuttons verwenden Suchsymbol + App-Name statt erklärender Langtexte; das Symbol übernimmt über Compose for TV `LocalContentColor` dieselbe Fokusfarbe wie der Buttontext.
 
 Trailer werden bevorzugt aus TMDB-Video-Metadaten aufgelöst. Wenn eine konkrete YouTube-ID vorhanden ist, startet eine eigene interne Trailer-Activity mit WebView und `WebChromeClient`-Fullscreen-Custom-View-Unterstützung. Es findet keine Stream-Extraktion statt. Wenn keine konkrete Video-ID vorhanden ist, bleibt die externe YouTube-Suche der Fallback. Die interne Trailerwiedergabe mit Bild und Ton wurde auf TV-Hardware bestätigt.
 
