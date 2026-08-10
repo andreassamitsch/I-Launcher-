@@ -183,13 +183,18 @@ fun EpgScreen(
                 selectedProgram?.takeIf {
                     selectedChannel != null && it in guide
                 }?.let { program ->
+                    val channel = selectedChannel
                     ProgramDetails(
                         program = program,
-                        onOpenDetails = onOpenProgramDetails
-                            ?.takeIf { program.tmdbId != null || program.tmdbEpisodeId != null }
-                            ?.let { callback ->
-                                { callback(selectedChannel.serviceReference, program) }
-                            },
+                        onOpenDetails = if (
+                            channel != null &&
+                            onOpenProgramDetails != null &&
+                            (program.tmdbId != null || program.tmdbEpisodeId != null)
+                        ) {
+                            { onOpenProgramDetails(channel.serviceReference, program) }
+                        } else {
+                            null
+                        },
                     )
                 }
 
