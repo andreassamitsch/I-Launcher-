@@ -242,7 +242,10 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Launcher-Name aus der Navigationszeile entfernen
 - [x] Navigation erst nach echter vertikaler Scrollbewegung ausblenden; kleine Fokus-/Bring-into-view-Nudges ignorieren
 - [x] Live-TV-/Gigablue-Konfiguration unter Einstellungen verschieben
-- [ ] TV-Gerätetest für Nav-Jitter, Hero-Duplikate und neues Scrolltempo durchführen
+- [x] Home-/Search-Layout im zweiten Google-TV-inspirierten Feinschliff visuell vom Benutzer grundsätzlich bestätigt
+- [x] Hauptnavigation optisch kompakter: transparente Ruhefläche, kleine Fokusvergrößerung und helle Fokus-Pill ohne Änderung des Fokuspfads
+- [x] separate `Alle Apps`-Ansicht nutzt adaptives TV-Grid und dauerhaft sichtbare App-Namen; Home-App-Dock bleibt label-reduziert
+- [ ] TV-Gerätetest für Nav-Jitter, kompakten Nav-Fokus, adaptives Apps-Grid und jüngste D-Pad-Regressionen durchführen
 
 ## Phase 8 – optionale Provider
 
