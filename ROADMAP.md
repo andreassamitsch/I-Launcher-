@@ -110,9 +110,9 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Unit-Tests für Trailer-Auswahl und Episode-vor-Serie-Priorität
 - [x] signierten Development-Build `0.1.0-dev.47` erfolgreich mit Unit-Tests und `assembleDebug` veröffentlicht
 - [x] realer TCL-Gerätetest von Datenbankmigration, Trailerstart, Such-Fallback und Rückkehrverhalten bestanden
-- [ ] aktueller UI-Polish: direkte TMDB-YouTube-Trailer intern in eigener Launcher-Activity wiedergeben; Audio-only-Fehler des ersten Compose-WebView-Versuchs auf Hardware nachtesten
+- [x] direkte TMDB-YouTube-Trailer intern in eigener Launcher-Activity mit Bild und Ton auf TV-Hardware bestätigt
 
-**Phase 4 bleibt funktional abgeschlossen; die interne Trailerwiedergabe ist eine spätere UX-Verbesserung und aktuell erneut im Gerätetest.**
+**Phase 4 ist funktional abgeschlossen; interne Trailerwiedergabe ist auf TV-Hardware bestätigt.**
 
 ## Phase 5 – Gigablue / OpenWebif
 
@@ -161,9 +161,10 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] reale `riedl-dach.at` M3U/XMLTV-Quelle auf TCL gegen Gigablue-Sender getestet
 - [x] D-Pad-/Focus-Test auf Home sowie im vollständigen EPG bestanden
 - [x] Offline-/Cache-Test und Update/Migration vom bestehenden Build bestanden
-- [ ] aktueller UI-Polish: EPG aus der Hauptnavigation entfernen und als Guide direkt im laufenden Live-TV-Player öffnen; Hardware-Focus/Back prüfen
+- [x] EPG aus der Hauptnavigation entfernt und als Guide direkt im laufenden Live-TV-Player geöffnet
+- [ ] neuer UI-Polish: D-Pad-EPG-Zugang, langes OK sowie EPG→TMDB-Details auf TV-Hardware prüfen
 
-**Phase 6 ist funktional abgeschlossen und auf realer TCL-/Gigablue-/XMLTV-Hardware bestätigt. Die spätere Einbettung des bestehenden Guides in den Player ist aktuell im Gerätetest.**
+**Phase 6 ist funktional abgeschlossen und auf realer TCL-/Gigablue-/XMLTV-Hardware bestätigt. Die neuen Guide-/Detail-Navigationspfade bleiben bis zum nächsten TV-Test offen.**
 
 ## Phase 7 – Live TV
 
@@ -188,10 +189,15 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Back-/Focus-Rückgabe vom Player auf die Home-Karte bestätigt
 - [x] Media3-Wiedergabe auf dem Zielgerät ohne blockierenden Decoder-/Playbackfehler bestätigt
 - [x] realer Phase-7-Gesamttest auf TCL + Gigablue X3 bestanden
-- [ ] aktueller UI-Polish: Infoleisten nach 3 Sekunden ausblenden, OK einblenden, erstes Back ausblenden
-- [ ] aktueller UI-Polish: TV-Guide/EPG als Player-Funktion hardwarevalidieren
+- [x] Infoleisten nach 3 Sekunden ausblenden und mit OK wieder einblenden
+- [x] kompakte `Jetzt im TV`-Reihe im Player
+- [x] bei sichtbarem Overlay D-Pad Hoch/Runter für UI statt Zapping reservieren
+- [x] bei ausgeblendetem Overlay D-Pad Hoch/Runter zum Zappen; CH+/CH− bleiben explizite Senderwechsel
+- [x] langes OK als Direktzugang zum EPG
+- [x] explizite Exit-Bestätigung mit `Abbrechen` als Standardfokus
+- [ ] neuen Player-Focus-/Long-OK-/Exit-Dialog auf TV-Hardware validieren
 
-**Phase 7 ist funktional abgeschlossen, automatisiert getestet und auf realer TCL-/Gigablue-Hardware bestätigt. Die nachträglichen Player-UX-Verbesserungen bleiben bis zum neuen Gerätetest offen.**
+**Phase 7 bleibt funktional abgeschlossen und hardwarebestätigt; die jüngsten Player-UX-Erweiterungen sind automatisiert gebaut und warten auf den neuen Gerätetest.**
 
 ## Preview Channels / globale Suche – aktueller Entwicklungsstand
 
@@ -203,30 +209,37 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] lokale Suche ab zwei Zeichen vom UI-Thread entkoppelt
 - [x] rohe Watch-Next-Titel/Episodentitel zusätzlich zur TMDB-angereicherten Medienidentität durchsuchen
 - [x] Preview-Channel-Titel/Quell-App als Suchmetadaten einbeziehen
-- [x] CloudStream-/Kodi-Suchhandoff für TMDB-Treffer
+- [x] Suchergebnisse in getrennte horizontale TV-Reihen für Weiterschauen, App-Kanäle, TV-Programm, Apps und TMDB gliedern
+- [x] CloudStream-/Kodi-Suchhandoff für TMDB-/EPG-Treffer
 - [x] CloudStream-Development-Paketvarianten dynamisch über den Search-Intent erkennen
-- [x] Android-Sprachsuche als Suchaktion integrieren
-- [ ] kombinierter Gerätetest von Suchquellen, Sprachsuche und CloudStream-Handoff
+- [x] Kodi-Handoff gegen aktuelle `XBMCSearchableActivity` korrigieren (`ACTION_SEARCH` + Query + nicht-null Data-URI)
+- [x] externe Suchbuttons auf Suchsymbol + App-Name reduzieren und erste Detailaktion direkt fokussieren
+- [x] Android-Sprachsuche als kompakte Suchaktion integrieren
+- [x] Touch-Detailseite inklusive langer Texte und Aktionsbuttons auf Smartphone bestätigt
+- [ ] TV-Gerätetest von lokalen Suchreihen, Kodi-Handoff, Sprachsuche und Detailfokus
+- [ ] CloudStream-Tastatur nur upstream lösbar, solange CloudStream seine Search-Activity selbst mit sichtbarer Soft-Tastatur öffnet
 
 ## Home / Navigation – aktueller UI-Polish
 
 - [x] Hero-Bereich folgt dem fokussierten Inhalt
 - [x] Hero außerhalb des vertikalen Reihen-Scrolls halten, damit er beim Navigieren sichtbar bleibt
 - [x] Hero selbst fokussierbar machen; Medien öffnen per OK die Detailansicht
+- [x] Start-Hero nicht mehr mit erstem TV-Sender initialisieren; Local-First Watch Next → Preview Program → neutraler Hero
+- [x] Hero-Artwork rechts mit weichem Verlauf in den linken Textbereich; Backdrops crop, ungeeignete Quellbilder möglichst fit
+- [x] ergänzende Hero-Metadaten statt Kartenwerte zu duplizieren; lange Beschreibung automatisch im begrenzten Bereich scrollen
 - [x] Hauptnavigation auf `Home · Suche · Apps · Einstellungen` reduzieren
 - [x] aktiven Hauptpunkt nur per Border markieren
 - [x] Launcher-Name aus der Navigationszeile entfernen
 - [x] Navigationszeile auf Home beim Herunterscrollen der Content-Reihen ausblenden
 - [x] Live-TV-/Gigablue-Konfiguration unter Einstellungen verschieben
-- [x] Development-Testbuild `0.1.0-dev.115` mit Unit-Tests und `assembleDebug` erfolgreich veröffentlicht
-- [ ] vollständigen D-Pad-/Focus-Gerätetest für den neuen Home-/Nav-Aufbau durchführen
+- [ ] vollständigen D-Pad-/Focus-Gerätetest für den neuen Hero-/Search-/Player-Aufbau durchführen
 
 ## Phase 8 – optionale Provider
 
 Nur wenn Android-Standardschnittstellen nicht ausreichen:
 
-- [ ] Kodi
+- [ ] Kodi-Add-on-spezifische Integrationen (Core-Suche ist nur Bibliothekssuche)
 - [ ] Jellyfin
 - [ ] Plex
-- [ ] CloudStream
+- [ ] CloudStream-Providerintegration nur wenn TvProvider/Deep-Link nicht ausreichen
 - [ ] weitere Provider
