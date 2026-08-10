@@ -25,7 +25,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -93,11 +92,17 @@ internal fun LiveTvPlayerScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val initialIndex = channels.indexOfFirst { it.serviceReference == initialServiceReference }.coerceAtLeast(0)
-    var currentIndex by remember(channels, initialServiceReference) { mutableIntStateOf(initialIndex) }
+    val initialIndex = LiveTvZapping.indexForServiceReference(
+        serviceReferences = channels.map(LiveTvChannel::serviceReference),
+        currentServiceReference = initialServiceReference,
+    )
+    var currentServiceReference by remember(initialServiceReference) { mutableStateOf(initialServiceReference) }
     var loading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var overlayVisible by remember { mutableStateOf(true) }
+    var channelOverviewPinned by remember { mutableStateOf(false) }
+    var confirmOpenedOverview by remember { mutableStateOf(false) }
+    var longOkHandled by remember { mutableStateOf(false) }
     var showExitConfirmation by remember { mutableStateOf(false) }
     var showEpg by remember(initialShowEpg, initialServiceReference) { mutableStateOf(initialShowEpg) }
     var selectedEpgServiceReference by remember(initialServiceReference) { mutableStateOf(initialServiceReference) }
@@ -113,6 +118,10 @@ internal fun LiveTvPlayerScreen(
     val epgBackFocusRequester = remember { FocusRequester() }
     val exitConfirmFocusRequester = remember { FocusRequester() }
     val player = remember { ExoPlayer.Builder(context).build().apply { playWhenReady = true } }
+    val currentIndex = LiveTvZapping.indexForServiceReference(
+        serviceReferences = channels.map(LiveTvChannel::serviceReference),
+        currentServiceReference = currentServiceReference,
+    )
     val currentChannel = channels.getOrNull(currentIndex)
     val selectedEpgProgram = selectedEpgProgramStartUtcMillis?.let { start ->
         epgState.guide(selectedEpgServiceReference).firstOrNull { it.startUtcMillis == start }
@@ -120,16 +129,26 @@ internal fun LiveTvPlayerScreen(
 
     fun zap(delta: Int) {
         if (channels.isEmpty()) return
-        overlayVisible = true
+        val wasPinned = channelOverviewPinned
+        val nextIndex = LiveTvZapping.nextIndex(currentIndex, channels.size, delta)
+        channelOverviewPinned = false
+        overlayVisible = !wasPinned
         showExitConfirmation = false
-        currentIndex = LiveTvZapping.nextIndex(currentIndex, channels.size, delta)
+        currentServiceReference = channels[nextIndex].serviceReference
     }
 
     fun selectChannel(index: Int) {
         if (index !in channels.indices) return
-        overlayVisible = true
+        channelOverviewPinned = false
+        overlayVisible = false
         showExitConfirmation = false
-        currentIndex = index
+        currentServiceReference = channels[index].serviceReference
+    }
+
+    fun openChannelOverview() {
+        showExitConfirmation = false
+        overlayVisible = true
+        channelOverviewPinned = true
     }
 
     fun openEpg() {
@@ -139,12 +158,14 @@ internal fun LiveTvPlayerScreen(
         selectedEpgProgramStartUtcMillis = epgState.guide(channel.serviceReference)
             .firstOrNull { now >= it.startUtcMillis && now < it.endUtcMillis }
             ?.startUtcMillis
+        channelOverviewPinned = false
         showExitConfirmation = false
         showEpg = true
     }
 
     fun requestExit() {
         showEpg = false
+        channelOverviewPinned = false
         overlayVisible = true
         showExitConfirmation = true
     }
@@ -153,8 +174,18 @@ internal fun LiveTvPlayerScreen(
         when {
             showExitConfirmation -> showExitConfirmation = false
             showEpg -> showEpg = false
+            channelOverviewPinned -> {
+                channelOverviewPinned = false
+                overlayVisible = false
+            }
             overlayVisible -> overlayVisible = false
             else -> requestExit()
+        }
+    }
+
+    LaunchedEffect(channels, currentServiceReference) {
+        if (channels.isNotEmpty() && channels.none { it.serviceReference == currentServiceReference }) {
+            currentServiceReference = channels.first().serviceReference
         }
     }
 
@@ -165,6 +196,7 @@ internal fun LiveTvPlayerScreen(
                 if (loading) overlayVisible = true
                 if (playbackState == Player.STATE_READY) errorMessage = null
             }
+
             override fun onPlayerError(error: PlaybackException) {
                 loading = false
                 overlayVisible = true
@@ -185,7 +217,7 @@ internal fun LiveTvPlayerScreen(
             selectedEpgProgramStartUtcMillis = null
         }
         loading = true
-        overlayVisible = true
+        if (!channelOverviewPinned) overlayVisible = true
         errorMessage = null
         player.stop()
         player.clearMediaItems()
@@ -221,8 +253,19 @@ internal fun LiveTvPlayerScreen(
         if (channels.isNotEmpty()) zapListState.animateScrollToItem((currentIndex - 2).coerceAtLeast(0))
     }
 
-    LaunchedEffect(overlayVisible, currentChannel?.serviceReference, loading, errorMessage, showEpg, showExitConfirmation) {
-        if (overlayVisible && !loading && errorMessage == null && !showEpg && !showExitConfirmation) {
+    LaunchedEffect(
+        overlayVisible,
+        channelOverviewPinned,
+        currentChannel?.serviceReference,
+        loading,
+        errorMessage,
+        showEpg,
+        showExitConfirmation,
+    ) {
+        if (
+            overlayVisible && !channelOverviewPinned && !loading && errorMessage == null &&
+            !showEpg && !showExitConfirmation
+        ) {
             delay(PLAYER_OVERLAY_TIMEOUT_MILLIS)
             overlayVisible = false
         }
@@ -255,27 +298,57 @@ internal fun LiveTvPlayerScreen(
                     when (keyEvent.type) {
                         KeyEventType.KeyDown -> {
                             if (nativeEvent.isLongPress || nativeEvent.repeatCount > 0) {
+                                longOkHandled = true
+                                confirmOpenedOverview = false
                                 openEpg()
                                 return@onPreviewKeyEvent true
                             }
-                            if (!overlayVisible) {
-                                overlayVisible = true
+                            if (!overlayVisible || !channelOverviewPinned) {
+                                openChannelOverview()
+                                confirmOpenedOverview = true
                                 return@onPreviewKeyEvent true
                             }
                         }
-                        KeyEventType.KeyUp -> if (nativeEvent.eventTime - nativeEvent.downTime >= LONG_OK_THRESHOLD_MILLIS) {
-                            openEpg()
-                            return@onPreviewKeyEvent true
+
+                        KeyEventType.KeyUp -> {
+                            val longPress = nativeEvent.eventTime - nativeEvent.downTime >= LONG_OK_THRESHOLD_MILLIS
+                            if (longOkHandled || longPress) {
+                                if (!longOkHandled) openEpg()
+                                longOkHandled = false
+                                confirmOpenedOverview = false
+                                return@onPreviewKeyEvent true
+                            }
+                            if (confirmOpenedOverview) {
+                                confirmOpenedOverview = false
+                                return@onPreviewKeyEvent true
+                            }
                         }
+
                         else -> Unit
                     }
                 }
                 if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (keyEvent.key) {
-                    Key.ChannelUp -> { zap(+1); true }
-                    Key.ChannelDown -> { zap(-1); true }
-                    Key.DirectionUp -> if (overlayVisible) false else { zap(+1); true }
-                    Key.DirectionDown -> if (overlayVisible) false else { zap(-1); true }
+                    Key.ChannelUp -> {
+                        zap(+1)
+                        true
+                    }
+
+                    Key.ChannelDown -> {
+                        zap(-1)
+                        true
+                    }
+
+                    Key.DirectionUp -> if (overlayVisible) false else {
+                        zap(+1)
+                        true
+                    }
+
+                    Key.DirectionDown -> if (overlayVisible) false else {
+                        zap(-1)
+                        true
+                    }
+
                     else -> false
                 }
             },
@@ -287,12 +360,16 @@ internal fun LiveTvPlayerScreen(
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     this.player = player
                     isClickable = true
-                    setOnClickListener { if (!showEpg && !showExitConfirmation) overlayVisible = true }
+                    setOnClickListener {
+                        if (!showEpg && !showExitConfirmation) openChannelOverview()
+                    }
                 }
             },
             update = {
                 it.player = player
-                it.setOnClickListener { if (!showEpg && !showExitConfirmation) overlayVisible = true }
+                it.setOnClickListener {
+                    if (!showEpg && !showExitConfirmation) openChannelOverview()
+                }
             },
             modifier = Modifier.fillMaxSize(),
         )
@@ -302,10 +379,13 @@ internal fun LiveTvPlayerScreen(
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f))
-                        .padding(horizontal = 36.dp, vertical = 18.dp),
-                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        .padding(start = 20.dp, top = 18.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.74f),
+                            RoundedCornerShape(18.dp),
+                        )
+                        .padding(horizontal = 22.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     channel.piconUri?.let { picon ->
@@ -313,14 +393,18 @@ internal fun LiveTvPlayerScreen(
                             model = picon,
                             contentDescription = null,
                             contentScale = ContentScale.Fit,
-                            modifier = Modifier.size(width = 104.dp, height = 56.dp),
+                            modifier = Modifier.size(width = 92.dp, height = 50.dp),
                         )
                     }
-                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("${currentIndex + 1} · ${channel.name}", style = MaterialTheme.typography.headlineSmall)
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("${currentIndex + 1} · ${channel.name}", style = MaterialTheme.typography.titleLarge)
                         channel.now?.let { Text(it.title, style = MaterialTheme.typography.titleMedium) }
                         channel.next?.let {
-                            Text("Danach: ${it.title}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "Danach: ${it.title}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
                 }
@@ -330,8 +414,12 @@ internal fun LiveTvPlayerScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.90f))
-                    .padding(horizontal = 30.dp, vertical = 14.dp),
+                    .padding(horizontal = 18.dp, vertical = 18.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                        RoundedCornerShape(20.dp),
+                    )
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -358,13 +446,19 @@ internal fun LiveTvPlayerScreen(
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TouchButton(onClick = ::openEpg, modifier = Modifier.focusRequester(epgButtonFocusRequester)) { Text("EPG") }
+                    TouchButton(onClick = ::openEpg, modifier = Modifier.focusRequester(epgButtonFocusRequester)) {
+                        Text("EPG")
+                    }
                     TouchButton(onClick = ::requestExit) { Text("TV verlassen") }
                     currentChannel?.let {
-                        Text("${currentIndex + 1}/${channels.size} · ${it.name}", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "${currentIndex + 1}/${channels.size} · ${it.name}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
@@ -383,8 +477,14 @@ internal fun LiveTvPlayerScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(currentChannel?.let { "TV-Guide · ${it.name}" } ?: "TV-Guide", style = MaterialTheme.typography.headlineSmall)
-                    TouchButton(onClick = { showEpg = false }, modifier = Modifier.focusRequester(epgBackFocusRequester)) {
+                    Text(
+                        currentChannel?.let { "TV-Guide · ${it.name}" } ?: "TV-Guide",
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                    TouchButton(
+                        onClick = { showEpg = false },
+                        modifier = Modifier.focusRequester(epgBackFocusRequester),
+                    ) {
                         Text("Zurück zum TV")
                     }
                 }
@@ -424,8 +524,12 @@ internal fun LiveTvPlayerScreen(
                 Column(
                     modifier = Modifier
                         .width(460.dp)
-                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
-                        .border(1.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(18.dp))
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.28f),
+                            RoundedCornerShape(18.dp),
+                        )
                         .padding(28.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
@@ -456,18 +560,21 @@ private fun CompactLiveTvCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(12.dp)
     val artwork = channel.now?.preferredArtworkUri
     TouchCard(
         onClick = onClick,
         modifier = modifier
-            .width(190.dp)
+            .width(184.dp)
             .then(if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier),
-        scale = CardDefaults.scale(focusedScale = 1.04f),
+        scale = CardDefaults.scale(focusedScale = 1.025f),
     ) {
         Column {
             Box(
-                modifier = Modifier.fillMaxWidth().height(78.dp).background(MaterialTheme.colorScheme.surfaceVariant),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(76.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center,
             ) {
                 when {
@@ -477,12 +584,14 @@ private fun CompactLiveTvCard(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )
+
                     !channel.piconUri.isNullOrBlank() -> AsyncImage(
                         model = channel.piconUri,
                         contentDescription = channel.name,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize().padding(12.dp),
                     )
+
                     else -> Text(channelNumber.toString(), style = MaterialTheme.typography.headlineSmall)
                 }
                 if (!artwork.isNullOrBlank() && !channel.piconUri.isNullOrBlank()) {
@@ -490,7 +599,10 @@ private fun CompactLiveTvCard(
                         model = channel.piconUri,
                         contentDescription = channel.name,
                         contentScale = ContentScale.Fit,
-                        modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(width = 54.dp, height = 28.dp),
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .size(width = 52.dp, height = 26.dp),
                     )
                 }
             }
@@ -498,8 +610,19 @@ private fun CompactLiveTvCard(
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Text("$channelNumber · ${channel.name}", style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(channel.now?.title ?: "Keine EPG-Daten", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "$channelNumber · ${channel.name}",
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    channel.now?.title ?: "Keine EPG-Daten",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -511,6 +634,15 @@ internal object LiveTvZapping {
         val normalized = currentIndex.coerceIn(0, size - 1)
         return ((normalized + delta) % size + size) % size
     }
+
+    fun indexForServiceReference(
+        serviceReferences: List<String>,
+        currentServiceReference: String,
+    ): Int {
+        if (serviceReferences.isEmpty()) return 0
+        val index = serviceReferences.indexOf(currentServiceReference)
+        return if (index >= 0) index else 0
+    }
 }
 
 private fun playbackErrorMessage(throwable: Throwable): String = when (throwable) {
@@ -518,6 +650,7 @@ private fun playbackErrorMessage(throwable: Throwable): String = when (throwable
         401, 403 -> "Live-TV-Stream: OpenWebif-Authentifizierung fehlgeschlagen."
         else -> "Live-TV-Stream: OpenWebif antwortet mit HTTP ${throwable.statusCode}."
     }
+
     is UnknownHostException -> "Live-TV-Stream: Receiver-Hostname konnte nicht aufgelöst werden."
     is ConnectException -> "Live-TV-Stream: Gigablue ist nicht erreichbar."
     is SocketTimeoutException -> "Live-TV-Stream: Zeitüberschreitung beim Verbinden."
