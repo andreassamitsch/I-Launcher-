@@ -39,7 +39,7 @@ Aktuell umgesetzt:
 - zusätzlicher Touch-Kompatibilitätslayer für Handy-/Tablet-Smoke-Tests: TV-Material-Buttons und -Cards behalten D-Pad/Fokus, erhalten aber explizite Pointer-Taps; Home, Suche, Apps, Einstellungen, EPG und Live-TV-Listen erhalten Touch-Scroll-Fallbacks; `leanback` ist für die Testinstallation auf Nicht-TV-Geräten optional
 - Medien-Detailansicht ist nun ebenfalls vertikal per Touch scrollbar; lange Beschreibungen werden vollständig angezeigt und die Aktionsbuttons umbrechen bei schmalen Displays statt außerhalb des sichtbaren Bereichs zu liegen
 
-Die interne Trailerwiedergabe mit Bild und Ton sowie die EPG-Integration im Live-TV-Player wurden auf realer TV-Hardware bestätigt. Die danach ergänzten Änderungen an Hero-Darstellung, Menü-Rückkehr, Suche, Sprachsuche, EPG-Textscroll, kompakter Zapping-Reihe, Update-Schnellaktion und Touch-Kompatibilität benötigen noch den nächsten Geräte-/Touchtest.
+Die interne Trailerwiedergabe mit Bild und Ton sowie die EPG-Integration im Live-TV-Player wurden auf realer TV-Hardware bestätigt. Die danach ergänzten Änderungen an Hero-Darstellung, Menü-Rückkehr, Suche, Sprachsuche, EPG-Textscroll, kompakter Zapping-Reihe, Update-Schnellaktion und Touch-Kompatibilität benötigen noch den nächsten Geräte-/Touchtest. Auf einem Touch-Gerät sind das Antippen der Hauptnavigation und das vertikale Wischen auf Home bereits bestätigt; die nachgebesserte vertikale Detailseiten-Navigation wartet noch auf den erneuten Test mit langem Suchergebnis.
 
 ## Datenschutz / Sicherheit
 
