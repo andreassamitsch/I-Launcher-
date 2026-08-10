@@ -9,6 +9,8 @@ import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.model.TrailerProvider
 import com.andreassamitsch.ilauncher.model.TrailerRef
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 
 private const val SEARCH_TAG = "TMDB_SEARCH"
@@ -22,6 +24,7 @@ class TmdbSearchRepository(
     private val imageConfigurationStore = TmdbImageConfigurationStore(appContext)
     private val queryCache = LinkedHashMap<String, CachedSearch>()
     private val detailsCache = LinkedHashMap<String, CachedDetails>()
+    private var browseCache: CachedBrowse? = null
 
     val isConfigured: Boolean
         get() = network.isConfigured
@@ -49,6 +52,54 @@ class TmdbSearchRepository(
         queryCache[normalized] = CachedSearch(items, now)
         trimCache(queryCache, MAX_QUERY_CACHE_ENTRIES)
         items
+    }
+
+    suspend fun browse(): List<TmdbBrowseSection> = withContext(Dispatchers.IO) {
+        if (!network.isConfigured) return@withContext emptyList()
+        val now = System.currentTimeMillis()
+        browseCache
+            ?.takeIf { now - it.updatedAtUtcMillis <= BROWSE_CACHE_MILLIS }
+            ?.let { return@withContext it.sections }
+
+        val sections = runCatching {
+            val images = ensureImageConfiguration(now)
+            coroutineScope {
+                val trendingTv = async {
+                    network.api.trendingTv(language = LANGUAGE).results
+                        .mapNotNull { it.toSearchMedia(images, MediaType.Series) }
+                }
+                val trendingMovies = async {
+                    network.api.trendingMovies(language = LANGUAGE).results
+                        .mapNotNull { it.toSearchMedia(images, MediaType.Movie) }
+                }
+                val sciFiTv = async {
+                    network.api.discoverTv(
+                        language = LANGUAGE,
+                        withGenres = TV_SCI_FI_GENRE_ID,
+                        voteCountGte = 200,
+                    ).results.mapNotNull { it.toSearchMedia(images, MediaType.Series) }
+                }
+                val sciFiMovies = async {
+                    network.api.discoverMovies(
+                        language = LANGUAGE,
+                        withGenres = MOVIE_SCI_FI_GENRE_ID,
+                        voteCountGte = 300,
+                    ).results.mapNotNull { it.toSearchMedia(images, MediaType.Movie) }
+                }
+
+                listOf(
+                    TmdbBrowseSection("trending-tv", "Serien im Trend", trendingTv.await().take(BROWSE_ROW_LIMIT)),
+                    TmdbBrowseSection("trending-movies", "Filme im Trend", trendingMovies.await().take(BROWSE_ROW_LIMIT)),
+                    TmdbBrowseSection("top-sci-fi-tv", "Top Science-Fiction-Serien", sciFiTv.await().take(BROWSE_ROW_LIMIT)),
+                    TmdbBrowseSection("top-sci-fi-movies", "Top Science-Fiction-Filme", sciFiMovies.await().take(BROWSE_ROW_LIMIT)),
+                ).filter { it.items.isNotEmpty() }
+            }
+        }.onFailure { throwable ->
+            Log.w(SEARCH_TAG, "TMDB browse failed (${throwable.javaClass.simpleName})")
+        }.getOrDefault(emptyList())
+
+        browseCache = CachedBrowse(sections, now)
+        sections
     }
 
     suspend fun loadDetails(item: MediaItem): MediaItem? = withContext(Dispatchers.IO) {
@@ -90,8 +141,9 @@ class TmdbSearchRepository(
 
     private fun TmdbSearchResultDto.toSearchMedia(
         images: TmdbImageConfiguration?,
+        forcedType: MediaType? = null,
     ): MediaItem? {
-        val type = when (mediaType) {
+        val type = forcedType ?: when (mediaType) {
             "movie" -> MediaType.Movie
             "tv" -> MediaType.Series
             else -> return null
@@ -195,10 +247,19 @@ class TmdbSearchRepository(
         val updatedAtUtcMillis: Long,
     )
 
+    private data class CachedBrowse(
+        val sections: List<TmdbBrowseSection>,
+        val updatedAtUtcMillis: Long,
+    )
+
     private companion object {
         const val LANGUAGE = "de-DE"
+        const val MOVIE_SCI_FI_GENRE_ID = "878"
+        const val TV_SCI_FI_GENRE_ID = "10765"
+        const val BROWSE_ROW_LIMIT = 16
         const val SEARCH_CACHE_MILLIS = 15L * 60L * 1_000L
         const val DETAILS_CACHE_MILLIS = 60L * 60L * 1_000L
+        const val BROWSE_CACHE_MILLIS = 60L * 60L * 1_000L
         const val MAX_QUERY_CACHE_ENTRIES = 20
         const val MAX_DETAILS_CACHE_ENTRIES = 24
     }
