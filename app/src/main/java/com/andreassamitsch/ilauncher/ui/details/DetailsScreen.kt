@@ -20,7 +20,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
@@ -28,6 +27,7 @@ import com.andreassamitsch.ilauncher.data.handoff.ContentSearchHandoff
 import com.andreassamitsch.ilauncher.data.youtube.YouTubeEmbedPlayer
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.TrailerProvider
+import com.andreassamitsch.ilauncher.ui.components.TouchButton
 import com.andreassamitsch.ilauncher.ui.trailer.TrailerPlayerActivity
 
 @Composable
@@ -140,31 +140,31 @@ fun DetailsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 onPlay?.let { play ->
-                    Button(onClick = play) {
+                    TouchButton(onClick = play) {
                         Text(if ((item.playbackPositionMillis ?: 0L) > 0L) "Fortsetzen" else "Wiedergeben")
                     }
                 }
                 when {
-                    internalTrailerId != null -> Button(
+                    internalTrailerId != null -> TouchButton(
                         onClick = { TrailerPlayerActivity.start(context, internalTrailerId) },
                     ) {
                         Text("Trailer")
                     }
 
-                    onTrailer != null -> Button(onClick = onTrailer) {
+                    onTrailer != null -> TouchButton(onClick = onTrailer) {
                         Text("Trailer")
                     }
 
-                    onTrailerSearch != null -> Button(onClick = onTrailerSearch) {
+                    onTrailerSearch != null -> TouchButton(onClick = onTrailerSearch) {
                         Text("Trailer suchen")
                     }
                 }
                 externalSearchTargets.forEach { target ->
-                    Button(onClick = { contentSearchHandoff.launch(target, item.title) }) {
+                    TouchButton(onClick = { contentSearchHandoff.launch(target, item.title) }) {
                         Text(target.buttonLabel)
                     }
                 }
-                Button(onClick = onBack) {
+                TouchButton(onClick = onBack) {
                     Text("Zurück")
                 }
             }
