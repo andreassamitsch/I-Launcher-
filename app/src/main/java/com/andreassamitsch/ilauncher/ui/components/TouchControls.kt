@@ -4,15 +4,13 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.awaitPointerEvent
-import androidx.compose.ui.input.pointer.consume
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.tv.material3.Card as TvCard
 import androidx.tv.material3.CardDefaults
@@ -20,8 +18,8 @@ import androidx.tv.material3.CardScale
 import androidx.tv.material3.Button as TvButton
 
 /**
- * Compose for TV 1.1.0 intentionally wires TV Material click surfaces to D-Pad/focus input.
- * These wrappers add pointer taps without changing the existing TV key/focus behaviour.
+ * Compose for TV keeps its existing D-Pad/focus handling. These wrappers add pointer taps only,
+ * so phone/tablet smoke tests do not change the remote-control behaviour on Android TV.
  */
 @Composable
 fun TouchButton(
@@ -63,7 +61,7 @@ fun Modifier.touchTap(
     enabled: Boolean = true,
     onLongClick: (() -> Unit)? = null,
 ): Modifier = pointerInput(enabled, onClick, onLongClick) {
-    androidx.compose.foundation.gestures.detectTapGestures(
+    detectTapGestures(
         onTap = {
             if (enabled) onClick()
         },
@@ -78,9 +76,9 @@ fun Modifier.touchTap(
 }
 
 /**
- * Native Compose scroll containers normally handle touch themselves. This final-pass fallback only
- * reacts when no earlier scroll handler consumed the pointer movement, which keeps D-Pad and normal
- * Compose scrolling unchanged while making TV-first layouts usable on touch-only test devices.
+ * Normal Compose scroll containers get first chance to consume drag events. This final-pass fallback
+ * only handles an otherwise unconsumed drag. dispatchRawDelta is deliberately limited to this
+ * low-level compatibility path; regular TV/D-Pad and native Compose scrolling stay unchanged.
  */
 fun Modifier.touchScrollFallback(
     state: ScrollableState,
@@ -106,10 +104,7 @@ fun Modifier.touchScrollFallback(
             lastPosition = currentPosition
 
             if (!change.isConsumed && dragDelta != 0f) {
-                val consumed = state.scrollBy(-dragDelta)
-                if (consumed != 0f) {
-                    change.consume()
-                }
+                state.dispatchRawDelta(-dragDelta)
             }
         }
     }
