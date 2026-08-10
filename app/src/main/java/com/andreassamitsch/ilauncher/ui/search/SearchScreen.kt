@@ -14,13 +14,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -53,6 +52,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.R
+import com.andreassamitsch.ilauncher.data.search.SearchBrowseSection
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.model.SearchResultKind
@@ -74,7 +74,9 @@ fun SearchScreen(
     onQueryChange: (String) -> Unit,
     localResults: List<SearchItem>,
     tmdbResults: List<SearchItem>,
+    browseSections: List<SearchBrowseSection>,
     isTmdbLoading: Boolean,
+    isBrowseLoading: Boolean,
     tmdbConfigured: Boolean,
     apps: List<InstalledApp>,
     onOpenResult: (SearchItem) -> Unit,
@@ -101,7 +103,7 @@ fun SearchScreen(
             addSection(SearchResultKind.App, "Apps", "apps")
         }
     }
-    val sections = remember(localSections, tmdbResults, isTmdbLoading, tmdbConfigured, query) {
+    val querySections = remember(localSections, tmdbResults, isTmdbLoading, tmdbConfigured, query) {
         buildList {
             addAll(localSections)
             if (tmdbConfigured && query.trim().length >= 3 && (tmdbResults.isNotEmpty() || isTmdbLoading)) {
@@ -116,6 +118,18 @@ fun SearchScreen(
             }
         }
     }
+    val browseUiSections = remember(browseSections) {
+        browseSections.map { section ->
+            SearchSection(
+                key = "browse:${section.key}",
+                title = section.title,
+                items = section.items,
+                online = true,
+            )
+        }
+    }
+    val visibleSections = if (query.isBlank()) browseUiSections else querySections
+
     val voiceSearchLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
@@ -138,9 +152,9 @@ fun SearchScreen(
         }
     }
 
-    LaunchedEffect(focusRestoreGeneration, focusRestoreResultId, sections) {
+    LaunchedEffect(focusRestoreGeneration, focusRestoreResultId, visibleSections) {
         if (focusRestoreGeneration <= 0 || focusRestoreResultId == null) return@LaunchedEffect
-        val sectionIndex = sections.indexOfFirst { section ->
+        val sectionIndex = visibleSections.indexOfFirst { section ->
             section.items.any { it.id == focusRestoreResultId }
         }
         if (sectionIndex >= 0) {
@@ -181,7 +195,7 @@ fun SearchScreen(
                         voiceError = "Sprachsuche ist auf diesem Gerät nicht verfügbar."
                     }
                 },
-                modifier = Modifier.size(58.dp),
+                modifier = Modifier.size(54.dp),
                 scale = CardDefaults.scale(focusedScale = 1.08f),
             ) {
                 Box(
@@ -193,7 +207,7 @@ fun SearchScreen(
                     Image(
                         painter = painterResource(R.drawable.ic_mic),
                         contentDescription = "Sprachsuche",
-                        modifier = Modifier.size(27.dp),
+                        modifier = Modifier.size(25.dp),
                         colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
                     )
                 }
@@ -209,43 +223,84 @@ fun SearchScreen(
         }
 
         when {
-            query.trim().length < 2 -> {
-                Text(
-                    text = "Filme, Serien, Weiterschauen, App-Kanäle, Apps und TV-Programm durchsuchen.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            query.isBlank() && visibleSections.isNotEmpty() -> SearchSectionsList(
+                sections = visibleSections,
+                appsByPackage = appsByPackage,
+                isTmdbLoading = false,
+                listState = listState,
+                focusRestoreResultId = focusRestoreResultId,
+                restoreRequester = restoreRequester,
+                onOpenResult = onOpenResult,
+            )
 
-            sections.isEmpty() && !isTmdbLoading -> {
-                Text(
-                    text = "Keine Treffer gefunden.",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            query.isBlank() && isBrowseLoading -> Text(
+                text = "Empfehlungen werden geladen …",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
-            else -> {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .touchScrollFallback(listState, Orientation.Vertical),
-                    contentPadding = PaddingValues(bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp),
-                ) {
-                    items(sections, key = SearchSection::key) { section ->
-                        SearchResultSection(
-                            section = section,
-                            appsByPackage = appsByPackage,
-                            isLoading = section.online && isTmdbLoading,
-                            focusRestoreResultId = focusRestoreResultId,
-                            restoreRequester = restoreRequester,
-                            onOpenResult = onOpenResult,
-                        )
-                    }
-                }
-            }
+            query.isBlank() -> Text(
+                text = if (tmdbConfigured) {
+                    "Suche starten oder aktuelle Filme und Serien entdecken."
+                } else {
+                    "Filme, Serien, Weiterschauen, App-Kanäle, Apps und TV-Programm durchsuchen."
+                },
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            query.trim().length < 2 -> Text(
+                text = "Mindestens zwei Zeichen eingeben.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            visibleSections.isEmpty() && !isTmdbLoading -> Text(
+                text = "Keine Treffer gefunden.",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            else -> SearchSectionsList(
+                sections = visibleSections,
+                appsByPackage = appsByPackage,
+                isTmdbLoading = isTmdbLoading,
+                listState = listState,
+                focusRestoreResultId = focusRestoreResultId,
+                restoreRequester = restoreRequester,
+                onOpenResult = onOpenResult,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchSectionsList(
+    sections: List<SearchSection>,
+    appsByPackage: Map<String, InstalledApp>,
+    isTmdbLoading: Boolean,
+    listState: LazyListState,
+    focusRestoreResultId: String?,
+    restoreRequester: FocusRequester,
+    onOpenResult: (SearchItem) -> Unit,
+) {
+    LazyColumn(
+        state = listState,
+        modifier = Modifier
+            .fillMaxSize()
+            .touchScrollFallback(listState, Orientation.Vertical),
+        contentPadding = PaddingValues(bottom = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        items(sections, key = SearchSection::key) { section ->
+            SearchResultSection(
+                section = section,
+                appsByPackage = appsByPackage,
+                isLoading = section.online && isTmdbLoading,
+                focusRestoreResultId = focusRestoreResultId,
+                restoreRequester = restoreRequester,
+                onOpenResult = onOpenResult,
+            )
         }
     }
 }
@@ -280,7 +335,7 @@ private fun SearchInput(
                 },
                 shape = shape,
             )
-            .padding(horizontal = 18.dp, vertical = 14.dp),
+            .padding(horizontal = 18.dp, vertical = 12.dp),
         decorationBox = { innerTextField ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -290,7 +345,10 @@ private fun SearchInput(
                     painter = painterResource(R.drawable.ic_search),
                     contentDescription = null,
                     modifier = Modifier.size(24.dp),
-                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurfaceVariant),
+                    colorFilter = ColorFilter.tint(
+                        if (focused) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
                 )
                 Box(
                     modifier = Modifier.weight(1f),
@@ -319,30 +377,15 @@ private fun SearchResultSection(
     restoreRequester: FocusRequester,
     onOpenResult: (SearchItem) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = section.title,
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            Text(
-                text = if (isLoading && section.items.isEmpty()) {
-                    "Lädt …"
-                } else {
-                    "${section.items.size}"
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text(
+            text = section.title,
+            style = MaterialTheme.typography.headlineSmall,
+        )
 
         if (section.items.isEmpty()) {
             Text(
-                text = "Online-Treffer werden geladen …",
+                text = if (isLoading) "Lädt …" else "Keine Einträge",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -351,7 +394,7 @@ private fun SearchResultSection(
             LazyRow(
                 state = rowState,
                 modifier = Modifier.touchScrollFallback(rowState, Orientation.Horizontal),
-                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(section.items, key = SearchItem::id) { item ->
@@ -378,12 +421,11 @@ private fun SearchResultCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(12.dp)
     TouchCard(
         onClick = onClick,
         modifier = modifier
-            .width(270.dp)
-            .height(152.dp),
+            .width(254.dp)
+            .height(142.dp),
         scale = CardDefaults.scale(focusedScale = 1.045f),
     ) {
         Box(
@@ -399,18 +441,16 @@ private fun SearchResultCard(
                         contentDescription = null,
                         modifier = Modifier
                             .align(Alignment.Center)
-                            .size(76.dp),
+                            .size(72.dp),
                     )
                 }
 
-                !item.artworkUri.isNullOrBlank() -> {
-                    AsyncImage(
-                        model = item.artworkUri,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
+                !item.artworkUri.isNullOrBlank() -> AsyncImage(
+                    model = item.artworkUri,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
 
             Box(
@@ -419,7 +459,7 @@ private fun SearchResultCard(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.02f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
                                 MaterialTheme.colorScheme.background.copy(alpha = 0.18f),
                                 MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
                             ),
@@ -431,7 +471,7 @@ private fun SearchResultCard(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = 11.dp, vertical = 9.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
@@ -441,7 +481,7 @@ private fun SearchResultCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 val detail = listOfNotNull(
-                    item.sourceLabel?.takeIf { it.isNotBlank() },
+                    item.sourceLabel?.takeIf { it.isNotBlank() && it != "TMDB" },
                     item.subtitle?.takeIf { it.isNotBlank() },
                 ).distinct().joinToString(" · ")
                 if (detail.isNotBlank()) {
