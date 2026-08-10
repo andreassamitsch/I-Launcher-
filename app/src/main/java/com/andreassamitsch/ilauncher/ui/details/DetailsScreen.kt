@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -182,7 +183,7 @@ fun DetailsScreen(
                                 painter = painterResource(R.drawable.ic_search),
                                 contentDescription = null,
                                 modifier = Modifier.size(20.dp),
-                                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
+                                colorFilter = ColorFilter.tint(LocalContentColor.current),
                             )
                             Text(target.displayName)
                         }
