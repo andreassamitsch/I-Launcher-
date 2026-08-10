@@ -31,7 +31,9 @@ Aktuell umgesetzt:
 - Home-Reihen sind persistent sortierbar. Langes OK auf `Home` öffnet die versteckte Home-Anpassung mit Reihenfolge, Watch-Next-Quellen, App-Kanälen und Reset-Funktionen
 - eigene Home-Reihe `Meine Apps` mit großen App-Icons. Langes OK auf einer App aktiviert den Verschiebemodus; links/rechts verschiebt die App, OK beendet den Modus; die Reihenfolge wird lokal gespeichert
 - Preview-Channel-Reihen zeigen keinen zusätzlichen Quell-Untertitel. Wenn die Quell-App installiert ist, steht ihr App-Symbol kompakt links neben der Hauptüberschrift
-- kompakte Hauptnavigation `Home · Suche · Apps · Einstellungen`; aktiver Bereich nur per Rahmen. Die Navigation wird fokusgetrieben ausgeblendet, sobald der Nutzer in eine Inhaltsreihe geht, und erst beim Fokus auf den oberen Hero wieder eingeblendet
+- kompakte Hauptnavigation `Home · Suche · Apps · Einstellungen`; aktiver Bereich bleibt per Rahmen markiert, in Ruhe sind die Flächen transparent und der tatsächliche Fokus erscheint als helle kompakte Pill mit nur kleiner Vergrößerung. Die bestehende D-Pad-Reihenfolge wurde dabei nicht verändert
+- die Navigation wird fokusgetrieben ausgeblendet, sobald der Nutzer in eine Inhaltsreihe geht, und erst beim Fokus auf den oberen Hero wieder eingeblendet
+- die separate Ansicht `Alle Apps` verwendet ein adaptives TV-Grid, damit die verfügbare Breite sinnvoller genutzt wird; dort bleiben App-Namen dauerhaft sichtbar, während das reduzierte Home-App-Dock Labels weiterhin nur bei Fokus oder Verschiebemodus zeigt
 - Live-TV-/Gigablue-Konfiguration als Unterpunkt der Einstellungen und Update-Schnellaktion ganz oben
 - EPG als TV-Guide direkt im laufenden Live-TV-Player statt eigener Hauptnavigation; lange Programmbeschreibungen sind per D-Pad scrollbar
 - Live-TV-Overlay blendet nach drei Sekunden aus; bei sichtbarem Overlay gehören Hoch/Runter der UI-Navigation, bei ausgeblendetem Overlay dienen Hoch/Runter zum Zappen; CH+/CH− bleiben Senderwechsel
@@ -56,7 +58,7 @@ Aktuell umgesetzt:
 - zusätzlicher Touch-Kompatibilitätslayer für Handy-/Tablet-Smoke-Tests; TV-/D-Pad-Bedienung bleibt die Produktquelle der Wahrheit
 - Medien-Detailansicht ist vertikal per Touch scrollbar; lange Beschreibungen und umgebrochene Aktionsbuttons sind auf dem Handy praktisch bestätigt
 
-Die interne Trailerwiedergabe mit Bild und Ton, die EPG-Integration im Live-TV-Player, Suchreihen sowie mehrere Player-Aktionen wurden auf realer TV-Hardware bestätigt. Der jüngste Google-TV-inspirierte Home-/Search-Feinschliff sowie die aktuellen EPG-/TMDB-Korrekturen benötigen noch den nächsten TCL-Gerätetest.
+Die interne Trailerwiedergabe mit Bild und Ton, die EPG-Integration im Live-TV-Player, Suchreihen sowie mehrere Player-Aktionen wurden auf realer TV-Hardware bestätigt. Der jüngste Google-TV-inspirierte Home-/Search-Feinschliff wurde visuell grundsätzlich bestätigt; die neue kompakte Hauptnavigation, das adaptive `Alle Apps`-Grid sowie die aktuellen EPG-/D-Pad-Regressionspunkte benötigen noch den nächsten TCL-Gerätetest.
 
 ## Datenschutz / Sicherheit
 
