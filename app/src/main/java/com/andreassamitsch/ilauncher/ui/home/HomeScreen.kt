@@ -1,5 +1,6 @@
 package com.andreassamitsch.ilauncher.ui.home
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -33,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -158,7 +160,7 @@ fun HomeScreen(
         modifier = modifier
             .fillMaxSize()
             .touchScrollFallback(contentScrollState, Orientation.Vertical),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         HomeHero(
             content = hero,
@@ -172,7 +174,7 @@ fun HomeScreen(
                 .weight(1f)
                 .verticalScroll(contentScrollState)
                 .touchScrollFallback(contentScrollState, Orientation.Vertical),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             homeRowOrder.forEach { rowKey ->
                 when (rowKey) {
@@ -231,7 +233,7 @@ fun HomeScreen(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
@@ -264,8 +266,8 @@ private fun WatchNextHomeRow(
         else -> LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(horizontal = 5.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(horizontal = 7.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             items(
                 items = items,
@@ -302,8 +304,8 @@ private fun LiveTvHomeRow(
         state.channels.isNotEmpty() -> LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(horizontal = 5.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(horizontal = 7.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             items(state.channels, key = LiveTvChannel::serviceReference) { channel ->
                 val cardModifier = if (channel.serviceReference == restoreServiceReference) {
@@ -336,8 +338,8 @@ private fun PreviewHomeRow(
         LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(horizontal = 5.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(horizontal = 7.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             items(channel.programs, key = { it.media.id }) { program ->
                 WatchNextCard(
@@ -360,14 +362,14 @@ private fun AppsHomeRow(
     onOpen: (InstalledApp) -> Unit,
     onFocused: (InstalledApp) -> Unit,
 ) {
-    HomeRowHeader("Apps")
+    HomeRowHeader("Meine Apps")
     if (apps.isEmpty()) {
         Text("Installierte Apps werden geladen …")
     } else {
         LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(horizontal = 5.dp, vertical = 10.dp),
+            contentPadding = PaddingValues(horizontal = 7.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(apps, key = InstalledApp::packageName) { app ->
@@ -390,14 +392,15 @@ private fun AppsHomeRow(
 @Composable
 private fun HomeRowHeader(title: String, sourceApp: InstalledApp? = null) {
     Row(
+        modifier = Modifier.padding(start = 8.dp, top = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         sourceApp?.let { app ->
             val icon = remember(app.icon) { app.icon.asImageBitmap() }
-            Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(26.dp))
+            Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(22.dp))
         }
-        Text(title, style = MaterialTheme.typography.headlineSmall)
+        Text(title, style = MaterialTheme.typography.titleLarge)
     }
 }
 
@@ -417,105 +420,129 @@ private fun HomeHero(
         },
         modifier = Modifier
             .fillMaxWidth()
-            .height(254.dp)
+            .height(268.dp)
             .onFocusChanged { if (it.isFocused) onFocused() },
-        scale = CardDefaults.scale(focusedScale = 1.005f),
+        scale = CardDefaults.scale(focusedScale = 1.0f),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
-        ) {
-            content.artworkUri?.takeIf { it.isNotBlank() }?.let { artwork ->
+        Crossfade(
+            targetState = content,
+            animationSpec = tween(durationMillis = 280),
+            label = "home-hero",
+        ) { heroContent ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+            ) {
+                heroContent.artworkUri?.takeIf { it.isNotBlank() }?.let { artwork ->
+                    if (heroContent.fitArtwork) {
+                        AsyncImage(
+                            model = artwork,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .alpha(0.22f),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .fillMaxWidth(0.66f)
+                                .fillMaxHeight()
+                                .padding(end = 8.dp),
+                            contentAlignment = Alignment.CenterEnd,
+                        ) {
+                            AsyncImage(
+                                model = artwork,
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    } else {
+                        AsyncImage(
+                            model = artwork,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+
                 Box(
                     modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .fillMaxWidth(0.66f)
-                        .fillMaxHeight(),
-                    contentAlignment = Alignment.CenterEnd,
+                        .fillMaxSize()
+                        .background(
+                            Brush.horizontalGradient(
+                                colorStops = arrayOf(
+                                    0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.98f),
+                                    0.28f to MaterialTheme.colorScheme.background.copy(alpha = 0.94f),
+                                    0.46f to MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
+                                    0.64f to MaterialTheme.colorScheme.background.copy(alpha = 0.30f),
+                                    0.82f to MaterialTheme.colorScheme.background.copy(alpha = 0.04f),
+                                    1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
+                                ),
+                            ),
+                        ),
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.04f),
+                                    0.70f to MaterialTheme.colorScheme.background.copy(alpha = 0.02f),
+                                    1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
+                                ),
+                            ),
+                        ),
+                )
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .fillMaxWidth(0.47f)
+                        .padding(start = 34.dp, end = 12.dp, top = 18.dp, bottom = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
-                    AsyncImage(
-                        model = artwork,
-                        contentDescription = null,
-                        contentScale = if (content.fitArtwork) ContentScale.Fit else ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.horizontalGradient(
-                            colorStops = arrayOf(
-                                0.00f to MaterialTheme.colorScheme.background,
-                                0.34f to MaterialTheme.colorScheme.background,
-                                0.50f to MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
-                                0.65f to MaterialTheme.colorScheme.background.copy(alpha = 0.45f),
-                                0.80f to MaterialTheme.colorScheme.background.copy(alpha = 0.04f),
-                                1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
-                            ),
-                        ),
-                    ),
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
-                                0.80f to MaterialTheme.colorScheme.background.copy(alpha = 0.03f),
-                                1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.45f),
-                            ),
-                        ),
-                    ),
-            )
-
-            Column(
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .fillMaxWidth(0.52f)
-                    .padding(start = 24.dp, end = 14.dp, top = 16.dp, bottom = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                content.logoUri?.takeIf { it.isNotBlank() }?.let { logo ->
-                    AsyncImage(
-                        model = logo,
-                        contentDescription = null,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.size(width = 180.dp, height = 48.dp),
-                    )
-                }
-                content.eyebrow?.takeIf { it.isNotBlank() }?.let { eyebrow ->
-                    Text(
-                        text = eyebrow,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (!content.titleCoveredByLogo || content.logoUri.isNullOrBlank()) {
-                    Text(
-                        text = content.title,
-                        style = MaterialTheme.typography.displaySmall,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                content.metadata?.takeIf { it.isNotBlank() }?.let { metadata ->
-                    Text(
-                        text = metadata,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                content.description?.takeIf { it.isNotBlank() }?.let { description ->
-                    AutoScrollingHeroDescription(content.key, description)
+                    heroContent.logoUri?.takeIf { it.isNotBlank() }?.let { logo ->
+                        AsyncImage(
+                            model = logo,
+                            contentDescription = null,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(width = 230.dp, height = 72.dp),
+                        )
+                    }
+                    heroContent.eyebrow?.takeIf { it.isNotBlank() }?.let { eyebrow ->
+                        Text(
+                            text = eyebrow,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (!heroContent.titleCoveredByLogo || heroContent.logoUri.isNullOrBlank()) {
+                        Text(
+                            text = heroContent.title,
+                            style = MaterialTheme.typography.displaySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    heroContent.metadata?.takeIf { it.isNotBlank() }?.let { metadata ->
+                        Text(
+                            text = metadata,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    heroContent.description?.takeIf { it.isNotBlank() }?.let { description ->
+                        AutoScrollingHeroDescription(heroContent.key, description)
+                    }
                 }
             }
         }
@@ -527,25 +554,29 @@ private fun AutoScrollingHeroDescription(key: String, text: String) {
     val scrollState = remember(key, text) { androidx.compose.foundation.ScrollState(0) }
     LaunchedEffect(key, text, scrollState.maxValue) {
         if (scrollState.maxValue <= 0) return@LaunchedEffect
-        delay(5_000)
+        delay(6_500)
         while (true) {
-            val duration = (scrollState.maxValue * 70).coerceIn(10_000, 38_000)
+            val duration = (scrollState.maxValue * 100).coerceIn(14_000, 46_000)
             scrollState.animateScrollTo(
                 scrollState.maxValue,
                 animationSpec = tween(durationMillis = duration, easing = LinearEasing),
             )
-            delay(4_000)
-            scrollState.scrollTo(0)
             delay(5_000)
+            scrollState.scrollTo(0)
+            delay(6_500)
         }
     }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .height(52.dp)
             .verticalScroll(scrollState),
     ) {
-        Text(text = text, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
     }
 }
 
