@@ -35,17 +35,17 @@ fun LiveTvCard(
     TouchCard(
         onClick = onClick,
         modifier = modifier
-            .width(252.dp)
+            .width(236.dp)
             .onFocusChanged { focusState ->
                 if (focusState.isFocused) onFocused?.invoke()
             },
-        scale = CardDefaults.scale(focusedScale = 1.035f),
+        scale = CardDefaults.scale(focusedScale = 1.028f),
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(142.dp)
+                    .height(133.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
                 if (!artwork.isNullOrBlank()) {
@@ -62,8 +62,8 @@ fun LiveTvCard(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .align(Alignment.Center)
-                            .padding(18.dp)
-                            .size(width = 168.dp, height = 58.dp),
+                            .padding(16.dp)
+                            .size(width = 160.dp, height = 54.dp),
                     )
                 } else {
                     Text(
@@ -80,8 +80,8 @@ fun LiveTvCard(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                            .size(width = 68.dp, height = 30.dp),
+                            .padding(7.dp)
+                            .size(width = 62.dp, height = 27.dp),
                     )
                 }
 
@@ -90,7 +90,7 @@ fun LiveTvCard(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .fillMaxWidth()
-                            .height(4.dp)
+                            .height(3.dp)
                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f)),
                     ) {
                         Box(
@@ -103,7 +103,7 @@ fun LiveTvCard(
                 }
             }
 
-            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)) {
                 Text(
                     text = channel.now?.title ?: channel.name,
                     style = MaterialTheme.typography.titleSmall,
@@ -114,7 +114,7 @@ fun LiveTvCard(
                     Text(
                         text = channel.name,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
