@@ -193,7 +193,6 @@ internal fun LiveTvPlayerScreen(
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 loading = playbackState == Player.STATE_BUFFERING || playbackState == Player.STATE_IDLE
-                if (loading) overlayVisible = true
                 if (playbackState == Player.STATE_READY) errorMessage = null
             }
 
@@ -217,7 +216,6 @@ internal fun LiveTvPlayerScreen(
             selectedEpgProgramStartUtcMillis = null
         }
         loading = true
-        if (!channelOverviewPinned) overlayVisible = true
         errorMessage = null
         player.stop()
         player.clearMediaItems()
