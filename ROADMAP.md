@@ -197,11 +197,16 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] bei sichtbarem Overlay D-Pad Hoch/Runter für UI statt Zapping reservieren
 - [x] bei ausgeblendetem Overlay D-Pad Hoch/Runter zum Zappen; CH+/CH− bleiben explizite Senderwechsel
 - [x] langes OK als Direktzugang zum EPG
-- [x] explizite Exit-Bestätigung mit `Abbrechen` als Standardfokus
+- [x] explizite Exit-Bestätigung mit `TV verlassen` als Standardfokus
 - [x] Exit-Bestätigung auf TV-Hardware bestätigt
+- [x] Player-Senderstate auf stabile Enigma2-`serviceReference` umgestellt, damit periodische OpenWebif-/EPG-Refreshes nicht auf den ursprünglich gestarteten Sender zurücksetzen
+- [x] Unit-Tests für Senderidentität bei erneuerter Channel-Metadatenliste und sicheren Fallback bei entferntem Sender ergänzt
+- [x] normales OK öffnet eine angeheftete Senderübersicht; Timeout gilt nur für transiente Infos, Zurück schließt zuerst die Liste und Senderwahl/Umschalten beendet den Listenmodus
+- [x] Live-TV-Overlay optisch mit schwebenden abgerundeten Flächen und kleinerem Kartenfokus weiter an Home/Search angeglichen
+- [ ] neuen Refresh-/Senderlisten-State auf TCL mehrere Refreshintervalle lang prüfen
 - [ ] neuesten D-Pad-Overlay-Fokus nach dem Regression-Pass noch einmal vollständig prüfen
 
-**Phase 7 bleibt funktional abgeschlossen und hardwarebestätigt; der Exit-Schutz und lange EPG-Direktzugang sind bestätigt, der jüngste D-Pad-Regressionspass bleibt offen.**
+**Phase 7 bleibt funktional abgeschlossen und hardwarebestätigt; die neue Refresh-stabile Senderidentität und das angeheftete Senderlistenverhalten warten auf den gezielten TCL-Langzeittest.**
 
 ## Preview Channels / globale Suche – aktueller Entwicklungsstand
 
@@ -245,7 +250,8 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Home-/Search-Layout im zweiten Google-TV-inspirierten Feinschliff visuell vom Benutzer grundsätzlich bestätigt
 - [x] Hauptnavigation optisch kompakter: transparente Ruhefläche, kleine Fokusvergrößerung und helle Fokus-Pill ohne Änderung des Fokuspfads
 - [x] separate `Alle Apps`-Ansicht nutzt adaptives TV-Grid und dauerhaft sichtbare App-Namen; Home-App-Dock bleibt label-reduziert
-- [ ] TV-Gerätetest für Nav-Jitter, kompakten Nav-Fokus, adaptives Apps-Grid und jüngste D-Pad-Regressionen durchführen
+- [x] Detailseite mit horizontalem/unterem Artwork-Verlauf, kompakteren Metadaten und reduzierten technischen Quellenzeilen an dieselbe Google-TV-inspirierte Bildsprache angeglichen
+- [ ] TV-Gerätetest für kompakten Nav-Fokus, adaptives Apps-Grid, neuen Detailseiten-Look und jüngste D-Pad-Regressionen durchführen
 
 ## Phase 8 – optionale Provider
 
