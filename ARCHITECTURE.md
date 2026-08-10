@@ -36,6 +36,8 @@ Das Suchfeld ist kompakt und TV-gerecht mit separater Sprachsuche. Ergebnis- und
 
 Kurzes OK auf Watch Next startet den vorhandenen Source-/Playback-Intent. `INFO` oder langes OK öffnet Details. Das Loslassen der langen OK-Taste wird konsumiert, bevor die Detailseite aufgebaut wird, damit kein frisch fokussierter Button unbeabsichtigt ausgelöst wird.
 
+Detailseiten folgen derselben Google-TV-inspirierten Bildhierarchie wie Home: das Artwork bleibt großflächig sichtbar, ein starker horizontaler Verlauf sichert links die Lesbarkeit und ein unterer Verlauf verbindet die Fläche mit dem Hintergrund. Reine technische Quellenbezeichnungen wie `TMDB` oder App-Namen werden nicht als zusätzliche Informationszeile wiederholt; bei EPG-Inhalten kann der Sendername als echter Kontext erhalten bleiben. Die vorhandene Aktionsreihenfolge und der direkte Fokus auf die erste sinnvolle Aktion bleiben unverändert.
+
 TMDB-/EPG-Details bieten verfügbare Zielaktionen in sinnvoller Reihenfolge. CloudStream wird über den offiziellen `cloudstreamsearch://`-Intent aufgelöst. CloudStreams eigene Suchoberfläche erzwingt derzeit selbst die Soft-Tastatur; I Launcher sendet keinen timing-basierten Back-Key-Workaround.
 
 Kodis Android-`ACTION_SEARCH`-Activity wird nicht verwendet, weil sie intern einen vom eigenen Media-Provider nicht registrierten `content://…media/search/<query>`-Pfad abfragt. Der Adapter nutzt stattdessen Kodis exportierten Suggestions-Provider und akzeptiert nur einen starken normalisierten Bibliothekstitel-Treffer. Dessen von Kodi selbst zurückgegebene `ACTION_GET_CONTENT`-/`videodb://`-Referenz wird an Kodi übergeben. Ohne sicheren Treffer wird Kodi normal geöffnet. Add-on-spezifische Kodi-Suchen bleiben getrennte Adapter.
@@ -46,7 +48,11 @@ Trailer werden bevorzugt über TMDB-Video-Metadaten aufgelöst. Wenn eine konkre
 
 ## Live TV und EPG
 
-Der Live-TV-Player nutzt Media3. Das Overlay blendet nach kurzer Inaktivität aus; OK blendet es ein. Solange das Overlay sichtbar ist, navigieren Hoch/Runter durch die UI und zappen nicht. Bei ausgeblendetem Overlay gilt Hoch = höhere Kanalnummer, Runter = niedrigere. Langes OK öffnet den EPG. Eine kompakte `Jetzt im TV`-Rail dient zum Zappen.
+Der Live-TV-Player nutzt Media3. Die aktuell gewählte Senderidentität wird über die stabile Enigma2-`serviceReference` gehalten und nicht über einen `remember`-Index, der an eine periodisch neu gelieferte Channel-Liste gekoppelt ist. OpenWebif-/EPG-Metadatenrefreshes dürfen damit die aktuelle Wiedergabe nicht mehr auf den ursprünglich gestarteten Sender zurücksetzen. Nur wenn die gewählte `serviceReference` tatsächlich aus der Bouquetliste verschwindet, fällt der Player sicher auf den ersten verfügbaren Sender zurück.
+
+Die Player-UI unterscheidet zwischen transient eingeblendeten Informationen und einer bewusst geöffneten Senderübersicht. Normales OK öffnet die Übersicht und hält sie offen; sie ist vom Drei-Sekunden-Timeout ausgenommen. Zurück schließt zuerst nur diese Übersicht. Eine konkrete Senderwahl oder ein Senderwechsel beendet den angehefteten Listenmodus. Langes OK bleibt der direkte EPG-Zugang. Bei ausgeblendetem Overlay gilt Hoch = höhere Kanalnummer, Runter = niedrigere; CH+/CH− bleiben explizite Senderwechsel.
+
+Der Player übernimmt dieselbe ruhige visuelle Sprache wie Home und Search: kompakte abgerundete, leicht transparente Info-/Senderflächen, kleine Fokusvergrößerungen und zurückgenommene Sekundärtexte statt vollflächiger schwerer Balken.
 
 Beim Verlassen erscheint ein Bestätigungsdialog. EPG-Programme werden über `serviceReference + startUtcMillis` identifiziert, damit asynchrone TMDB-Anreicherung die sichtbare Programmkopie aktualisieren kann. Eindeutig angereicherte Programme können Details öffnen und von dort wieder CloudStream/Kodi/Trailer erreichen.
 
