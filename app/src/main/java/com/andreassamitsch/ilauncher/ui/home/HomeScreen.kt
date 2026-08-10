@@ -1,6 +1,7 @@
 package com.andreassamitsch.ilauncher.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,8 +37,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Button
-import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -54,7 +53,10 @@ import com.andreassamitsch.ilauncher.model.MediaSource
 import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.ui.components.AppCard
 import com.andreassamitsch.ilauncher.ui.components.LiveTvCard
+import com.andreassamitsch.ilauncher.ui.components.TouchButton
+import com.andreassamitsch.ilauncher.ui.components.TouchCard
 import com.andreassamitsch.ilauncher.ui.components.WatchNextCard
+import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import java.text.DateFormat
 import java.util.Date
 
@@ -150,7 +152,9 @@ fun HomeScreen(
     }
 
     Column(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .touchScrollFallback(contentScrollState, Orientation.Vertical),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         HomeHero(
@@ -163,7 +167,8 @@ fun HomeScreen(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .verticalScroll(contentScrollState),
+                .verticalScroll(contentScrollState)
+                .touchScrollFallback(contentScrollState, Orientation.Vertical),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
@@ -179,7 +184,7 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium,
                         )
-                        Button(onClick = onRequestTvListingsPermission) {
+                        TouchButton(onClick = onRequestTvListingsPermission) {
                             Text("TV-Inhalte freigeben")
                         }
                     }
@@ -199,6 +204,10 @@ fun HomeScreen(
 
                 else -> LazyRow(
                     state = watchNextListState,
+                    modifier = Modifier.touchScrollFallback(
+                        watchNextListState,
+                        Orientation.Horizontal,
+                    ),
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
@@ -238,6 +247,10 @@ fun HomeScreen(
                 when {
                     liveTvState.channels.isNotEmpty() -> LazyRow(
                         state = liveTvListState,
+                        modifier = Modifier.touchScrollFallback(
+                            liveTvListState,
+                            Orientation.Horizontal,
+                        ),
                         contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
@@ -267,7 +280,7 @@ fun HomeScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
 
-                    else -> Button(onClick = onOpenLiveTv) {
+                    else -> TouchButton(onClick = onOpenLiveTv) {
                         Text("Live TV konfigurieren")
                     }
                 }
@@ -301,6 +314,10 @@ fun HomeScreen(
 
                     LazyRow(
                         state = channelListState,
+                        modifier = Modifier.touchScrollFallback(
+                            channelListState,
+                            Orientation.Horizontal,
+                        ),
                         contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
@@ -330,6 +347,10 @@ fun HomeScreen(
             } else {
                 LazyRow(
                     state = appsListState,
+                    modifier = Modifier.touchScrollFallback(
+                        appsListState,
+                        Orientation.Horizontal,
+                    ),
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
@@ -357,7 +378,7 @@ private fun HomeHero(
     onOpenApp: (InstalledApp) -> Unit,
     onFocused: () -> Unit,
 ) {
-    Card(
+    TouchCard(
         onClick = {
             when {
                 content.detailsMedia != null -> onOpenMediaDetails(
