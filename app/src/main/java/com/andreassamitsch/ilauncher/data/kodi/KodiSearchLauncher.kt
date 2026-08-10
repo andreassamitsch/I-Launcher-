@@ -117,6 +117,7 @@ internal fun selectKodiSuggestion(
 
 internal fun normalizeKodiTitle(value: String): String = value
     .lowercase()
+    .replace("&", " and ")
     .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
     .trim()
     .replace(Regex("\\s+"), " ")
