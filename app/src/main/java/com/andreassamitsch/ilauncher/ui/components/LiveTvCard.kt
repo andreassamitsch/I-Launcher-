@@ -17,7 +17,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -35,7 +34,7 @@ fun LiveTvCard(
 ) {
     val artwork = channel.now?.preferredArtworkUri
 
-    Card(
+    TouchCard(
         onClick = onClick,
         modifier = modifier
             .width(300.dp)
