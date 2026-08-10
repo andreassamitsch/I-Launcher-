@@ -93,23 +93,15 @@ internal fun LiveTvPlayerScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val initialIndex = channels.indexOfFirst { it.serviceReference == initialServiceReference }
-        .coerceAtLeast(0)
+    val initialIndex = channels.indexOfFirst { it.serviceReference == initialServiceReference }.coerceAtLeast(0)
     var currentIndex by remember(channels, initialServiceReference) { mutableIntStateOf(initialIndex) }
     var loading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var overlayVisible by remember { mutableStateOf(true) }
     var showExitConfirmation by remember { mutableStateOf(false) }
-    var showEpg by remember(initialShowEpg, initialServiceReference) {
-        mutableStateOf(initialShowEpg)
-    }
-    var selectedEpgServiceReference by remember(initialServiceReference) {
-        mutableStateOf(initialServiceReference)
-    }
-    var selectedEpgProgramStartUtcMillis by remember(
-        initialServiceReference,
-        initialEpgProgramStartUtcMillis,
-    ) {
+    var showEpg by remember(initialShowEpg, initialServiceReference) { mutableStateOf(initialShowEpg) }
+    var selectedEpgServiceReference by remember(initialServiceReference) { mutableStateOf(initialServiceReference) }
+    var selectedEpgProgramStartUtcMillis by remember(initialServiceReference, initialEpgProgramStartUtcMillis) {
         mutableStateOf(initialEpgProgramStartUtcMillis)
     }
     val epgChannelListState = rememberLazyListState()
@@ -119,16 +111,11 @@ internal fun LiveTvPlayerScreen(
     val overlayFocusRequester = remember { FocusRequester() }
     val epgButtonFocusRequester = remember { FocusRequester() }
     val epgBackFocusRequester = remember { FocusRequester() }
-    val exitCancelFocusRequester = remember { FocusRequester() }
-    val player = remember {
-        ExoPlayer.Builder(context).build().apply {
-            playWhenReady = true
-        }
-    }
+    val exitConfirmFocusRequester = remember { FocusRequester() }
+    val player = remember { ExoPlayer.Builder(context).build().apply { playWhenReady = true } }
     val currentChannel = channels.getOrNull(currentIndex)
     val selectedEpgProgram = selectedEpgProgramStartUtcMillis?.let { start ->
-        epgState.guide(selectedEpgServiceReference)
-            .firstOrNull { it.startUtcMillis == start }
+        epgState.guide(selectedEpgServiceReference).firstOrNull { it.startUtcMillis == start }
     }
 
     fun zap(delta: Int) {
@@ -150,9 +137,7 @@ internal fun LiveTvPlayerScreen(
         val now = System.currentTimeMillis()
         selectedEpgServiceReference = channel.serviceReference
         selectedEpgProgramStartUtcMillis = epgState.guide(channel.serviceReference)
-            .firstOrNull { program ->
-                now >= program.startUtcMillis && now < program.endUtcMillis
-            }
+            .firstOrNull { now >= it.startUtcMillis && now < it.endUtcMillis }
             ?.startUtcMillis
         showExitConfirmation = false
         showEpg = true
@@ -180,7 +165,6 @@ internal fun LiveTvPlayerScreen(
                 if (loading) overlayVisible = true
                 if (playbackState == Player.STATE_READY) errorMessage = null
             }
-
             override fun onPlayerError(error: PlaybackException) {
                 loading = false
                 overlayVisible = true
@@ -215,11 +199,7 @@ internal fun LiveTvPlayerScreen(
             val mediaItem = MediaItem.Builder()
                 .setUri(stream.url)
                 .setMediaId(channel.serviceReference)
-                .setMediaMetadata(
-                    androidx.media3.common.MediaMetadata.Builder()
-                        .setTitle(channel.name)
-                        .build(),
-                )
+                .setMediaMetadata(androidx.media3.common.MediaMetadata.Builder().setTitle(channel.name).build())
                 .setMimeType(if (stream.isHls) MimeTypes.APPLICATION_M3U8 else MimeTypes.VIDEO_MP2T)
                 .build()
             val mediaSource = if (stream.isHls) {
@@ -238,19 +218,10 @@ internal fun LiveTvPlayerScreen(
     }
 
     LaunchedEffect(currentIndex, channels.size) {
-        if (channels.isNotEmpty()) {
-            zapListState.animateScrollToItem((currentIndex - 2).coerceAtLeast(0))
-        }
+        if (channels.isNotEmpty()) zapListState.animateScrollToItem((currentIndex - 2).coerceAtLeast(0))
     }
 
-    LaunchedEffect(
-        overlayVisible,
-        currentChannel?.serviceReference,
-        loading,
-        errorMessage,
-        showEpg,
-        showExitConfirmation,
-    ) {
+    LaunchedEffect(overlayVisible, currentChannel?.serviceReference, loading, errorMessage, showEpg, showExitConfirmation) {
         if (overlayVisible && !loading && errorMessage == null && !showEpg && !showExitConfirmation) {
             delay(PLAYER_OVERLAY_TIMEOUT_MILLIS)
             overlayVisible = false
@@ -260,11 +231,9 @@ internal fun LiveTvPlayerScreen(
     LaunchedEffect(overlayVisible, showEpg, showExitConfirmation, currentIndex, selectedEpgProgramStartUtcMillis) {
         withFrameNanos { }
         when {
-            showExitConfirmation -> runCatching { exitCancelFocusRequester.requestFocus() }
-            showEpg && selectedEpgProgramStartUtcMillis == null -> runCatching {
-                epgBackFocusRequester.requestFocus()
-            }
-            showEpg -> Unit // EpgScreen restores focus to the selected/current programme.
+            showExitConfirmation -> runCatching { exitConfirmFocusRequester.requestFocus() }
+            showEpg && selectedEpgProgramStartUtcMillis == null -> runCatching { epgBackFocusRequester.requestFocus() }
+            showEpg -> Unit
             overlayVisible -> runCatching { overlayFocusRequester.requestFocus() }
             else -> runCatching { rootFocusRequester.requestFocus() }
         }
@@ -278,12 +247,10 @@ internal fun LiveTvPlayerScreen(
             .focusable()
             .onPreviewKeyEvent { keyEvent ->
                 if (showEpg || showExitConfirmation) return@onPreviewKeyEvent false
-
                 val nativeEvent = keyEvent.nativeKeyEvent
                 val isConfirmKey = nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
                     nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
                     nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
-
                 if (isConfirmKey) {
                     when (keyEvent.type) {
                         KeyEventType.KeyDown -> {
@@ -296,39 +263,19 @@ internal fun LiveTvPlayerScreen(
                                 return@onPreviewKeyEvent true
                             }
                         }
-                        KeyEventType.KeyUp -> {
-                            if (nativeEvent.eventTime - nativeEvent.downTime >= LONG_OK_THRESHOLD_MILLIS) {
-                                openEpg()
-                                return@onPreviewKeyEvent true
-                            }
+                        KeyEventType.KeyUp -> if (nativeEvent.eventTime - nativeEvent.downTime >= LONG_OK_THRESHOLD_MILLIS) {
+                            openEpg()
+                            return@onPreviewKeyEvent true
                         }
                         else -> Unit
                     }
                 }
-
                 if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-
                 when (keyEvent.key) {
-                    Key.ChannelUp -> {
-                        zap(+1)
-                        true
-                    }
-                    Key.ChannelDown -> {
-                        zap(-1)
-                        true
-                    }
-                    Key.DirectionUp -> {
-                        if (overlayVisible) false else {
-                            zap(+1)
-                            true
-                        }
-                    }
-                    Key.DirectionDown -> {
-                        if (overlayVisible) false else {
-                            zap(-1)
-                            true
-                        }
-                    }
+                    Key.ChannelUp -> { zap(+1); true }
+                    Key.ChannelDown -> { zap(-1); true }
+                    Key.DirectionUp -> if (overlayVisible) false else { zap(+1); true }
+                    Key.DirectionDown -> if (overlayVisible) false else { zap(-1); true }
                     else -> false
                 }
             },
@@ -340,16 +287,12 @@ internal fun LiveTvPlayerScreen(
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     this.player = player
                     isClickable = true
-                    setOnClickListener {
-                        if (!showEpg && !showExitConfirmation) overlayVisible = true
-                    }
+                    setOnClickListener { if (!showEpg && !showExitConfirmation) overlayVisible = true }
                 }
             },
             update = {
                 it.player = player
-                it.setOnClickListener {
-                    if (!showEpg && !showExitConfirmation) overlayVisible = true
-                }
+                it.setOnClickListener { if (!showEpg && !showExitConfirmation) overlayVisible = true }
             },
             modifier = Modifier.fillMaxSize(),
         )
@@ -374,19 +317,10 @@ internal fun LiveTvPlayerScreen(
                         )
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(
-                            text = "${currentIndex + 1} · ${channel.name}",
-                            style = MaterialTheme.typography.headlineSmall,
-                        )
-                        channel.now?.let { now ->
-                            Text(now.title, style = MaterialTheme.typography.titleMedium)
-                        }
-                        channel.next?.let { next ->
-                            Text(
-                                "Danach: ${next.title}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                        Text("${currentIndex + 1} · ${channel.name}", style = MaterialTheme.typography.headlineSmall)
+                        channel.now?.let { Text(it.title, style = MaterialTheme.typography.titleMedium) }
+                        channel.next?.let {
+                            Text("Danach: ${it.title}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -400,62 +334,37 @@ internal fun LiveTvPlayerScreen(
                     .padding(horizontal = 30.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                errorMessage?.let { error ->
-                    Text(error, color = MaterialTheme.colorScheme.error)
-                }
+                errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (loading && errorMessage == null) {
-                    Text(
-                        "Live TV wird geladen …",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Text("Live TV wird geladen …", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-
                 Text("Jetzt im TV", style = MaterialTheme.typography.titleMedium)
                 LazyRow(
                     state = zapListState,
-                    modifier = Modifier.touchScrollFallback(
-                        zapListState,
-                        Orientation.Horizontal,
-                    ),
+                    modifier = Modifier.touchScrollFallback(zapListState, Orientation.Horizontal),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    itemsIndexed(
-                        items = channels,
-                        key = { _, channel -> channel.serviceReference },
-                    ) { index, channel ->
+                    itemsIndexed(channels, key = { _, channel -> channel.serviceReference }) { index, channel ->
                         CompactLiveTvCard(
                             channel = channel,
                             channelNumber = index + 1,
                             selected = index == currentIndex,
                             onClick = { selectChannel(index) },
                             modifier = if (index == currentIndex) {
-                                Modifier
-                                    .focusRequester(overlayFocusRequester)
-                                    .focusProperties { down = epgButtonFocusRequester }
-                            } else {
-                                Modifier
-                            },
+                                Modifier.focusRequester(overlayFocusRequester).focusProperties { down = epgButtonFocusRequester }
+                            } else Modifier,
                         )
                     }
                 }
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TouchButton(
-                        onClick = ::openEpg,
-                        modifier = Modifier.focusRequester(epgButtonFocusRequester),
-                    ) {
-                        Text("EPG")
-                    }
+                    TouchButton(onClick = ::openEpg, modifier = Modifier.focusRequester(epgButtonFocusRequester)) { Text("EPG") }
                     TouchButton(onClick = ::requestExit) { Text("TV verlassen") }
                     currentChannel?.let {
-                        Text(
-                            "${currentIndex + 1}/${channels.size} · ${it.name}",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                        Text("${currentIndex + 1}/${channels.size} · ${it.name}", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
@@ -474,18 +383,11 @@ internal fun LiveTvPlayerScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = currentChannel?.let { "TV-Guide · ${it.name}" } ?: "TV-Guide",
-                        style = MaterialTheme.typography.headlineSmall,
-                    )
-                    TouchButton(
-                        onClick = { showEpg = false },
-                        modifier = Modifier.focusRequester(epgBackFocusRequester),
-                    ) {
+                    Text(currentChannel?.let { "TV-Guide · ${it.name}" } ?: "TV-Guide", style = MaterialTheme.typography.headlineSmall)
+                    TouchButton(onClick = { showEpg = false }, modifier = Modifier.focusRequester(epgBackFocusRequester)) {
                         Text("Zurück zum TV")
                     }
                 }
-
                 EpgScreen(
                     state = epgState,
                     channels = channels,
@@ -501,8 +403,8 @@ internal fun LiveTvPlayerScreen(
                         onEnrichEpgProgram(serviceReference, program.startUtcMillis)
                     },
                     onOpenProgramDetails = { serviceReference, program ->
-                        val channel = channels.firstOrNull { it.serviceReference == serviceReference }
-                        if (channel != null) onOpenEpgProgramDetails(channel, program)
+                        channels.firstOrNull { it.serviceReference == serviceReference }
+                            ?.let { onOpenEpgProgramDetails(it, program) }
                     },
                     onRefresh = onRefreshEpg,
                     channelListState = epgChannelListState,
@@ -522,15 +424,8 @@ internal fun LiveTvPlayerScreen(
                 Column(
                     modifier = Modifier
                         .width(460.dp)
-                        .background(
-                            MaterialTheme.colorScheme.surface,
-                            RoundedCornerShape(16.dp),
-                        )
-                        .border(
-                            1.dp,
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                            RoundedCornerShape(16.dp),
-                        )
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
                         .padding(28.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
@@ -542,12 +437,10 @@ internal fun LiveTvPlayerScreen(
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         TouchButton(
-                            onClick = { showExitConfirmation = false },
-                            modifier = Modifier.focusRequester(exitCancelFocusRequester),
-                        ) {
-                            Text("Abbrechen")
-                        }
-                        TouchButton(onClick = onBack) { Text("TV verlassen") }
+                            onClick = onBack,
+                            modifier = Modifier.focusRequester(exitConfirmFocusRequester),
+                        ) { Text("TV verlassen") }
+                        TouchButton(onClick = { showExitConfirmation = false }) { Text("Abbrechen") }
                     }
                 }
             }
@@ -569,21 +462,12 @@ private fun CompactLiveTvCard(
         onClick = onClick,
         modifier = modifier
             .width(190.dp)
-            .then(
-                if (selected) {
-                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape)
-                } else {
-                    Modifier
-                },
-            ),
+            .then(if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier),
         scale = CardDefaults.scale(focusedScale = 1.04f),
     ) {
         Column {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(78.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                modifier = Modifier.fillMaxWidth().height(78.dp).background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center,
             ) {
                 when {
@@ -597,9 +481,7 @@ private fun CompactLiveTvCard(
                         model = channel.piconUri,
                         contentDescription = channel.name,
                         contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(12.dp),
+                        modifier = Modifier.fillMaxSize().padding(12.dp),
                     )
                     else -> Text(channelNumber.toString(), style = MaterialTheme.typography.headlineSmall)
                 }
@@ -608,10 +490,7 @@ private fun CompactLiveTvCard(
                         model = channel.piconUri,
                         contentDescription = channel.name,
                         contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(6.dp)
-                            .size(width = 54.dp, height = 28.dp),
+                        modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(width = 54.dp, height = 28.dp),
                     )
                 }
             }
@@ -619,18 +498,8 @@ private fun CompactLiveTvCard(
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Text(
-                    text = "$channelNumber · ${channel.name}",
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = channel.now?.title ?: "Keine EPG-Daten",
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Text("$channelNumber · ${channel.name}", style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(channel.now?.title ?: "Keine EPG-Daten", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
