@@ -44,6 +44,7 @@ fun AppCard(
     onLongClick: (() -> Unit)? = null,
     moveMode: Boolean = false,
     onMove: ((Int) -> Unit)? = null,
+    labelAlwaysVisible: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val icon = remember(app.icon) { app.icon.asImageBitmap() }
@@ -108,7 +109,9 @@ fun AppCard(
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.alpha(if (focused || moveMode) 1f else 0.0f),
+                modifier = Modifier.alpha(
+                    if (focused || moveMode || labelAlwaysVisible) 1f else 0f,
+                ),
             )
         }
     }
