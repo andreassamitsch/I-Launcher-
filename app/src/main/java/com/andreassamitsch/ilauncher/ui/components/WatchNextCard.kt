@@ -41,6 +41,9 @@ fun WatchNextCard(
     TouchCard(
         onClick = onClick,
         onLongClick = onDetails,
+        // Remote long-OK is handled below so navigation only happens on ACTION_UP. That consumes
+        // the physical key release before the details screen and its newly focused first button exist.
+        handleTvLongClick = false,
         modifier = modifier
             .width(300.dp)
             .onFocusChanged { focusState ->
@@ -64,10 +67,7 @@ fun WatchNextCard(
                         event.action == AndroidKeyEvent.ACTION_DOWN &&
                         isConfirmKey &&
                         event.repeatCount > 0 -> {
-                        if (!longPressHandled) {
-                            longPressHandled = true
-                            onDetails()
-                        }
+                        longPressHandled = true
                         true
                     }
 
@@ -75,6 +75,7 @@ fun WatchNextCard(
                         isConfirmKey &&
                         longPressHandled -> {
                         longPressHandled = false
+                        onDetails?.invoke()
                         true
                     }
 
