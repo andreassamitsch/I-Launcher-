@@ -33,6 +33,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -63,6 +64,7 @@ import com.andreassamitsch.ilauncher.data.epg.EpgState
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifResolvedStream
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifStreamHttpException
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
+import com.andreassamitsch.ilauncher.model.LiveTvProgram
 import com.andreassamitsch.ilauncher.ui.components.TouchButton
 import com.andreassamitsch.ilauncher.ui.components.TouchCard
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
@@ -73,6 +75,7 @@ import java.net.UnknownHostException
 import kotlinx.coroutines.delay
 
 private const val PLAYER_OVERLAY_TIMEOUT_MILLIS = 3_000L
+private const val LONG_OK_THRESHOLD_MILLIS = 650L
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -85,6 +88,7 @@ internal fun LiveTvPlayerScreen(
     initialEpgProgramStartUtcMillis: Long? = null,
     onRefreshEpg: () -> Unit,
     onEnrichEpgProgram: (serviceReference: String, startUtcMillis: Long) -> Unit,
+    onOpenEpgProgramDetails: (LiveTvChannel, LiveTvProgram) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -95,6 +99,7 @@ internal fun LiveTvPlayerScreen(
     var loading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var overlayVisible by remember { mutableStateOf(true) }
+    var showExitConfirmation by remember { mutableStateOf(false) }
     var showEpg by remember(initialShowEpg, initialServiceReference) {
         mutableStateOf(initialShowEpg)
     }
@@ -112,7 +117,9 @@ internal fun LiveTvPlayerScreen(
     val zapListState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
     val rootFocusRequester = remember { FocusRequester() }
     val overlayFocusRequester = remember { FocusRequester() }
+    val epgButtonFocusRequester = remember { FocusRequester() }
     val epgBackFocusRequester = remember { FocusRequester() }
+    val exitCancelFocusRequester = remember { FocusRequester() }
     val player = remember {
         ExoPlayer.Builder(context).build().apply {
             playWhenReady = true
@@ -127,27 +134,42 @@ internal fun LiveTvPlayerScreen(
     fun zap(delta: Int) {
         if (channels.isEmpty()) return
         overlayVisible = true
+        showExitConfirmation = false
         currentIndex = LiveTvZapping.nextIndex(currentIndex, channels.size, delta)
     }
 
     fun selectChannel(index: Int) {
         if (index !in channels.indices) return
         overlayVisible = true
+        showExitConfirmation = false
         currentIndex = index
     }
 
     fun openEpg() {
         val channel = currentChannel ?: return
+        val now = System.currentTimeMillis()
         selectedEpgServiceReference = channel.serviceReference
-        selectedEpgProgramStartUtcMillis = null
+        selectedEpgProgramStartUtcMillis = epgState.guide(channel.serviceReference)
+            .firstOrNull { program ->
+                now >= program.startUtcMillis && now < program.endUtcMillis
+            }
+            ?.startUtcMillis
+        showExitConfirmation = false
         showEpg = true
+    }
+
+    fun requestExit() {
+        showEpg = false
+        overlayVisible = true
+        showExitConfirmation = true
     }
 
     BackHandler {
         when {
+            showExitConfirmation -> showExitConfirmation = false
             showEpg -> showEpg = false
             overlayVisible -> overlayVisible = false
-            else -> onBack()
+            else -> requestExit()
         }
     }
 
@@ -221,19 +243,30 @@ internal fun LiveTvPlayerScreen(
         }
     }
 
-    LaunchedEffect(overlayVisible, currentChannel?.serviceReference, loading, errorMessage, showEpg) {
-        if (overlayVisible && !loading && errorMessage == null && !showEpg) {
+    LaunchedEffect(
+        overlayVisible,
+        currentChannel?.serviceReference,
+        loading,
+        errorMessage,
+        showEpg,
+        showExitConfirmation,
+    ) {
+        if (overlayVisible && !loading && errorMessage == null && !showEpg && !showExitConfirmation) {
             delay(PLAYER_OVERLAY_TIMEOUT_MILLIS)
             overlayVisible = false
         }
     }
 
-    LaunchedEffect(overlayVisible, showEpg, currentIndex) {
+    LaunchedEffect(overlayVisible, showEpg, showExitConfirmation, currentIndex, selectedEpgProgramStartUtcMillis) {
         withFrameNanos { }
         when {
-            showEpg -> epgBackFocusRequester.requestFocus()
-            overlayVisible -> overlayFocusRequester.requestFocus()
-            else -> rootFocusRequester.requestFocus()
+            showExitConfirmation -> runCatching { exitCancelFocusRequester.requestFocus() }
+            showEpg && selectedEpgProgramStartUtcMillis == null -> runCatching {
+                epgBackFocusRequester.requestFocus()
+            }
+            showEpg -> Unit // EpgScreen restores focus to the selected/current programme.
+            overlayVisible -> runCatching { overlayFocusRequester.requestFocus() }
+            else -> runCatching { rootFocusRequester.requestFocus() }
         }
     }
 
@@ -244,18 +277,36 @@ internal fun LiveTvPlayerScreen(
             .focusRequester(rootFocusRequester)
             .focusable()
             .onPreviewKeyEvent { keyEvent ->
-                if (showEpg || keyEvent.type != KeyEventType.KeyDown) {
-                    return@onPreviewKeyEvent false
-                }
+                if (showEpg || showExitConfirmation) return@onPreviewKeyEvent false
+
                 val nativeEvent = keyEvent.nativeKeyEvent
                 val isConfirmKey = nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
                     nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
                     nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
 
-                if (!overlayVisible && isConfirmKey) {
-                    overlayVisible = true
-                    return@onPreviewKeyEvent true
+                if (isConfirmKey) {
+                    when (keyEvent.type) {
+                        KeyEventType.KeyDown -> {
+                            if (nativeEvent.isLongPress || nativeEvent.repeatCount > 0) {
+                                openEpg()
+                                return@onPreviewKeyEvent true
+                            }
+                            if (!overlayVisible) {
+                                overlayVisible = true
+                                return@onPreviewKeyEvent true
+                            }
+                        }
+                        KeyEventType.KeyUp -> {
+                            if (nativeEvent.eventTime - nativeEvent.downTime >= LONG_OK_THRESHOLD_MILLIS) {
+                                openEpg()
+                                return@onPreviewKeyEvent true
+                            }
+                        }
+                        else -> Unit
+                    }
                 }
+
+                if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
 
                 when (keyEvent.key) {
                     Key.ChannelUp -> {
@@ -267,12 +318,16 @@ internal fun LiveTvPlayerScreen(
                         true
                     }
                     Key.DirectionUp -> {
-                        zap(+1)
-                        true
+                        if (overlayVisible) false else {
+                            zap(+1)
+                            true
+                        }
                     }
                     Key.DirectionDown -> {
-                        zap(-1)
-                        true
+                        if (overlayVisible) false else {
+                            zap(-1)
+                            true
+                        }
                     }
                     else -> false
                 }
@@ -286,14 +341,14 @@ internal fun LiveTvPlayerScreen(
                     this.player = player
                     isClickable = true
                     setOnClickListener {
-                        if (!showEpg) overlayVisible = true
+                        if (!showEpg && !showExitConfirmation) overlayVisible = true
                     }
                 }
             },
             update = {
                 it.player = player
                 it.setOnClickListener {
-                    if (!showEpg) overlayVisible = true
+                    if (!showEpg && !showExitConfirmation) overlayVisible = true
                 }
             },
             modifier = Modifier.fillMaxSize(),
@@ -374,7 +429,9 @@ internal fun LiveTvPlayerScreen(
                             selected = index == currentIndex,
                             onClick = { selectChannel(index) },
                             modifier = if (index == currentIndex) {
-                                Modifier.focusRequester(overlayFocusRequester)
+                                Modifier
+                                    .focusRequester(overlayFocusRequester)
+                                    .focusProperties { down = epgButtonFocusRequester }
                             } else {
                                 Modifier
                             },
@@ -387,8 +444,13 @@ internal fun LiveTvPlayerScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TouchButton(onClick = onBack) { Text("Zurück") }
-                    TouchButton(onClick = ::openEpg) { Text("EPG") }
+                    TouchButton(
+                        onClick = ::openEpg,
+                        modifier = Modifier.focusRequester(epgButtonFocusRequester),
+                    ) {
+                        Text("EPG")
+                    }
+                    TouchButton(onClick = ::requestExit) { Text("TV verlassen") }
                     currentChannel?.let {
                         Text(
                             "${currentIndex + 1}/${channels.size} · ${it.name}",
@@ -438,11 +500,56 @@ internal fun LiveTvPlayerScreen(
                         selectedEpgProgramStartUtcMillis = program.startUtcMillis
                         onEnrichEpgProgram(serviceReference, program.startUtcMillis)
                     },
+                    onOpenProgramDetails = { serviceReference, program ->
+                        val channel = channels.firstOrNull { it.serviceReference == serviceReference }
+                        if (channel != null) onOpenEpgProgramDetails(channel, program)
+                    },
                     onRefresh = onRefreshEpg,
                     channelListState = epgChannelListState,
                     programListState = epgProgramListState,
                     modifier = Modifier.weight(1f),
                 )
+            }
+        }
+
+        if (showExitConfirmation) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.72f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(460.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surface,
+                            RoundedCornerShape(16.dp),
+                        )
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                            RoundedCornerShape(16.dp),
+                        )
+                        .padding(28.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    Text("Live TV verlassen?", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        "Die laufende Wiedergabe wird beendet.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TouchButton(
+                            onClick = { showExitConfirmation = false },
+                            modifier = Modifier.focusRequester(exitCancelFocusRequester),
+                        ) {
+                            Text("Abbrechen")
+                        }
+                        TouchButton(onClick = onBack) { Text("TV verlassen") }
+                    }
+                }
             }
         }
     }
