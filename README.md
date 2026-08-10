@@ -21,31 +21,34 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 Aktuell umgesetzt:
 
-- fest sichtbarer, fokussierbarer Hero außerhalb des vertikalen Reihen-Scrolls; Fokus auf Watch Next, Live-TV, Preview Channels oder Apps aktualisiert Inhalt/Artwork; Medien-Hero öffnet per OK die Detailansicht
-- Hero-Artwork mit zweistufiger Darstellung: dezenter vollflächiger Hintergrund plus unbeschnittenes `Fit`-Motiv, damit auch 4:3-, 16:9- und hochformatige Quellen nicht unnötig abgeschnitten werden
+- TV-first Hero mit Artwork auf der rechten Seite und weichem Verlauf in den linken Textbereich; echte Backdrops werden flächig genutzt, ungeeignete Quellbilder/Poster möglichst unbeschnitten dargestellt
+- Hero startet nicht mehr automatisch mit dem ersten TV-Sender: zunächst wird Local First ein Watch-Next-Inhalt, danach ein Preview-Channel-Inhalt und sonst ein neutraler Launcher-Hero verwendet; erst aktive Fokusbewegung übernimmt den Hero
+- Hero zeigt gegenüber der fokussierten Karte ergänzende Metadaten statt Fortschritt/Karteninhalt zu duplizieren; längere Beschreibungen laufen nach kurzer Pause automatisch durch einen begrenzten Textbereich
 - kompakte Hauptnavigation `Home · Suche · Apps · Einstellungen`; aktiver Bereich nur per Rahmen; Navigation kann auf Home beim Scrollen der Reihen ausblenden und wird beim Zurücknavigieren zum Hero wieder eingeblendet
-- Live-TV-/Gigablue-Konfiguration als Unterpunkt der Einstellungen
-- Update-Schnellaktion ganz oben in den Einstellungen
+- Live-TV-/Gigablue-Konfiguration als Unterpunkt der Einstellungen und Update-Schnellaktion ganz oben
 - EPG als TV-Guide direkt im laufenden Live-TV-Player statt eigener Hauptnavigation; lange Programmbeschreibungen sind per D-Pad scrollbar
-- Live-TV-Infoleisten blenden nach drei Sekunden aus; OK zeigt sie, erstes Zurück versteckt sie
-- kompakte `Jetzt im TV`-Senderreihe im Player zum direkten Zappen; D-Pad hoch erhöht, D-Pad runter verringert die Sendernummer
-- direkte TMDB-/YouTube-Trailer starten in einer eigenen hardwarebeschleunigten Trailer-Activity; deutsche TMDB-Videos werden bevorzugt, YouTube-UI/Untertitelpräferenz ist Deutsch; externe YouTube-Suche bleibt Fallback ohne konkrete Trailer-ID
-- bestehende TMDB-Trailer-Caches aus älteren Development-Builds werden einmalig neu aufgelöst, damit die neue deutsche Trailerpräferenz auch bei bereits bekannten Filmen/Serien wirksam wird
-- lokale Suche berücksichtigt unveränderte Android-Watch-Next-Quelltitel sowie Preview-Channel-/Quellnamen zusätzlich zu angereicherten Medienfeldern
-- TMDB-Suchergebnisse werden bei identischer TMDB-Identität wieder mit vorhandenen Watch-Next-/Preview-Quellen verknüpft; source-backed Watch-Next-Treffer öffnen Details mit `Fortsetzen`
-- Suchergebnisliste springt bei einer neuen Suchanfrage wieder an den Anfang, damit lokale Treffer nicht unterhalb eines zuvor sichtbaren TMDB-Blocks verborgen bleiben
+- Live-TV-Overlay blendet nach drei Sekunden aus; bei sichtbarem Overlay gehören Hoch/Runter der UI-Navigation, bei ausgeblendetem Overlay dienen Hoch/Runter zum Zappen; CH+/CH− bleiben Senderwechsel
+- langes OK im Live-TV-Player öffnet direkt den EPG; der EPG-Button ist aus der Senderreihe per D-Pad erreichbar
+- Verlassen des Live-TV-Players erfordert nach ausgeblendeter UI bzw. über `TV verlassen` eine Bestätigung, damit Back nicht versehentlich den Stream beendet
+- EPG-Sendungen mit TMDB-Referenz können die provider-neutrale Detailseite öffnen; von dort stehen wiederum verfügbare externe Suchziele und Trailer bereit
+- direkte TMDB-/YouTube-Trailer starten in einer eigenen hardwarebeschleunigten Trailer-Activity; deutsche TMDB-Videos werden bevorzugt, YouTube-UI/Untertitelpräferenz ist Deutsch
+- globale Suche zeigt lokale Quellen und TMDB nicht mehr als eine lange gemischte Liste, sondern als TV-Reihen `Weiterschauen`, `App-Kanäle`, `TV-Programm`, `Apps` und `Filme & Serien`
+- lokale Suche berücksichtigt unveränderte Android-Watch-Next-Quelltitel sowie Preview-Channel-/Quellnamen zusätzlich zu angereicherten Medienfeldern; TMDB-Suchergebnisse werden bei identischer TMDB-Identität wieder mit lokalen Quellen verknüpft
 - Android-Sprachsuche über einen kompakten Mikrofon-Button übernimmt erkannte Sprache in dieselbe Suchpipeline
+- Detailseiten fokussieren beim Öffnen direkt die erste sinnvolle Aktion; bei TMDB-/EPG-Details ist die Reihenfolge verfügbare App-Suche → Trailer → Zurück, Suchziele erscheinen als Suchsymbol plus App-Name
 - CloudStream-Suchhandoff erkennt Stable-, Prerelease-, Debug- und kombinierte Development-Paketvarianten dynamisch über den `cloudstreamsearch`-Intent
-- zusätzlicher Touch-Kompatibilitätslayer für Handy-/Tablet-Smoke-Tests: TV-Material-Buttons und -Cards behalten D-Pad/Fokus, erhalten aber explizite Pointer-Taps; Home, Suche, Apps, Einstellungen, EPG und Live-TV-Listen erhalten Touch-Scroll-Fallbacks; `leanback` ist für die Testinstallation auf Nicht-TV-Geräten optional
-- Medien-Detailansicht ist nun ebenfalls vertikal per Touch scrollbar; lange Beschreibungen werden vollständig angezeigt und die Aktionsbuttons umbrechen bei schmalen Displays statt außerhalb des sichtbaren Bereichs zu liegen
+- Kodi-Suchhandoff verwendet Kodis exportierte `XBMCSearchableActivity` mit `ACTION_SEARCH`, `SearchManager.QUERY` und einer nicht-null Data-URI, da die aktuelle Kodi-Activity `intent.data` vor der Suchverarbeitung dereferenziert
+- CloudStreams aktuelle Such-Activity erzwingt beim Öffnen selbst die Soft-Tastatur; die externe `cloudstreamsearch`-Schnittstelle bietet keinen dokumentierten Parameter zum Unterdrücken, daher implementiert I Launcher keinen timing-basierten Back-Workaround
+- zusätzlicher Touch-Kompatibilitätslayer für Handy-/Tablet-Smoke-Tests: TV-Material-Buttons und -Cards behalten D-Pad/Fokus, erhalten aber explizite Pointer-Taps und Scroll-Fallbacks; `leanback` ist für die Testinstallation auf Nicht-TV-Geräten optional
+- Medien-Detailansicht ist vertikal per Touch scrollbar; lange Beschreibungen und umgebrochene Aktionsbuttons sind auf dem Handy praktisch bestätigt
 
-Die interne Trailerwiedergabe mit Bild und Ton sowie die EPG-Integration im Live-TV-Player wurden auf realer TV-Hardware bestätigt. Die danach ergänzten Änderungen an Hero-Darstellung, Menü-Rückkehr, Suche, Sprachsuche, EPG-Textscroll, kompakter Zapping-Reihe, Update-Schnellaktion und Touch-Kompatibilität benötigen noch den nächsten Geräte-/Touchtest. Auf einem Touch-Gerät sind das Antippen der Hauptnavigation und das vertikale Wischen auf Home bereits bestätigt; die nachgebesserte vertikale Detailseiten-Navigation wartet noch auf den erneuten Test mit langem Suchergebnis.
+Die interne Trailerwiedergabe mit Bild und Ton sowie die EPG-Integration im Live-TV-Player wurden auf realer TV-Hardware bestätigt. Die jüngsten Änderungen an Hero, modernisierter Suche, Kodi-Handoff, Detailfokus, Live-TV-D-Pad-/Long-OK-Verhalten, EPG→Details und Exit-Bestätigung sind automatisiert gebaut, benötigen aber noch den nächsten TV-Gerätetest.
 
 ## Datenschutz / Sicherheit
 
 OpenWebif-Zugangsdaten werden nur lokal gespeichert, nicht geloggt und durch `allowBackup=false` nicht über Android Auto Backup ausgelagert. Externe EPG-Quellen erhalten keine Receiver-Zugangsdaten. Stream-Adressen und temporäre Streaming-Authentifizierung bleiben flüchtig im Arbeitsspeicher.
 
-Watch Next liefert CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Der optionale Suchhandoff aus TMDB-Ergebnissen verwendet nur die von CloudStream bereitgestellte externe Suchschnittstelle; I Launcher baut keine CloudStream-Provider nach.
+Watch Next liefert CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Der optionale Suchhandoff aus TMDB-/EPG-Ergebnissen verwendet nur externe Suchschnittstellen der Ziel-Apps; I Launcher baut keine CloudStream- oder Kodi-Providerlogik nach.
 
 Siehe [`AGENTS.md`](AGENTS.md), [`ROADMAP.md`](ROADMAP.md) und [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
