@@ -6,6 +6,7 @@ import android.text.InputType
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
@@ -14,13 +15,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.epg.EpgChannelMatcher
 import com.andreassamitsch.ilauncher.data.epg.EpgSourceChannel
 import com.andreassamitsch.ilauncher.data.epg.EpgState
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifState
+import com.andreassamitsch.ilauncher.ui.components.TouchButton
+import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import java.text.DateFormat
 import java.util.Date
 
@@ -41,7 +43,9 @@ fun LiveTvScreen(
     val mappingByServiceReference = epgState.mappings.associateBy { it.serviceReference }
 
     Column(
-        modifier = modifier.verticalScroll(scrollState),
+        modifier = modifier
+            .verticalScroll(scrollState)
+            .touchScrollFallback(scrollState, Orientation.Vertical),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Live TV / Gigablue", style = MaterialTheme.typography.displaySmall)
@@ -61,7 +65,7 @@ fun LiveTvScreen(
             style = MaterialTheme.typography.titleMedium,
         )
 
-        Button(
+        TouchButton(
             onClick = {
                 showConnectionDialog(
                     context = context,
@@ -76,7 +80,7 @@ fun LiveTvScreen(
         }
 
         if (state.configured) {
-            Button(onClick = onRefresh, enabled = !state.isRefreshing) {
+            TouchButton(onClick = onRefresh, enabled = !state.isRefreshing) {
                 Text(if (state.isRefreshing) "Aktualisiere …" else "Gigablue aktualisieren")
             }
         }
@@ -106,7 +110,7 @@ fun LiveTvScreen(
             )
             state.bouquets.forEach { bouquet ->
                 val selected = bouquet.serviceReference == state.selectedBouquetRef
-                Button(
+                TouchButton(
                     onClick = { onSelectBouquet(bouquet.serviceReference) },
                     enabled = !state.isRefreshing,
                 ) {
@@ -121,7 +125,7 @@ fun LiveTvScreen(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Button(
+        TouchButton(
             onClick = {
                 showEpgSourceDialog(
                     context = context,
@@ -132,7 +136,7 @@ fun LiveTvScreen(
         ) {
             Text("EPG-M3U bearbeiten")
         }
-        Button(
+        TouchButton(
             onClick = onRefreshEpg,
             enabled = state.channels.isNotEmpty() && !epgState.isRefreshing,
         ) {
@@ -168,7 +172,7 @@ fun LiveTvScreen(
             )
             unmatched.take(10).forEach { channel ->
                 val suggestions = epgState.mappingSuggestions[channel.serviceReference].orEmpty()
-                Button(
+                TouchButton(
                     onClick = {
                         showMappingDialog(
                             context = context,
