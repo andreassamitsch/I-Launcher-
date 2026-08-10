@@ -62,6 +62,8 @@ import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.delay
 
+private const val NAVIGATION_HIDE_SCROLL_THRESHOLD_PX = 24
+
 @Composable
 fun HomeScreen(
     apps: List<InstalledApp>,
@@ -129,7 +131,9 @@ fun HomeScreen(
     }
 
     LaunchedEffect(contentScrollState.value) {
-        onNavigationVisibilityChange(contentScrollState.value == 0)
+        // Horizontal focus scaling can nudge the vertical container by a few pixels. Keep the
+        // navigation stable until the user has actually moved down into the Home content.
+        onNavigationVisibilityChange(contentScrollState.value <= NAVIGATION_HIDE_SCROLL_THRESHOLD_PX)
     }
 
     LaunchedEffect(
@@ -483,12 +487,14 @@ private fun HomeHero(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Text(
-                    text = content.title,
-                    style = MaterialTheme.typography.displaySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (!content.titleCoveredByLogo || content.logoUri.isNullOrBlank()) {
+                    Text(
+                        text = content.title,
+                        style = MaterialTheme.typography.displaySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 content.metadata?.takeIf { it.isNotBlank() }?.let { metadata ->
                     Text(
                         text = metadata,
@@ -517,16 +523,16 @@ private fun AutoScrollingHeroDescription(
     val scrollState = remember(key, text) { androidx.compose.foundation.ScrollState(0) }
     LaunchedEffect(key, text, scrollState.maxValue) {
         if (scrollState.maxValue <= 0) return@LaunchedEffect
-        delay(2_800)
+        delay(4_000)
         while (true) {
-            val duration = (scrollState.maxValue * 18).coerceIn(2_800, 8_000)
+            val duration = (scrollState.maxValue * 40).coerceIn(6_000, 24_000)
             scrollState.animateScrollTo(
                 scrollState.maxValue,
                 animationSpec = tween(durationMillis = duration, easing = LinearEasing),
             )
-            delay(2_000)
-            scrollState.scrollTo(0)
             delay(3_000)
+            scrollState.scrollTo(0)
+            delay(4_000)
         }
     }
     Box(
@@ -551,6 +557,7 @@ private data class HomeHeroContent(
     val artworkUri: String? = null,
     val fitArtwork: Boolean = false,
     val logoUri: String? = null,
+    val titleCoveredByLogo: Boolean = false,
     val detailsMedia: MediaItem? = null,
     val sourceLabel: String? = null,
     val app: InstalledApp? = null,
@@ -582,13 +589,13 @@ private fun mediaHero(item: MediaItem, sourceLabel: String?): HomeHeroContent {
 
     return HomeHeroContent(
         key = "media:${item.source.provider}:${item.source.sourceId}",
-        eyebrow = sourceLabel,
         title = item.title,
         metadata = metadata.takeIf { it.isNotBlank() },
         description = item.overview ?: item.episodeTitle,
         artworkUri = artwork.first,
         fitArtwork = artwork.second,
         logoUri = item.logoUri,
+        titleCoveredByLogo = !item.logoUri.isNullOrBlank(),
         detailsMedia = item,
         sourceLabel = sourceLabel,
     )
