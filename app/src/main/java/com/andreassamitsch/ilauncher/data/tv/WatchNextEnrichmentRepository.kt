@@ -3,6 +3,7 @@ package com.andreassamitsch.ilauncher.data.tv
 import com.andreassamitsch.ilauncher.data.tmdb.MediaLookup
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbRepository
 import com.andreassamitsch.ilauncher.model.MediaItem
+import com.andreassamitsch.ilauncher.model.MediaType
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.supervisorScope
@@ -60,7 +61,7 @@ class WatchNextEnrichmentRepository(
             sourceKey = media.source.sourceId,
             lookup = MediaLookup(
                 rawTitle = media.title,
-                typeHint = media.type,
+                typeHint = resolverTypeHint(media),
                 releaseYear = media.releaseYear,
                 seasonNumber = media.seasonNumber,
                 episodeNumber = media.episodeNumber,
@@ -73,4 +74,16 @@ class WatchNextEnrichmentRepository(
     companion object {
         private const val MAX_PARALLEL_LOOKUPS = 2
     }
+}
+
+/**
+ * Android PreviewProgram.COLUMN_TYPE is provider supplied and is not reliable enough to hard-lock
+ * TMDB to movie vs. series. Some apps publish every preview item as TYPE_MOVIE. Keep explicit
+ * episode coordinates authoritative, but let the central resolver use multi-search for other
+ * Preview Channel items. This stays provider-neutral and avoids a CloudStream-specific resolver.
+ */
+internal fun resolverTypeHint(media: MediaItem): MediaType = when {
+    media.seasonNumber != null || media.episodeNumber != null -> MediaType.Episode
+    media.source.provider == "android_preview_channel" -> MediaType.Unknown
+    else -> media.type
 }
