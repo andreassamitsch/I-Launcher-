@@ -24,8 +24,10 @@ import androidx.tv.material3.ButtonColors
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ButtonScale
 import androidx.tv.material3.Card as TvCard
+import androidx.tv.material3.CardBorder
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.CardScale
+import androidx.tv.material3.CardShape
 
 @Composable
 fun TouchButton(
@@ -83,6 +85,8 @@ fun TouchCard(
     onLongClick: (() -> Unit)? = null,
     handleTvLongClick: Boolean = true,
     scale: CardScale = CardDefaults.scale(),
+    shape: CardShape = CardDefaults.shape(),
+    border: CardBorder = CardDefaults.border(),
     content: @Composable ColumnScope.() -> Unit,
 ) {
     TvCard(
@@ -93,6 +97,8 @@ fun TouchCard(
             onLongClick = onLongClick,
         ),
         scale = scale,
+        shape = shape,
+        border = border,
         content = content,
     )
 }
