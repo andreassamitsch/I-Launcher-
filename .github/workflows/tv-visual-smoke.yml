@@ -66,6 +66,13 @@ jobs:
             adb exec-out screencap -p > build/tv-visual/home-deep-rail.png
 
             adb shell am force-stop com.andreassamitsch.ilauncher
+            adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity --es screen home-epg-fallback
+            sleep 3
+            adb shell input keyevent 20
+            sleep 1
+            adb exec-out screencap -p > build/tv-visual/home-epg-fallback.png
+
+            adb shell am force-stop com.andreassamitsch.ilauncher
             adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity --es screen search-discover
             sleep 3
             adb exec-out screencap -p > build/tv-visual/search-discover.png
