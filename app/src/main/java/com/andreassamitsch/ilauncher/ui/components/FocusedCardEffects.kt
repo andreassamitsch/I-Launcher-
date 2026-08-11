@@ -55,16 +55,17 @@ internal fun BoxScope.FocusedArtworkGlow(
 ) {
     if (!focused || artworkUri.isNullOrBlank()) return
 
-    // The rounded image is the *source* of the effect. Blur and scale live on the outer layer, so
-    // the colour halo remains truly unbounded instead of clipping back to the card's rounded rect.
+    // The rounded image is the *source* of the effect. The very large, low-alpha outer layer moves
+    // its finite render boundary well beyond the visible halo so the glow can decay naturally
+    // instead of ending as a rectangular patch around the focused card.
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    scaleX = 1.20f
-                    scaleY = 1.32f
-                    alpha = 0.20f + breath * 0.08f
+                    scaleX = 1.45f
+                    scaleY = 1.75f
+                    alpha = 0.12f + breath * 0.06f
                 }
                 .blur(
                     radius = 30.dp,
@@ -87,9 +88,9 @@ internal fun BoxScope.FocusedArtworkGlow(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    scaleX = 1.16f
-                    scaleY = 1.22f
-                    alpha = 0.05f + breath * 0.02f
+                    scaleX = 1.22f
+                    scaleY = 1.34f
+                    alpha = 0.04f + breath * 0.018f
                 },
         ) {
             AsyncImage(
