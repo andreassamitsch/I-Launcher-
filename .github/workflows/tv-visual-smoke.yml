@@ -37,12 +37,12 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Capture deterministic Google TV screenshots
+      - name: Capture deterministic 1080p TV screenshots
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          target: google-tv
-          arch: x86_64
+          target: android-tv
+          arch: x86
           profile: tv_1080p
           emulator-options: >-
             -no-snapshot-save -no-window -gpu swiftshader_indirect
