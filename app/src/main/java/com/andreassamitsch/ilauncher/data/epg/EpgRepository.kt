@@ -1,16 +1,18 @@
 package com.andreassamitsch.ilauncher.data.epg
 
 import android.content.Context
+import android.util.Log
 import com.andreassamitsch.ilauncher.data.database.EpgChannelMappingEntity
 import com.andreassamitsch.ilauncher.data.database.EpgProgramEntity
 import com.andreassamitsch.ilauncher.data.database.ILauncherDatabase
 import com.andreassamitsch.ilauncher.data.tmdb.MediaLookup
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbRepository
+import com.andreassamitsch.ilauncher.model.EpgChannelMapping
+import com.andreassamitsch.ilauncher.model.EpgSourceChannel
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
 import com.andreassamitsch.ilauncher.model.MediaType
 import java.net.ConnectException
-import java.net.SocketTimeoutException
 import java.net.URI
 import java.net.UnknownHostException
 import java.util.zip.ZipException
@@ -20,242 +22,174 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.xml.sax.SAXException
 
-internal fun epgMediaTypeHint(program: LiveTvProgram): MediaType {
-    if (program.seasonNumber != null && program.episodeNumber != null) return MediaType.Episode
-    val categories = program.categories.orEmpty()
-        .joinToString(" ")
-        .let(EpgChannelMatcher::normalizeName)
-    return when {
-        listOf("spielfilm", "film", "movie").any(categories::contains) -> MediaType.Movie
-        listOf("serie", "series", "soap", "sitcom").any(categories::contains) -> MediaType.Series
-        // A missing/weak XMLTV category must not suppress lookup completely. The existing TMDB
-        // multi-search + confidence threshold remains the authority for whether a match is safe.
-        else -> MediaType.Unknown
-    }
-}
+private const val TAG = "EPG"
 
 class EpgRepository(
     context: Context,
     private val tmdbRepository: TmdbRepository,
 ) {
     private val appContext = context.applicationContext
-    private val store = EpgStore(appContext)
-    private val dao = ILauncherDatabase.get(appContext).epgDao()
-    private val network = EpgNetworkClient()
-    private val refreshMutex = Mutex()
-    private var currentChannels: List<LiveTvChannel> = emptyList()
+    private val database = ILauncherDatabase.get(appContext)
+    private val dao = database.epgDao()
+    private val store = EpgPreferences(appContext)
+    private val sourceClient = EpgSourceClient()
 
-    private val _state = MutableStateFlow(
-        EpgState(
-            sourceUrl = store.sourceUrl(),
-            sourceLabel = EpgSourceUrl.label(store.sourceUrl()),
-        ),
-    )
+    private val _state = MutableStateFlow(EpgState(sourceUrl = store.sourceUrl()))
     val state: StateFlow<EpgState> = _state.asStateFlow()
 
-    suspend fun updateSource(rawUrl: String): Boolean = withContext(Dispatchers.IO) {
-        val normalized = EpgSourceUrl.normalize(rawUrl)
-        if (normalized == null) {
-            _state.update { it.copy(errorMessage = "Ungültige EPG-M3U-Adresse. HTTP oder HTTPS ohne eingebettete Zugangsdaten verwenden.") }
-            return@withContext false
+    private var currentChannels: List<LiveTvChannel> = emptyList()
+
+    suspend fun refresh(channels: List<LiveTvChannel>, force: Boolean = false) = withContext(Dispatchers.IO) {
+        currentChannels = channels
+        val sourceUrl = store.sourceUrl()
+        if (sourceUrl.isNullOrBlank()) {
+            _state.value = EpgState(sourceUrl = null, enrichedChannels = channels)
+            return@withContext
         }
 
-        store.saveSourceUrl(normalized)
-        dao.deleteAllMappings()
-        dao.deleteAllPrograms()
-        _state.value = EpgState(
-            sourceUrl = normalized,
-            sourceLabel = EpgSourceUrl.label(normalized),
-        )
+        val now = System.currentTimeMillis()
+        val cachedMappings = loadMappings()
+        val cachedProgrammes = loadCachedProgrammes(now)
+        val cachedSourceChannels = store.sourceChannels()
+        if (cachedSourceChannels.isNotEmpty() || cachedProgrammes.isNotEmpty()) {
+            publishState(
+                source = EpgSourceSnapshot(
+                    sourceUrl = sourceUrl,
+                    epgUrl = store.epgUrl() ?: sourceUrl,
+                    channels = cachedSourceChannels,
+                    updatedAtUtcMillis = store.sourceUpdatedAtUtcMillis(),
+                ),
+                mappings = cachedMappings,
+                programmes = cachedProgrammes,
+                now = now,
+                isRefreshing = true,
+                error = null,
+            )
+        } else {
+            _state.update { it.copy(sourceUrl = sourceUrl, enrichedChannels = channels, isRefreshing = true, errorMessage = null) }
+        }
+
+        val cacheFresh = !force && store.xmlTvUpdatedAtUtcMillis()?.let { now - it < XMLTV_REFRESH_MILLIS } == true
+        if (cacheFresh && cachedProgrammes.isNotEmpty()) {
+            publishState(
+                source = EpgSourceSnapshot(
+                    sourceUrl = sourceUrl,
+                    epgUrl = store.epgUrl() ?: sourceUrl,
+                    channels = cachedSourceChannels,
+                    updatedAtUtcMillis = store.sourceUpdatedAtUtcMillis(),
+                ),
+                mappings = cachedMappings,
+                programmes = cachedProgrammes,
+                now = now,
+                isRefreshing = false,
+                error = null,
+            )
+            enrichCurrentProgramsProgressively()
+            return@withContext
+        }
+
+        runCatching {
+            val source = sourceClient.loadSource(sourceUrl)
+            store.saveSourceSnapshot(source)
+            val initialMappings = EpgChannelMatcher.resolve(
+                receiverChannels = channels,
+                sourceChannels = source.channels,
+                manualMappings = cachedMappings.filter { it.matchMethod == EpgChannelMatcher.METHOD_MANUAL },
+            )
+            val sourceIds = mappedSourceIds(initialMappings, source.channels)
+            val programmes = sourceClient.loadXmlTv(
+                epgUrl = source.epgUrl,
+                allowedXmltvChannelIds = sourceIds,
+                windowStartUtcMillis = now - GUIDE_PAST_MILLIS,
+                windowEndUtcMillis = now + GUIDE_FUTURE_MILLIS,
+            )
+            val resolvedMappings = resolveAlternateIds(initialMappings, source.channels, programmes, now)
+            dao.upsertMappings(resolvedMappings.map { it.toEntity(now) })
+            dao.deleteOldProgrammes(now - PROGRAMME_CACHE_PAST_MILLIS)
+            dao.upsertProgrammes(programmes.map { it.toEntity(now) })
+            store.setXmlTvUpdatedAtUtcMillis(now)
+            publishState(
+                source = source,
+                mappings = resolvedMappings,
+                programmes = programmes,
+                now = now,
+                isRefreshing = false,
+                error = null,
+            )
+        }.onFailure { throwable ->
+            Log.w(TAG, "EPG refresh failed (${throwable.javaClass.simpleName})")
+            val source = EpgSourceSnapshot(
+                sourceUrl = sourceUrl,
+                epgUrl = store.epgUrl() ?: sourceUrl,
+                channels = cachedSourceChannels,
+                updatedAtUtcMillis = store.sourceUpdatedAtUtcMillis(),
+            )
+            publishState(
+                source = source,
+                mappings = cachedMappings,
+                programmes = cachedProgrammes,
+                now = now,
+                isRefreshing = false,
+                error = friendlyError(throwable),
+            )
+        }
+        enrichCurrentProgramsProgressively()
+    }
+
+    suspend fun updateSource(rawUrl: String): Boolean = withContext(Dispatchers.IO) {
+        val normalized = EpgSourceUrl.normalize(rawUrl) ?: return@withContext false
+        store.setSourceUrl(normalized)
+        store.clearSnapshot()
+        _state.value = EpgState(sourceUrl = normalized, enrichedChannels = currentChannels)
         true
     }
 
-    suspend fun setManualMapping(serviceReference: String, xmltvChannelId: String?) =
-        withContext(Dispatchers.IO) {
-            val now = System.currentTimeMillis()
-            if (xmltvChannelId.isNullOrBlank()) {
-                dao.deleteMapping(serviceReference)
-            } else {
-                dao.upsertMapping(
-                    EpgChannelMappingEntity(
-                        serviceReference = serviceReference,
-                        xmltvChannelId = xmltvChannelId,
-                        matchMethod = EpgChannelMatcher.METHOD_MANUAL,
-                        confidence = 1f,
-                        updatedAtUtcMillis = now,
-                    ),
-                )
-            }
-            val source = store.loadSourceSnapshot()
-            if (source != null) {
-                val mappings = refreshMappings(currentChannels, source.channels, now)
-                val programmes = loadCachedProgrammes(mappings, now)
-                publishState(source, mappings, programmes, now, isRefreshing = false, error = null)
-            }
-        }
-
-    suspend fun refresh(channels: List<LiveTvChannel>, force: Boolean = false) =
-        withContext(Dispatchers.IO) {
-            refreshMutex.withLock {
-                currentChannels = channels
-                val now = System.currentTimeMillis()
-                val sourceUrl = store.sourceUrl()
-                _state.update {
-                    it.copy(
-                        sourceUrl = sourceUrl,
-                        sourceLabel = EpgSourceUrl.label(sourceUrl),
-                        isRefreshing = channels.isNotEmpty(),
-                        errorMessage = null,
-                    )
-                }
-
-                if (channels.isEmpty()) {
-                    _state.update { it.copy(isRefreshing = false) }
-                    return@withLock
-                }
-
-                var cachedPublished = false
-                try {
-                    var source = store.loadSourceSnapshot()
-                    if (source != null) {
-                        val cachedMappings = refreshMappings(channels, source.channels, now)
-                        val cachedProgrammes = loadCachedProgrammes(cachedMappings, now)
-                        if (cachedProgrammes.isNotEmpty()) {
-                            publishState(
-                                source = source,
-                                mappings = cachedMappings,
-                                programmes = cachedProgrammes,
-                                now = now,
-                                isRefreshing = true,
-                                error = null,
-                            )
-                            cachedPublished = true
-                        }
-                    }
-
-                    var sourceWasRefreshed = false
-                    val sourceStale = force ||
-                        source == null ||
-                        now - (source?.updatedAtUtcMillis ?: 0L) >= SOURCE_REFRESH_INTERVAL_MILLIS
-                    if (sourceStale) {
-                        val parsed = M3uEpgParser.parse(network.loadM3u(sourceUrl))
-                        val rawEpgUrl = parsed.epgUrl?.takeIf(String::isNotBlank)
-                            ?: error("M3U enthält keine x-tvg-url EPG-Quelle")
-                        val resolvedEpgUrl = resolveLinkedUrl(sourceUrl, rawEpgUrl)
-                            ?: error("M3U enthält eine ungültige EPG-URL")
-                        check(parsed.channels.isNotEmpty()) { "M3U enthält keine EPG-Sender-IDs" }
-                        source = EpgSourceSnapshot(
-                            sourceUrl = sourceUrl,
-                            epgUrl = resolvedEpgUrl,
-                            channels = parsed.channels,
-                            updatedAtUtcMillis = now,
-                        )
-                        store.saveSourceSnapshot(source)
-                        sourceWasRefreshed = true
-                    }
-
-                    val activeSource = requireNotNull(source)
-                    var mappings = refreshMappings(channels, activeSource.channels, now)
-                    var programmes = loadCachedProgrammes(mappings, now)
-                    val interestedIds = mappedSourceIds(mappings, activeSource.channels)
-                    val coveredIds = store.xmlTvChannelIds()
-                    val xmlTvUpdatedAt = store.xmlTvUpdatedAtUtcMillis()
-                    val coverageMissing = interestedIds.any { it !in coveredIds }
-                    val xmlTvStale = force ||
-                        sourceWasRefreshed ||
-                        coverageMissing ||
-                        xmlTvUpdatedAt == null ||
-                        now - xmlTvUpdatedAt >= XMLTV_REFRESH_INTERVAL_MILLIS
-
-                    if (xmlTvStale && interestedIds.isNotEmpty()) {
-                        val parsedProgrammes = network.readXmlTv(activeSource.epgUrl) { input ->
-                            XmlTvParser.parse(
-                                input = input,
-                                interestedChannelIds = interestedIds,
-                                windowStartUtcMillis = now - GUIDE_PAST_MILLIS,
-                                windowEndUtcMillis = now + GUIDE_FUTURE_MILLIS,
-                            )
-                        }
-                        mappings = resolveAlternateIds(
-                            mappings = mappings,
-                            sourceChannels = activeSource.channels,
-                            programmes = parsedProgrammes,
-                            now = now,
-                        )
-                        dao.deleteAllPrograms()
-                        if (parsedProgrammes.isNotEmpty()) {
-                            dao.upsertPrograms(parsedProgrammes.map { it.toEntity(now) })
-                        }
-                        store.saveXmlTvUpdatedAtUtcMillis(now)
-                        store.saveXmlTvChannelIds(interestedIds)
-                        programmes = parsedProgrammes
-                    }
-
-                    publishState(
-                        source = activeSource,
-                        mappings = mappings,
-                        programmes = programmes,
-                        now = now,
-                        isRefreshing = false,
-                        error = null,
-                    )
-                    enrichCurrentProgramsProgressively()
-                } catch (throwable: Throwable) {
-                    _state.update { current ->
-                        current.copy(
-                            isRefreshing = false,
-                            errorMessage = friendlyError(throwable),
-                        )
-                    }
-                    if (cachedPublished) enrichCurrentProgramsProgressively()
-                }
-            }
-        }
-
-    suspend fun enrichProgram(serviceReference: String, startUtcMillis: Long) =
-        withContext(Dispatchers.IO) {
-            val program = _state.value.guideByServiceReference[serviceReference]
-                ?.firstOrNull { it.startUtcMillis == startUtcMillis }
-                ?: return@withContext
-            val enriched = resolveTmdb(serviceReference, program) ?: return@withContext
-            applyProgramEnrichment(serviceReference, program.startUtcMillis, enriched)
-        }
-
-    private suspend fun refreshMappings(
-        channels: List<LiveTvChannel>,
-        sourceChannels: List<EpgSourceChannel>,
-        now: Long,
-    ): List<EpgChannelMapping> {
-        val currentRefs = channels.map(LiveTvChannel::serviceReference).toSet()
-        val existing = dao.mappings().map { it.toModel() }
-        val manual = existing.filter { mapping ->
-            mapping.matchMethod == EpgChannelMatcher.METHOD_MANUAL &&
-                mapping.serviceReference in currentRefs &&
-                sourceChannels.any { mapping.xmltvChannelId in it.allXmltvIds }
-        }
-        dao.deleteAutomaticMappings()
-        val automatic = EpgChannelMatcher.autoMappings(channels, sourceChannels, manual)
-        if (automatic.isNotEmpty()) {
-            dao.upsertMappings(automatic.map { it.toEntity(now) })
-        }
-        return dao.mappings()
-            .map { it.toModel() }
-            .filter { it.serviceReference in currentRefs }
+    suspend fun setManualMapping(serviceReference: String, xmltvChannelId: String) = withContext(Dispatchers.IO) {
+        val trimmed = xmltvChannelId.trim()
+        if (trimmed.isBlank()) return@withContext
+        val mapping = EpgChannelMapping(
+            serviceReference = serviceReference,
+            xmltvChannelId = trimmed,
+            matchMethod = EpgChannelMatcher.METHOD_MANUAL,
+            confidence = 1f,
+        )
+        dao.upsertMappings(listOf(mapping.toEntity(System.currentTimeMillis())))
+        val source = EpgSourceSnapshot(
+            sourceUrl = store.sourceUrl().orEmpty(),
+            epgUrl = store.epgUrl() ?: store.sourceUrl().orEmpty(),
+            channels = store.sourceChannels(),
+            updatedAtUtcMillis = store.sourceUpdatedAtUtcMillis(),
+        )
+        publishState(
+            source = source,
+            mappings = loadMappings(),
+            programmes = loadCachedProgrammes(System.currentTimeMillis()),
+            now = System.currentTimeMillis(),
+            isRefreshing = false,
+            error = null,
+        )
     }
 
-    private suspend fun loadCachedProgrammes(
-        mappings: List<EpgChannelMapping>,
-        now: Long,
-    ): List<XmlTvProgram> {
-        val ids = mappings.map(EpgChannelMapping::xmltvChannelId).distinct()
-        if (ids.isEmpty()) return emptyList()
-        return dao.programs(
-            channelIds = ids,
+    suspend fun enrichProgram(serviceReference: String, startUtcMillis: Long) = withContext(Dispatchers.IO) {
+        val program = _state.value.guideByServiceReference[serviceReference]
+            ?.firstOrNull { it.startUtcMillis == startUtcMillis }
+            ?: _state.value.enrichedChannels
+                .firstOrNull { it.serviceReference == serviceReference }
+                ?.let { channel ->
+                    listOfNotNull(channel.now, channel.next).firstOrNull { it.startUtcMillis == startUtcMillis }
+                }
+            ?: return@withContext
+        val enriched = resolveTmdb(serviceReference, program) ?: return@withContext
+        applyProgramEnrichment(serviceReference, startUtcMillis, enriched)
+    }
+
+    private suspend fun loadMappings(): List<EpgChannelMapping> = dao.mappings().map { it.toModel() }
+
+    private suspend fun loadCachedProgrammes(now: Long): List<XmlTvProgram> {
+        return dao.programmesInWindow(
             windowStartUtcMillis = now - GUIDE_PAST_MILLIS,
             windowEndUtcMillis = now + GUIDE_FUTURE_MILLIS,
         ).map { it.toModel() }
@@ -362,13 +296,18 @@ class EpgRepository(
             ),
         ) ?: return null
         val episode = metadata.episode
+        val tmdbOverview = episode?.overview ?: metadata.overview
         return program.copy(
             subtitle = program.subtitle ?: episode?.title,
-            longDescription = program.longDescription ?: episode?.overview ?: metadata.overview,
-            shortDescription = program.shortDescription ?: episode?.overview ?: metadata.overview,
+            longDescription = program.longDescription ?: tmdbOverview,
+            shortDescription = program.shortDescription ?: tmdbOverview,
             tmdbId = metadata.tmdbId,
             tmdbEpisodeId = episode?.tmdbEpisodeId,
             tmdbType = metadata.mediaType,
+            tmdbTitle = metadata.title,
+            tmdbOverview = tmdbOverview,
+            tmdbReleaseYear = episode?.airYear ?: metadata.releaseYear,
+            tmdbLogoUri = metadata.logoUri,
             posterUri = metadata.posterUri,
             backdropUri = metadata.backdropUri,
             episodeStillUri = episode?.stillUri,
@@ -433,11 +372,25 @@ class EpgRepository(
         updatedAtUtcMillis = now,
     )
 
-    private fun XmlTvProgram.toEntity(now: Long) = EpgProgramEntity(
-        programKey = "$xmltvChannelId|$startUtcMillis",
+    private fun EpgProgramEntity.toModel() = XmlTvProgram(
         xmltvChannelId = xmltvChannelId,
         startUtcMillis = startUtcMillis,
-        stopUtcMillis = stopUtcMillis,
+        endUtcMillis = endUtcMillis,
+        title = title,
+        subtitle = subtitle,
+        description = description,
+        categories = categories?.split(CATEGORY_SEPARATOR)?.filter(String::isNotBlank).orEmpty(),
+        seasonNumber = seasonNumber,
+        episodeNumber = episodeNumber,
+        releaseYear = releaseYear,
+        imageUri = imageUri,
+    )
+
+    private fun XmlTvProgram.toEntity(now: Long) = EpgProgramEntity(
+        programKey = "$xmltvChannelId:$startUtcMillis",
+        xmltvChannelId = xmltvChannelId,
+        startUtcMillis = startUtcMillis,
+        endUtcMillis = endUtcMillis,
         title = title,
         subtitle = subtitle,
         description = description,
@@ -449,26 +402,12 @@ class EpgRepository(
         updatedAtUtcMillis = now,
     )
 
-    private fun EpgProgramEntity.toModel() = XmlTvProgram(
-        xmltvChannelId = xmltvChannelId,
-        startUtcMillis = startUtcMillis,
-        stopUtcMillis = stopUtcMillis,
-        title = title,
-        subtitle = subtitle,
-        description = description,
-        categories = categories?.split(CATEGORY_SEPARATOR).orEmpty().filter(String::isNotBlank),
-        seasonNumber = seasonNumber,
-        episodeNumber = episodeNumber,
-        releaseYear = releaseYear,
-        imageUri = imageUri,
-    )
-
     companion object {
-        private const val CATEGORY_SEPARATOR = "\u001F"
-        private const val SOURCE_REFRESH_INTERVAL_MILLIS = 24L * 60L * 60L * 1_000L
-        private const val XMLTV_REFRESH_INTERVAL_MILLIS = 6L * 60L * 60L * 1_000L
+        private const val XMLTV_REFRESH_MILLIS = 6L * 60L * 60L * 1_000L
         private const val GUIDE_PAST_MILLIS = 6L * 60L * 60L * 1_000L
-        private const val GUIDE_FUTURE_MILLIS = 72L * 60L * 60L * 1_000L
+        private const val GUIDE_FUTURE_MILLIS = 7L * 24L * 60L * 60L * 1_000L
+        private const val PROGRAMME_CACHE_PAST_MILLIS = 24L * 60L * 60L * 1_000L
         private const val MAX_CURRENT_TMDB_ITEMS = 12
+        private const val CATEGORY_SEPARATOR = "\u001F"
     }
 }
