@@ -24,6 +24,9 @@ internal fun TmdbMediaDetailsDto.preferredHeroBackdropPath(): String? {
         ?: candidates.maxByOrNull { it.voteAverage }?.filePath
 }
 
+internal fun tmdbSearchYearAttempts(releaseYear: Int?): List<Int?> =
+    if (releaseYear == null) listOf(null) else listOf(releaseYear, null)
+
 class TmdbRepository(
     context: Context,
     readAccessToken: String = BuildConfig.TMDB_READ_ACCESS_TOKEN,
@@ -81,7 +84,7 @@ class TmdbRepository(
         parsed: ParsedMediaLookup,
         now: Long,
     ): TmdbMetadata? {
-        val match = TmdbMatcher.bestMatch(parsed, searchCandidates(parsed))
+        val match = searchBestMatch(parsed)
         if (match == null) {
             dao.upsertMapping(
                 TmdbMappingEntity(
@@ -114,6 +117,23 @@ class TmdbRepository(
         dao.upsertMapping(mapping)
         Log.d(TAG, "TMDB match accepted: id=${match.candidate.id}, type=${match.candidate.type}, confidence=${"%.2f".format(match.confidence)}")
         return refreshKnownMapping(mapping, parsed, now)
+    }
+
+    private suspend fun searchBestMatch(parsed: ParsedMediaLookup): TmdbMatch? {
+        if (parsed.typeHint == MediaType.Unknown) {
+            return TmdbMatcher.bestMatch(parsed, searchCandidates(parsed, null))
+        }
+
+        // Source years are useful hints but are not always the TMDB premiere year. For example,
+        // providers may label a show with a production year while TMDB stores the first-air year.
+        // Keep the strict year-filtered request first, then retry without the server-side year
+        // filter only when no confident match was found. The original parsed year remains in the
+        // matcher and still contributes to confidence (including the existing +/-1 tolerance).
+        for (searchYear in tmdbSearchYearAttempts(parsed.releaseYear)) {
+            val match = TmdbMatcher.bestMatch(parsed, searchCandidates(parsed, searchYear))
+            if (match != null) return match
+        }
+        return null
     }
 
     private suspend fun refreshKnownMapping(
@@ -194,13 +214,16 @@ class TmdbRepository(
         return dao.episode(episodeKey(seriesTmdbId, season, episode))?.toMetadata(imageConfiguration)
     }
 
-    private suspend fun searchCandidates(parsed: ParsedMediaLookup): List<TmdbCandidate> {
+    private suspend fun searchCandidates(
+        parsed: ParsedMediaLookup,
+        searchYear: Int?,
+    ): List<TmdbCandidate> {
         val response = when (parsed.typeHint) {
-            MediaType.Movie -> network.api.searchMovies(parsed.title, LANGUAGE, releaseYear = parsed.releaseYear)
+            MediaType.Movie -> network.api.searchMovies(parsed.title, LANGUAGE, releaseYear = searchYear)
             MediaType.Series, MediaType.Episode -> network.api.searchTv(
                 parsed.title,
                 LANGUAGE,
-                firstAirDateYear = parsed.releaseYear,
+                firstAirDateYear = searchYear,
             )
             MediaType.Unknown -> network.api.searchMulti(parsed.title, LANGUAGE)
         }
@@ -361,7 +384,7 @@ class TmdbRepository(
         private const val CACHE_MAX_AGE_MILLIS = 180L * 24L * 60L * 60L * 1_000L
         private const val TRAILER_LANGUAGE_POLICY_CUTOFF_UTC_MILLIS = 1_786_233_600_000L
         private const val HERO_BACKDROP_POLICY_CUTOFF_UTC_MILLIS = 1_786_467_600_000L
-        internal const val RESOLVER_POLICY_CUTOFF_UTC_MILLIS = 1_786_363_200_000L
+        internal const val RESOLVER_POLICY_CUTOFF_UTC_MILLIS = 1_786_476_000_000L
         internal const val NEGATIVE_MAPPING_RETRY_MILLIS = 6L * 60L * 60L * 1_000L
 
         internal fun shouldRetryNegativeMapping(updatedAtUtcMillis: Long, nowUtcMillis: Long): Boolean =
