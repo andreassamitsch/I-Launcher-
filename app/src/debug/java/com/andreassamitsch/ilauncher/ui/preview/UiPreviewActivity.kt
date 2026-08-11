@@ -28,6 +28,8 @@ import com.andreassamitsch.ilauncher.data.search.SearchBrowseSection
 import com.andreassamitsch.ilauncher.model.AppContentChannel
 import com.andreassamitsch.ilauncher.model.AppContentProgram
 import com.andreassamitsch.ilauncher.model.InstalledApp
+import com.andreassamitsch.ilauncher.model.LiveTvChannel
+import com.andreassamitsch.ilauncher.model.LiveTvProgram
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.MediaSource
 import com.andreassamitsch.ilauncher.model.MediaType
@@ -87,7 +89,14 @@ class UiPreviewActivity : ComponentActivity() {
                         }
 
                         else -> {
-                            val channels = fixtureChannels()
+                            val epgFallback = screen == SCREEN_HOME_EPG_FALLBACK
+                            val channels = if (epgFallback) emptyList() else fixtureChannels()
+                            val liveTvState = if (epgFallback) fixtureEpgFallbackState() else OpenWebifState()
+                            val rowOrder = if (epgFallback) {
+                                listOf(HomePreferences.ROW_LIVE_TV)
+                            } else {
+                                channels.map { HomePreferences.previewRowKey(it.id) } + HomePreferences.ROW_APPS
+                            }
                             HomeScreen(
                                 apps = fixtureApps,
                                 watchNextItems = emptyList(),
@@ -95,9 +104,8 @@ class UiPreviewActivity : ComponentActivity() {
                                 previewChannels = channels,
                                 previewChannelsError = null,
                                 hasTvListingsPermission = true,
-                                liveTvState = OpenWebifState(),
-                                homeRowOrder = channels.map { HomePreferences.previewRowKey(it.id) } +
-                                    HomePreferences.ROW_APPS,
+                                liveTvState = liveTvState,
+                                homeRowOrder = rowOrder,
                                 onMoveHomeApp = { _, _ -> },
                                 onRequestTvListingsPermission = {},
                                 onOpenApp = {},
@@ -157,6 +165,28 @@ class UiPreviewActivity : ComponentActivity() {
             title = title,
             appLinkIntentUri = null,
             programs = programs,
+        )
+    }
+
+    private fun fixtureEpgFallbackState(): OpenWebifState {
+        val now = System.currentTimeMillis()
+        return OpenWebifState(
+            configured = true,
+            receiverLabel = "TV",
+            channels = listOf(
+                LiveTvChannel(
+                    serviceReference = "1:0:1:fixture",
+                    name = "ATV HD",
+                    now = LiveTvProgram(
+                        eventId = 1L,
+                        title = "The Rookie",
+                        shortDescription = "EPG-Quellbild ohne TMDB-Verknüpfung",
+                        startUtcMillis = now - 10 * 60_000L,
+                        durationMillis = 55 * 60_000L,
+                        imageUri = resourceUri(R.drawable.ui_fixture_epg_portrait),
+                    ),
+                ),
+            ),
         )
     }
 
@@ -302,6 +332,7 @@ class UiPreviewActivity : ComponentActivity() {
     private companion object {
         const val EXTRA_SCREEN = "screen"
         const val SCREEN_HOME = "home"
+        const val SCREEN_HOME_EPG_FALLBACK = "home-epg-fallback"
         const val SCREEN_SEARCH_DISCOVER = "search-discover"
         const val SCREEN_SEARCH_RESULTS = "search-results"
     }
