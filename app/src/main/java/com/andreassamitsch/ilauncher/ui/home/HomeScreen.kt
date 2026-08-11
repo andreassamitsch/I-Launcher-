@@ -499,6 +499,7 @@ private fun HomeHero(
                                 model = artwork,
                                 contentDescription = null,
                                 contentScale = ContentScale.Fit,
+                                alignment = Alignment.TopEnd,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
@@ -517,14 +518,26 @@ private fun HomeHero(
                         .fillMaxSize()
                         .background(
                             Brush.horizontalGradient(
-                                colorStops = arrayOf(
-                                    0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.98f),
-                                    0.25f to MaterialTheme.colorScheme.background.copy(alpha = 0.91f),
-                                    0.44f to MaterialTheme.colorScheme.background.copy(alpha = 0.63f),
-                                    0.64f to MaterialTheme.colorScheme.background.copy(alpha = 0.21f),
-                                    0.83f to MaterialTheme.colorScheme.background.copy(alpha = 0.02f),
-                                    1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
-                                ),
+                                colorStops = if (heroContent.fitArtwork) {
+                                    arrayOf(
+                                        0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.99f),
+                                        0.48f to MaterialTheme.colorScheme.background.copy(alpha = 0.99f),
+                                        0.61f to MaterialTheme.colorScheme.background.copy(alpha = 0.94f),
+                                        0.73f to MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
+                                        0.84f to MaterialTheme.colorScheme.background.copy(alpha = 0.38f),
+                                        0.94f to MaterialTheme.colorScheme.background.copy(alpha = 0.08f),
+                                        1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
+                                    )
+                                } else {
+                                    arrayOf(
+                                        0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.98f),
+                                        0.25f to MaterialTheme.colorScheme.background.copy(alpha = 0.91f),
+                                        0.44f to MaterialTheme.colorScheme.background.copy(alpha = 0.63f),
+                                        0.64f to MaterialTheme.colorScheme.background.copy(alpha = 0.21f),
+                                        0.83f to MaterialTheme.colorScheme.background.copy(alpha = 0.02f),
+                                        1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
+                                    )
+                                },
                             ),
                         ),
                 )
@@ -533,12 +546,23 @@ private fun HomeHero(
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
-                                colorStops = arrayOf(
-                                    0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.04f),
-                                    0.50f to MaterialTheme.colorScheme.background.copy(alpha = 0.03f),
-                                    0.78f to MaterialTheme.colorScheme.background.copy(alpha = 0.38f),
-                                    1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
-                                ),
+                                colorStops = if (heroContent.fitArtwork) {
+                                    arrayOf(
+                                        0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.02f),
+                                        0.55f to MaterialTheme.colorScheme.background.copy(alpha = 0.03f),
+                                        0.72f to MaterialTheme.colorScheme.background.copy(alpha = 0.20f),
+                                        0.84f to MaterialTheme.colorScheme.background.copy(alpha = 0.62f),
+                                        0.94f to MaterialTheme.colorScheme.background.copy(alpha = 0.93f),
+                                        1.00f to MaterialTheme.colorScheme.background,
+                                    )
+                                } else {
+                                    arrayOf(
+                                        0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.04f),
+                                        0.50f to MaterialTheme.colorScheme.background.copy(alpha = 0.03f),
+                                        0.78f to MaterialTheme.colorScheme.background.copy(alpha = 0.38f),
+                                        1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
+                                    )
+                                },
                             ),
                         ),
                 )
