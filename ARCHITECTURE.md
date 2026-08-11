@@ -28,11 +28,9 @@ Die separate `Alle Apps`-Ansicht verwendet dasselbe App-Kartenmodell wie Home, a
 
 ## Suche und Discover
 
-Die Suchoberfläche hat zwei Zustände. Bei leerer Eingabe ist sie ein Google-TV-inspirierter Discover-Hub: oben eine breite ruhige Suchfläche mit separater Sprachsuche, direkt darunter auswählbare Beispielanfragen und anschließend TMDB-Browse-Reihen, beispielsweise Trends und Genre-/Qualitätslisten. Die Beispielanfragen verwenden denselben normalen Suchpfad und sind keine separate Empfehlungslogik.
+Die Suchoberfläche hat zwei Zustände. Bei leerer Eingabe ist sie ein Discover-Hub mit TMDB-Browse-Reihen, beispielsweise Trends und Genre-/Qualitätslisten. Bei expliziter Eingabe bleiben lokale Quellen getrennt und vorrangig (`Weiterschauen`, `Aus deinen Apps`, `Im TV`, `Apps`), während TMDB ergänzend als `Filme & Serien` erscheint.
 
-Bei expliziter Eingabe bleiben lokale Quellen getrennt und vorrangig (`Weiterschauen`, `Aus deinen Apps`, `Im TV`, `Apps`), während TMDB ergänzend als `Filme & Serien` erscheint. Kompakte Filter-Pills (`Alle`, `Filme & Serien`, `TV`, `Apps`) filtern ausschließlich die bereits vorhandenen Ergebnisgruppen in der Oberfläche; sie ändern weder Backend-Suche noch Quellenreihenfolge.
-
-Ergebnis- und Browse-Rails verwenden dieselbe kompakte ungefähr 16:9-Formsprache wie Home. Nur die Artwork-Fläche ist fokussierbar und erhält Rahmen/Zoom; Titel und Sekundärinformationen bleiben ruhig darunter. Sekundärtexte werden bei nicht fokussierten Karten visuell zurückgenommen. Die Suchgeometrie wird im deterministischen 1920×1080-TV-Visual-Smoke zusätzlich zu Home mit Discover-, Query- und Fokus-Screenshots geprüft.
+Das Suchfeld ist kompakt und TV-gerecht mit separater Sprachsuche. Ergebnis- und Browse-Rails verwenden dieselbe ruhige 16:9-Formsprache wie Home. Sekundärtexte werden bei nicht fokussierten Karten visuell zurückgenommen, damit Artwork und Fokus klarer wirken.
 
 ## Detailnavigation und App-Handoff
 
