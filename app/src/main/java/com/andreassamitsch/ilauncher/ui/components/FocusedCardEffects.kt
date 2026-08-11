@@ -55,9 +55,8 @@ internal fun BoxScope.FocusedArtworkGlow(
     if (!focused || artworkUri.isNullOrBlank()) return
 
     // Re-render the focused artwork behind the card so the halo automatically carries the card's
-    // own colours. The enlarged blurred copy intentionally reaches well beyond the card; the
-    // focused item itself is raised above neighbouring LazyRow items so those neighbours no longer
-    // paint over the aura and make it look rectangular/clipped.
+    // own colours. Blur is the outer draw effect while the inner source layer is rounded and
+    // enlarged, so the final aura spreads beyond the card without reading as a second rectangle.
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         AsyncImage(
             model = artworkUri,
@@ -65,15 +64,17 @@ internal fun BoxScope.FocusedArtworkGlow(
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = 1.16f
-                    scaleY = 1.24f
-                    alpha = 0.21f + breath * 0.09f
-                }
                 .blur(
-                    radius = 24.dp,
+                    radius = 30.dp,
                     edgeTreatment = BlurredEdgeTreatment.Unbounded,
-                ),
+                )
+                .graphicsLayer {
+                    scaleX = 1.18f
+                    scaleY = 1.30f
+                    alpha = 0.17f + breath * 0.07f
+                    shape = MediaCardShape
+                    clip = true
+                },
         )
     } else {
         // Pre-Android-12 Compose has no hardware blur. Keep the fallback deliberately faint so it
@@ -85,9 +86,11 @@ internal fun BoxScope.FocusedArtworkGlow(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    scaleX = 1.12f
-                    scaleY = 1.18f
-                    alpha = 0.06f + breath * 0.025f
+                    scaleX = 1.16f
+                    scaleY = 1.22f
+                    alpha = 0.045f + breath * 0.02f
+                    shape = MediaCardShape
+                    clip = true
                 },
         )
     }
