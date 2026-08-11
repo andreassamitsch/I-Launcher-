@@ -220,8 +220,6 @@ fun LauncherApp(
         tmdbEnrichedPreviewChannelIds,
         watchNextEnrichmentRepository,
     ) {
-        // TMDB for Preview Channels is opt-in per channel. Publish provider-original content first,
-        // then replace only enabled channels as their cached/network metadata resolves.
         visiblePreviewChannels = baseVisiblePreviewChannels
         if (!watchNextEnrichmentRepository.isTmdbConfigured) return@LaunchedEffect
 
@@ -682,9 +680,10 @@ fun LauncherApp(
                         watchNextCardArtworkMode = watchNextCardArtworkMode,
                         watchNextHeroArtworkMode = watchNextHeroArtworkMode,
                         onLiveTvFocused = { channel ->
-                            val program = channel.now ?: return@HomeScreen
-                            scope.launch {
-                                epgRepository.enrichProgram(channel.serviceReference, program.startUtcMillis)
+                            channel.now?.let { program ->
+                                scope.launch {
+                                    epgRepository.enrichProgram(channel.serviceReference, program.startUtcMillis)
+                                }
                             }
                         },
                         watchNextListState = watchNextListState,
