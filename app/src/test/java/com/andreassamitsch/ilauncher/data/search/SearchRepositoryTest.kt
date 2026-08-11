@@ -220,6 +220,47 @@ class SearchRepositoryTest {
         assertEquals(SearchResultKind.EpgProgram, results.single().kind)
     }
 
+    @Test
+    fun `refreshes cached EPG search documents when guide state changes`() {
+        val now = 40_000_000L
+        val channels = listOf(LiveTvChannel(serviceReference = "ref", name = "ORF 1"))
+        val firstState = EpgState(
+            guideByServiceReference = mapOf(
+                "ref" to listOf(program("Alpha Magazin", start = now + 60_000L, duration = 1_800_000L)),
+            ),
+        )
+        val secondState = EpgState(
+            guideByServiceReference = mapOf(
+                "ref" to listOf(program("Beta Magazin", start = now + 120_000L, duration = 1_800_000L)),
+            ),
+        )
+
+        assertEquals(
+            "Alpha Magazin",
+            repository.searchLocal(
+                query = "Alpha",
+                apps = emptyList(),
+                watchNextItems = emptyList(),
+                previewChannels = emptyList(),
+                liveTvChannels = channels,
+                epgState = firstState,
+                nowUtcMillis = now,
+            ).single().title,
+        )
+        assertEquals(
+            "Beta Magazin",
+            repository.searchLocal(
+                query = "Beta",
+                apps = emptyList(),
+                watchNextItems = emptyList(),
+                previewChannels = emptyList(),
+                liveTvChannels = channels,
+                epgState = secondState,
+                nowUtcMillis = now,
+            ).single().title,
+        )
+    }
+
     private fun media(
         title: String,
         sourceId: String,
