@@ -142,30 +142,17 @@ fun WatchNextCard(
             }
         }
 
-        Column(
+        Text(
+            text = item.title,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(34.dp)
-                .padding(top = 5.dp, start = 2.dp, end = 2.dp),
-        ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.alpha(if (focused) 1f else 0.84f),
-            )
-            item.subtitle?.takeIf { it.isNotBlank() && it != item.title }?.let { subtitle ->
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.alpha(if (focused) 0.9f else 0f),
-                )
-            }
-        }
+                .height(24.dp)
+                .padding(top = 5.dp, start = 2.dp, end = 2.dp)
+                .alpha(if (focused) 1f else 0.82f),
+        )
     }
 }
