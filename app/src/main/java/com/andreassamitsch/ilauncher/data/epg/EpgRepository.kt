@@ -13,6 +13,7 @@ import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
 import com.andreassamitsch.ilauncher.model.MediaType
 import java.net.ConnectException
+import java.net.SocketTimeoutException
 import java.net.URI
 import java.net.UnknownHostException
 import java.util.zip.ZipException
@@ -297,16 +298,18 @@ class EpgRepository(
         ) ?: return null
         val episode = metadata.episode
         val tmdbOverview = episode?.overview ?: metadata.overview
+        val tmdbYear = episode?.airYear ?: metadata.releaseYear
         return program.copy(
-            subtitle = program.subtitle ?: episode?.title,
-            longDescription = program.longDescription ?: tmdbOverview,
-            shortDescription = program.shortDescription ?: tmdbOverview,
+            subtitle = episode?.title ?: program.subtitle,
+            longDescription = tmdbOverview ?: program.longDescription,
+            shortDescription = tmdbOverview ?: program.shortDescription,
+            releaseYear = tmdbYear ?: program.releaseYear,
             tmdbId = metadata.tmdbId,
             tmdbEpisodeId = episode?.tmdbEpisodeId,
             tmdbType = metadata.mediaType,
             tmdbTitle = metadata.title,
             tmdbOverview = tmdbOverview,
-            tmdbReleaseYear = episode?.airYear ?: metadata.releaseYear,
+            tmdbReleaseYear = tmdbYear,
             tmdbLogoUri = metadata.logoUri,
             posterUri = metadata.posterUri,
             backdropUri = metadata.backdropUri,
