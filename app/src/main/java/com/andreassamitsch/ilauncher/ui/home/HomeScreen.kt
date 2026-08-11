@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -480,11 +481,27 @@ private fun HomeHero(
             animationSpec = tween(durationMillis = 230),
             label = "home-hero",
         ) { heroContent ->
-            Box(
+            var fitArtworkAspectRatio by remember(heroContent.artworkUri) { mutableStateOf<Float?>(null) }
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.background),
             ) {
+                val heroWidth = maxWidth.value.coerceAtLeast(1f)
+                val heroHeight = maxHeight.value.coerceAtLeast(1f)
+                val fitAvailableWidth = (heroWidth * 0.62f - 4f).coerceAtLeast(1f)
+                val fitAvailableHeight = (heroHeight * 0.94f - 6f).coerceAtLeast(1f)
+                val aspectRatio = fitArtworkAspectRatio?.takeIf { it.isFinite() && it > 0f } ?: (16f / 9f)
+                val fitWidthByHeight = fitAvailableHeight * aspectRatio
+                val renderedFitWidth = minOf(fitAvailableWidth, fitWidthByHeight)
+                val renderedFitHeight = minOf(fitAvailableHeight, fitAvailableWidth / aspectRatio)
+                val fitLeftRatio = ((heroWidth - 4f - renderedFitWidth) / heroWidth).coerceIn(0f, 0.98f)
+                val fitWidthRatio = (renderedFitWidth / heroWidth).coerceIn(0.01f, 1f)
+                val fitRevealEndRatio = (fitLeftRatio + fitWidthRatio * 0.38f).coerceIn(fitLeftRatio + 0.01f, 1f)
+                val fitBottomRatio = ((6f + renderedFitHeight) / heroHeight).coerceIn(0.05f, 1f)
+                val fitHeightRatio = (renderedFitHeight / heroHeight).coerceIn(0.01f, 1f)
+                val fitBottomFadeStartRatio = (fitBottomRatio - fitHeightRatio * 0.28f).coerceIn(0f, fitBottomRatio - 0.01f)
+
                 heroContent.artworkUri?.takeIf { it.isNotBlank() }?.let { artwork ->
                     if (heroContent.fitArtwork) {
                         Box(
@@ -500,6 +517,15 @@ private fun HomeHero(
                                 contentDescription = null,
                                 contentScale = ContentScale.Fit,
                                 alignment = Alignment.TopEnd,
+                                onSuccess = { state ->
+                                    val intrinsic = state.painter.intrinsicSize
+                                    if (
+                                        intrinsic.width.isFinite() && intrinsic.height.isFinite() &&
+                                        intrinsic.width > 0f && intrinsic.height > 0f
+                                    ) {
+                                        fitArtworkAspectRatio = intrinsic.width / intrinsic.height
+                                    }
+                                },
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
@@ -521,11 +547,9 @@ private fun HomeHero(
                                 colorStops = if (heroContent.fitArtwork) {
                                     arrayOf(
                                         0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.99f),
-                                        0.48f to MaterialTheme.colorScheme.background.copy(alpha = 0.99f),
-                                        0.61f to MaterialTheme.colorScheme.background.copy(alpha = 0.94f),
-                                        0.73f to MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
-                                        0.84f to MaterialTheme.colorScheme.background.copy(alpha = 0.38f),
-                                        0.94f to MaterialTheme.colorScheme.background.copy(alpha = 0.08f),
+                                        fitLeftRatio to MaterialTheme.colorScheme.background.copy(alpha = 0.99f),
+                                        ((fitLeftRatio + fitRevealEndRatio) / 2f) to MaterialTheme.colorScheme.background.copy(alpha = 0.58f),
+                                        fitRevealEndRatio to MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
                                         1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
                                     )
                                 } else {
@@ -549,10 +573,9 @@ private fun HomeHero(
                                 colorStops = if (heroContent.fitArtwork) {
                                     arrayOf(
                                         0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.02f),
-                                        0.55f to MaterialTheme.colorScheme.background.copy(alpha = 0.03f),
-                                        0.72f to MaterialTheme.colorScheme.background.copy(alpha = 0.20f),
-                                        0.84f to MaterialTheme.colorScheme.background.copy(alpha = 0.62f),
-                                        0.94f to MaterialTheme.colorScheme.background.copy(alpha = 0.93f),
+                                        fitBottomFadeStartRatio to MaterialTheme.colorScheme.background.copy(alpha = 0.02f),
+                                        ((fitBottomFadeStartRatio + fitBottomRatio) / 2f) to MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
+                                        fitBottomRatio to MaterialTheme.colorScheme.background,
                                         1.00f to MaterialTheme.colorScheme.background,
                                     )
                                 } else {
