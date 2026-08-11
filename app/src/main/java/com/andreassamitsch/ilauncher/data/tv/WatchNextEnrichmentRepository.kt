@@ -28,20 +28,34 @@ class WatchNextEnrichmentRepository(
     ): List<EnrichedWatchNextItem> {
         if (!isTmdbConfigured || baseItems.isEmpty()) return baseItems
 
+        val enrichedMedia = enrichMedia(baseItems.map(EnrichedWatchNextItem::media))
+            .associateBy { it.source.sourceId }
+        return baseItems.map { item ->
+            item.copy(media = enrichedMedia[item.media.source.sourceId] ?: item.media)
+        }
+    }
+
+    /**
+     * Provider-neutral TMDB enrichment for already normalized MediaItems.
+     * Preview Channels use this only when the user explicitly enables TMDB for that channel.
+     */
+    suspend fun enrichMedia(baseItems: List<MediaItem>): List<MediaItem> {
+        if (!isTmdbConfigured || baseItems.isEmpty()) return baseItems
+
         val semaphore = Semaphore(MAX_PARALLEL_LOOKUPS)
         return supervisorScope {
             baseItems.map { item ->
                 async {
                     semaphore.withPermit {
-                        enrichOne(item)
+                        enrichMediaOne(item)
                     }
                 }
             }.awaitAll()
         }
     }
 
-    private suspend fun enrichOne(item: EnrichedWatchNextItem): EnrichedWatchNextItem {
-        val media = item.media
+    suspend fun enrichMediaOne(media: MediaItem): MediaItem {
+        if (!isTmdbConfigured) return media
         val metadata = tmdbRepository.resolve(
             sourceKey = media.source.sourceId,
             lookup = MediaLookup(
@@ -51,9 +65,9 @@ class WatchNextEnrichmentRepository(
                 seasonNumber = media.seasonNumber,
                 episodeNumber = media.episodeNumber,
             ),
-        ) ?: return item
+        ) ?: return media
 
-        return item.copy(media = WatchNextMediaMapper.enrich(media, metadata))
+        return WatchNextMediaMapper.enrich(media, metadata)
     }
 
     companion object {
