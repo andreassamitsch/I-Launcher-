@@ -46,14 +46,7 @@ Die Filter `Alle`, `Filme & Serien`, `TV` und `Apps` verändern nur die sichtbar
 
 Der Workflow `TV Visual Smoke` startet einen API-34-Android-TV-Emulator mit 1920×1080 und rendert deterministische Debug-Fixtures ohne Netzwerk-, TvProvider- oder OpenWebif-Abhängigkeit.
 
-Er prüft unter anderem:
-
-- Home initial
-- Home mit Fokus in Content-Rails
-- tiefer Home-Scroll
-- Search Discover
-- Search Query
-- Fokus auf einem Suchtreffer
+Er prüft unter anderem Home-Start, Home-Scrollzustände, Search Discover, Search Query und den Fokus auf einem Suchtreffer.
 
 Der Emulator-Smoke prüft Geometrie, Clipping und Fokus. Er ersetzt keinen realen TCL-/Gigablue-Hardwaretest.
 
