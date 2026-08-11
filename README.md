@@ -19,7 +19,7 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 Der aktuelle Entwicklungsstand enthält den Google-TV-inspirierten Home-/Search-/Player-UX-Pass inklusive edge-to-edge Hero, Hero/Rail-Überlagerung, Top-Crop, dynamischem inhaltsbezogenem Karten-Glow, Breath-Fokusrahmen, konfigurierbarer Watch-Next-Bildwahl, Preview-Channel-TMDB-Opt-in, Live-TV-Focus-Enrichment, robustem TMDB-Jahresfallback und direkter Kodi-TMDb-Helper-Suche.
 
-Signierter Teststand: **`0.1.0-dev.261` (`26000261`)**, `updateCompatible=true`, `tmdbConfigured=true`, App-Source `933c24838ec26086e60703634c5c739bb9b9d862`. Android CI **#472** und TV Visual Smoke **#81** sind erfolgreich. Die 1920×1080-Screenshots wurden auf Hero/Rail-Überlagerung, edge-to-edge Darstellung, EPG-Fallback sowie den statischen Focus-Glow/Border-Zustand geprüft. Zeitlicher Breath-Effekt, reales Live-TV-TMDB-Nachladen, neue Home-Optionen und Kodi-TMDb-Helper-Handoff benötigen den TCL-Gerätetest.
+Signierter Teststand: **`0.1.0-dev.265` (`26000265`)**, `updateCompatible=true`, `tmdbConfigured=true`, App-Source `79e043446a7f264a5227916ffbc790ef61900572`. Android CI **#490** und TV Visual Smoke **#99** sind erfolgreich. Die finalen 1920×1080-Screenshots wurden auf Hero/Rail-Überlagerung, edge-to-edge Darstellung, EPG-Fallback sowie den statischen Focus-Glow/Border-Zustand geprüft. Zeitlicher Breath-Effekt, reales Live-TV-TMDB-Nachladen, neue Home-Optionen, `ZeroZeroZero (2019)` und der Kodi-TMDb-Helper-Handoff benötigen den TCL-Gerätetest.
 
 Ausführliche Regeln und Architektur: [`AGENTS.md`](AGENTS.md), [`ROADMAP.md`](ROADMAP.md), [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
