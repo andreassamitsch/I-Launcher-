@@ -21,7 +21,7 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 Aktuell umgesetzt:
 
-- TV-first Hero als cinematische Vollbreitenfläche: TMDB-verknüpfte Filme/Serien verwenden ausschließlich breite Backdrops als bildfüllenden Hintergrund; Episoden bevorzugen ihr Still und danach das Serien-Backdrop. Poster/Hochformatbilder sind kein primäres Home-Hero-Fallback. Nicht mit TMDB verknüpfte EPG-/Quellbilder bleiben möglichst unbeschnitten oben rechts und laufen nach links sowie unten weich aus
+- TV-first Hero als cinematische Vollbreitenfläche: TMDB-verknüpfte Filme/Serien verwenden ausschließlich breite Backdrops als bildfüllenden Hintergrund; Episoden bevorzugen ihr Still und danach das Serien-Backdrop. Poster/Hochformatbilder sind kein primäres Home-Hero-Fallback. Nicht mit TMDB verknüpfte EPG-/Quellbilder bleiben möglichst unbeschnitten oben rechts und laufen anhand ihrer tatsächlich geladenen Bildgrenzen nach links sowie unten weich aus
 - mehrstufige horizontale und vertikale Verläufe lassen das Artwork weich in den linken Textbereich und nach unten in die Content-Reihen auslaufen; Hero-Wechsel blenden weich über statt hart zu springen
 - Hero startet nicht mit dem ersten TV-Sender: zunächst wird Local First ein Watch-Next-Inhalt, danach ein Preview-Channel-Inhalt und sonst ein neutraler Launcher-Hero verwendet; ein automatisch rotierendes Netzwerk-/Werbekarussell gibt es bewusst nicht
 - Hero vermeidet doppelte Medienidentität: bei vorhandenem Titellogo wird derselbe Titel nicht noch einmal als große Überschrift gezeigt; Quell-App-Namen wie CloudStream werden im Medien-Hero nicht wiederholt
@@ -62,7 +62,7 @@ Aktuell umgesetzt:
 - zusätzlicher Touch-Kompatibilitätslayer für Handy-/Tablet-Smoke-Tests; TV-/D-Pad-Bedienung bleibt die Produktquelle der Wahrheit
 - Medien-Detailansicht ist vertikal per Touch scrollbar; lange Beschreibungen und umgebrochene Aktionsbuttons sind auf dem Handy praktisch bestätigt
 
-Die interne Trailerwiedergabe mit Bild und Ton, die EPG-Integration im Live-TV-Player, Suchreihen sowie mehrere Player-Aktionen wurden auf realer TV-Hardware bestätigt. Der jüngste Google-TV-inspirierte Home-/Search-Feinschliff wurde visuell grundsätzlich bestätigt; die neue Live-TV-Refresh-/Senderlistenlogik und der jüngste Detailseiten-Polish benötigen noch den nächsten TCL-Gerätetest.
+Die interne Trailerwiedergabe mit Bild und Ton, die EPG-Integration im Live-TV-Player, Suchreihen sowie mehrere Player-Aktionen wurden auf realer TV-Hardware bestätigt. Der jüngste Hero-Umbau wurde im 1920×1080-Android-TV-Emulator zusätzlich mit einem hochformatigen EPG-Bild ohne TMDB geprüft; die endgültige Bildwirkung mit realen TMDB-Backdrops und realen EPG-Bildern benötigt noch den TCL-Gerätetest.
 
 ## Datenschutz / Sicherheit
 
