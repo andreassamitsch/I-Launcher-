@@ -58,6 +58,11 @@ jobs:
             adb shell input keyevent 20
             sleep 1
             adb exec-out screencap -p > build/tv-visual/home-first-rail.png
+            adb shell input keyevent 20
+            sleep 1
+            adb shell input keyevent 20
+            sleep 1
+            adb exec-out screencap -p > build/tv-visual/home-deep-rail.png
 
       - name: Upload TV visual smoke screenshots
         uses: actions/upload-artifact@v4
