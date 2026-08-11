@@ -1,45 +1,22 @@
 package com.andreassamitsch.ilauncher.data.kodi
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 
 class KodiSearchLauncherTest {
     @Test
-    fun `exact normalized title is preferred`() {
-        val exact = KodiSuggestion(
-            title = "Two and a Half Men",
-            action = null,
-            data = "videodb://tvshows/titles/1?showinfo=true",
+    fun `TMDB Helper search path passes title and searches movies plus TV`() {
+        assertEquals(
+            "plugin://plugin.video.themoviedb.helper/?info=search&tmdb_type=both&query=ZeroZeroZero+%282019%29",
+            tmdbHelperSearchPath("ZeroZeroZero (2019)"),
         )
-        val other = KodiSuggestion(
-            title = "Two Weeks to Live",
-            action = null,
-            data = "videodb://tvshows/titles/2?showinfo=true",
-        )
-
-        assertEquals(exact, selectKodiSuggestion("  Two & A Half Men  ", listOf(other, exact)))
     }
 
     @Test
-    fun `strong prefix title can be selected`() {
-        val csi = KodiSuggestion(
-            title = "CSI Crime Scene Investigation",
-            action = null,
-            data = "videodb://tvshows/titles/3?showinfo=true",
+    fun `TMDB Helper search path encodes spaces and umlauts`() {
+        assertEquals(
+            "plugin://plugin.video.themoviedb.helper/?info=search&tmdb_type=both&query=Der+Pass+%C3%96sterreich",
+            tmdbHelperSearchPath("Der Pass Österreich"),
         )
-
-        assertEquals(csi, selectKodiSuggestion("CSI", listOf(csi)))
-    }
-
-    @Test
-    fun `unrelated suggestion is rejected`() {
-        val unrelated = KodiSuggestion(
-            title = "NCIS",
-            action = null,
-            data = "videodb://tvshows/titles/4?showinfo=true",
-        )
-
-        assertNull(selectKodiSuggestion("CSI", listOf(unrelated)))
     }
 }
