@@ -39,12 +39,14 @@ class TmdbSearchRepository(
 
         val items = runCatching {
             val images = ensureImageConfiguration(now)
-            network.api.searchMulti(
+            val response = network.api.searchMulti(
                 query = query.trim(),
                 language = LANGUAGE,
                 includeAdult = false,
                 page = 1,
-            ).results.mapNotNull { dto -> dto.toSearchMedia(images) }
+            )
+            TmdbSearchRanker.rank(query.trim(), response.results)
+                .mapNotNull { dto -> dto.toSearchMedia(images) }
         }.onFailure { throwable ->
             Log.w(SEARCH_TAG, "TMDB global search failed (${throwable.javaClass.simpleName})")
         }.getOrDefault(emptyList())
