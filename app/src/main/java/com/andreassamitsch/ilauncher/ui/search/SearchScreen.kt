@@ -374,17 +374,17 @@ private fun SearchSuggestionArea(onSelect: (String) -> Unit) {
     }
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         Text(
             text = "Sag zum Beispiel",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = SearchContentStart, top = 2.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
+            modifier = Modifier.padding(start = SearchContentStart),
         )
         LazyRow(
-            contentPadding = PaddingValues(horizontal = SearchContentStart, vertical = 5.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(horizontal = SearchContentStart, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(suggestions, key = { it }) { suggestion ->
                 SearchSuggestionCard(
@@ -404,30 +404,30 @@ private fun SearchSuggestionCard(
     TouchCard(
         onClick = onClick,
         modifier = Modifier
-            .width(246.dp)
-            .height(82.dp),
-        scale = CardDefaults.scale(focusedScale = 1.035f),
-        shape = CardDefaults.shape(shape = RoundedCornerShape(14.dp)),
+            .width(212.dp)
+            .height(56.dp),
+        scale = CardDefaults.scale(focusedScale = 1.025f),
+        shape = CardDefaults.shape(shape = RoundedCornerShape(12.dp)),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
-                .padding(horizontal = 16.dp),
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f))
+                .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Image(
                 painter = painterResource(R.drawable.ic_search),
                 contentDescription = null,
-                modifier = Modifier.size(22.dp),
+                modifier = Modifier.size(18.dp),
                 colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurfaceVariant),
             )
             Text(
                 text = text,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
