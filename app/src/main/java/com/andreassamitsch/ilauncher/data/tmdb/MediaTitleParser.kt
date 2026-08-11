@@ -11,6 +11,9 @@ object MediaTitleParser {
         pattern = "(?i)(?:^|[\\s._-])(\\d{1,2})x(\\d{1,3})(?:$|[\\s._-])",
     )
     private val yearRegex = Regex("(?:^|[\\s(\\[])((?:19|20)\\d{2})(?:[)\\]]|$)")
+    private val trailingPlaybackQualifierRegex = Regex(
+        pattern = "(?i)\\s*[\\[(](?=[^\\])]{0,40}(?:\\b(?:dt|de|ger|deutsch|ov|omu|omdu|eng|englisch)\\b))[^\\])]{1,40}[\\])]\\s*$",
+    )
 
     fun parse(lookup: MediaLookup): ParsedMediaLookup {
         var title = lookup.rawTitle.trim()
@@ -25,11 +28,14 @@ object MediaTitleParser {
             title = title.removeRange(seasonEpisodeMatch.range).trim(' ', '-', '_', '.', '·')
         }
 
+        title = stripTrailingPlaybackQualifiers(title)
+
         val yearMatch = yearRegex.find(title)
         val releaseYear = lookup.releaseYear ?: yearMatch?.groupValues?.getOrNull(1)?.toIntOrNull()
         if (yearMatch != null) {
             title = title.removeRange(yearMatch.range).trim(' ', '-', '_', '.', '(', ')', '[', ']', '·')
         }
+        title = stripTrailingPlaybackQualifiers(title)
 
         val inferredType = when {
             seasonNumber != null || episodeNumber != null -> MediaType.Episode
@@ -45,6 +51,14 @@ object MediaTitleParser {
             seasonNumber = seasonNumber,
             episodeNumber = episodeNumber,
         )
+    }
+
+    private fun stripTrailingPlaybackQualifiers(value: String): String {
+        var result = value.trim()
+        while (true) {
+            val match = trailingPlaybackQualifierRegex.find(result) ?: return result
+            result = result.removeRange(match.range).trim(' ', '-', '_', '.', '(', ')', '[', ']', '·')
+        }
     }
 
     fun normalizeTitle(value: String): String {
