@@ -55,8 +55,9 @@ internal fun BoxScope.FocusedArtworkGlow(
     if (!focused || artworkUri.isNullOrBlank()) return
 
     // Re-render the focused artwork behind the card so the halo automatically carries the card's
-    // own colours. On Android 12+ the enlarged copy is blurred with unbounded edges; critically,
-    // there is no second sharp copy here, because that produced a visible rectangular halo edge.
+    // own colours. The enlarged blurred copy intentionally reaches well beyond the card; the
+    // focused item itself is raised above neighbouring LazyRow items so those neighbours no longer
+    // paint over the aura and make it look rectangular/clipped.
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         AsyncImage(
             model = artworkUri,
@@ -65,12 +66,12 @@ internal fun BoxScope.FocusedArtworkGlow(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    scaleX = 1.11f
-                    scaleY = 1.18f
-                    alpha = 0.23f + breath * 0.10f
+                    scaleX = 1.16f
+                    scaleY = 1.24f
+                    alpha = 0.21f + breath * 0.09f
                 }
                 .blur(
-                    radius = 20.dp,
+                    radius = 24.dp,
                     edgeTreatment = BlurredEdgeTreatment.Unbounded,
                 ),
         )
@@ -84,9 +85,9 @@ internal fun BoxScope.FocusedArtworkGlow(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    scaleX = 1.08f
-                    scaleY = 1.13f
-                    alpha = 0.055f + breath * 0.025f
+                    scaleX = 1.12f
+                    scaleY = 1.18f
+                    alpha = 0.06f + breath * 0.025f
                 },
         )
     }
