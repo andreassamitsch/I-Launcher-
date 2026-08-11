@@ -300,6 +300,8 @@ Serie/Episode:
 
 Geeignete Bildgrößen laden, keine unnötig großen Originale.
 
+Für den **Home-Hero** gilt bewusst eine strengere Regel als für Karten und Detailseiten: TMDB-verknüpfte Filme und Serien verwenden ausschließlich ein breites TMDB-Backdrop als bildfüllenden Hintergrund; Episoden verwenden zuerst ein TMDB-Episoden-Still und danach das Serien-Backdrop. Poster/Hochformatbilder sind im Home-Hero kein primäres Fallback. Falls der primäre `backdrop_path` fehlt, darf aus den von TMDB gelieferten Backdrops ein geeigneter sprachneutraler Kandidat gewählt werden. EPG-/Live-TV-Inhalte ohne TMDB-Verknüpfung verwenden ihr vorhandenes Quellbild möglichst unbeschnitten oben rechts; dieses läuft per Verlauf weich nach links und unten in den Hero-Hintergrund aus.
+
 ## 20. Suche
 
 Langfristig globale Suche über installierte Apps, Watch Next, TMDB, Gigablue-EPG und später weitere Provider.
