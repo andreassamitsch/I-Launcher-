@@ -152,9 +152,12 @@ fun LauncherApp(
     val hiddenWatchNextPackages by watchNextSourcePreferences.hiddenPackages.collectAsState()
     val previewChannelPreferences = remember(context) { PreviewChannelPreferences(context) }
     val hiddenPreviewChannelIds by previewChannelPreferences.hiddenChannelIds.collectAsState()
+    val tmdbEnrichedPreviewChannelIds by previewChannelPreferences.tmdbEnrichedChannelIds.collectAsState()
     val homePreferences = remember(context) { HomePreferences(context) }
     val savedHomeRowOrder by homePreferences.rowOrder.collectAsState()
     val savedHomeAppOrder by homePreferences.appOrder.collectAsState()
+    val watchNextCardArtworkMode by homePreferences.watchNextCardArtworkMode.collectAsState()
+    val watchNextHeroArtworkMode by homePreferences.watchNextHeroArtworkMode.collectAsState()
 
     val tvListingsPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -184,9 +187,10 @@ fun LauncherApp(
     val previewChannelsResult by previewChannelsFlow.collectAsState(
         initial = AppContentChannelsLoadResult(channels = emptyList()),
     )
-    val visiblePreviewChannels = remember(previewChannelsResult.channels, hiddenPreviewChannelIds) {
+    val baseVisiblePreviewChannels = remember(previewChannelsResult.channels, hiddenPreviewChannelIds) {
         previewChannelsResult.channels.filter { it.id !in hiddenPreviewChannelIds }
     }
+    var visiblePreviewChannels by remember { mutableStateOf<List<AppContentChannel>>(emptyList()) }
 
     var homeWatchNextItems by remember { mutableStateOf<List<EnrichedWatchNextItem>>(emptyList()) }
     LaunchedEffect(visibleWatchNextItems, watchNextEnrichmentRepository) {
@@ -207,6 +211,31 @@ fun LauncherApp(
             if (unresolvedItems.isNotEmpty()) {
                 delay(TMDB_ENRICHMENT_RETRY_DELAY_MILLIS)
                 enrichBatches(unresolvedItems)
+            }
+        }
+    }
+
+    LaunchedEffect(
+        baseVisiblePreviewChannels,
+        tmdbEnrichedPreviewChannelIds,
+        watchNextEnrichmentRepository,
+    ) {
+        // TMDB for Preview Channels is opt-in per channel. Publish provider-original content first,
+        // then replace only enabled channels as their cached/network metadata resolves.
+        visiblePreviewChannels = baseVisiblePreviewChannels
+        if (!watchNextEnrichmentRepository.isTmdbConfigured) return@LaunchedEffect
+
+        baseVisiblePreviewChannels.forEach { channel ->
+            if (channel.id !in tmdbEnrichedPreviewChannelIds || channel.programs.isEmpty()) return@forEach
+            val enrichedMedia = watchNextEnrichmentRepository.enrichMedia(channel.programs.map { it.media })
+            val mediaBySourceId = enrichedMedia.associateBy { it.source.sourceId }
+            val enrichedChannel = channel.copy(
+                programs = channel.programs.map { program ->
+                    program.copy(media = mediaBySourceId[program.media.source.sourceId] ?: program.media)
+                },
+            )
+            visiblePreviewChannels = visiblePreviewChannels.map { current ->
+                if (current.id == channel.id) enrichedChannel else current
             }
         }
     }
@@ -528,25 +557,32 @@ fun LauncherApp(
                 hiddenWatchNextPackages = hiddenWatchNextPackages,
                 onSetWatchNextSourceVisible = watchNextSourcePreferences::setVisible,
                 onShowAllWatchNextSources = watchNextSourcePreferences::showAll,
+                watchNextCardArtworkMode = watchNextCardArtworkMode,
+                onSetWatchNextCardArtworkMode = homePreferences::setWatchNextCardArtworkMode,
+                watchNextHeroArtworkMode = watchNextHeroArtworkMode,
+                onSetWatchNextHeroArtworkMode = homePreferences::setWatchNextHeroArtworkMode,
                 hiddenPreviewChannelIds = hiddenPreviewChannelIds,
                 onSetPreviewChannelVisible = previewChannelPreferences::setVisible,
                 onShowAllPreviewChannels = previewChannelPreferences::showAll,
+                tmdbEnrichedPreviewChannelIds = tmdbEnrichedPreviewChannelIds,
+                onSetPreviewChannelTmdbEnrichment = previewChannelPreferences::setTmdbEnrichmentEnabled,
                 onBack = {
                     showHomeSettings = false
                     navigationVisible = true
                 },
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                modifier = Modifier.padding(horizontal = 38.dp, vertical = 12.dp),
             )
 
             else -> Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 20.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(if (navigationVisible) 5.dp else 0.dp),
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(if (navigationVisible) 2.dp else 0.dp),
             ) {
                 if (navigationVisible) {
                     val activePrimarySection = if (section == LauncherSection.LiveTv) LauncherSection.Settings else section
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
                         PRIMARY_SECTIONS.forEach { item ->
                             val active = activePrimarySection == item
                             val navColors = ButtonDefaults.colors(
@@ -643,6 +679,14 @@ fun LauncherApp(
                             selectedLiveTvServiceReference = channel.serviceReference
                         },
                         onNavigationVisibilityChange = { navigationVisible = it },
+                        watchNextCardArtworkMode = watchNextCardArtworkMode,
+                        watchNextHeroArtworkMode = watchNextHeroArtworkMode,
+                        onLiveTvFocused = { channel ->
+                            val program = channel.now ?: return@HomeScreen
+                            scope.launch {
+                                epgRepository.enrichProgram(channel.serviceReference, program.startUtcMillis)
+                            }
+                        },
                         watchNextListState = watchNextListState,
                         liveTvListState = liveTvListState,
                         appsListState = appsListState,
@@ -666,12 +710,19 @@ fun LauncherApp(
                         listState = searchListState,
                         focusRestoreResultId = searchFocusRestoreResultId,
                         focusRestoreGeneration = searchFocusRestoreGeneration,
+                        modifier = Modifier.padding(horizontal = 20.dp),
                     )
 
-                    LauncherSection.Apps -> AppsScreen(apps = apps, onOpenApp = openApp)
+                    LauncherSection.Apps -> AppsScreen(
+                        apps = apps,
+                        onOpenApp = openApp,
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                    )
 
                     LauncherSection.Settings -> Column(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         TouchButton(
@@ -757,6 +808,7 @@ fun LauncherApp(
                                 epgRepository.refresh(openWebifRepository.state.value.channels, force = true)
                             }
                         },
+                        modifier = Modifier.padding(horizontal = 20.dp),
                     )
                 }
             }
