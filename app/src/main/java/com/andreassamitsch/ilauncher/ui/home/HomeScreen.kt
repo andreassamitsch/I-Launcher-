@@ -35,7 +35,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
@@ -488,21 +487,13 @@ private fun HomeHero(
             ) {
                 heroContent.artworkUri?.takeIf { it.isNotBlank() }?.let { artwork ->
                     if (heroContent.fitArtwork) {
-                        AsyncImage(
-                            model = artwork,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .alpha(0.25f),
-                        )
                         Box(
                             modifier = Modifier
-                                .align(Alignment.CenterEnd)
+                                .align(Alignment.TopEnd)
                                 .fillMaxWidth(0.62f)
-                                .fillMaxHeight()
-                                .padding(end = 4.dp, top = 6.dp, bottom = 6.dp),
-                            contentAlignment = Alignment.CenterEnd,
+                                .fillMaxHeight(0.94f)
+                                .padding(end = 4.dp, top = 6.dp),
+                            contentAlignment = Alignment.TopEnd,
                         ) {
                             AsyncImage(
                                 model = artwork,
@@ -533,22 +524,6 @@ private fun HomeHero(
                                     0.64f to MaterialTheme.colorScheme.background.copy(alpha = 0.21f),
                                     0.83f to MaterialTheme.colorScheme.background.copy(alpha = 0.02f),
                                     1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
-                                ),
-                            ),
-                        ),
-                )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .fillMaxWidth(0.18f)
-                        .fillMaxHeight()
-                        .background(
-                            Brush.horizontalGradient(
-                                colorStops = arrayOf(
-                                    0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
-                                    0.45f to MaterialTheme.colorScheme.background.copy(alpha = 0.08f),
-                                    0.78f to MaterialTheme.colorScheme.background.copy(alpha = 0.34f),
-                                    1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.76f),
                                 ),
                             ),
                         ),
@@ -711,25 +686,34 @@ private fun mediaHero(item: MediaItem, sourceLabel: String?): HomeHeroContent {
     )
 }
 
-private fun mediaHeroArtwork(item: MediaItem): Pair<String?, Boolean> = when (item.type) {
-    MediaType.Episode -> when {
-        !item.episodeStillUri.isNullOrBlank() -> item.episodeStillUri to false
-        !item.backdropUri.isNullOrBlank() -> item.backdropUri to false
-        !item.posterUri.isNullOrBlank() -> item.posterUri to true
-        else -> item.sourceArtworkUri to true
+internal fun mediaHeroArtwork(item: MediaItem): Pair<String?, Boolean> {
+    if (item.tmdbId != null) {
+        return when (item.type) {
+            MediaType.Episode -> (item.episodeStillUri ?: item.backdropUri) to false
+            MediaType.Series,
+            MediaType.Movie,
+            -> item.backdropUri to false
+            MediaType.Unknown -> (item.backdropUri ?: item.episodeStillUri) to false
+        }
     }
-    MediaType.Series,
-    MediaType.Movie,
-    -> when {
-        !item.backdropUri.isNullOrBlank() -> item.backdropUri to false
-        !item.posterUri.isNullOrBlank() -> item.posterUri to true
-        else -> item.sourceArtworkUri to true
-    }
-    MediaType.Unknown -> when {
-        !item.backdropUri.isNullOrBlank() -> item.backdropUri to false
-        !item.episodeStillUri.isNullOrBlank() -> item.episodeStillUri to false
-        !item.sourceArtworkUri.isNullOrBlank() -> item.sourceArtworkUri to true
-        else -> item.posterUri to true
+
+    return when (item.type) {
+        MediaType.Episode -> when {
+            !item.episodeStillUri.isNullOrBlank() -> item.episodeStillUri to false
+            !item.backdropUri.isNullOrBlank() -> item.backdropUri to false
+            else -> item.sourceArtworkUri to true
+        }
+        MediaType.Series,
+        MediaType.Movie,
+        -> when {
+            !item.backdropUri.isNullOrBlank() -> item.backdropUri to false
+            else -> item.sourceArtworkUri to true
+        }
+        MediaType.Unknown -> when {
+            !item.backdropUri.isNullOrBlank() -> item.backdropUri to false
+            !item.episodeStillUri.isNullOrBlank() -> item.episodeStillUri to false
+            else -> item.sourceArtworkUri to true
+        }
     }
 }
 
@@ -762,28 +746,16 @@ private fun liveTvHero(channel: LiveTvChannel): HomeHeroContent {
     )
 }
 
-private fun liveTvHeroArtwork(program: LiveTvProgram?): Pair<String?, Boolean> {
+internal fun liveTvHeroArtwork(program: LiveTvProgram?): Pair<String?, Boolean> {
     if (program == null) return null to false
+    if (program.tmdbId == null) return program.imageUri to true
+
     return when (program.tmdbType ?: MediaType.Unknown) {
-        MediaType.Episode -> when {
-            !program.episodeStillUri.isNullOrBlank() -> program.episodeStillUri to false
-            !program.backdropUri.isNullOrBlank() -> program.backdropUri to false
-            !program.posterUri.isNullOrBlank() -> program.posterUri to true
-            else -> program.imageUri to true
-        }
+        MediaType.Episode -> (program.episodeStillUri ?: program.backdropUri) to false
         MediaType.Series,
         MediaType.Movie,
-        -> when {
-            !program.backdropUri.isNullOrBlank() -> program.backdropUri to false
-            !program.posterUri.isNullOrBlank() -> program.posterUri to true
-            else -> program.imageUri to true
-        }
-        MediaType.Unknown -> when {
-            !program.backdropUri.isNullOrBlank() -> program.backdropUri to false
-            !program.episodeStillUri.isNullOrBlank() -> program.episodeStillUri to false
-            !program.imageUri.isNullOrBlank() -> program.imageUri to true
-            else -> program.posterUri to true
-        }
+        -> program.backdropUri to false
+        MediaType.Unknown -> (program.backdropUri ?: program.episodeStillUri) to false
     }
 }
 
