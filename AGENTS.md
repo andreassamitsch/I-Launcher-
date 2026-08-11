@@ -1,24 +1,29 @@
-# I Launcher – verbindliche Entwicklungsrichtlinien
+# AGENTS.md
 
-Diese Datei ist die zentrale technische und produktseitige Quelle der Wahrheit für das Repository **I Launcher**.
+## Zweck
 
-Vor jeder Entwicklungsaufgabe, Codeänderung, Architekturentscheidung, Fehlerbehebung oder Pull-Request-Arbeit in diesem Repository muss die aktuelle Version dieser Datei gelesen werden. Zusätzlich sind `README.md`, `ROADMAP.md` und `ARCHITECTURE.md` zu prüfen, sofern sie für die Aufgabe relevant sind. Bei Widersprüchen gilt diese `AGENTS.md` vor älteren Chat-Inhalten oder Erinnerungen.
+Diese Datei enthält die verbindlichen Entwicklungsrichtlinien für I Launcher / TV Launcher. Sie ist die aktuelle technische und organisatorische Wahrheit für Arbeiten im Repository.
 
-## 1. Produktziel
+Vor jeder Entwicklungsaufgabe, Codeänderung, Architekturentscheidung, Fehlerbehebung oder Pull-Request-Arbeit:
 
-I Launcher ist ein moderner, schneller und werbefreier Android-TV-Launcher, der als primäre TV-Oberfläche verwendet werden kann.
+1. diese `AGENTS.md` lesen,
+2. relevante `README.md`, `ROADMAP.md` und `ARCHITECTURE.md` prüfen,
+3. den aktuellen GitHub-Stand verwenden,
+4. nicht aus älteren Chat-Inhalten raten,
+5. bei Widersprüchen dieser Datei Vorrang geben.
+
+## Projektziel
+
+I Launcher ist ein moderner, schneller, werbefreier Android-TV-Launcher als primäre TV-Oberfläche.
 
 Grundprinzip: **Content Launcher statt bloßer App Launcher.**
 
-Der Benutzer soll primär Inhalte auswählen und erst sekundär die App, über die diese wiedergegeben werden. Die Oberfläche darf sich an guten Bedienprinzipien von Google TV orientieren, soll aber ruhiger, lokaler und ohne Werbung, Sponsored Content oder Google-eigene Empfehlungszwänge funktionieren.
+Der Benutzer soll primär Inhalte auswählen und erst sekundär die App beziehungsweise Quelle, über die diese wiedergegeben werden.
 
-## 2. Technischer Stack
-
-Bevorzugter Stack:
+## Technischer Stack
 
 - Kotlin
-- Jetpack Compose
-- Compose for TV
+- Jetpack Compose / Compose for TV
 - AndroidX
 - Coroutines / Flow
 - Room
@@ -29,25 +34,9 @@ Bevorzugter Stack:
 
 Keine Flutter-Basis.
 
-Neue Bibliotheken nur hinzufügen, wenn sie einen klaren Mehrwert bieten. Abhängigkeiten und Versionen nicht raten, wenn sie aus offizieller Dokumentation oder Release Notes geprüft werden können.
+## Kernfunktionen
 
-## 3. Open-Source-Referenzen
-
-Bestehende Projekte dürfen als Referenz analysiert werden, insbesondere:
-
-- Arc Launcher
-- FLauncher
-- LauncherCompose
-- AOSP / Android TvProvider
-- offizielle Android-TV- und Compose-for-TV-Samples
-
-Code nur übernehmen, wenn die Lizenz kompatibel ist und die Herkunft sauber dokumentiert werden kann. Bevorzugt eigene, verständliche Kotlin-Implementierungen entwickeln.
-
-## 4. Kernfunktionen
-
-Langfristig soll I Launcher unterstützen:
-
-- Android-TV-Launcher/Home-App
+- Android-TV-Launcher / Home-App
 - installierte Apps
 - Android Watch Next / „Weiterschauen“
 - Preview Channels aus Apps
@@ -57,408 +46,176 @@ Langfristig soll I Launcher unterstützen:
 - Gigablue X3 direkt über Enigma2/OpenWebif
 - Bouquets, Sender, EPG und Streams
 - EPG-Anreicherung über TMDB
-- integrierten Live-TV-Player mit Media3
-- globale Suche
-- einfache Google-TV-artige UI ohne Werbung
-
-## 5. Architekturgrundsatz
-
-Die UI darf nicht direkt von einzelnen Datenquellen abhängen. Datenquellen werden über Provider/Repositories normalisiert und auf gemeinsame interne Modelle abgebildet.
-
-Zielstruktur:
-
-```text
-I-Launcher
-├── app
-├── core
-│   ├── model
-│   ├── database
-│   ├── network
-│   ├── ui
-│   ├── navigation
-│   └── util
-├── provider
-│   ├── androidtv
-│   ├── tmdb
-│   ├── youtube
-│   ├── enigma2
-│   ├── kodi
-│   └── cloudstream
-├── feature
-│   ├── home
-│   ├── watchnext
-│   ├── details
-│   ├── livetv
-│   ├── epg
-│   ├── apps
-│   ├── search
-│   └── settings
-└── playback
-```
+- integrierter Live-TV-Player mit Media3
+- globale Local-First-Suche
+- einfache Google-TV-inspirierte UI ohne Werbung
 
-Nicht jede Struktur muss sofort als separates Gradle-Modul umgesetzt werden. Frühere Phasen dürfen bewusst einfacher sein, solange die Grenzen im Code erkennbar bleiben und eine spätere Modularisierung nicht unnötig erschwert wird.
+## Watch Next
 
-## 6. Gemeinsames Medienmodell
+Watch Next funktioniert auf dem Zielgerät bereits mit Arc Launcher und liefert unter anderem Einträge von CloudStream.
 
-Filme, Serien, Episoden und Inhalte aus verschiedenen Apps sollen intern vereinheitlicht werden.
+Deshalb zuerst die reguläre Android-TV-/TvProvider-Schnittstelle verwenden.
 
-Ein gemeinsames Modell soll langfristig u. a. enthalten:
+Keine app-spezifische CloudStream-Integration für Watch Next entwickeln, solange Android bereits die benötigten Daten liefert.
 
-- interne ID
-- Content-Typ
-- Titel / Originaltitel / Untertitel
-- Beschreibung
-- Erscheinungsjahr
-- TMDB-ID
-- Staffel / Episode / Episodentitel
-- Poster / Backdrop / Logo / Episodenbild
-- Wiedergabeposition / Gesamtdauer / Fortschritt
-- letzte Wiedergabe
-- Quell-App / Package Name
-- Deep Link / Intent
-- Trailer
-- Metadatenqualität / Resolver Confidence
+Die Reihenfolge der Watch-Next-Einträge nicht ohne klaren Grund verändern.
 
-Die Benutzeroberfläche soll nicht wissen müssen, ob ein Inhalt ursprünglich von CloudStream, Kodi, Jellyfin, Plex, einer Streaming-App oder Android Watch Next stammt.
+Kurzes OK startet den vorhandenen Source-/Playback-Intent. `INFO` beziehungsweise langes OK darf Details öffnen. Long-Press-/Key-Up-Verhalten muss D-Pad-sicher sein und darf beim Übergang zur Detailseite keine unbeabsichtigte Aktion auslösen.
 
-## 7. Watch Next / Weiterschauen
+## Preview Channels
 
-Watch Next ist eine zentrale Datenquelle.
+Preview Channels ebenfalls zuerst über Android/TvProvider integrieren. Provider-Reihenfolge nicht willkürlich umsortieren. Quellen können lokal ein-/ausblendbar sein, ohne die Providerdaten selbst umzuschreiben.
 
-Auf dem Zielgerät funktioniert Watch Next bereits mit Arc Launcher und liefert unter anderem Einträge von CloudStream. Deshalb zuerst die reguläre Android-TV/TvProvider-Schnittstelle verwenden.
+## Gigablue
 
-Keine app-spezifische CloudStream-Integration entwickeln, solange Android bereits die benötigten Daten zuverlässig liefert.
+Gigablue X3 möglichst direkt über OpenWebif integrieren.
 
-Die Reihenfolge der Watch-Next-Einträge nicht ohne nachvollziehbaren Grund verändern oder umkehren. Zunächst die von Android bzw. der Quell-App vorgesehene Reihenfolge übernehmen.
+Keine Abhängigkeit von dreamTV, TiviMate oder ähnlichen Apps, sofern OpenWebif die benötigte Funktion direkt bereitstellt.
 
-Darstellung langfristig:
+Senderidentität muss über die stabile Enigma2-`serviceReference` geführt werden. Periodische Metadaten-/EPG-Refreshes dürfen die aktuelle Wiedergabe nicht auf einen alten Listenindex beziehungsweise den ursprünglich geöffneten Sender zurücksetzen.
 
-- Backdrop oder Episodenbild
-- Titel
-- ggf. Staffel/Episode
-- Fortschrittsbalken
-- verbleibende Zeit, sofern verfügbar
-- Quell-App optional dezent
+Stream-URLs nicht unnötig dauerhaft speichern oder loggen.
 
-Auswahl startet den vorhandenen Deep Link / Intent der Quell-App.
+## EPG
 
-## 8. Android-TV-Kanäle
+OpenWebif und XMLTV dürfen kombiniert werden. Sender-Mapping lokal und nachvollziehbar halten. EPG-Programme für UI-Auswahl über stabile Identität wie `serviceReference + startUtcMillis` behandeln, damit asynchrone Anreicherung keine Auswahl verliert.
 
-Preview Channels und Preview Programs installierter Apps unterstützen.
+TMDB-Anreicherung nur bei hinreichend eindeutiger Zuordnung übernehmen. Negative beziehungsweise unsichere Mappings müssen nach Resolver-Änderungen erneut prüfbar sein.
 
-Inhalte verschiedener Apps können als eigene Reihen auf der Startseite erscheinen. Der Benutzer soll später auswählen können, welche Kanäle angezeigt werden und in welcher Reihenfolge.
+## TMDB
 
-## 9. TMDB
+TMDB dient der Metadatenanreicherung und Discovery. Token/Credentials nicht in Logs oder Benutzeroberfläche ausgeben.
 
-TMDB ist die bevorzugte zentrale Metadatenquelle für Filme, Serien und Episoden.
+Local First bleibt auch mit TMDB erhalten:
 
-Verwenden für:
+- lokale Watch-Next-/Preview-/EPG-/App-Daten zuerst,
+- TMDB ergänzt Suchergebnisse und Metadaten,
+- leere Suche darf TMDB-Browse-/Trend-/Genre-Reihen zeigen,
+- Home nicht ohne bewusste Produktentscheidung in einen automatisch rotierenden Netzwerkempfehlungs-Feed verwandeln.
 
-- Titel / Originaltitel
-- Beschreibung
-- Erscheinungsjahr
-- Genres / Laufzeit
-- Poster / Backdrops / Logos
-- Cast / Bewertungen
-- externe IDs
-- Staffel / Episode / Episodentitel
-- Episodenbeschreibung / Episodenbild / Air Date
-- Trailerinformationen
+## Trailer
 
-TMDB-Attribution und Lizenzbedingungen müssen eingehalten werden.
+Trailer vorzugsweise über TMDB-Videos auflösen und konkrete YouTube-ID verwenden. Ohne konkrete ID darf YouTube-Suche Fallback sein.
 
-## 10. TMDB Resolver und Cache
+Keine YouTube-Stream-Extraktion beziehungsweise Umgehung der vorgesehenen Wiedergabemechanismen entwickeln.
 
-Nicht bei jedem Anzeigen erneut TMDB durchsuchen.
+## Suche
 
-Ein zentraler Resolver normalisiert Quelltitel und ermittelt bei ausreichender Sicherheit die passende TMDB-ID. Erfolgreiche Mappings in Room speichern.
+Die globale Suche bleibt Local First. Lokale Quellen nicht in eine undifferenzierte Rankingliste mischen, wenn dadurch Herkunft, erwartete Aktion oder bestehende Reihenfolge verloren geht.
 
-Beispiel:
+Google TV darf als visuelle/informationelle Referenz dienen: breite ruhige Suchfläche, klarer Voice-Zugang, kompakte Filter/Pills, horizontale Content-Rails und eindeutiger D-Pad-Fokus. Beispielanfragen dürfen nur denselben normalen Suchpfad auslösen und keine versteckte zweite Recommendation-/Search-Engine einführen.
 
-```text
-Fallout S02E04
-→ normalize
-→ Serie Fallout / Staffel 2 / Episode 4
-→ TMDB-Suche
-→ TMDB-ID
-→ Episodendaten
-→ lokaler Cache
-```
+## Google-TV-inspirierte UI
 
-Bei unsicherem Matching lieber Originaldaten anzeigen als falsche TMDB-Daten. Confidence-System verwenden.
+Google TV ist Referenz für Informationshierarchie, Proportionen, Fokusruhe, Rail-Dichte und TV-Lesbarkeit. Keine Pixel-für-Pixel-Kopie und keine Übernahme von Werbung, Sponsored Content oder unnötig dominanten Recommendation-Carousels.
 
-## 11. Zusammenführen gleicher Inhalte
+Home soll ruhig, schnell und lokal wirken. Fokuszustände dürfen nicht unnötig große Flächen animieren. Bilder/Artwork bevorzugt als Fokusfläche behandeln; Titel und Sekundärtext können ruhig außerhalb liegen, sofern D-Pad- und Accessibility-Verhalten korrekt bleiben.
 
-Wenn derselbe Inhalt eindeutig aus mehreren Quellen erkannt wird, soll langfristig eine gemeinsame Inhaltskarte möglich sein. TMDB-ID kann als gemeinsame Identität dienen.
+## D-Pad / Fernbedienung
 
-Keine aggressiven Zusammenführungen bei unsicherem Matching.
+D-Pad ist die primäre Bedienform.
 
-## 12. Trailer
+Für jeden TV-Screen prüfen:
 
-Priorität:
+- Up/Down/Left/Right vorhersehbar,
+- keine Focus-Traps,
+- keine übersprungenen Kernaktionen,
+- Back deterministisch,
+- langes OK und Key-Up sauber behandelt,
+- Fokus bleibt beim asynchronen Datenrefresh stabil,
+- Scrollen zeigt keine abgeschnittenen/stehengebliebenen Kartenreste.
 
-1. TMDB Video-Metadaten
-2. vorhandene YouTube-ID
-3. nur bei Bedarf YouTube-Suche
+Touch ist nur sekundärer Smoke-Test und darf die TV-Fokuslogik nicht ersetzen.
 
-YouTube-Suchen und Ergebnisse cachen. API-Aufrufe minimieren.
+## Entwicklungsregeln
 
-## 13. Gigablue / Enigma2 / OpenWebif
-
-Zielreceiver: **Gigablue X3 mit Enigma2/OpenATV/OpenWebif**.
-
-Direkte Integration bevorzugen. Keine Abhängigkeit von dreamTV, TiviMate oder ähnlichen Apps, sofern OpenWebif die benötigte Funktion direkt bereitstellt.
-
-Eigener Enigma2/OpenWebif-Provider soll langfristig unterstützen:
-
-- Receiver-Verbindung / Authentifizierung
-- Bouquets
-- Senderlisten
-- Senderlogos, soweit verfügbar
-- Service References
-- aktuelles / nächstes Programm
-- EPG
-- Senderstream
-- später ggf. Timer und Aufnahmen
-
-## 14. Live-TV-Startseite und EPG
-
-Eigene Reihe **„Jetzt im TV“**.
-
-Nicht nur Senderlogos anzeigen, sondern möglichst Senderlogo, aktuelle Sendung, Start/Ende, Fortschritt und ein passendes Bild.
-
-EPG-Daten kommen vom Gigablue/OpenWebif und können durch den TMDB-Resolver mit Postern, Backdrops oder Episodenbildern angereichert werden.
-
-Weitere mögliche Reihen: „Gleich im TV“, „Heute Abend“, „Meine Sender“.
-
-## 15. Live-TV-Wiedergabe
-
-Langfristig Live-TV direkt im Launcher mit Media3 abspielen. Quelle ist der OpenWebif/Enigma2-Stream.
-
-Die Architektur muss internen Live-TV-Playback ermöglichen, auch wenn der Player erst in einer späteren Phase vollständig umgesetzt wird.
-
-## 16. Startseite und UX
-
-Die Startseite soll ruhig, schnell und übersichtlich sein.
-
-Mögliche Reihenfolge:
-
-1. Hero / aktuell relevanter Inhalt
-2. Weiterschauen
-3. Jetzt im TV
-4. App-Kanäle
-5. Neue Folgen
-6. Filme / Serien
-7. Apps
-
-Keine endlosen Recommendation-Reihen. Keine Werbung. Keine Sponsored Cards.
-
-Hero-Bereich maximal ein prominenter Inhalt gleichzeitig, kein automatisch durchlaufendes Werbekarussell.
-
-## 17. D-Pad / Fernbedienung
-
-TV-UX hat höchste Priorität.
-
-Alle Ansichten müssen vollständig mit D-Pad, OK, Zurück und Home bedienbar sein.
-
-Besonders beachten:
-
-- vorhersehbare Focus-Reihenfolge
-- Focus darf nicht verloren gehen
-- Position beim Zurückkehren erhalten
-- keine unnötigen Focus-Sprünge
-- horizontale Listen sauber scrollen
-- kein Touch voraussetzen
-- Animationen dezent und schnell
-
-## 18. Performance und Offline
-
-Launcher muss sehr schnell starten.
-
-Grundregel: Startseite zuerst aus lokalen Daten anzeigen, Netzwerkdaten anschließend aktualisieren.
-
-Nicht beim Start auf TMDB, kompletten EPG oder YouTube warten.
-
-Caching intensiv nutzen. Flow-basierte UI-Updates bevorzugen.
-
-Auch ohne Internet müssen Launcher, Apps, lokale Caches und Gigablue im LAN soweit möglich funktionieren.
-
-## 19. Bilder
-
-Bevorzugte Reihenfolge:
-
-Film:
-1. TMDB Backdrop
-2. TMDB Poster
-3. Quellbild
-
-Serie/Episode:
-1. Episoden-Still
-2. Serien-Backdrop
-3. Serienposter
-4. Quellbild
-
-Geeignete Bildgrößen laden, keine unnötig großen Originale.
-
-## 20. Suche
-
-Langfristig globale Suche über installierte Apps, Watch Next, TMDB, Gigablue-EPG und später weitere Provider.
-
-Suchresultate auf gemeinsame Modelle normalisieren.
-
-## 21. Apps
-
-Eigene App-Ansicht mit installierten TV-Apps. Später Favoriten, Reihenfolge, Ausblenden und Kategorien.
-
-Auf der Startseite müssen nicht zwingend alle Apps gezeigt werden.
-
-## 22. Einstellungen und Diagnose
-
-Langfristig Einstellungen für Startseitenreihen, Erscheinungsbild, Watch Next, App-Kanäle, TMDB, Gigablue und Entwicklerdiagnose.
-
-Diagnosekategorien z. B.:
-
-- WATCH_NEXT
-- TV_PROVIDER
-- TMDB_RESOLVER
-- OPENWEBIF
-- EPG
-- PLAYER
-- FOCUS
-- APP_LAUNCH
-
-Keine Tokens, Passwörter oder vollständigen privaten URLs loggen.
-
-## 23. Datenschutz und Sicherheit
-
-Grundprinzip: **Local First**.
-
-Keine Werbe-SDKs. Keine Analytics-SDKs standardmäßig. Keine Telemetrie ohne ausdrückliche Zustimmung.
-
-Gigablue-Kommunikation bleibt lokal. Externe Kommunikation möglichst nur zu ausdrücklich benötigten Diensten wie TMDB und YouTube.
-
-Keine Zugangsdaten oder API-Keys im Repository speichern. Keine Secrets in Logs ausgeben.
-
-## 24. Entwicklungsregeln
-
-Nicht raten, wenn Verhalten durch Quellcode, Android-Dokumentation, API-Antworten oder Logs überprüfbar ist.
+Nicht raten, wenn Verhalten durch Quellcode, Android-Dokumentation, API-Antworten, Emulator oder Logs überprüfbar ist.
 
 Bei Fehlern:
 
-1. Ursache analysieren
-2. relevanten Code prüfen
-3. tatsächliches Verhalten / Logs / API prüfen
-4. erst dann ändern
-5. anschließend Build und Tests durchführen
+1. Ursache analysieren,
+2. relevanten Code prüfen,
+3. erst dann ändern,
+4. Build und relevante Tests durchführen,
+5. Regressionen prüfen.
 
-Keine zufälligen Workarounds. Bestehende funktionierende Bereiche nicht unnötig umbauen.
+Keine zufälligen Workarounds.
 
-## 25. GitHub-Workflow
+Bestehende funktionierende Bereiche nicht unnötig umbauen.
+
+Architektur modular und langfristig wartbar halten.
+
+## Visuelle TV-Prüfung
+
+Bei reproduzierbaren UI-/Layout-/Fokusänderungen nicht nur kompilieren. Soweit technisch möglich den vorhandenen deterministischen Android-TV-Visual-Smoke verwenden oder sinnvoll erweitern.
+
+Der aktuelle Visual-Smoke läuft auf einem 1920×1080 Android-TV-Emulator und darf debug-only Fixture-Daten verwenden, damit Layout, Dichte, Clipping und Fokus reproduzierbar sind.
+
+Für relevante visuelle Änderungen gilt:
+
+1. UI ändern,
+2. Debug-Build erstellen,
+3. 1080p-Screenshot(s) des betroffenen Zustands erzeugen,
+4. Screenshot tatsächlich visuell prüfen,
+5. sichtbare Abweichungen korrigieren,
+6. danach erneut Screenshot/Build prüfen.
+
+Ein Fixture-Screenshot prüft Geometrie/Fokus, aber nicht reale TMDB-/Provider-Artworkqualität und ersetzt keinen TCL-Gerätetest.
+
+## GitHub-Workflow
 
 Bei größeren Änderungen:
 
-1. bestehenden Code analysieren
-2. Arbeitsziel definieren
-3. Feature-/Fix-Branch verwenden
-4. Feature/Fix implementieren
-5. Build durchführen
-6. Tests ausführen
-7. Regressionen prüfen
-8. verständliche Commits
-9. Pull Request mit nachvollziehbarer Beschreibung
-
-Keine großen unkontrollierten Änderungen direkt auf `main`.
-
-Commit-Beispiele:
-
-- `feat: add Android TV watch next provider`
-- `feat: add TMDB media resolver`
-- `feat: add OpenWebif bouquet support`
-- `fix: preserve watch next ordering`
-- `fix: restore focus after returning from details`
-- `refactor: extract unified media repository`
-
-## 26. Tests
-
-Neue Funktionen soweit sinnvoll automatisiert testen.
-
-Mindestens relevant:
-
-- Resolver / Parsing
-- Watch-Next-Mapping
-- OpenWebif API Parsing
-- TMDB-Matching
-- Datenbankmigrationen
-
-Bei UI zusätzlich reale D-Pad-Navigation, Back-Navigation, TV-Auflösung und Focus-Verhalten prüfen.
-
-## 27. Build und Hardwaretests
+- bestehenden Code analysieren,
+- Feature/Fix implementieren,
+- Build durchführen,
+- Tests ausführen,
+- Regressionen prüfen,
+- verständliche Commits,
+- Pull Request mit nachvollziehbarer Beschreibung.
 
 Eine Funktion gilt erst als fertig, wenn der Build erfolgreich ist und relevante Tests bestanden wurden.
 
+Für UI-Funktionen, die reproduzierbar im Emulator prüfbar sind, gehört der visuelle Smoke-Test zur relevanten Validierung.
+
 Bei Funktionen, die nur auf realer TV-Hardware geprüft werden können:
 
-- Debug-APK erzeugen
-- erforderliche Diagnose / Logging bereitstellen
-- konkreten Gerätetest definieren
-- Testergebnis anschließend auswerten und nachbessern
+- Debug-APK erzeugen,
+- erforderliche Diagnose/Logging bereitstellen,
+- konkreten Gerätetest definieren,
+- Testergebnis anschließend auswerten und nachbessern.
 
-Keine APK als getestet bezeichnen, wenn lediglich kompiliert wurde.
+Keine APK als getestet bezeichnen, wenn lediglich kompiliert oder nur im Emulator geprüft wurde.
 
-## 28. Entwicklungsphasen
+## Development-APK / Signing
 
-Phase 1 – Launcher MVP:
-- Kotlin/Compose-TV-Projekt
-- Launcher Activity / Home-App
-- installierte Apps
-- Basisnavigation
-- TV-Focus
-- Home-Layout
+Development-APKs müssen update-kompatibel mit dem stabilen Development-Signing-Key erzeugt werden, sofern die Signing-Secrets verfügbar sind. Secrets niemals in Repository-Dateien, Logs, PR-Beschreibungen oder Chat-Antworten kopieren.
 
-Phase 2 – Watch Next:
-- Android TvProvider
-- Watch Next einlesen
-- Reihenfolge bewahren
-- Fortschritt
-- Deep Links
+Der Publisher soll Unit-Tests und Debug-Build durchführen. Das Update-Manifest muss Version, SHA256, Signing-/Update-Kompatibilität, TMDB-Konfiguration und Source-SHA nachvollziehbar enthalten.
 
-Phase 3 – TMDB:
-- API / Resolver / Cache
-- Poster / Backdrops / Serien-/Episodendaten
-- Detailseite
+## Datenschutz / Logs
 
-Phase 4 – Trailer:
-- TMDB Video
-- YouTube
-- Trailerwiedergabe
+Local First bevorzugen.
 
-Phase 5 – Gigablue:
-- OpenWebif-Verbindung
-- Bouquets / Sender
-- EPG Now/Next
-- Startseitenreihe
+Nicht loggen:
 
-Phase 6 – EPG:
-- vollständiger Guide
-- TMDB-Anreicherung
-- Bilder / Details
+- Tokens
+- Passwörter
+- Receiver-Credentials
+- vollständige private Stream-URLs, wenn nicht zwingend erforderlich
+- Signing-Secrets
 
-Phase 7 – Live-TV:
-- Media3
-- Gigablue Stream
-- Zapping
-- Player UI
+Diagnoselogs sollen technische Zustände enthalten, aber sensible Daten redigieren.
 
-Phase 8 – weitere Integrationen nur bei Bedarf:
-- Kodi
-- Jellyfin
-- Plex
-- CloudStream
-- weitere Provider
+## Architekturentscheidungen
 
-Vor einer Sonderintegration immer zuerst prüfen, ob Android Watch Next oder Preview Channels bereits genügend Daten liefern.
+Neue App-spezifische Adapter nur einführen, wenn reguläre Android-/Provider-/Deep-Link-Schnittstellen nicht ausreichen und der Nutzen klar ist.
 
-## 29. Prioritäten
+CloudStream: keine Sonderintegration für Watch Next, solange TvProvider reicht. Ein offizieller Such-/Handoff-Intent darf für explizite Details-/Search-Aktionen verwendet werden.
+
+Kodi: keine instabile Android-Such-Activity erzwingen, wenn Quellcode/Verhalten zeigt, dass der erwartete Providerpfad nicht funktioniert. Exportierte, nachvollziehbare Provider-/Intent-Schnittstellen bevorzugen und nur starke Treffer automatisch öffnen.
+
+## Prioritäten
 
 1. zuverlässige Android-TV-Funktion
 2. hervorragende D-Pad-/Fernbedienungsbedienung
@@ -469,29 +226,20 @@ Vor einer Sonderintegration immer zuerst prüfen, ob Android Watch Next oder Pre
 7. möglichst geringe Drittanbieterabhängigkeit
 8. Optik
 
-## 30. Definition of Done
+## Definition of Done
 
-Eine Funktion ist erst abgeschlossen, wenn:
+Softwareseitig prüfbar:
 
-- sie implementiert ist
-- Projekt erfolgreich kompiliert
-- relevante Tests erfolgreich sind
-- keine offensichtlichen Regressionen vorhanden sind
-- TV-Fernbedienungsbedienung soweit möglich geprüft wurde
-- Fehlerfälle berücksichtigt wurden
-- Code nachvollziehbar strukturiert ist
-- GitHub-Änderung dokumentiert ist
+- Code analysiert und nachvollziehbar geändert,
+- relevante Unit-Tests erfolgreich,
+- Debug-Build erfolgreich,
+- bei reproduzierbarer TV-UI: Visual-Smoke-Screenshot tatsächlich geprüft,
+- keine offensichtliche Regression im betroffenen Bereich.
 
-## 31. Entscheidungsregel
+Hardware-/OEM-spezifisch:
 
-Bei jeder neuen Anforderung prüfen:
+- Debug-APK erzeugt,
+- konkreter Gerätetest definiert,
+- erst nach realer Prüfung als Hardware-getestet bezeichnen.
 
-1. Passt sie zum Produktziel?
-2. Gibt es bereits eine Android-Standardschnittstelle?
-3. Gibt es bereits eine Provider-Schicht, die erweitert werden kann?
-4. Muss das gemeinsame Medienmodell erweitert werden?
-5. Welche Auswirkungen gibt es auf UI, Cache und Datenbank?
-6. Wie lässt sich die Änderung testen?
-7. Entsteht unnötige technische Schuld?
-
-Ziel ist kein schneller Wegwerf-Prototyp, sondern ein Launcher, der langfristig täglich als primäre Android-TV-Oberfläche verwendet werden kann.
+Die aktuelle technische Wahrheit steht in dieser Datei sowie ergänzend in `README.md`, `ROADMAP.md` und `ARCHITECTURE.md`.
