@@ -9,6 +9,11 @@ import android.os.Bundle
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Surface
+import androidx.tv.material3.SurfaceDefaults
 import com.andreassamitsch.ilauncher.R
 import com.andreassamitsch.ilauncher.data.home.HomePreferences
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifState
@@ -38,29 +43,37 @@ class UiPreviewActivity : ComponentActivity() {
         val channel = fixtureChannel()
         setContent {
             ILauncherTheme {
-                HomeScreen(
-                    apps = fixtureApps,
-                    watchNextItems = emptyList(),
-                    watchNextError = null,
-                    previewChannels = listOf(channel),
-                    previewChannelsError = null,
-                    hasTvListingsPermission = true,
-                    liveTvState = OpenWebifState(),
-                    homeRowOrder = listOf(
-                        HomePreferences.previewRowKey(channel.id),
-                        HomePreferences.ROW_APPS,
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    colors = SurfaceDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        contentColor = MaterialTheme.colorScheme.onBackground,
                     ),
-                    onMoveHomeApp = { _, _ -> },
-                    onRequestTvListingsPermission = {},
-                    onOpenApp = {},
-                    onOpenWatchNext = {},
-                    onOpenWatchNextDetails = {},
-                    onOpenMediaDetails = { _, _ -> },
-                    onOpenPreviewProgram = { _, _ -> },
-                    onOpenLiveTv = {},
-                    onPlayLiveTvChannel = {},
-                    onNavigationVisibilityChange = {},
-                )
+                ) {
+                    HomeScreen(
+                        apps = fixtureApps,
+                        watchNextItems = emptyList(),
+                        watchNextError = null,
+                        previewChannels = listOf(channel),
+                        previewChannelsError = null,
+                        hasTvListingsPermission = true,
+                        liveTvState = OpenWebifState(),
+                        homeRowOrder = listOf(
+                            HomePreferences.previewRowKey(channel.id),
+                            HomePreferences.ROW_APPS,
+                        ),
+                        onMoveHomeApp = { _, _ -> },
+                        onRequestTvListingsPermission = {},
+                        onOpenApp = {},
+                        onOpenWatchNext = {},
+                        onOpenWatchNextDetails = {},
+                        onOpenMediaDetails = { _, _ -> },
+                        onOpenPreviewProgram = { _, _ -> },
+                        onOpenLiveTv = {},
+                        onPlayLiveTvChannel = {},
+                        onNavigationVisibilityChange = {},
+                    )
+                }
             }
         }
     }
