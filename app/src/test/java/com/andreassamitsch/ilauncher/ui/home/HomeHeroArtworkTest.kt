@@ -1,5 +1,6 @@
 package com.andreassamitsch.ilauncher.ui.home
 
+import com.andreassamitsch.ilauncher.data.home.WatchNextArtworkMode
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.MediaSource
@@ -40,6 +41,44 @@ class HomeHeroArtworkTest {
 
         assertEquals("still", uri)
         assertFalse(fit)
+    }
+
+    @Test
+    fun watchNextEpisodeCardCanPreferSeriesBackdrop() {
+        val item = mediaItem(
+            type = MediaType.Episode,
+            tmdbId = 1,
+            episodeStillUri = "still",
+            backdropUri = "series-backdrop",
+        )
+
+        assertEquals(
+            "series-backdrop",
+            watchNextCardArtwork(item, WatchNextArtworkMode.Series),
+        )
+        assertEquals(
+            "still",
+            watchNextCardArtwork(item, WatchNextArtworkMode.Episode),
+        )
+    }
+
+    @Test
+    fun watchNextEpisodeHeroCanPreferSeriesBackdrop() {
+        val item = mediaItem(
+            type = MediaType.Episode,
+            tmdbId = 1,
+            episodeStillUri = "still",
+            backdropUri = "series-backdrop",
+        )
+
+        assertEquals(
+            "series-backdrop" to false,
+            watchNextHeroArtwork(item, WatchNextArtworkMode.Series),
+        )
+        assertEquals(
+            "still" to false,
+            watchNextHeroArtwork(item, WatchNextArtworkMode.Episode),
+        )
     }
 
     @Test
