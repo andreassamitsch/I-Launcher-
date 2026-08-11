@@ -41,56 +41,58 @@ fun WatchNextCard(
     var longPressHandled by remember(item.id) { mutableStateOf(false) }
     var focused by remember(item.id) { mutableStateOf(false) }
 
-    TouchCard(
-        onClick = onClick,
-        onLongClick = onDetails,
-        handleTvLongClick = false,
-        modifier = modifier
-            .width(236.dp)
-            .onFocusChanged { focusState ->
-                focused = focusState.isFocused
-                if (focusState.isFocused) onFocused?.invoke()
-            }
-            .onPreviewKeyEvent { composeEvent ->
-                val event = composeEvent.nativeKeyEvent
-                val isConfirmKey = event.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
-                    event.keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
-                    event.keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
-
-                when {
-                    onDetails != null &&
-                        event.action == AndroidKeyEvent.ACTION_DOWN &&
-                        event.keyCode == AndroidKeyEvent.KEYCODE_INFO -> {
-                        onDetails()
-                        true
-                    }
-
-                    onDetails != null &&
-                        event.action == AndroidKeyEvent.ACTION_DOWN &&
-                        isConfirmKey &&
-                        event.repeatCount > 0 -> {
-                        longPressHandled = true
-                        true
-                    }
-
-                    event.action == AndroidKeyEvent.ACTION_UP &&
-                        isConfirmKey &&
-                        longPressHandled -> {
-                        longPressHandled = false
-                        onDetails?.invoke()
-                        true
-                    }
-
-                    else -> false
-                }
-            },
-        scale = CardDefaults.scale(focusedScale = 1.028f),
+    Column(
+        modifier = Modifier.width(204.dp),
     ) {
-        Column {
+        TouchCard(
+            onClick = onClick,
+            onLongClick = onDetails,
+            handleTvLongClick = false,
+            modifier = modifier
+                .fillMaxWidth()
+                .height(115.dp)
+                .onFocusChanged { focusState ->
+                    focused = focusState.isFocused
+                    if (focusState.isFocused) onFocused?.invoke()
+                }
+                .onPreviewKeyEvent { composeEvent ->
+                    val event = composeEvent.nativeKeyEvent
+                    val isConfirmKey = event.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
+                        event.keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
+                        event.keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
+
+                    when {
+                        onDetails != null &&
+                            event.action == AndroidKeyEvent.ACTION_DOWN &&
+                            event.keyCode == AndroidKeyEvent.KEYCODE_INFO -> {
+                            onDetails()
+                            true
+                        }
+
+                        onDetails != null &&
+                            event.action == AndroidKeyEvent.ACTION_DOWN &&
+                            isConfirmKey &&
+                            event.repeatCount > 0 -> {
+                            longPressHandled = true
+                            true
+                        }
+
+                        event.action == AndroidKeyEvent.ACTION_UP &&
+                            isConfirmKey &&
+                            longPressHandled -> {
+                            longPressHandled = false
+                            onDetails?.invoke()
+                            true
+                        }
+
+                        else -> false
+                    }
+                },
+            scale = CardDefaults.scale(focusedScale = 1.045f),
+        ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(133.dp)
+                    .fillMaxSize()
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
                 val artwork = item.preferredArtworkUri
@@ -116,8 +118,8 @@ fun WatchNextCard(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(7.dp)
-                            .size(width = 62.dp, height = 26.dp),
+                            .padding(6.dp)
+                            .size(width = 54.dp, height = 23.dp),
                     )
                 }
 
@@ -127,7 +129,7 @@ fun WatchNextCard(
                             .align(Alignment.BottomStart)
                             .fillMaxWidth()
                             .height(3.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f)),
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.76f)),
                     ) {
                         Box(
                             modifier = Modifier
@@ -138,26 +140,31 @@ fun WatchNextCard(
                     }
                 }
             }
+        }
 
-            Column(
-                modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
-            ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(38.dp)
+                .padding(top = 5.dp, start = 2.dp, end = 2.dp),
+        ) {
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.alpha(if (focused) 1f else 0.88f),
+            )
+            item.subtitle?.takeIf { it.isNotBlank() && it != item.title }?.let { subtitle ->
                 Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.titleSmall,
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.alpha(if (focused) 0.9f else 0f),
                 )
-                item.subtitle?.takeIf { it.isNotBlank() && it != item.title }?.let { subtitle ->
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.alpha(if (focused) 1f else 0.58f),
-                    )
-                }
             }
         }
     }

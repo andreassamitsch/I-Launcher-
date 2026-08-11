@@ -1,0 +1,81 @@
+name: TV Visual Smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "app/src/main/java/com/andreassamitsch/ilauncher/ui/**"
+      - "app/src/debug/**"
+      - ".github/workflows/tv-visual-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  screenshot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Capture deterministic Google TV screenshots
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google-tv
+          arch: x86_64
+          profile: tv_1080p
+          emulator-options: >-
+            -no-snapshot-save -no-window -gpu swiftshader_indirect
+            -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            gradle :app:assembleDebug --stacktrace
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -W -n \
+              com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity
+            sleep 4
+            mkdir -p build/tv-visual
+            adb exec-out screencap -p > build/tv-visual/home-initial.png
+
+            # Move from the Hero into the first media rail to capture focused-card geometry.
+            adb shell input keyevent 20
+            sleep 1
+            adb exec-out screencap -p > build/tv-visual/home-first-rail.png
+
+            # Small log preview is a fallback for direct artifact inspection.
+            if command -v ffmpeg >/dev/null 2>&1; then
+              ffmpeg -hide_banner -loglevel error -y \
+                -i build/tv-visual/home-first-rail.png \
+                -vf scale=640:-2 -q:v 12 build/tv-visual/home-first-rail-small.jpg
+              echo "VISUAL_PREVIEW_BASE64_BEGIN"
+              base64 -w0 build/tv-visual/home-first-rail-small.jpg
+              echo
+              echo "VISUAL_PREVIEW_BASE64_END"
+            fi
+
+      - name: Upload TV visual smoke screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: tv-visual-smoke
+          path: build/tv-visual/
+          if-no-files-found: error

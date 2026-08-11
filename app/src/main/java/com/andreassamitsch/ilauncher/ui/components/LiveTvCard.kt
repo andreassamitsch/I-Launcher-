@@ -11,8 +11,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -31,21 +36,25 @@ fun LiveTvCard(
     modifier: Modifier = Modifier,
 ) {
     val artwork = channel.now?.preferredArtworkUri
+    var focused by remember(channel.serviceReference) { mutableStateOf(false) }
 
-    TouchCard(
-        onClick = onClick,
-        modifier = modifier
-            .width(236.dp)
-            .onFocusChanged { focusState ->
-                if (focusState.isFocused) onFocused?.invoke()
-            },
-        scale = CardDefaults.scale(focusedScale = 1.028f),
+    Column(
+        modifier = Modifier.width(204.dp),
     ) {
-        Column {
+        TouchCard(
+            onClick = onClick,
+            modifier = modifier
+                .fillMaxWidth()
+                .height(115.dp)
+                .onFocusChanged { focusState ->
+                    focused = focusState.isFocused
+                    if (focusState.isFocused) onFocused?.invoke()
+                },
+            scale = CardDefaults.scale(focusedScale = 1.045f),
+        ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(133.dp)
+                    .fillMaxSize()
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
                 if (!artwork.isNullOrBlank()) {
@@ -62,8 +71,8 @@ fun LiveTvCard(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .align(Alignment.Center)
-                            .padding(16.dp)
-                            .size(width = 160.dp, height = 54.dp),
+                            .padding(14.dp)
+                            .size(width = 146.dp, height = 48.dp),
                     )
                 } else {
                     Text(
@@ -80,8 +89,8 @@ fun LiveTvCard(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(7.dp)
-                            .size(width = 62.dp, height = 27.dp),
+                            .padding(6.dp)
+                            .size(width = 54.dp, height = 23.dp),
                     )
                 }
 
@@ -91,7 +100,7 @@ fun LiveTvCard(
                             .align(Alignment.BottomStart)
                             .fillMaxWidth()
                             .height(3.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f)),
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.76f)),
                     ) {
                         Box(
                             modifier = Modifier
@@ -102,23 +111,31 @@ fun LiveTvCard(
                     }
                 }
             }
+        }
 
-            Column(modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(38.dp)
+                .padding(top = 5.dp, start = 2.dp, end = 2.dp),
+        ) {
+            Text(
+                text = channel.now?.title ?: channel.name,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.alpha(if (focused) 1f else 0.88f),
+            )
+            if (channel.now != null) {
                 Text(
-                    text = channel.now?.title ?: channel.name,
-                    style = MaterialTheme.typography.titleSmall,
+                    text = channel.name,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.alpha(if (focused) 0.86f else 0f),
                 )
-                if (channel.now != null) {
-                    Text(
-                        text = channel.name,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
             }
         }
     }
