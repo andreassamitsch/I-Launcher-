@@ -16,9 +16,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.tv.material3.Border
 import androidx.tv.material3.Button as TvButton
 import androidx.tv.material3.ButtonColors
 import androidx.tv.material3.ButtonDefaults
@@ -89,6 +91,25 @@ fun TouchCard(
     border: CardBorder = CardDefaults.border(),
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // A 1.0 focused scale is reserved for the large, static Hero surface.
+    // Keep it focusable/clickable but avoid rendering it like a giant TV card.
+    val staticHeroScale = CardDefaults.scale(focusedScale = 1.0f)
+    val isStaticHeroSurface = scale == staticHeroScale
+    val resolvedShape = if (isStaticHeroSurface) {
+        CardDefaults.shape(shape = RectangleShape)
+    } else {
+        shape
+    }
+    val resolvedBorder = if (isStaticHeroSurface) {
+        CardDefaults.border(
+            border = Border.None,
+            focusedBorder = Border.None,
+            pressedBorder = Border.None,
+        )
+    } else {
+        border
+    }
+
     TvCard(
         onClick = onClick,
         onLongClick = if (handleTvLongClick) onLongClick else null,
@@ -97,8 +118,8 @@ fun TouchCard(
             onLongClick = onLongClick,
         ),
         scale = scale,
-        shape = shape,
-        border = border,
+        shape = resolvedShape,
+        border = resolvedBorder,
         content = content,
     )
 }
