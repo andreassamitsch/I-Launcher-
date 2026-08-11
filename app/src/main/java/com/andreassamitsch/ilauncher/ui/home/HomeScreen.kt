@@ -171,74 +171,98 @@ fun HomeScreen(
             onFocused = { onNavigationVisibilityChange(true) },
         )
 
-        Column(
+        Box(
             modifier = Modifier
                 .weight(1f)
-                .clipToBounds()
-                .verticalScroll(contentScrollState)
-                .touchScrollFallback(contentScrollState, Orientation.Vertical)
-                .padding(top = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .fillMaxWidth()
+                .clipToBounds(),
         ) {
-            homeRowOrder.forEach { rowKey ->
-                when (rowKey) {
-                    HomePreferences.ROW_WATCH_NEXT -> WatchNextHomeRow(
-                        items = watchNextItems,
-                        error = watchNextError,
-                        hasTvListingsPermission = hasTvListingsPermission,
-                        onRequestTvListingsPermission = onRequestTvListingsPermission,
-                        appLabels = appLabels,
-                        listState = watchNextListState,
-                        restoreSourceId = watchNextFocusRestoreSourceId,
-                        restoreRequester = watchNextRestoreFocusRequester,
-                        onOpen = onOpenWatchNext,
-                        onDetails = onOpenWatchNextDetails,
-                        onFocused = ::selectHero,
-                    )
-
-                    HomePreferences.ROW_LIVE_TV -> if (liveTvState.configured) {
-                        LiveTvHomeRow(
-                            state = liveTvState,
-                            listState = liveTvListState,
-                            restoreServiceReference = liveTvFocusRestoreServiceReference,
-                            restoreRequester = liveTvRestoreFocusRequester,
-                            onConfigure = onOpenLiveTv,
-                            onPlay = onPlayLiveTvChannel,
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(contentScrollState)
+                    .touchScrollFallback(contentScrollState, Orientation.Vertical)
+                    .padding(top = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                homeRowOrder.forEach { rowKey ->
+                    when (rowKey) {
+                        HomePreferences.ROW_WATCH_NEXT -> WatchNextHomeRow(
+                            items = watchNextItems,
+                            error = watchNextError,
+                            hasTvListingsPermission = hasTvListingsPermission,
+                            onRequestTvListingsPermission = onRequestTvListingsPermission,
+                            appLabels = appLabels,
+                            listState = watchNextListState,
+                            restoreSourceId = watchNextFocusRestoreSourceId,
+                            restoreRequester = watchNextRestoreFocusRequester,
+                            onOpen = onOpenWatchNext,
+                            onDetails = onOpenWatchNextDetails,
                             onFocused = ::selectHero,
                         )
-                    }
 
-                    HomePreferences.ROW_APPS -> AppsHomeRow(
-                        apps = apps,
-                        listState = appsListState,
-                        movingAppPackage = movingAppPackage,
-                        onMoveMode = { movingAppPackage = it },
-                        onMove = onMoveHomeApp,
-                        onOpen = onOpenApp,
-                        onFocused = { onNavigationVisibilityChange(false) },
-                    )
+                        HomePreferences.ROW_LIVE_TV -> if (liveTvState.configured) {
+                            LiveTvHomeRow(
+                                state = liveTvState,
+                                listState = liveTvListState,
+                                restoreServiceReference = liveTvFocusRestoreServiceReference,
+                                restoreRequester = liveTvRestoreFocusRequester,
+                                onConfigure = onOpenLiveTv,
+                                onPlay = onPlayLiveTvChannel,
+                                onFocused = ::selectHero,
+                            )
+                        }
 
-                    else -> previewByRowKey[rowKey]?.let { channel ->
-                        PreviewHomeRow(
-                            channel = channel,
-                            sourceApp = channel.packageName?.let(appsByPackage::get),
-                            sourceLabel = channel.packageName?.let(appLabels::get) ?: channel.title,
-                            onOpen = onOpenPreviewProgram,
-                            onFocused = ::selectHero,
+                        HomePreferences.ROW_APPS -> AppsHomeRow(
+                            apps = apps,
+                            listState = appsListState,
+                            movingAppPackage = movingAppPackage,
+                            onMoveMode = { movingAppPackage = it },
+                            onMove = onMoveHomeApp,
+                            onOpen = onOpenApp,
+                            onFocused = { onNavigationVisibilityChange(false) },
                         )
+
+                        else -> previewByRowKey[rowKey]?.let { channel ->
+                            PreviewHomeRow(
+                                channel = channel,
+                                sourceApp = channel.packageName?.let(appsByPackage::get),
+                                sourceLabel = channel.packageName?.let(appLabels::get) ?: channel.title,
+                                onOpen = onOpenPreviewProgram,
+                                onFocused = ::selectHero,
+                            )
+                        }
                     }
                 }
+
+                if (hasTvListingsPermission && previewChannelsError != null) {
+                    Text(
+                        text = previewChannelsError,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 38.dp),
+                    )
+                }
+                Spacer(Modifier.height(14.dp))
             }
 
-            if (hasTvListingsPermission && previewChannelsError != null) {
-                Text(
-                    text = previewChannelsError,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(horizontal = 38.dp),
+            if (contentScrollState.value > 0) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .height(38.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.background,
+                                    MaterialTheme.colorScheme.background.copy(alpha = 0.94f),
+                                    MaterialTheme.colorScheme.background.copy(alpha = 0.0f),
+                                ),
+                            ),
+                        ),
                 )
             }
-            Spacer(Modifier.height(14.dp))
         }
     }
 }
@@ -555,7 +579,7 @@ private fun HomeHero(
                     if (!heroContent.titleCoveredByLogo || heroContent.logoUri.isNullOrBlank()) {
                         Text(
                             text = heroContent.title,
-                            style = MaterialTheme.typography.displaySmall,
+                            style = MaterialTheme.typography.headlineLarge,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
