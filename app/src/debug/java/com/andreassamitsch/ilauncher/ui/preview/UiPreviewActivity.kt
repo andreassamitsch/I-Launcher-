@@ -40,7 +40,7 @@ class UiPreviewActivity : ComponentActivity() {
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
 
         val fixtureApps = fixtureApps()
-        val channel = fixtureChannel()
+        val channels = fixtureChannels()
         setContent {
             ILauncherTheme {
                 Surface(
@@ -54,14 +54,12 @@ class UiPreviewActivity : ComponentActivity() {
                         apps = fixtureApps,
                         watchNextItems = emptyList(),
                         watchNextError = null,
-                        previewChannels = listOf(channel),
+                        previewChannels = channels,
                         previewChannelsError = null,
                         hasTvListingsPermission = true,
                         liveTvState = OpenWebifState(),
-                        homeRowOrder = listOf(
-                            HomePreferences.previewRowKey(channel.id),
+                        homeRowOrder = channels.map { HomePreferences.previewRowKey(it.id) } +
                             HomePreferences.ROW_APPS,
-                        ),
                         onMoveHomeApp = { _, _ -> },
                         onRequestTvListingsPermission = {},
                         onOpenApp = {},
@@ -78,7 +76,13 @@ class UiPreviewActivity : ComponentActivity() {
         }
     }
 
-    private fun fixtureChannel(): AppContentChannel {
+    private fun fixtureChannels(): List<AppContentChannel> = listOf(
+        fixtureChannel("recommendations", "Empfehlungen", 0),
+        fixtureChannel("continue", "Für dich", 1),
+        fixtureChannel("top", "Top Filme", 2),
+    )
+
+    private fun fixtureChannel(id: String, title: String, shift: Int): AppContentChannel {
         val art = listOf(
             R.drawable.ui_fixture_hero,
             R.drawable.ui_fixture_card_blue,
@@ -95,36 +99,37 @@ class UiPreviewActivity : ComponentActivity() {
             "Alternate Realities",
             "Der letzte Horizont",
         )
-        val programs = titles.mapIndexed { index, title ->
-            val resId = art[index]
+        val programs = titles.mapIndexed { index, mediaTitle ->
+            val sourceIndex = (index + shift) % titles.size
+            val resId = art[sourceIndex]
             val uri = "android.resource://$packageName/$resId"
             AppContentProgram(
                 sourceOrder = index,
                 media = MediaItem(
-                    id = "visual-$index",
+                    id = "visual-$id-$index",
                     type = MediaType.Movie,
-                    title = title,
-                    overview = if (index == 0) {
+                    title = titles[sourceIndex],
+                    overview = if (sourceIndex == 0) {
                         "Ein Astronaut erwacht allein auf einer Mission und muss herausfinden, warum er dort ist – und wie er die Erde retten kann."
                     } else {
                         "Eine kurze Beschreibung für den reproduzierbaren TV-Layout-Test."
                     },
-                    releaseYear = 2026 - index,
+                    releaseYear = 2026 - sourceIndex,
                     backdropUri = uri,
-                    voteAverage = 7.8 - index * 0.2,
+                    voteAverage = 7.8 - sourceIndex * 0.2,
                     source = MediaSource(
                         provider = "visual-fixture",
-                        sourceId = "visual-$index",
+                        sourceId = "visual-$id-$index",
                         packageName = "fixture.video",
                     ),
                 ),
             )
         }
         return AppContentChannel(
-            id = "visual-fixture",
-            sourceOrder = 0,
+            id = id,
+            sourceOrder = shift,
             packageName = "fixture.video",
-            title = "Empfehlungen",
+            title = title,
             appLinkIntentUri = null,
             programs = programs,
         )
