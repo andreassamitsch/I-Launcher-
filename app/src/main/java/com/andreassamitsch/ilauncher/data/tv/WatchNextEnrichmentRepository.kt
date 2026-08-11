@@ -58,7 +58,7 @@ class WatchNextEnrichmentRepository(
     suspend fun enrichMediaOne(media: MediaItem): MediaItem {
         if (!isTmdbConfigured) return media
         val metadata = tmdbRepository.resolve(
-            sourceKey = media.source.sourceId,
+            sourceKey = resolverSourceKey(media),
             lookup = MediaLookup(
                 rawTitle = media.title,
                 typeHint = resolverTypeHint(media),
@@ -87,3 +87,15 @@ internal fun resolverTypeHint(media: MediaItem): MediaType = when {
     media.source.provider == "android_preview_channel" -> MediaType.Unknown
     else -> media.type
 }
+
+/**
+ * Version the Preview-Channel resolver cache key when the provider-type policy changes. Existing
+ * Watch Next mappings keep their stable key; Preview Channels are resolved once with the new
+ * provider-neutral multi-search policy instead of waiting for an old negative mapping to expire.
+ */
+internal fun resolverSourceKey(media: MediaItem): String =
+    if (media.source.provider == "android_preview_channel") {
+        "${media.source.sourceId}:preview-resolver-v2"
+    } else {
+        media.source.sourceId
+    }
