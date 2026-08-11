@@ -72,8 +72,10 @@ import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.delay
 
-private val HOME_HERO_HEIGHT = 340.dp
-private val HOME_FIRST_RAIL_TOP = 255.dp
+private val HOME_HERO_HEIGHT = 360.dp
+private val HOME_FIRST_RAIL_TOP = 275.dp
+private val HOME_MEDIA_RAIL_VERTICAL_PADDING = 14.dp
+private val HOME_SCROLL_SCRIM_HEIGHT = 150.dp
 
 @Composable
 fun HomeScreen(
@@ -288,13 +290,15 @@ fun HomeScreen(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .height(34.dp)
+                        .height(HOME_SCROLL_SCRIM_HEIGHT)
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.background.copy(alpha = 0.94f),
-                                    MaterialTheme.colorScheme.background.copy(alpha = 0.58f),
-                                    MaterialTheme.colorScheme.background.copy(alpha = 0.0f),
+                                colorStops = arrayOf(
+                                    0.00f to MaterialTheme.colorScheme.background,
+                                    0.30f to MaterialTheme.colorScheme.background.copy(alpha = 0.99f),
+                                    0.62f to MaterialTheme.colorScheme.background.copy(alpha = 0.88f),
+                                    0.82f to MaterialTheme.colorScheme.background.copy(alpha = 0.40f),
+                                    1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.0f),
                                 ),
                             ),
                         ),
@@ -342,7 +346,12 @@ private fun WatchNextHomeRow(
         else -> LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(start = 38.dp, end = 18.dp, top = 7.dp, bottom = 7.dp),
+            contentPadding = PaddingValues(
+                start = 38.dp,
+                end = 18.dp,
+                top = HOME_MEDIA_RAIL_VERTICAL_PADDING,
+                bottom = HOME_MEDIA_RAIL_VERTICAL_PADDING,
+            ),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(
@@ -390,7 +399,12 @@ private fun LiveTvHomeRow(
         state.channels.isNotEmpty() -> LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(start = 38.dp, end = 18.dp, top = 7.dp, bottom = 7.dp),
+            contentPadding = PaddingValues(
+                start = 38.dp,
+                end = 18.dp,
+                top = HOME_MEDIA_RAIL_VERTICAL_PADDING,
+                bottom = HOME_MEDIA_RAIL_VERTICAL_PADDING,
+            ),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(state.channels, key = LiveTvChannel::serviceReference) { channel ->
@@ -433,7 +447,12 @@ private fun PreviewHomeRow(
         LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(start = 38.dp, end = 18.dp, top = 7.dp, bottom = 7.dp),
+            contentPadding = PaddingValues(
+                start = 38.dp,
+                end = 18.dp,
+                top = HOME_MEDIA_RAIL_VERTICAL_PADDING,
+                bottom = HOME_MEDIA_RAIL_VERTICAL_PADDING,
+            ),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(channel.programs, key = { it.media.id }) { program ->
