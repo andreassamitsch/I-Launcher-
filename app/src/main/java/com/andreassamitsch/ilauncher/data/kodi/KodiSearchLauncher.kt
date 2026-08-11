@@ -1,123 +1,110 @@
 package com.andreassamitsch.ilauncher.data.kodi
 
-import android.app.SearchManager
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import android.widget.Toast
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.InetSocketAddress
+import java.net.Socket
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import kotlin.concurrent.thread
+import org.json.JSONArray
+import org.json.JSONObject
+
+private const val TAG = "KODI_TMDB_HELPER"
 
 class KodiSearchLauncher(private val context: Context) {
     fun isAvailable(): Boolean = context.packageManager.getLaunchIntentForPackage(KODI_PACKAGE) != null
 
     fun launch(query: String): Boolean {
         if (!isAvailable()) return false
+        val normalizedQuery = query.trim().replace(Regex("\\s+"), " ")
+        if (normalizedQuery.isBlank()) return false
 
-        // Kodi's exported ACTION_SEARCH activity currently queries a media/search URI that its own
-        // exported media provider does not register. Use the provider's supported suggestions route
-        // instead, then feed the selected Kodi-owned videodb URI back through the activity's working
-        // ACTION_GET_CONTENT path. Provider IPC can involve Kodi JSON-RPC, so never block the UI.
-        thread(name = "i-launcher-kodi-search") {
-            val suggestion = runCatching { findSuggestion(query) }.getOrNull()
-            if (suggestion != null && launchSuggestion(suggestion)) return@thread
-            launchKodiHome()
+        val kodiIntent = context.packageManager.getLaunchIntentForPackage(KODI_PACKAGE) ?: return false
+        runCatching {
+            kodiIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(kodiIntent)
+        }.onFailure { throwable ->
+            Log.w(TAG, "Unable to launch Kodi (${throwable.javaClass.simpleName})")
+            return false
+        }
+
+        // Stock Kodi exposes no Android intent that navigates to an arbitrary plugin directory.
+        // Kodi's own JSON-RPC TCP server is the supported navigation API when local remote control
+        // is enabled. TMDb Helper's current search route accepts info=search, tmdb_type and query.
+        thread(name = "i-launcher-kodi-tmdb-helper") {
+            val pluginPath = tmdbHelperSearchPath(normalizedQuery)
+            val success = activateKodiVideoWindow(pluginPath)
+            if (!success) {
+                Log.w(TAG, "Kodi JSON-RPC unavailable; TMDb Helper search could not be opened")
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(
+                        context,
+                        "Kodi: Unter Dienste > Steuerung die Fernsteuerung durch Programme auf diesem System aktivieren.",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
         }
         return true
     }
 
-    private fun findSuggestion(query: String): KodiSuggestion? {
-        val uri = Uri.Builder()
-            .scheme("content")
-            .authority(KODI_MEDIA_AUTHORITY)
-            .appendPath(KODI_SUGGESTIONS_PATH)
-            .appendPath(SearchManager.SUGGEST_URI_PATH_QUERY)
-            .appendPath(query)
-            .appendQueryParameter("limit", KODI_SUGGESTION_LIMIT.toString())
-            .build()
-
-        val suggestions = mutableListOf<KodiSuggestion>()
-        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-            val titleIndex = cursor.getColumnIndex(SearchManager.SUGGEST_COLUMN_TEXT_1)
-            val actionIndex = cursor.getColumnIndex(SearchManager.SUGGEST_COLUMN_INTENT_ACTION)
-            val dataIndex = cursor.getColumnIndex(SearchManager.SUGGEST_COLUMN_INTENT_DATA)
-            if (titleIndex < 0 || dataIndex < 0) return@use
-
-            while (cursor.moveToNext()) {
-                val title = cursor.getString(titleIndex).orEmpty()
-                val data = cursor.getString(dataIndex).orEmpty()
-                if (title.isBlank() || data.isBlank()) continue
-                suggestions += KodiSuggestion(
-                    title = title,
-                    action = if (actionIndex >= 0) cursor.getString(actionIndex) else null,
-                    data = data,
-                )
+    private fun activateKodiVideoWindow(pluginPath: String): Boolean {
+        repeat(KODI_RPC_STARTUP_ATTEMPTS) { attempt ->
+            if (attempt > 0) Thread.sleep(KODI_RPC_RETRY_MILLIS)
+            val result = runCatching {
+                Socket().use { socket ->
+                    socket.connect(
+                        InetSocketAddress(KODI_RPC_HOST, KODI_RPC_PORT),
+                        KODI_RPC_CONNECT_TIMEOUT_MILLIS,
+                    )
+                    socket.soTimeout = KODI_RPC_READ_TIMEOUT_MILLIS
+                    val request = JSONObject().apply {
+                        put("jsonrpc", "2.0")
+                        put("method", "GUI.ActivateWindow")
+                        put(
+                            "params",
+                            JSONObject().apply {
+                                put("window", "videos")
+                                put("parameters", JSONArray().put(pluginPath).put("return"))
+                            },
+                        )
+                        put("id", 1)
+                    }
+                    socket.getOutputStream().bufferedWriter().use { writer ->
+                        writer.write(request.toString())
+                        writer.write("\n")
+                        writer.flush()
+                    }
+                    val response = BufferedReader(InputStreamReader(socket.getInputStream())).readLine().orEmpty()
+                    response.contains("\"result\":\"OK\"") || response.contains("\"result\": \"OK\"")
+                }
+            }.getOrDefault(false)
+            if (result) {
+                Log.d(TAG, "Opened TMDb Helper search through Kodi JSON-RPC")
+                return true
             }
         }
-        return selectKodiSuggestion(query, suggestions)
-    }
-
-    private fun launchSuggestion(suggestion: KodiSuggestion): Boolean {
-        val data = runCatching { Uri.parse(suggestion.data) }.getOrNull() ?: return false
-        val intent = Intent(suggestion.action ?: Intent.ACTION_GET_CONTENT).apply {
-            component = ComponentName(KODI_PACKAGE, KODI_SEARCH_ACTIVITY)
-            this.data = data
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        return runCatching {
-            context.startActivity(intent)
-            true
-        }.getOrDefault(false)
-    }
-
-    private fun launchKodiHome() {
-        val intent = context.packageManager.getLaunchIntentForPackage(KODI_PACKAGE) ?: return
-        runCatching {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-        }
+        return false
     }
 
     private companion object {
         const val KODI_PACKAGE = "org.xbmc.kodi"
-        const val KODI_SEARCH_ACTIVITY = "org.xbmc.kodi.XBMCSearchableActivity"
-        const val KODI_MEDIA_AUTHORITY = "org.xbmc.kodi.media"
-        const val KODI_SUGGESTIONS_PATH = "suggestions"
-        const val KODI_SUGGESTION_LIMIT = 12
+        const val KODI_RPC_HOST = "127.0.0.1"
+        const val KODI_RPC_PORT = 9090
+        const val KODI_RPC_STARTUP_ATTEMPTS = 20
+        const val KODI_RPC_RETRY_MILLIS = 250L
+        const val KODI_RPC_CONNECT_TIMEOUT_MILLIS = 250
+        const val KODI_RPC_READ_TIMEOUT_MILLIS = 900
     }
 }
 
-internal data class KodiSuggestion(
-    val title: String,
-    val action: String?,
-    val data: String,
-)
-
-internal fun selectKodiSuggestion(
-    query: String,
-    suggestions: List<KodiSuggestion>,
-): KodiSuggestion? {
-    val normalizedQuery = normalizeKodiTitle(query)
-    if (normalizedQuery.isBlank()) return null
-
-    return suggestions
-        .map { suggestion ->
-            val title = normalizeKodiTitle(suggestion.title)
-            val score = when {
-                title == normalizedQuery -> 3
-                title.startsWith("$normalizedQuery ") || normalizedQuery.startsWith("$title ") -> 2
-                title.contains(normalizedQuery) || normalizedQuery.contains(title) -> 1
-                else -> 0
-            }
-            suggestion to score
-        }
-        .filter { (_, score) -> score >= 2 }
-        .maxByOrNull { (_, score) -> score }
-        ?.first
+internal fun tmdbHelperSearchPath(query: String): String {
+    val encoded = URLEncoder.encode(query.trim(), StandardCharsets.UTF_8.name())
+    return "plugin://plugin.video.themoviedb.helper/?info=search&tmdb_type=both&query=$encoded"
 }
-
-internal fun normalizeKodiTitle(value: String): String = value
-    .lowercase()
-    .replace("&", " and ")
-    .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
-    .trim()
-    .replace(Regex("\\s+"), " ")
