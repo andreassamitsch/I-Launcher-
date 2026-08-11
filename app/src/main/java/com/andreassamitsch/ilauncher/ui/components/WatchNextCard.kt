@@ -42,7 +42,7 @@ fun WatchNextCard(
     var focused by remember(item.id) { mutableStateOf(false) }
 
     Column(
-        modifier = Modifier.width(204.dp),
+        modifier = Modifier.width(172.dp),
     ) {
         TouchCard(
             onClick = onClick,
@@ -50,7 +50,7 @@ fun WatchNextCard(
             handleTvLongClick = false,
             modifier = modifier
                 .fillMaxWidth()
-                .height(115.dp)
+                .height(97.dp)
                 .onFocusChanged { focusState ->
                     focused = focusState.isFocused
                     if (focusState.isFocused) onFocused?.invoke()
@@ -118,8 +118,8 @@ fun WatchNextCard(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(6.dp)
-                            .size(width = 54.dp, height = 23.dp),
+                            .padding(5.dp)
+                            .size(width = 46.dp, height = 20.dp),
                     )
                 }
 
@@ -145,16 +145,16 @@ fun WatchNextCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(38.dp)
+                .height(34.dp)
                 .padding(top = 5.dp, start = 2.dp, end = 2.dp),
         ) {
             Text(
                 text = item.title,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.alpha(if (focused) 1f else 0.88f),
+                modifier = Modifier.alpha(if (focused) 1f else 0.84f),
             )
             item.subtitle?.takeIf { it.isNotBlank() && it != item.title }?.let { subtitle ->
                 Text(
