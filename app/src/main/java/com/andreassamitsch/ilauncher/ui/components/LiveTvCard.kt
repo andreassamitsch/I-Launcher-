@@ -22,6 +22,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Border
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -37,80 +38,103 @@ fun LiveTvCard(
 ) {
     val artwork = channel.now?.preferredArtworkUri
     var focused by remember(channel.serviceReference) { mutableStateOf(false) }
+    val breath = rememberFocusedCardBreath(focused)
 
     Column(
         modifier = Modifier.width(172.dp),
     ) {
-        TouchCard(
-            onClick = onClick,
-            modifier = modifier
+        Box(
+            modifier = Modifier
                 .fillMaxWidth()
-                .height(97.dp)
-                .onFocusChanged { focusState ->
-                    focused = focusState.isFocused
-                    if (focusState.isFocused) onFocused?.invoke()
-                },
-            scale = CardDefaults.scale(focusedScale = 1.045f),
+                .height(97.dp),
         ) {
-            Box(
-                modifier = Modifier
+            FocusedArtworkGlow(
+                artworkUri = artwork,
+                focused = focused,
+                breath = breath,
+            )
+
+            TouchCard(
+                onClick = onClick,
+                modifier = modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .onFocusChanged { focusState ->
+                        focused = focusState.isFocused
+                        if (focusState.isFocused) onFocused?.invoke()
+                    },
+                scale = CardDefaults.scale(focusedScale = 1.045f),
+                shape = CardDefaults.shape(shape = FocusedMediaCardShape),
+                border = CardDefaults.border(
+                    border = Border.None,
+                    focusedBorder = Border.None,
+                    pressedBorder = Border.None,
+                ),
             ) {
-                if (!artwork.isNullOrBlank()) {
-                    AsyncImage(
-                        model = artwork,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else if (!channel.piconUri.isNullOrBlank()) {
-                    AsyncImage(
-                        model = channel.piconUri,
-                        contentDescription = channel.name,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .padding(12.dp)
-                            .size(width = 122.dp, height = 42.dp),
-                    )
-                } else {
-                    Text(
-                        text = channel.name.take(1).uppercase(),
-                        style = MaterialTheme.typography.displayMedium,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    if (!artwork.isNullOrBlank()) {
+                        AsyncImage(
+                            model = artwork,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else if (!channel.piconUri.isNullOrBlank()) {
+                        AsyncImage(
+                            model = channel.piconUri,
+                            contentDescription = channel.name,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(12.dp)
+                                .size(width = 122.dp, height = 42.dp),
+                        )
+                    } else {
+                        Text(
+                            text = channel.name.take(1).uppercase(),
+                            style = MaterialTheme.typography.displayMedium,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
 
-                if (!artwork.isNullOrBlank() && !channel.piconUri.isNullOrBlank()) {
-                    AsyncImage(
-                        model = channel.piconUri,
-                        contentDescription = channel.name,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(5.dp)
-                            .size(width = 46.dp, height = 20.dp),
-                    )
-                }
+                    if (!artwork.isNullOrBlank() && !channel.piconUri.isNullOrBlank()) {
+                        AsyncImage(
+                            model = channel.piconUri,
+                            contentDescription = channel.name,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(5.dp)
+                                .size(width = 46.dp, height = 20.dp),
+                        )
+                    }
 
-                channel.progressFraction()?.let { progress ->
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .fillMaxWidth()
-                            .height(3.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.76f)),
-                    ) {
+                    channel.progressFraction()?.let { progress ->
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth(progress)
-                                .fillMaxHeight()
-                                .background(MaterialTheme.colorScheme.primary),
-                        )
+                                .align(Alignment.BottomStart)
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.76f)),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(progress)
+                                    .fillMaxHeight()
+                                    .background(MaterialTheme.colorScheme.primary),
+                            )
+                        }
                     }
                 }
             }
+
+            FocusedBreathingBorder(
+                focused = focused,
+                breath = breath,
+            )
         }
 
         Text(
