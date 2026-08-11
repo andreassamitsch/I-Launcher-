@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.andreassamitsch.ilauncher.data.home.WatchNextArtworkMode
 import com.andreassamitsch.ilauncher.model.AppContentChannelsLoadResult
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
@@ -37,9 +39,15 @@ fun HomeSettingsScreen(
     hiddenWatchNextPackages: Set<String>,
     onSetWatchNextSourceVisible: (String, Boolean) -> Unit,
     onShowAllWatchNextSources: () -> Unit,
+    watchNextCardArtworkMode: WatchNextArtworkMode,
+    onSetWatchNextCardArtworkMode: (WatchNextArtworkMode) -> Unit,
+    watchNextHeroArtworkMode: WatchNextArtworkMode,
+    onSetWatchNextHeroArtworkMode: (WatchNextArtworkMode) -> Unit,
     hiddenPreviewChannelIds: Set<String>,
     onSetPreviewChannelVisible: (String, Boolean) -> Unit,
     onShowAllPreviewChannels: () -> Unit,
+    tmdbEnrichedPreviewChannelIds: Set<String>,
+    onSetPreviewChannelTmdbEnrichment: (String, Boolean) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -99,6 +107,22 @@ fun HomeSettingsScreen(
         )
         TouchButton(onClick = onResetApps) { Text("App-Reihenfolge zurücksetzen") }
 
+        Text("Weiterschauen – Bilder", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "Für Episoden kann getrennt gewählt werden, ob Karten und Hero das Episodenbild oder den Serienhintergrund verwenden.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        ArtworkModeRow(
+            label = "Karten",
+            selected = watchNextCardArtworkMode,
+            onSelect = onSetWatchNextCardArtworkMode,
+        )
+        ArtworkModeRow(
+            label = "Hero",
+            selected = watchNextHeroArtworkMode,
+            onSelect = onSetWatchNextHeroArtworkMode,
+        )
+
         Text("Weiterschauen – Quellen", style = MaterialTheme.typography.headlineSmall)
         if (watchNextSources.isEmpty()) {
             Text("Keine Watch-Next-Quellen gefunden.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -116,18 +140,60 @@ fun HomeSettingsScreen(
         }
 
         Text("App-Kanäle", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "TMDB-Anreicherung ist je Kanal standardmäßig aus. Bei Aktivierung werden die Inhalte dieses Kanals aufgelöst und mit TMDB-Metadaten/Bildern ergänzt.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         previewChannelsResult.channels.forEach { channel ->
             val visible = channel.id !in hiddenPreviewChannelIds
+            val tmdbEnabled = channel.id in tmdbEnrichedPreviewChannelIds
             val app = channel.packageName?.let(appLabels::get)
             val label = if (!app.isNullOrBlank() && app != channel.title) {
                 "${channel.title} · $app"
             } else channel.title
-            TouchButton(onClick = { onSetPreviewChannelVisible(channel.id, !visible) }) {
-                Text(if (visible) "✓ $label" else "Ausgeblendet: $label")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = label,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                TouchButton(onClick = { onSetPreviewChannelVisible(channel.id, !visible) }) {
+                    Text(if (visible) "✓ Sichtbar" else "Ausgeblendet")
+                }
+                TouchButton(onClick = { onSetPreviewChannelTmdbEnrichment(channel.id, !tmdbEnabled) }) {
+                    Text(if (tmdbEnabled) "✓ TMDB" else "TMDB aus")
+                }
             }
         }
         if (hiddenPreviewChannelIds.isNotEmpty()) {
             TouchButton(onClick = onShowAllPreviewChannels) { Text("Alle App-Kanäle anzeigen") }
+        }
+    }
+}
+
+@Composable
+private fun ArtworkModeRow(
+    label: String,
+    selected: WatchNextArtworkMode,
+    onSelect: (WatchNextArtworkMode) -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "$label:",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        TouchButton(onClick = { onSelect(WatchNextArtworkMode.Episode) }) {
+            Text(if (selected == WatchNextArtworkMode.Episode) "✓ Episodenbild" else "Episodenbild")
+        }
+        TouchButton(onClick = { onSelect(WatchNextArtworkMode.Series) }) {
+            Text(if (selected == WatchNextArtworkMode.Series) "✓ Serienbild" else "Serienbild")
         }
     }
 }
