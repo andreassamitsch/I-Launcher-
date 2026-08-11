@@ -63,7 +63,7 @@ Aktuell umgesetzt:
 - CloudStreams aktuelle Such-Activity erzwingt beim Öffnen selbst die Soft-Tastatur; die externe `cloudstreamsearch`-Schnittstelle bietet keinen dokumentierten Parameter zum Unterdrücken, daher implementiert I Launcher keinen timing-basierten Back-Workaround
 - zusätzlicher Touch-Kompatibilitätslayer für Handy-/Tablet-Smoke-Tests; TV-/D-Pad-Bedienung bleibt die Produktquelle der Wahrheit
 
-Die interne Trailerwiedergabe mit Bild und Ton, die EPG-Integration im Live-TV-Player, Suchreihen sowie mehrere Player-Aktionen wurden auf realer TV-Hardware bestätigt. Hero-Layering, Top-Crop, Glow/Breath, die neuen Home-Optionen, der Year-Fallback und der TMDb-Helper-Handoff benötigen nach erfolgreichem Build/Emulator-Smoke noch den aktuellen TCL-Gerätetest.
+Die aktuellen Anwendungsänderungen sind als signierter Development-Build **`0.1.0-dev.261` (`26000261`)** veröffentlicht. Android CI **#472** und TV Visual Smoke **#81** sind grün; der 1920×1080-Smoke wurde manuell auf Hero/Rail-Überlagerung, edge-to-edge Darstellung, EPG-Fallback und den statischen Focus-Glow/Border-Zustand geprüft. Der zeitliche Breath-Effekt, reales Live-TV-TMDB-Nachladen, die neuen Home-Optionen und der Kodi-TMDb-Helper-Handoff benötigen noch den TCL-Gerätetest.
 
 ## Datenschutz / Sicherheit
 
