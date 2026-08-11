@@ -14,6 +14,16 @@ import kotlinx.coroutines.withContext
 
 private const val TAG = "TMDB_RESOLVER"
 
+internal fun TmdbMediaDetailsDto.preferredHeroBackdropPath(): String? {
+    backdropPath?.takeIf { it.isNotBlank() }?.let { return it }
+    val candidates = images?.backdrops.orEmpty().filter { !it.filePath.isNullOrBlank() }
+    return candidates
+        .filter { it.language == null }
+        .maxByOrNull { it.voteAverage }
+        ?.filePath
+        ?: candidates.maxByOrNull { it.voteAverage }?.filePath
+}
+
 class TmdbRepository(
     context: Context,
     readAccessToken: String = BuildConfig.TMDB_READ_ACCESS_TOKEN,
@@ -166,11 +176,12 @@ class TmdbRepository(
             (episodeEntity?.updatedAtUtcMillis ?: 0L) >= TRAILER_LANGUAGE_POLICY_CUTOFF_UTC_MILLIS
         val videoLookupComplete = media.videoLookupComplete && mediaTrailerPolicyFresh &&
             (!needsEpisodeDetails || episodeEntity?.videoLookupComplete == true) && episodeTrailerPolicyFresh
+        val heroArtworkPolicyFresh = media.updatedAtUtcMillis >= HERO_BACKDROP_POLICY_CUTOFF_UTC_MILLIS
         return media.toMetadata(
             confidence = mapping.confidence ?: 1f,
             episode = episodeEntity?.toMetadata(imageConfiguration),
             imageConfiguration = imageConfiguration,
-        ) to if (videoLookupComplete) media.updatedAtUtcMillis else 0L
+        ) to if (videoLookupComplete && heroArtworkPolicyFresh) media.updatedAtUtcMillis else 0L
     }
 
     private suspend fun loadEpisode(
@@ -262,7 +273,7 @@ class TmdbRepository(
             releaseYear = yearOf(releaseDate ?: firstAirDate),
             runtimeMinutes = runtime ?: episodeRunTime?.firstOrNull(),
             posterPath = posterPath,
-            backdropPath = backdropPath,
+            backdropPath = preferredHeroBackdropPath(),
             logoPath = preferredLogo,
             voteAverage = voteAverage,
             imdbId = externalIds?.imdbId,
@@ -349,6 +360,7 @@ class TmdbRepository(
         private const val MAPPING_MAX_AGE_MILLIS = 30L * 24L * 60L * 60L * 1_000L
         private const val CACHE_MAX_AGE_MILLIS = 180L * 24L * 60L * 60L * 1_000L
         private const val TRAILER_LANGUAGE_POLICY_CUTOFF_UTC_MILLIS = 1_786_233_600_000L
+        private const val HERO_BACKDROP_POLICY_CUTOFF_UTC_MILLIS = 1_786_467_600_000L
         internal const val RESOLVER_POLICY_CUTOFF_UTC_MILLIS = 1_786_363_200_000L
         internal const val NEGATIVE_MAPPING_RETRY_MILLIS = 6L * 60L * 60L * 1_000L
 
