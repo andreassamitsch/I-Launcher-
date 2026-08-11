@@ -140,13 +140,17 @@ Darstellung langfristig:
 - verbleibende Zeit, sofern verfügbar
 - Quell-App optional dezent
 
+Für Episoden darf die Home-Darstellung getrennt für **Karten** und **Hero** zwischen `Episodenbild` und `Serienbild` umgeschaltet werden. `Episodenbild` bevorzugt das Episoden-Still, `Serienbild` das Serien-Backdrop. Diese UI-Präferenz darf Quellreihenfolge, Deep Link, Watch-Next-Fortschritt und TMDB-Identität nicht verändern. Standard ist `Episodenbild`.
+
 Auswahl startet den vorhandenen Deep Link / Intent der Quell-App.
 
 ## 8. Android-TV-Kanäle
 
 Preview Channels und Preview Programs installierter Apps unterstützen.
 
-Inhalte verschiedener Apps können als eigene Reihen auf der Startseite erscheinen. Der Benutzer soll später auswählen können, welche Kanäle angezeigt werden und in welcher Reihenfolge.
+Inhalte verschiedener Apps können als eigene Reihen auf der Startseite erscheinen. Der Benutzer soll auswählen können, welche Kanäle angezeigt werden und in welcher Reihenfolge.
+
+TMDB-Anreicherung von Preview Channels ist **pro Kanal opt-in und standardmäßig aus**. Wird sie aktiviert, werden die normalisierten Programme dieses Kanals über den zentralen TMDB-Resolver aufgelöst und die angereicherten Inhalte für Home und lokale Suche verwendet. Kein separater app-spezifischer Resolver bauen, solange das gemeinsame Medienmodell ausreicht.
 
 ## 9. TMDB
 
@@ -186,6 +190,8 @@ Fallout S02E04
 ```
 
 Bei unsicherem Matching lieber Originaldaten anzeigen als falsche TMDB-Daten. Confidence-System verwenden.
+
+Ein vom Provider geliefertes Erscheinungsjahr ist ein starkes Suchsignal, aber nicht unfehlbar. Für typisierte Film-/Serien-/Episodensuchen gilt: zuerst mit serverseitigem Jahresfilter suchen. Wird kein sicherer Match gefunden, genau einmal ohne serverseitigen Jahresfilter wiederholen; das ursprüngliche Quelljahr bleibt in der Confidence-Berechnung erhalten. Die bestehende Confidence-Schwelle darf dafür nicht abgesenkt werden. So werden z. B. Titel mit korrektem Namen, aber um ein Jahr abweichender Providerjahresangabe weiterhin sauber gefunden.
 
 ## 11. Zusammenführen gleicher Inhalte
 
@@ -227,7 +233,7 @@ Eigene Reihe **„Jetzt im TV“**.
 
 Nicht nur Senderlogos anzeigen, sondern möglichst Senderlogo, aktuelle Sendung, Start/Ende, Fortschritt und ein passendes Bild.
 
-EPG-Daten kommen vom Gigablue/OpenWebif und können durch den TMDB-Resolver mit Postern, Backdrops oder Episodenbildern angereichert werden.
+EPG-Daten kommen vom Gigablue/OpenWebif und können durch den TMDB-Resolver mit Postern, Backdrops oder Episodenbildern angereichert werden. Beim Fokus eines aktuellen Programms darf eine noch fehlende TMDB-Auflösung gezielt angestoßen werden. Der ausgewählte Home-Hero muss über die stabile Senderreferenz bzw. `serviceReference + startUtcMillis` an das Programm gebunden bleiben und sich aktualisieren, sobald die angereicherte Kopie vorliegt; kein Fokus-Neustart dafür.
 
 Weitere mögliche Reihen: „Gleich im TV“, „Heute Abend“, „Meine Sender“.
 
@@ -255,6 +261,12 @@ Keine endlosen Recommendation-Reihen. Keine Werbung. Keine Sponsored Cards.
 
 Hero-Bereich maximal ein prominenter Inhalt gleichzeitig, kein automatisch durchlaufendes Werbekarussell.
 
+Der Home-Hero ist keine abgeschlossene Box oberhalb der Rails, sondern liegt hinter der ersten Inhaltsreihe. Die erste Rail darf den unteren Hero ungefähr bis zur oberen Hälfte der Karten überlagern. Bild und Verlauf laufen damit optisch in die Content-Fläche hinein. Bildfüllende Hero-Artworks sind `TopCenter` auszurichten, damit beim Crop der obere Motivbereich erhalten bleibt statt das Bild vertikal zu zentrieren.
+
+Kein globaler Außenrahmen/Padding um die komplette App. Home-Hintergrund und Hero dürfen bis an die tatsächlichen Bildschirmkanten zeichnen. Safe-Area-Abstände nur dort lokal setzen, wo Text, Navigation, Focus-Zoom oder Bedienbarkeit sie benötigen.
+
+Fokussierte **Medienkarten** dürfen einen inhaltsspezifischen Glow nach Google-TV-Prinzip erhalten. Bevorzugt dieselbe bereits geladene Artwork-Quelle hinter der Karte weich blurren, statt eine zusätzliche Palette-/Netzwerkabhängigkeit einzuführen. Die Fokus-Kontur darf einen langsamen, subtilen `Breath`-Effekt über Alpha und Strichbreite besitzen. Unendliche Fokusanimationen nur für die tatsächlich fokussierte Karte ausführen; keine Transition für alle unfokussierten/off-screen Karten permanent laufen lassen.
+
 ## 17. D-Pad / Fernbedienung
 
 TV-UX hat höchste Priorität.
@@ -270,6 +282,7 @@ Besonders beachten:
 - horizontale Listen sauber scrollen
 - kein Touch voraussetzen
 - Animationen dezent und schnell
+- Glow/Breath dürfen niemals einen zusätzlichen Fokuspunkt erzeugen oder die Kartenhitbox verändern
 
 ## 18. Performance und Offline
 
@@ -300,13 +313,19 @@ Serie/Episode:
 
 Geeignete Bildgrößen laden, keine unnötig großen Originale.
 
-Für den **Home-Hero** gilt bewusst eine strengere Regel als für Karten und Detailseiten: TMDB-verknüpfte Filme und Serien verwenden ausschließlich ein breites TMDB-Backdrop als bildfüllenden Hintergrund; Episoden verwenden zuerst ein TMDB-Episoden-Still und danach das Serien-Backdrop. Poster/Hochformatbilder sind im Home-Hero kein primäres Fallback. Falls der primäre `backdrop_path` fehlt, darf aus den von TMDB gelieferten Backdrops ein geeigneter sprachneutraler Kandidat gewählt werden. EPG-/Live-TV-Inhalte ohne TMDB-Verknüpfung verwenden ihr vorhandenes Quellbild möglichst unbeschnitten oben rechts; dieses läuft per Verlauf weich nach links und unten in den Hero-Hintergrund aus.
+Für den **Home-Hero** gilt bewusst eine strengere Regel als für Karten und Detailseiten: TMDB-verknüpfte Filme und Serien verwenden ausschließlich ein breites TMDB-Backdrop als bildfüllenden Hintergrund; Episoden verwenden – abhängig von der Home-Bildpräferenz – Episoden-Still bzw. Serien-Backdrop zuerst und den jeweils anderen breiten Bildtyp als Fallback. Poster/Hochformatbilder sind im Home-Hero kein primäres TMDB-Fallback. Falls der primäre `backdrop_path` fehlt, darf aus den von TMDB gelieferten Backdrops ein geeigneter sprachneutraler Kandidat gewählt werden.
 
-## 20. Suche
+Bildfüllende TMDB-Hero-Artworks werden `TopCenter` gecroppt. EPG-/Live-TV-Inhalte ohne TMDB-Verknüpfung verwenden ihr vorhandenes Quellbild möglichst unbeschnitten oben rechts. Der Verlauf setzt an den tatsächlich gerenderten `Fit`-Bildgrenzen an, sodass unterschiedliche Quellformate wie 2:3, 4:3 und 16:9 nach links und unten weich in den Hero-Hintergrund auslaufen, ohne das Bild zusätzlich als vergrößerten Vollflächen-Crop zu duplizieren.
+
+## 20. Suche und App-Handoffs
 
 Langfristig globale Suche über installierte Apps, Watch Next, TMDB, Gigablue-EPG und später weitere Provider.
 
 Suchresultate auf gemeinsame Modelle normalisieren.
+
+CloudStream-Suche weiterhin über die vorhandene explizite Suchschnittstelle des Zielclients öffnen; keine CloudStream-Providerlogik nachbauen.
+
+`In Kodi suchen` soll direkt die Suchroute des installierten **TMDb Helper**-Add-ons mit dem übergebenen Titel öffnen. Vor Implementierung nicht raten: aktuelle TMDb-Helper-Route und Kodi-Steuerung im Quellcode prüfen. Stock-Kodi besitzt keinen geeigneten öffentlichen Android-Intent für beliebige Plugin-Directories; deshalb darf nach normalem Kodi-Start die lokale Kodi-JSON-RPC-Methode `GUI.ActivateWindow` mit dem konkreten `plugin://plugin.video.themoviedb.helper/...`-Pfad verwendet werden. Dafür erforderliche Kodi-Remote-Control-Einstellungen offen benennen. Keine timing-basierten Back-/Key-Workarounds.
 
 ## 21. Apps
 
@@ -391,8 +410,10 @@ Mindestens relevant:
 - OpenWebif API Parsing
 - TMDB-Matching
 - Datenbankmigrationen
+- persistierte Home-Bild-/Kanalpräferenzen, soweit als reine Logik testbar
+- Kodi-/TMDb-Helper-Pfaderzeugung ohne UI-Timingannahmen
 
-Bei UI zusätzlich reale D-Pad-Navigation, Back-Navigation, TV-Auflösung und Focus-Verhalten prüfen.
+Bei UI zusätzlich reale D-Pad-Navigation, Back-Navigation, TV-Auflösung, Focus-Verhalten sowie Glow/Breath und Hero-/Rail-Überlagerung prüfen.
 
 ## 27. Build und Hardwaretests
 
@@ -405,7 +426,7 @@ Bei Funktionen, die nur auf realer TV-Hardware geprüft werden können:
 - konkreten Gerätetest definieren
 - Testergebnis anschließend auswerten und nachbessern
 
-Keine APK als getestet bezeichnen, wenn lediglich kompiliert wurde.
+Keine APK als getestet bezeichnen, wenn lediglich kompiliert wurde. Ein statischer Emulator-Screenshot bestätigt keine zeitliche Breath-Animation und kein echtes Kodi-Handoff; diese Punkte müssen am TV geprüft werden.
 
 ## 28. Entwicklungsphasen
 
