@@ -539,11 +539,27 @@ private fun HomeHero(
                 )
                 Box(
                     modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxWidth(0.18f)
+                        .fillMaxHeight()
+                        .background(
+                            Brush.horizontalGradient(
+                                colorStops = arrayOf(
+                                    0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
+                                    0.45f to MaterialTheme.colorScheme.background.copy(alpha = 0.08f),
+                                    0.78f to MaterialTheme.colorScheme.background.copy(alpha = 0.34f),
+                                    1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.76f),
+                                ),
+                            ),
+                        ),
+                )
+                Box(
+                    modifier = Modifier
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
                                 colorStops = arrayOf(
-                                    0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.01f),
+                                    0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.04f),
                                     0.50f to MaterialTheme.colorScheme.background.copy(alpha = 0.03f),
                                     0.78f to MaterialTheme.colorScheme.background.copy(alpha = 0.38f),
                                     1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
@@ -679,12 +695,7 @@ private fun mediaHero(item: MediaItem, sourceLabel: String?): HomeHeroContent {
         item.releaseYear?.let { add(it.toString()) }
         item.voteAverage?.takeIf { it > 0.0 }?.let { add("TMDB %.1f".format(it)) }
     }.joinToString(" · ")
-    val artwork = when {
-        !item.backdropUri.isNullOrBlank() -> item.backdropUri to false
-        !item.episodeStillUri.isNullOrBlank() -> item.episodeStillUri to false
-        !item.sourceArtworkUri.isNullOrBlank() -> item.sourceArtworkUri to true
-        else -> item.posterUri to true
-    }
+    val artwork = mediaHeroArtwork(item)
 
     return HomeHeroContent(
         key = "media:${item.source.provider}:${item.source.sourceId}",
@@ -700,6 +711,28 @@ private fun mediaHero(item: MediaItem, sourceLabel: String?): HomeHeroContent {
     )
 }
 
+private fun mediaHeroArtwork(item: MediaItem): Pair<String?, Boolean> = when (item.type) {
+    MediaType.Episode -> when {
+        !item.episodeStillUri.isNullOrBlank() -> item.episodeStillUri to false
+        !item.backdropUri.isNullOrBlank() -> item.backdropUri to false
+        !item.posterUri.isNullOrBlank() -> item.posterUri to true
+        else -> item.sourceArtworkUri to true
+    }
+    MediaType.Series,
+    MediaType.Movie,
+    -> when {
+        !item.backdropUri.isNullOrBlank() -> item.backdropUri to false
+        !item.posterUri.isNullOrBlank() -> item.posterUri to true
+        else -> item.sourceArtworkUri to true
+    }
+    MediaType.Unknown -> when {
+        !item.backdropUri.isNullOrBlank() -> item.backdropUri to false
+        !item.episodeStillUri.isNullOrBlank() -> item.episodeStillUri to false
+        !item.sourceArtworkUri.isNullOrBlank() -> item.sourceArtworkUri to true
+        else -> item.posterUri to true
+    }
+}
+
 private fun liveTvHero(channel: LiveTvChannel): HomeHeroContent {
     val now = channel.now
     val metadata = buildList {
@@ -713,12 +746,7 @@ private fun liveTvHero(channel: LiveTvChannel): HomeHeroContent {
         now?.voteAverage?.takeIf { it > 0.0 }?.let { add("TMDB %.1f".format(it)) }
     }.joinToString(" · ")
     val description = now?.longDescription ?: now?.shortDescription
-    val artwork = when {
-        !now?.backdropUri.isNullOrBlank() -> now?.backdropUri to false
-        !now?.episodeStillUri.isNullOrBlank() -> now?.episodeStillUri to false
-        !now?.imageUri.isNullOrBlank() -> now?.imageUri to true
-        else -> now?.posterUri to true
-    }
+    val artwork = liveTvHeroArtwork(now)
 
     return HomeHeroContent(
         key = "live:${channel.serviceReference}",
@@ -732,6 +760,31 @@ private fun liveTvHero(channel: LiveTvChannel): HomeHeroContent {
         detailsMedia = now?.let { liveProgramMedia(channel, it) },
         sourceLabel = channel.name,
     )
+}
+
+private fun liveTvHeroArtwork(program: LiveTvProgram?): Pair<String?, Boolean> {
+    if (program == null) return null to false
+    return when (program.tmdbType ?: MediaType.Unknown) {
+        MediaType.Episode -> when {
+            !program.episodeStillUri.isNullOrBlank() -> program.episodeStillUri to false
+            !program.backdropUri.isNullOrBlank() -> program.backdropUri to false
+            !program.posterUri.isNullOrBlank() -> program.posterUri to true
+            else -> program.imageUri to true
+        }
+        MediaType.Series,
+        MediaType.Movie,
+        -> when {
+            !program.backdropUri.isNullOrBlank() -> program.backdropUri to false
+            !program.posterUri.isNullOrBlank() -> program.posterUri to true
+            else -> program.imageUri to true
+        }
+        MediaType.Unknown -> when {
+            !program.backdropUri.isNullOrBlank() -> program.backdropUri to false
+            !program.episodeStillUri.isNullOrBlank() -> program.episodeStillUri to false
+            !program.imageUri.isNullOrBlank() -> program.imageUri to true
+            else -> program.posterUri to true
+        }
+    }
 }
 
 private fun liveProgramMedia(channel: LiveTvChannel, program: LiveTvProgram): MediaItem = MediaItem(
