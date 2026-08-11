@@ -58,7 +58,6 @@ jobs:
             adb shell input keyevent 20
             sleep 1
             adb exec-out screencap -p > build/tv-visual/home-first-rail.png
-            ffmpeg -hide_banner -loglevel error -y -i build/tv-visual/home-first-rail.png -vf scale=640:-2 -q:v 12 build/tv-visual/home-first-rail-small.jpg && echo VISUAL_PREVIEW_BASE64_BEGIN && base64 -w0 build/tv-visual/home-first-rail-small.jpg && echo && echo VISUAL_PREVIEW_BASE64_END
 
       - name: Upload TV visual smoke screenshots
         uses: actions/upload-artifact@v4
