@@ -12,7 +12,7 @@ object MediaTitleParser {
     )
     private val yearRegex = Regex("(?:^|[\\s(\\[])((?:19|20)\\d{2})(?:[)\\]]|$)")
     private val trailingPlaybackQualifierRegex = Regex(
-        pattern = "(?i)\\s*[\\[(](?=[^\\])]{0,40}(?:\\b(?:dt|de|ger|deutsch|ov|omu|omdu|eng|englisch)\\b))[^\\])]{1,40}[\\])]\\s*$",
+        pattern = "(?i)\\s*[\\[(](?=[^\\r\\n]{0,40}(?:\\b(?:dt|de|ger|deutsch|ov|omu|omdu|eng|englisch)\\b))[^\\r\\n]{1,40}[\\])]\\s*$",
     )
 
     fun parse(lookup: MediaLookup): ParsedMediaLookup {
