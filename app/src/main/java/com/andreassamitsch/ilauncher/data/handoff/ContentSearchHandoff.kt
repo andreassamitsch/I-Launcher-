@@ -6,7 +6,7 @@ import com.andreassamitsch.ilauncher.data.kodi.KodiSearchLauncher
 
 enum class ContentSearchTarget(val displayName: String) {
     CloudStream("CloudStream"),
-    Kodi("Kodi"),
+    Kodi("In Kodi suchen"),
 }
 
 class ContentSearchHandoff(context: Context) {
