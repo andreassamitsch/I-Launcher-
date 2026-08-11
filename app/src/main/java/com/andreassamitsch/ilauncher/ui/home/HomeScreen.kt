@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -162,7 +163,6 @@ fun HomeScreen(
         modifier = modifier
             .fillMaxSize()
             .touchScrollFallback(contentScrollState, Orientation.Vertical),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         HomeHero(
             content = hero,
@@ -174,8 +174,10 @@ fun HomeScreen(
         Column(
             modifier = Modifier
                 .weight(1f)
+                .clipToBounds()
                 .verticalScroll(contentScrollState)
-                .touchScrollFallback(contentScrollState, Orientation.Vertical),
+                .touchScrollFallback(contentScrollState, Orientation.Vertical)
+                .padding(top = 4.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             homeRowOrder.forEach { rowKey ->
@@ -233,9 +235,10 @@ fun HomeScreen(
                     text = previewChannelsError,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 38.dp),
                 )
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
         }
     }
 }
@@ -256,20 +259,28 @@ private fun WatchNextHomeRow(
 ) {
     HomeRowHeader("Weiterschauen")
     when {
-        !hasTvListingsPermission -> TouchButton(onClick = onRequestTvListingsPermission) {
+        !hasTvListingsPermission -> TouchButton(
+            onClick = onRequestTvListingsPermission,
+            modifier = Modifier.padding(horizontal = 38.dp),
+        ) {
             Text("TV-Inhalte freigeben")
         }
-        error != null -> Text(error, color = MaterialTheme.colorScheme.error)
+        error != null -> Text(
+            error,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(horizontal = 38.dp),
+        )
         items.isEmpty() -> Text(
             "Keine Weiterschauen-Einträge.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 38.dp),
         )
         else -> LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(start = 38.dp, end = 18.dp, top = 4.dp, bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(
                 items = items,
@@ -306,8 +317,8 @@ private fun LiveTvHomeRow(
         state.channels.isNotEmpty() -> LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(start = 38.dp, end = 18.dp, top = 4.dp, bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(state.channels, key = LiveTvChannel::serviceReference) { channel ->
                 val cardModifier = if (channel.serviceReference == restoreServiceReference) {
@@ -321,8 +332,14 @@ private fun LiveTvHomeRow(
                 )
             }
         }
-        state.isRefreshing -> Text("Live TV wird aktualisiert …")
-        else -> TouchButton(onClick = onConfigure) { Text("Live TV konfigurieren") }
+        state.isRefreshing -> Text(
+            "Live TV wird aktualisiert …",
+            modifier = Modifier.padding(horizontal = 38.dp),
+        )
+        else -> TouchButton(
+            onClick = onConfigure,
+            modifier = Modifier.padding(horizontal = 38.dp),
+        ) { Text("Live TV konfigurieren") }
     }
 }
 
@@ -340,8 +357,8 @@ private fun PreviewHomeRow(
         LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(start = 38.dp, end = 18.dp, top = 4.dp, bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(channel.programs, key = { it.media.id }) { program ->
                 WatchNextCard(
@@ -366,13 +383,16 @@ private fun AppsHomeRow(
 ) {
     HomeRowHeader("Meine Apps")
     if (apps.isEmpty()) {
-        Text("Installierte Apps werden geladen …")
+        Text(
+            "Installierte Apps werden geladen …",
+            modifier = Modifier.padding(horizontal = 38.dp),
+        )
     } else {
         LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(start = 38.dp, end = 18.dp, top = 3.dp, bottom = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             items(apps, key = InstalledApp::packageName) { app ->
                 val moveMode = movingAppPackage == app.packageName
@@ -394,15 +414,21 @@ private fun AppsHomeRow(
 @Composable
 private fun HomeRowHeader(title: String, sourceApp: InstalledApp? = null) {
     Row(
-        modifier = Modifier.padding(start = 10.dp, top = 3.dp),
+        modifier = Modifier.padding(start = 38.dp, end = 18.dp, top = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         sourceApp?.let { app ->
             val icon = remember(app.icon) { app.icon.asImageBitmap() }
-            Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(20.dp))
+            Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(18.dp))
         }
-        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -444,14 +470,14 @@ private fun HomeHero(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .alpha(0.28f),
+                                .alpha(0.25f),
                         )
                         Box(
                             modifier = Modifier
                                 .align(Alignment.CenterEnd)
-                                .fillMaxWidth(0.60f)
+                                .fillMaxWidth(0.62f)
                                 .fillMaxHeight()
-                                .padding(end = 6.dp, top = 8.dp, bottom = 8.dp),
+                                .padding(end = 4.dp, top = 6.dp, bottom = 6.dp),
                             contentAlignment = Alignment.CenterEnd,
                         ) {
                             AsyncImage(
@@ -477,11 +503,11 @@ private fun HomeHero(
                         .background(
                             Brush.horizontalGradient(
                                 colorStops = arrayOf(
-                                    0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.97f),
-                                    0.24f to MaterialTheme.colorScheme.background.copy(alpha = 0.91f),
-                                    0.43f to MaterialTheme.colorScheme.background.copy(alpha = 0.66f),
-                                    0.63f to MaterialTheme.colorScheme.background.copy(alpha = 0.24f),
-                                    0.82f to MaterialTheme.colorScheme.background.copy(alpha = 0.03f),
+                                    0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.98f),
+                                    0.25f to MaterialTheme.colorScheme.background.copy(alpha = 0.91f),
+                                    0.44f to MaterialTheme.colorScheme.background.copy(alpha = 0.63f),
+                                    0.64f to MaterialTheme.colorScheme.background.copy(alpha = 0.21f),
+                                    0.83f to MaterialTheme.colorScheme.background.copy(alpha = 0.02f),
                                     1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.00f),
                                 ),
                             ),
@@ -493,9 +519,10 @@ private fun HomeHero(
                         .background(
                             Brush.verticalGradient(
                                 colorStops = arrayOf(
-                                    0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.02f),
-                                    0.62f to MaterialTheme.colorScheme.background.copy(alpha = 0.03f),
-                                    1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
+                                    0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.01f),
+                                    0.50f to MaterialTheme.colorScheme.background.copy(alpha = 0.03f),
+                                    0.78f to MaterialTheme.colorScheme.background.copy(alpha = 0.38f),
+                                    1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
                                 ),
                             ),
                         ),
@@ -505,21 +532,21 @@ private fun HomeHero(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .fillMaxWidth(0.43f)
-                        .padding(start = 38.dp, end = 12.dp, bottom = 26.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                        .padding(start = 38.dp, end = 12.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     heroContent.logoUri?.takeIf { it.isNotBlank() }?.let { logo ->
                         AsyncImage(
                             model = logo,
                             contentDescription = null,
                             contentScale = ContentScale.Fit,
-                            modifier = Modifier.size(width = 240.dp, height = 76.dp),
+                            modifier = Modifier.size(width = 230.dp, height = 72.dp),
                         )
                     }
                     heroContent.eyebrow?.takeIf { it.isNotBlank() }?.let { eyebrow ->
                         Text(
                             text = eyebrow,
-                            style = MaterialTheme.typography.labelLarge,
+                            style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -536,7 +563,7 @@ private fun HomeHero(
                     heroContent.metadata?.takeIf { it.isNotBlank() }?.let { metadata ->
                         Text(
                             text = metadata,
-                            style = MaterialTheme.typography.bodyLarge,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -550,11 +577,11 @@ private fun HomeHero(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.92f))
-                                .padding(horizontal = 15.dp, vertical = 7.dp),
+                                .padding(horizontal = 14.dp, vertical = 6.dp),
                         ) {
                             Text(
                                 text = if (heroContent.app != null) "Öffnen" else "Details",
-                                style = MaterialTheme.typography.labelLarge,
+                                style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.background,
                             )
                         }
@@ -585,12 +612,12 @@ private fun AutoScrollingHeroDescription(key: String, text: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .height(44.dp)
             .verticalScroll(scrollState),
     ) {
         Text(
             text = text,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onBackground,
         )
     }
