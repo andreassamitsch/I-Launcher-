@@ -37,7 +37,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Capture deterministic 1080p TV screenshots
+      - name: Capture deterministic 1080p TV screenshots and navigation video
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -56,14 +56,33 @@ jobs:
             adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity
             sleep 4
             adb exec-out screencap -p > build/tv-visual/home-initial.png
+
+            adb shell rm -f /sdcard/home-scroll.mp4
+            adb shell 'screenrecord --time-limit 12 /sdcard/home-scroll.mp4 >/dev/null 2>&1 &'
+
             adb shell input keyevent 20
             sleep 1
             adb exec-out screencap -p > build/tv-visual/home-first-rail.png
+            adb shell input keyevent 22
+            sleep 1
+            adb exec-out screencap -p > build/tv-visual/home-first-rail-glow.png
             adb shell input keyevent 20
             sleep 1
+            adb exec-out screencap -p > build/tv-visual/home-second-rail.png
             adb shell input keyevent 20
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/home-deep-rail.png
+            adb exec-out screencap -p > build/tv-visual/home-third-rail.png
+            adb shell input keyevent 20
+            sleep 1
+            adb exec-out screencap -p > build/tv-visual/home-fourth-rail.png
+            adb shell input keyevent 20
+            sleep 1
+            adb exec-out screencap -p > build/tv-visual/home-bottom.png
+            adb shell input keyevent 19
+            sleep 1
+            adb shell input keyevent 19
+            sleep 5
+            adb pull /sdcard/home-scroll.mp4 build/tv-visual/home-scroll.mp4 || true
 
             adb shell am force-stop com.andreassamitsch.ilauncher
             adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity --es screen home-epg-fallback
