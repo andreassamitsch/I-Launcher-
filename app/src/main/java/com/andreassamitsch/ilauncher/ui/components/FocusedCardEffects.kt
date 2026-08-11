@@ -12,6 +12,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -22,7 +23,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import androidx.compose.foundation.shape.RoundedCornerShape
 
 private val MediaCardShape = RoundedCornerShape(10.dp)
 
@@ -49,46 +49,42 @@ internal fun BoxScope.FocusedArtworkGlow(
 ) {
     if (!focused || artworkUri.isNullOrBlank()) return
 
-    // The same artwork is rendered behind the focused card. Its own colours therefore create the
-    // glow without palette extraction, another network request or a third-party colour library.
-    // Blur is available from Android 12; older devices retain a subtle enlarged colour halo.
-    val blurModifier = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        Modifier.blur(
-            radius = 16.dp,
-            edgeTreatment = BlurredEdgeTreatment.Unbounded,
+    // Re-render the focused artwork behind the card so the halo automatically carries the card's
+    // own colours. On Android 12+ the enlarged copy is blurred with unbounded edges; critically,
+    // there is no second sharp copy here, because that produced a visible rectangular halo edge.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        AsyncImage(
+            model = artworkUri,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = 1.11f
+                    scaleY = 1.18f
+                    alpha = 0.23f + breath * 0.10f
+                }
+                .blur(
+                    radius = 20.dp,
+                    edgeTreatment = BlurredEdgeTreatment.Unbounded,
+                ),
         )
     } else {
-        Modifier
+        // Pre-Android-12 Compose has no hardware blur. Keep the fallback deliberately faint so it
+        // reads as a colour aura instead of a second card rectangle.
+        AsyncImage(
+            model = artworkUri,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = 1.08f
+                    scaleY = 1.13f
+                    alpha = 0.055f + breath * 0.025f
+                },
+        )
     }
-
-    AsyncImage(
-        model = artworkUri,
-        contentDescription = null,
-        contentScale = ContentScale.Crop,
-        modifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                scaleX = 1.13f
-                scaleY = 1.20f
-                alpha = 0.26f + breath * 0.10f
-            }
-            .then(blurModifier),
-    )
-
-    // Small sharp colour contribution keeps the effect visible on pre-Android-12 TVs where the
-    // platform blur is unavailable.
-    AsyncImage(
-        model = artworkUri,
-        contentDescription = null,
-        contentScale = ContentScale.Crop,
-        modifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                scaleX = 1.055f
-                scaleY = 1.08f
-                alpha = 0.055f + breath * 0.025f
-            },
-    )
 }
 
 @Composable
@@ -98,8 +94,8 @@ internal fun BoxScope.FocusedBreathingBorder(
 ) {
     if (!focused) return
 
-    val width = (1.45f + breath * 0.75f).dp
-    val alpha = 0.64f + breath * 0.30f
+    val width = (1.35f + breath * 0.95f).dp
+    val alpha = 0.72f + breath * 0.28f
     Box(
         modifier = Modifier
             .fillMaxSize()
