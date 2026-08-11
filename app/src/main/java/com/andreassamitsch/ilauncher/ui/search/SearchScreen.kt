@@ -39,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
@@ -47,6 +48,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -56,10 +58,15 @@ import com.andreassamitsch.ilauncher.data.search.SearchBrowseSection
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.model.SearchResultKind
+import com.andreassamitsch.ilauncher.ui.components.TouchButton
 import com.andreassamitsch.ilauncher.ui.components.TouchCard
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import java.util.Locale
 import kotlinx.coroutines.delay
+
+private val SearchContentStart = 18.dp
+private val SearchCardWidth = 172.dp
+private val SearchCardHeight = 97.dp
 
 private data class SearchSection(
     val key: String,
@@ -67,6 +74,13 @@ private data class SearchSection(
     val items: List<SearchItem>,
     val online: Boolean = false,
 )
+
+private enum class SearchFilter(val label: String) {
+    All("Alle"),
+    Media("Filme & Serien"),
+    Tv("TV"),
+    Apps("Apps"),
+}
 
 @Composable
 fun SearchScreen(
@@ -90,6 +104,8 @@ fun SearchScreen(
     val restoreRequester = remember(focusRestoreResultId) { FocusRequester() }
     var voiceError by remember { mutableStateOf<String?>(null) }
     var previousQuery by remember { mutableStateOf(query) }
+    var activeFilter by remember { mutableStateOf(SearchFilter.All) }
+
     val localSections = remember(localResults) {
         buildList {
             fun addSection(kind: SearchResultKind, title: String, key: String) {
@@ -128,7 +144,25 @@ fun SearchScreen(
             )
         }
     }
-    val visibleSections = if (query.isBlank()) browseUiSections else querySections
+    val availableFilters = remember(querySections) {
+        buildList {
+            add(SearchFilter.All)
+            if (querySections.any { it.key == "watch-next" || it.key == "preview" || it.key == "tmdb" }) {
+                add(SearchFilter.Media)
+            }
+            if (querySections.any { it.key == "epg" }) add(SearchFilter.Tv)
+            if (querySections.any { it.key == "apps" }) add(SearchFilter.Apps)
+        }
+    }
+    val filteredQuerySections = remember(querySections, activeFilter) {
+        when (activeFilter) {
+            SearchFilter.All -> querySections
+            SearchFilter.Media -> querySections.filter { it.key == "watch-next" || it.key == "preview" || it.key == "tmdb" }
+            SearchFilter.Tv -> querySections.filter { it.key == "epg" }
+            SearchFilter.Apps -> querySections.filter { it.key == "apps" }
+        }
+    }
+    val visibleSections = if (query.isBlank()) browseUiSections else filteredQuerySections
 
     val voiceSearchLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -148,6 +182,13 @@ fun SearchScreen(
     LaunchedEffect(query) {
         if (query != previousQuery) {
             previousQuery = query
+            activeFilter = SearchFilter.All
+            listState.scrollToItem(0)
+        }
+    }
+
+    LaunchedEffect(activeFilter) {
+        if (query.isNotBlank() && listState.firstVisibleItemIndex > 0) {
             listState.scrollToItem(0)
         }
     }
@@ -166,12 +207,12 @@ fun SearchScreen(
 
     Column(
         modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 2.dp),
+                .padding(start = SearchContentStart, end = SearchContentStart, top = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -197,31 +238,24 @@ fun SearchScreen(
                         voiceError = "Sprachsuche ist auf diesem Gerät nicht verfügbar."
                     }
                 },
-                modifier = Modifier.size(44.dp),
-                scale = CardDefaults.scale(focusedScale = 1.05f),
+                modifier = Modifier.size(52.dp),
+                scale = CardDefaults.scale(focusedScale = 1.04f),
+                shape = CardDefaults.shape(shape = RoundedCornerShape(50)),
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)),
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.78f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Image(
                         painter = painterResource(R.drawable.ic_mic),
                         contentDescription = "Sprachsuche",
-                        modifier = Modifier.size(21.dp),
+                        modifier = Modifier.size(22.dp),
                         colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
                     )
                 }
             }
-        }
-
-        if (query.isBlank()) {
-            Text(
-                text = "Entdecken",
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(start = 12.dp),
-            )
         }
 
         voiceError?.let { error ->
@@ -229,7 +263,25 @@ fun SearchScreen(
                 text = error,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(start = 12.dp),
+                modifier = Modifier.padding(start = SearchContentStart),
+            )
+        }
+
+        if (query.isBlank()) {
+            SearchSuggestionArea(onSelect = onQueryChange)
+            if (visibleSections.isNotEmpty() || isBrowseLoading) {
+                Text(
+                    text = "Etwas zum Anschauen finden",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(start = SearchContentStart, top = 2.dp),
+                )
+            }
+        } else if (availableFilters.size > 1) {
+            SearchFilterRow(
+                filters = availableFilters,
+                activeFilter = activeFilter,
+                onSelect = { activeFilter = it },
             )
         }
 
@@ -245,35 +297,35 @@ fun SearchScreen(
             )
 
             query.isBlank() && isBrowseLoading -> Text(
-                text = "Entdecken wird geladen …",
+                text = "Inhalte werden geladen …",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 12.dp),
+                modifier = Modifier.padding(start = SearchContentStart),
             )
 
             query.isBlank() -> Text(
                 text = if (tmdbConfigured) {
-                    "Filme und Serien entdecken oder direkt suchen."
+                    "Filme und Serien entdecken oder oben direkt suchen."
                 } else {
                     "Filme, Serien, Weiterschauen, Apps und TV-Programm durchsuchen."
                 },
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 12.dp),
+                modifier = Modifier.padding(start = SearchContentStart),
             )
 
             query.trim().length < 2 -> Text(
                 text = "Mindestens zwei Zeichen eingeben.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 12.dp),
+                modifier = Modifier.padding(start = SearchContentStart),
             )
 
             visibleSections.isEmpty() && !isTmdbLoading -> Text(
                 text = "Keine Treffer gefunden.",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 12.dp),
+                modifier = Modifier.padding(start = SearchContentStart),
             )
 
             else -> SearchSectionsList(
@@ -285,6 +337,129 @@ fun SearchScreen(
                 restoreRequester = restoreRequester,
                 onOpenResult = onOpenResult,
             )
+        }
+    }
+}
+
+@Composable
+private fun SearchSuggestionArea(onSelect: (String) -> Unit) {
+    val suggestions = remember {
+        listOf(
+            "Dune",
+            "Star Wars",
+            "The Last of Us",
+        )
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Text(
+            text = "Sag zum Beispiel",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = SearchContentStart, top = 2.dp),
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = SearchContentStart, vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(suggestions, key = { it }) { suggestion ->
+                SearchSuggestionCard(
+                    text = suggestion,
+                    onClick = { onSelect(suggestion) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchSuggestionCard(
+    text: String,
+    onClick: () -> Unit,
+) {
+    TouchCard(
+        onClick = onClick,
+        modifier = Modifier
+            .width(246.dp)
+            .height(82.dp),
+        scale = CardDefaults.scale(focusedScale = 1.035f),
+        shape = CardDefaults.shape(shape = RoundedCornerShape(14.dp)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_search),
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
+                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurfaceVariant),
+            )
+            Text(
+                text = text,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchFilterRow(
+    filters: List<SearchFilter>,
+    activeFilter: SearchFilter,
+    onSelect: (SearchFilter) -> Unit,
+) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = SearchContentStart, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(filters, key = { it.name }) { filter ->
+            val active = filter == activeFilter
+            TouchButton(
+                onClick = { onSelect(filter) },
+                scale = ButtonDefaults.scale(
+                    focusedScale = 1.025f,
+                    pressedScale = 0.985f,
+                ),
+                colors = ButtonDefaults.colors(
+                    containerColor = if (active) {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.86f)
+                    } else {
+                        Color.Transparent
+                    },
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    focusedContainerColor = MaterialTheme.colorScheme.onSurface,
+                    focusedContentColor = MaterialTheme.colorScheme.surface,
+                    pressedContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.88f),
+                    pressedContentColor = MaterialTheme.colorScheme.surface,
+                ),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                modifier = Modifier
+                    .height(34.dp)
+                    .border(
+                        width = 1.dp,
+                        color = if (active) {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.52f)
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.30f)
+                        },
+                        shape = RoundedCornerShape(50),
+                    ),
+            ) {
+                Text(
+                    text = filter.label,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
         }
     }
 }
@@ -304,8 +479,8 @@ private fun SearchSectionsList(
         modifier = Modifier
             .fillMaxSize()
             .touchScrollFallback(listState, Orientation.Vertical),
-        contentPadding = PaddingValues(top = 2.dp, bottom = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+        contentPadding = PaddingValues(top = 1.dp, bottom = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         items(sections, key = SearchSection::key) { section ->
             SearchResultSection(
@@ -327,7 +502,7 @@ private fun SearchInput(
     modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(24.dp)
+    val shape = RoundedCornerShape(28.dp)
 
     BasicTextField(
         value = query,
@@ -338,28 +513,30 @@ private fun SearchInput(
         ),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
         modifier = modifier
+            .height(52.dp)
             .onFocusChanged { focused = it.isFocused }
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.68f))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.76f))
             .border(
                 width = if (focused) 2.dp else 1.dp,
                 color = if (focused) {
-                    MaterialTheme.colorScheme.onSurface
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.92f)
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.22f)
                 },
                 shape = shape,
             )
-            .padding(horizontal = 17.dp, vertical = 9.dp),
+            .padding(horizontal = 18.dp),
         decorationBox = { innerTextField ->
             Row(
+                modifier = Modifier.fillMaxSize(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(11.dp),
             ) {
                 Image(
                     painter = painterResource(R.drawable.ic_search),
                     contentDescription = null,
-                    modifier = Modifier.size(21.dp),
+                    modifier = Modifier.size(22.dp),
                     colorFilter = ColorFilter.tint(
                         if (focused) MaterialTheme.colorScheme.onSurface
                         else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -374,6 +551,8 @@ private fun SearchInput(
                             text = "Filme, Serien, Apps und TV durchsuchen",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                     innerTextField()
@@ -392,11 +571,11 @@ private fun SearchResultSection(
     restoreRequester: FocusRequester,
     onOpenResult: (SearchItem) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = section.title,
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(start = 10.dp),
+            modifier = Modifier.padding(start = SearchContentStart),
         )
 
         if (section.items.isEmpty()) {
@@ -404,15 +583,15 @@ private fun SearchResultSection(
                 text = if (isLoading) "Lädt …" else "Keine Einträge",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 10.dp),
+                modifier = Modifier.padding(start = SearchContentStart),
             )
         } else {
             val rowState = androidx.compose.foundation.lazy.rememberLazyListState()
             LazyRow(
                 state = rowState,
                 modifier = Modifier.touchScrollFallback(rowState, Orientation.Horizontal),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = SearchContentStart, vertical = 7.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(section.items, key = SearchItem::id) { item ->
                     SearchResultCard(
@@ -439,18 +618,22 @@ private fun SearchResultCard(
     modifier: Modifier = Modifier,
 ) {
     var focused by remember(item.id) { mutableStateOf(false) }
-    TouchCard(
-        onClick = onClick,
-        modifier = modifier
-            .width(232.dp)
-            .onFocusChanged { focused = it.isFocused },
-        scale = CardDefaults.scale(focusedScale = 1.028f),
+    Column(
+        modifier = Modifier.width(SearchCardWidth),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Column {
+        TouchCard(
+            onClick = onClick,
+            modifier = modifier
+                .width(SearchCardWidth)
+                .height(SearchCardHeight)
+                .onFocusChanged { focused = it.isFocused },
+            scale = CardDefaults.scale(focusedScale = 1.045f),
+            shape = CardDefaults.shape(shape = RoundedCornerShape(10.dp)),
+        ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(130.dp)
+                    .fillMaxSize()
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center,
             ) {
@@ -460,7 +643,7 @@ private fun SearchResultCard(
                         Image(
                             bitmap = icon,
                             contentDescription = null,
-                            modifier = Modifier.size(76.dp),
+                            modifier = Modifier.size(62.dp),
                         )
                     }
 
@@ -472,32 +655,28 @@ private fun SearchResultCard(
                     )
                 }
             }
+        }
 
-            Column(
-                modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
-                verticalArrangement = Arrangement.spacedBy(1.dp),
-            ) {
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                val detail = listOfNotNull(
-                    item.sourceLabel?.takeIf { it.isNotBlank() && it != "TMDB" },
-                    item.subtitle?.takeIf { it.isNotBlank() && it != item.title },
-                ).distinct().joinToString(" · ")
-                if (detail.isNotBlank()) {
-                    Text(
-                        text = detail,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.alpha(if (focused) 1f else 0.55f),
-                    )
-                }
-            }
+        Text(
+            text = item.title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        val detail = listOfNotNull(
+            item.sourceLabel?.takeIf { it.isNotBlank() && it != "TMDB" },
+            item.subtitle?.takeIf { it.isNotBlank() && it != item.title },
+        ).distinct().joinToString(" · ")
+        if (detail.isNotBlank()) {
+            Text(
+                text = detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.alpha(if (focused) 0.95f else 0.58f),
+            )
         }
     }
 }
