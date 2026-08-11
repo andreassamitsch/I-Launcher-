@@ -76,11 +76,11 @@ class KodiSearchLauncher(private val context: Context) {
                         )
                         put("id", 1)
                     }
-                    socket.getOutputStream().bufferedWriter().use { writer ->
-                        writer.write(request.toString())
-                        writer.write("\n")
-                        writer.flush()
-                    }
+                    val writer = socket.getOutputStream().bufferedWriter()
+                    writer.write(request.toString())
+                    writer.write("\n")
+                    writer.flush()
+
                     val response = BufferedReader(InputStreamReader(socket.getInputStream())).readLine().orEmpty()
                     response.contains("\"result\":\"OK\"") || response.contains("\"result\": \"OK\"")
                 }
