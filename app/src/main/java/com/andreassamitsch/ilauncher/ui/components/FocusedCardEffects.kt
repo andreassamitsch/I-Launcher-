@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 
 private val MediaCardShape = RoundedCornerShape(10.dp)
+private const val FocusedCardScale = 1.045f
 
 @Composable
 internal fun rememberFocusedCardBreath(focused: Boolean): Float {
@@ -99,6 +100,10 @@ internal fun BoxScope.FocusedBreathingBorder(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .graphicsLayer {
+                scaleX = FocusedCardScale
+                scaleY = FocusedCardScale
+            }
             .border(
                 border = BorderStroke(width, Color.White.copy(alpha = alpha)),
                 shape = MediaCardShape,
