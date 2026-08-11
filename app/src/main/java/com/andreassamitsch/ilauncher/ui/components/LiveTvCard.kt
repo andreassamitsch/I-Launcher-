@@ -113,30 +113,17 @@ fun LiveTvCard(
             }
         }
 
-        Column(
+        Text(
+            text = channel.now?.title ?: channel.name,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(34.dp)
-                .padding(top = 5.dp, start = 2.dp, end = 2.dp),
-        ) {
-            Text(
-                text = channel.now?.title ?: channel.name,
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.alpha(if (focused) 1f else 0.84f),
-            )
-            if (channel.now != null) {
-                Text(
-                    text = channel.name,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.alpha(if (focused) 0.86f else 0f),
-                )
-            }
-        }
+                .height(24.dp)
+                .padding(top = 5.dp, start = 2.dp, end = 2.dp)
+                .alpha(if (focused) 1f else 0.82f),
+        )
     }
 }
