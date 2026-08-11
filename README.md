@@ -21,7 +21,7 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 Aktuell umgesetzt:
 
-- TV-first Hero als cinematische Vollbreitenfläche: echte Backdrops füllen den Hero; ungeeignete Quellbilder/Poster werden über einen dezenten Crop-Hintergrund plus möglichst unbeschnittenes `Fit`-Motiv rechts dargestellt
+- TV-first Hero als cinematische Vollbreitenfläche: TMDB-verknüpfte Filme/Serien verwenden ausschließlich breite Backdrops als bildfüllenden Hintergrund; Episoden bevorzugen ihr Still und danach das Serien-Backdrop. Poster/Hochformatbilder sind kein primäres Home-Hero-Fallback. Nicht mit TMDB verknüpfte EPG-/Quellbilder bleiben möglichst unbeschnitten oben rechts und laufen nach links sowie unten weich aus
 - mehrstufige horizontale und vertikale Verläufe lassen das Artwork weich in den linken Textbereich und nach unten in die Content-Reihen auslaufen; Hero-Wechsel blenden weich über statt hart zu springen
 - Hero startet nicht mit dem ersten TV-Sender: zunächst wird Local First ein Watch-Next-Inhalt, danach ein Preview-Channel-Inhalt und sonst ein neutraler Launcher-Hero verwendet; ein automatisch rotierendes Netzwerk-/Werbekarussell gibt es bewusst nicht
 - Hero vermeidet doppelte Medienidentität: bei vorhandenem Titellogo wird derselbe Titel nicht noch einmal als große Überschrift gezeigt; Quell-App-Namen wie CloudStream werden im Medien-Hero nicht wiederholt
