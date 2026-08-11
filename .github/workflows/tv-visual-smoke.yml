@@ -51,9 +51,10 @@ jobs:
           script: |
             gradle :app:assembleDebug --stacktrace
             adb install -r app/build/outputs/apk/debug/app-debug.apk
+            mkdir -p build/tv-visual
+
             adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity
             sleep 4
-            mkdir -p build/tv-visual
             adb exec-out screencap -p > build/tv-visual/home-initial.png
             adb shell input keyevent 20
             sleep 1
@@ -63,6 +64,16 @@ jobs:
             adb shell input keyevent 20
             sleep 1
             adb exec-out screencap -p > build/tv-visual/home-deep-rail.png
+
+            adb shell am force-stop com.andreassamitsch.ilauncher
+            adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity --es screen search-discover
+            sleep 3
+            adb exec-out screencap -p > build/tv-visual/search-discover.png
+
+            adb shell am force-stop com.andreassamitsch.ilauncher
+            adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity --es screen search-results
+            sleep 3
+            adb exec-out screencap -p > build/tv-visual/search-results.png
 
       - name: Upload TV visual smoke screenshots
         uses: actions/upload-artifact@v4
