@@ -56,6 +56,7 @@ import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.R
 import com.andreassamitsch.ilauncher.data.search.SearchBrowseSection
 import com.andreassamitsch.ilauncher.model.InstalledApp
+import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.model.SearchResultKind
 import com.andreassamitsch.ilauncher.ui.components.TouchButton
@@ -77,7 +78,8 @@ private data class SearchSection(
 
 private enum class SearchFilter(val label: String) {
     All("Alle"),
-    Media("Filme & Serien"),
+    Movies("Filme"),
+    Series("Serien"),
     Tv("TV"),
     Apps("Apps"),
 }
@@ -148,7 +150,8 @@ fun SearchScreen(
         buildList {
             add(SearchFilter.All)
             if (querySections.any { it.key == "watch-next" || it.key == "preview" || it.key == "tmdb" }) {
-                add(SearchFilter.Media)
+                add(SearchFilter.Movies)
+                add(SearchFilter.Series)
             }
             if (querySections.any { it.key == "epg" }) add(SearchFilter.Tv)
             if (querySections.any { it.key == "apps" }) add(SearchFilter.Apps)
@@ -157,7 +160,26 @@ fun SearchScreen(
     val filteredQuerySections = remember(querySections, activeFilter) {
         when (activeFilter) {
             SearchFilter.All -> querySections
-            SearchFilter.Media -> querySections.filter { it.key == "watch-next" || it.key == "preview" || it.key == "tmdb" }
+            SearchFilter.Movies -> querySections.mapNotNull { section ->
+                val items = section.items.filter { it.media?.type == MediaType.Movie }
+                items.takeIf { it.isNotEmpty() }?.let {
+                    section.copy(
+                        title = if (section.key == "tmdb") "Filme" else section.title,
+                        items = it,
+                    )
+                }
+            }
+            SearchFilter.Series -> querySections.mapNotNull { section ->
+                val items = section.items.filter {
+                    it.media?.type == MediaType.Series || it.media?.type == MediaType.Episode
+                }
+                items.takeIf { it.isNotEmpty() }?.let {
+                    section.copy(
+                        title = if (section.key == "tmdb") "Serien" else section.title,
+                        items = it,
+                    )
+                }
+            }
             SearchFilter.Tv -> querySections.filter { it.key == "epg" }
             SearchFilter.Apps -> querySections.filter { it.key == "apps" }
         }
