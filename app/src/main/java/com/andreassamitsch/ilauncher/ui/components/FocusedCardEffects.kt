@@ -29,6 +29,10 @@ private const val FocusedCardScale = 1.045f
 
 @Composable
 internal fun rememberFocusedCardBreath(focused: Boolean): Float {
+    // Only the single focused card owns an infinite animation. Keeping a transition alive for every
+    // off-screen/unfocused rail item is unnecessary work on TV hardware.
+    if (!focused) return 0f
+
     val transition = rememberInfiniteTransition(label = "media-card-breath")
     val breath by transition.animateFloat(
         initialValue = 0f,
@@ -39,7 +43,7 @@ internal fun rememberFocusedCardBreath(focused: Boolean): Float {
         ),
         label = "media-card-breath-alpha",
     )
-    return if (focused) breath else 0f
+    return breath
 }
 
 @Composable
