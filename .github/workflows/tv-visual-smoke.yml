@@ -55,20 +55,10 @@ jobs:
             sleep 4
             mkdir -p build/tv-visual
             adb exec-out screencap -p > build/tv-visual/home-initial.png
-
-            # Move from the Hero into the first media rail to capture focused-card geometry.
             adb shell input keyevent 20
             sleep 1
             adb exec-out screencap -p > build/tv-visual/home-first-rail.png
-
-            # Small log preview is a fallback for direct artifact inspection.
-            if command -v ffmpeg >/dev/null 2>&1; then
-              ffmpeg -hide_banner -loglevel error -y -i build/tv-visual/home-first-rail.png -vf scale=640:-2 -q:v 12 build/tv-visual/home-first-rail-small.jpg
-              echo "VISUAL_PREVIEW_BASE64_BEGIN"
-              base64 -w0 build/tv-visual/home-first-rail-small.jpg
-              echo
-              echo "VISUAL_PREVIEW_BASE64_END"
-            fi
+            ffmpeg -hide_banner -loglevel error -y -i build/tv-visual/home-first-rail.png -vf scale=640:-2 -q:v 12 build/tv-visual/home-first-rail-small.jpg && echo VISUAL_PREVIEW_BASE64_BEGIN && base64 -w0 build/tv-visual/home-first-rail-small.jpg && echo && echo VISUAL_PREVIEW_BASE64_END
 
       - name: Upload TV visual smoke screenshots
         uses: actions/upload-artifact@v4
