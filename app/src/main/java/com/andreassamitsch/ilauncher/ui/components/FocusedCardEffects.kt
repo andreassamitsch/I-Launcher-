@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,11 +24,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil3.Image
-import coil3.compose.AsyncImage
+import coil3.imageLoader
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.request.allowHardware
 import coil3.toBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private val MediaCardShape = RoundedCornerShape(10.dp)
 private const val FocusedCardScale = 1.045f
@@ -57,24 +63,32 @@ internal fun BoxScope.FocusedArtworkGlow(
     focused: Boolean,
     breath: Float,
 ) {
-    if (!focused || artworkUri.isNullOrBlank()) return
+    if (artworkUri.isNullOrBlank()) return
 
+    val context = LocalContext.current
     var glowColor by remember(artworkUri) { mutableStateOf<Color?>(null) }
 
-    // Use Coil's already requested artwork as a tiny colour probe. Only the focused card performs
-    // this work and subsequent loads normally hit Coil's memory cache. The probe itself is fully
-    // transparent; the visible effect below is a cheap gradient rather than a large live blur.
-    AsyncImage(
-        model = artworkUri,
-        contentDescription = null,
-        contentScale = ContentScale.Crop,
-        onSuccess = { state ->
-            glowColor = sampleGlowColor(state.result.image)
-        },
-        modifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer { alpha = 0f },
-    )
+    LaunchedEffect(artworkUri, focused) {
+        if (!focused || glowColor != null) return@LaunchedEffect
+
+        // Never read pixels back from the hardware-backed image currently being drawn by Compose.
+        // Request a tiny software bitmap through Coil's shared loader instead. This stays cache-
+        // friendly and avoids GPU readback/screencap instability on Android-TV renderers.
+        glowColor = runCatching {
+            val request = ImageRequest.Builder(context)
+                .data(artworkUri)
+                .size(16, 10)
+                .allowHardware(false)
+                .build()
+            val result = context.imageLoader.execute(request) as? SuccessResult
+                ?: return@runCatching null
+            withContext(Dispatchers.Default) {
+                sampleGlowColor(result.image)
+            }
+        }.getOrNull()
+    }
+
+    if (!focused) return
 
     glowColor?.let { sampled ->
         val coreAlpha = 0.30f + breath * 0.08f
