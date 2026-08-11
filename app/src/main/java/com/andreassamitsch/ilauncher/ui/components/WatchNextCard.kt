@@ -24,6 +24,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Border
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -36,110 +37,134 @@ fun WatchNextCard(
     onClick: () -> Unit,
     onDetails: (() -> Unit)? = null,
     onFocused: (() -> Unit)? = null,
+    artworkOverrideUri: String? = null,
     modifier: Modifier = Modifier,
 ) {
     var longPressHandled by remember(item.id) { mutableStateOf(false) }
     var focused by remember(item.id) { mutableStateOf(false) }
+    val artwork = artworkOverrideUri ?: item.preferredArtworkUri
+    val breath = rememberFocusedCardBreath(focused)
 
     Column(
         modifier = Modifier.width(172.dp),
     ) {
-        TouchCard(
-            onClick = onClick,
-            onLongClick = onDetails,
-            handleTvLongClick = false,
-            modifier = modifier
+        Box(
+            modifier = Modifier
                 .fillMaxWidth()
-                .height(97.dp)
-                .onFocusChanged { focusState ->
-                    focused = focusState.isFocused
-                    if (focusState.isFocused) onFocused?.invoke()
-                }
-                .onPreviewKeyEvent { composeEvent ->
-                    val event = composeEvent.nativeKeyEvent
-                    val isConfirmKey = event.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
-                        event.keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
-                        event.keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
-
-                    when {
-                        onDetails != null &&
-                            event.action == AndroidKeyEvent.ACTION_DOWN &&
-                            event.keyCode == AndroidKeyEvent.KEYCODE_INFO -> {
-                            onDetails()
-                            true
-                        }
-
-                        onDetails != null &&
-                            event.action == AndroidKeyEvent.ACTION_DOWN &&
-                            isConfirmKey &&
-                            event.repeatCount > 0 -> {
-                            longPressHandled = true
-                            true
-                        }
-
-                        event.action == AndroidKeyEvent.ACTION_UP &&
-                            isConfirmKey &&
-                            longPressHandled -> {
-                            longPressHandled = false
-                            onDetails?.invoke()
-                            true
-                        }
-
-                        else -> false
-                    }
-                },
-            scale = CardDefaults.scale(focusedScale = 1.045f),
+                .height(97.dp),
         ) {
-            Box(
-                modifier = Modifier
+            FocusedArtworkGlow(
+                artworkUri = artwork,
+                focused = focused,
+                breath = breath,
+            )
+
+            TouchCard(
+                onClick = onClick,
+                onLongClick = onDetails,
+                handleTvLongClick = false,
+                modifier = modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .onFocusChanged { focusState ->
+                        focused = focusState.isFocused
+                        if (focusState.isFocused) onFocused?.invoke()
+                    }
+                    .onPreviewKeyEvent { composeEvent ->
+                        val event = composeEvent.nativeKeyEvent
+                        val isConfirmKey = event.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
+                            event.keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
+                            event.keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
+
+                        when {
+                            onDetails != null &&
+                                event.action == AndroidKeyEvent.ACTION_DOWN &&
+                                event.keyCode == AndroidKeyEvent.KEYCODE_INFO -> {
+                                onDetails()
+                                true
+                            }
+
+                            onDetails != null &&
+                                event.action == AndroidKeyEvent.ACTION_DOWN &&
+                                isConfirmKey &&
+                                event.repeatCount > 0 -> {
+                                longPressHandled = true
+                                true
+                            }
+
+                            event.action == AndroidKeyEvent.ACTION_UP &&
+                                isConfirmKey &&
+                                longPressHandled -> {
+                                longPressHandled = false
+                                onDetails?.invoke()
+                                true
+                            }
+
+                            else -> false
+                        }
+                    },
+                scale = CardDefaults.scale(focusedScale = 1.045f),
+                shape = CardDefaults.shape(shape = FocusedMediaCardShape),
+                border = CardDefaults.border(
+                    border = Border.None,
+                    focusedBorder = Border.None,
+                    pressedBorder = Border.None,
+                ),
             ) {
-                val artwork = item.preferredArtworkUri
-                if (artwork != null) {
-                    AsyncImage(
-                        model = artwork,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Text(
-                        text = item.title.take(1).uppercase(),
-                        style = MaterialTheme.typography.displayMedium,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    if (artwork != null) {
+                        AsyncImage(
+                            model = artwork,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Text(
+                            text = item.title.take(1).uppercase(),
+                            style = MaterialTheme.typography.displayMedium,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
 
-                item.logoUri?.takeIf { it.isNotBlank() }?.let { logoUri ->
-                    AsyncImage(
-                        model = logoUri,
-                        contentDescription = null,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(5.dp)
-                            .size(width = 46.dp, height = 20.dp),
-                    )
-                }
+                    item.logoUri?.takeIf { it.isNotBlank() }?.let { logoUri ->
+                        AsyncImage(
+                            model = logoUri,
+                            contentDescription = null,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(5.dp)
+                                .size(width = 46.dp, height = 20.dp),
+                        )
+                    }
 
-                item.progressFraction?.let { progress ->
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .fillMaxWidth()
-                            .height(3.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.76f)),
-                    ) {
+                    item.progressFraction?.let { progress ->
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth(progress)
-                                .fillMaxHeight()
-                                .background(MaterialTheme.colorScheme.primary),
-                        )
+                                .align(Alignment.BottomStart)
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.76f)),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(progress)
+                                    .fillMaxHeight()
+                                    .background(MaterialTheme.colorScheme.primary),
+                            )
+                        }
                     }
                 }
             }
+
+            FocusedBreathingBorder(
+                focused = focused,
+                breath = breath,
+            )
         }
 
         Text(
