@@ -24,6 +24,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.tv.material3.Border
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
@@ -46,7 +47,9 @@ fun WatchNextCard(
     val breath = rememberFocusedCardBreath(focused)
 
     Column(
-        modifier = Modifier.width(172.dp),
+        modifier = Modifier
+            .width(172.dp)
+            .zIndex(if (focused) 1f else 0f),
     ) {
         Box(
             modifier = Modifier
