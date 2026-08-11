@@ -11,8 +11,11 @@ object MediaTitleParser {
         pattern = "(?i)(?:^|[\\s._-])(\\d{1,2})x(\\d{1,3})(?:$|[\\s._-])",
     )
     private val yearRegex = Regex("(?:^|[\\s(\\[])((?:19|20)\\d{2})(?:[)\\]]|$)")
-    private val trailingPlaybackQualifierRegex = Regex(
-        pattern = "(?i)\\s*[\\[(](?=[^\\r\\n]{0,40}(?:\\b(?:dt|de|ger|deutsch|ov|omu|omdu|eng|englisch)\\b))[^\\r\\n]{1,40}[\\])]\\s*$",
+    private val squarePlaybackQualifierRegex = Regex(
+        pattern = "(?i)\\s*\\[(?=[^\\]\\r\\n]{0,40}(?:\\b(?:dt|de|ger|deutsch|ov|omu|omdu|eng|englisch)\\b))[^\\]\\r\\n]{1,40}\\]\\s*$",
+    )
+    private val roundPlaybackQualifierRegex = Regex(
+        pattern = "(?i)\\s*\\((?=[^)\\r\\n]{0,40}(?:\\b(?:dt|de|ger|deutsch|ov|omu|omdu|eng|englisch)\\b))[^)\\r\\n]{1,40}\\)\\s*$",
     )
 
     fun parse(lookup: MediaLookup): ParsedMediaLookup {
@@ -56,7 +59,9 @@ object MediaTitleParser {
     private fun stripTrailingPlaybackQualifiers(value: String): String {
         var result = value.trim()
         while (true) {
-            val match = trailingPlaybackQualifierRegex.find(result) ?: return result
+            val match = squarePlaybackQualifierRegex.find(result)
+                ?: roundPlaybackQualifierRegex.find(result)
+                ?: return result
             result = result.removeRange(match.range).trim(' ', '-', '_', '.', '(', ')', '[', ']', '·')
         }
     }
