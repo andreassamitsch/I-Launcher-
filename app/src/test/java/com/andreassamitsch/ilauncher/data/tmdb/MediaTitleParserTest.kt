@@ -58,6 +58,37 @@ class MediaTitleParserTest {
     }
 
     @Test
+    fun `strips provider playback qualifier from movie title`() {
+        val parsed = MediaTitleParser.parse(
+            MediaLookup(rawTitle = "Tenet [dt./OV]", typeHint = MediaType.Movie),
+        )
+
+        assertEquals("Tenet", parsed.title)
+        assertEquals("tenet", parsed.normalizedTitle)
+        assertEquals(MediaType.Movie, parsed.typeHint)
+    }
+
+    @Test
+    fun `strips playback qualifier while preserving source year`() {
+        val parsed = MediaTitleParser.parse(
+            MediaLookup(rawTitle = "Top Gun: Maverick (2022) [dt./OV]", typeHint = MediaType.Movie),
+        )
+
+        assertEquals("Top Gun: Maverick", parsed.title)
+        assertEquals("top gun maverick", parsed.normalizedTitle)
+        assertEquals(2022, parsed.releaseYear)
+    }
+
+    @Test
+    fun `does not strip arbitrary bracketed title suffix`() {
+        val parsed = MediaTitleParser.parse(
+            MediaLookup(rawTitle = "Blade Runner [Final Cut]", typeHint = MediaType.Movie),
+        )
+
+        assertEquals("Blade Runner [Final Cut]", parsed.title)
+    }
+
+    @Test
     fun `normalizes accents for stable cache keys`() {
         assertEquals("amelie", MediaTitleParser.normalizeTitle("Amélie"))
     }
