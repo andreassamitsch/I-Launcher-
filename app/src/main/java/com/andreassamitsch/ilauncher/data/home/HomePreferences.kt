@@ -6,6 +6,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+enum class WatchNextArtworkMode {
+    Episode,
+    Series,
+}
+
 class HomePreferences(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences(
         PREFS_NAME,
@@ -17,6 +22,18 @@ class HomePreferences(context: Context) {
 
     private val _appOrder = MutableStateFlow(loadList(KEY_APP_ORDER))
     val appOrder: StateFlow<List<String>> = _appOrder.asStateFlow()
+
+    private val _watchNextCardArtworkMode = MutableStateFlow(
+        loadArtworkMode(KEY_WATCH_NEXT_CARD_ARTWORK_MODE),
+    )
+    val watchNextCardArtworkMode: StateFlow<WatchNextArtworkMode> =
+        _watchNextCardArtworkMode.asStateFlow()
+
+    private val _watchNextHeroArtworkMode = MutableStateFlow(
+        loadArtworkMode(KEY_WATCH_NEXT_HERO_ARTWORK_MODE),
+    )
+    val watchNextHeroArtworkMode: StateFlow<WatchNextArtworkMode> =
+        _watchNextHeroArtworkMode.asStateFlow()
 
     fun moveRow(availableKeys: List<String>, key: String, delta: Int) {
         val current = mergeOrder(_rowOrder.value, availableKeys)
@@ -38,6 +55,16 @@ class HomePreferences(context: Context) {
         _appOrder.value = emptyList()
     }
 
+    fun setWatchNextCardArtworkMode(mode: WatchNextArtworkMode) {
+        preferences.edit().putString(KEY_WATCH_NEXT_CARD_ARTWORK_MODE, mode.name).apply()
+        _watchNextCardArtworkMode.value = mode
+    }
+
+    fun setWatchNextHeroArtworkMode(mode: WatchNextArtworkMode) {
+        preferences.edit().putString(KEY_WATCH_NEXT_HERO_ARTWORK_MODE, mode.name).apply()
+        _watchNextHeroArtworkMode.value = mode
+    }
+
     private fun saveRowOrder(order: List<String>) {
         preferences.edit().putString(KEY_ROW_ORDER, encode(order)).apply()
         _rowOrder.value = order
@@ -50,6 +77,11 @@ class HomePreferences(context: Context) {
 
     private fun loadList(key: String): List<String> = decode(preferences.getString(key, null))
 
+    private fun loadArtworkMode(key: String): WatchNextArtworkMode =
+        preferences.getString(key, null)
+            ?.let { raw -> runCatching { WatchNextArtworkMode.valueOf(raw) }.getOrNull() }
+            ?: WatchNextArtworkMode.Episode
+
     companion object {
         const val ROW_WATCH_NEXT = "watch_next"
         const val ROW_LIVE_TV = "live_tv"
@@ -58,6 +90,8 @@ class HomePreferences(context: Context) {
         private const val PREFS_NAME = "home_preferences"
         private const val KEY_ROW_ORDER = "row_order"
         private const val KEY_APP_ORDER = "app_order"
+        private const val KEY_WATCH_NEXT_CARD_ARTWORK_MODE = "watch_next_card_artwork_mode"
+        private const val KEY_WATCH_NEXT_HERO_ARTWORK_MODE = "watch_next_hero_artwork_mode"
         private const val SEPARATOR = "\u001F"
 
         fun previewRowKey(channelId: String): String = "$ROW_PREVIEW_PREFIX$channelId"
