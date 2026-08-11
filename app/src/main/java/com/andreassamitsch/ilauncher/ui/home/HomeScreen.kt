@@ -51,6 +51,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.data.home.HomePreferences
+import com.andreassamitsch.ilauncher.data.home.WatchNextArtworkMode
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifState
 import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.model.AppContentChannel
@@ -70,6 +71,9 @@ import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.delay
+
+private val HOME_HERO_HEIGHT = 340.dp
+private val HOME_FIRST_RAIL_TOP = 255.dp
 
 @Composable
 fun HomeScreen(
@@ -92,6 +96,9 @@ fun HomeScreen(
     onPlayLiveTvChannel: (LiveTvChannel) -> Unit,
     onNavigationVisibilityChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    watchNextCardArtworkMode: WatchNextArtworkMode = WatchNextArtworkMode.Episode,
+    watchNextHeroArtworkMode: WatchNextArtworkMode = WatchNextArtworkMode.Episode,
+    onLiveTvFocused: (LiveTvChannel) -> Unit = {},
     watchNextListState: LazyListState = rememberLazyListState(),
     liveTvListState: LazyListState = rememberLazyListState(),
     appsListState: LazyListState = rememberLazyListState(),
@@ -111,9 +118,18 @@ fun HomeScreen(
     val previewByRowKey = remember(visiblePreviewChannels) {
         visiblePreviewChannels.associateBy { HomePreferences.previewRowKey(it.id) }
     }
-    val defaultHero = remember(watchNextItems, visiblePreviewChannels, appLabels) {
+    val defaultHero = remember(
+        watchNextItems,
+        visiblePreviewChannels,
+        appLabels,
+        watchNextHeroArtworkMode,
+    ) {
         watchNextItems.firstOrNull()?.let { item ->
-            mediaHero(item.media, item.media.source.packageName?.let(appLabels::get))
+            mediaHero(
+                item = item.media,
+                sourceLabel = item.media.source.packageName?.let(appLabels::get),
+                artworkOverride = watchNextHeroArtwork(item.media, watchNextHeroArtworkMode),
+            )
         } ?: visiblePreviewChannels.firstOrNull()?.let { channel ->
             channel.programs.firstOrNull()?.let { program ->
                 mediaHero(program.media, channel.packageName?.let(appLabels::get) ?: channel.title)
@@ -139,6 +155,18 @@ fun HomeScreen(
         if (!heroSelectedByUser) hero = defaultHero
     }
 
+    // A Live-TV focus may trigger asynchronous TMDB enrichment. Keep the selected Hero bound to
+    // the stable serviceReference so the richer programme copy replaces the initial EPG-only Hero.
+    LaunchedEffect(liveTvState.channels, hero.key) {
+        val serviceReference = hero.key.takeIf { it.startsWith("live:") }
+            ?.removePrefix("live:")
+            ?: return@LaunchedEffect
+        val channel = liveTvState.channels.firstOrNull { it.serviceReference == serviceReference }
+            ?: return@LaunchedEffect
+        val updated = liveTvHero(channel)
+        if (updated != hero) hero = updated
+    }
+
     LaunchedEffect(watchNextFocusRestoreSourceId, watchNextFocusRestoreGeneration) {
         val sourceId = watchNextFocusRestoreSourceId ?: return@LaunchedEffect
         if (watchNextFocusRestoreGeneration <= 0) return@LaunchedEffect
@@ -159,7 +187,7 @@ fun HomeScreen(
         liveTvRestoreFocusRequester.requestFocus()
     }
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .touchScrollFallback(contentScrollState, Orientation.Vertical),
@@ -169,20 +197,26 @@ fun HomeScreen(
             onOpenMediaDetails = onOpenMediaDetails,
             onOpenApp = onOpenApp,
             onFocused = { onNavigationVisibilityChange(true) },
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .fillMaxWidth()
+                .height(HOME_HERO_HEIGHT),
         )
 
+        // Content deliberately overlays the lower Hero instead of starting after it. This mirrors
+        // Google TV's stage-to-rail composition: the artwork remains visible behind roughly the
+        // upper half of the first card row and then fades into the page background.
         Box(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
+                .fillMaxSize()
+                .padding(top = HOME_FIRST_RAIL_TOP)
                 .clipToBounds(),
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(contentScrollState)
-                    .touchScrollFallback(contentScrollState, Orientation.Vertical)
-                    .padding(top = 4.dp),
+                    .touchScrollFallback(contentScrollState, Orientation.Vertical),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 homeRowOrder.forEach { rowKey ->
@@ -196,6 +230,8 @@ fun HomeScreen(
                             listState = watchNextListState,
                             restoreSourceId = watchNextFocusRestoreSourceId,
                             restoreRequester = watchNextRestoreFocusRequester,
+                            artworkMode = watchNextCardArtworkMode,
+                            heroArtworkMode = watchNextHeroArtworkMode,
                             onOpen = onOpenWatchNext,
                             onDetails = onOpenWatchNextDetails,
                             onFocused = ::selectHero,
@@ -209,6 +245,7 @@ fun HomeScreen(
                                 restoreRequester = liveTvRestoreFocusRequester,
                                 onConfigure = onOpenLiveTv,
                                 onPlay = onPlayLiveTvChannel,
+                                onChannelFocused = onLiveTvFocused,
                                 onFocused = ::selectHero,
                             )
                         }
@@ -251,12 +288,12 @@ fun HomeScreen(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .height(38.dp)
+                        .height(34.dp)
                         .background(
                             Brush.verticalGradient(
                                 colors = listOf(
-                                    MaterialTheme.colorScheme.background,
                                     MaterialTheme.colorScheme.background.copy(alpha = 0.94f),
+                                    MaterialTheme.colorScheme.background.copy(alpha = 0.58f),
                                     MaterialTheme.colorScheme.background.copy(alpha = 0.0f),
                                 ),
                             ),
@@ -277,6 +314,8 @@ private fun WatchNextHomeRow(
     listState: LazyListState,
     restoreSourceId: String?,
     restoreRequester: FocusRequester,
+    artworkMode: WatchNextArtworkMode,
+    heroArtworkMode: WatchNextArtworkMode,
     onOpen: (EnrichedWatchNextItem) -> Unit,
     onDetails: (EnrichedWatchNextItem) -> Unit,
     onFocused: (HomeHeroContent) -> Unit,
@@ -303,7 +342,7 @@ private fun WatchNextHomeRow(
         else -> LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(start = 38.dp, end = 18.dp, top = 4.dp, bottom = 4.dp),
+            contentPadding = PaddingValues(start = 38.dp, end = 18.dp, top = 7.dp, bottom = 7.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(
@@ -316,9 +355,18 @@ private fun WatchNextHomeRow(
                 val sourceLabel = item.media.source.packageName?.let(appLabels::get)
                 WatchNextCard(
                     item = item.media,
+                    artworkOverrideUri = watchNextCardArtwork(item.media, artworkMode),
                     onClick = { onOpen(item) },
                     onDetails = { onDetails(item) },
-                    onFocused = { onFocused(mediaHero(item.media, sourceLabel)) },
+                    onFocused = {
+                        onFocused(
+                            mediaHero(
+                                item = item.media,
+                                sourceLabel = sourceLabel,
+                                artworkOverride = watchNextHeroArtwork(item.media, heroArtworkMode),
+                            ),
+                        )
+                    },
                     modifier = cardModifier,
                 )
             }
@@ -334,6 +382,7 @@ private fun LiveTvHomeRow(
     restoreRequester: FocusRequester,
     onConfigure: () -> Unit,
     onPlay: (LiveTvChannel) -> Unit,
+    onChannelFocused: (LiveTvChannel) -> Unit,
     onFocused: (HomeHeroContent) -> Unit,
 ) {
     HomeRowHeader("Jetzt im TV")
@@ -341,7 +390,7 @@ private fun LiveTvHomeRow(
         state.channels.isNotEmpty() -> LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(start = 38.dp, end = 18.dp, top = 4.dp, bottom = 4.dp),
+            contentPadding = PaddingValues(start = 38.dp, end = 18.dp, top = 7.dp, bottom = 7.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(state.channels, key = LiveTvChannel::serviceReference) { channel ->
@@ -351,7 +400,10 @@ private fun LiveTvHomeRow(
                 LiveTvCard(
                     channel = channel,
                     onClick = { onPlay(channel) },
-                    onFocused = { onFocused(liveTvHero(channel)) },
+                    onFocused = {
+                        onChannelFocused(channel)
+                        onFocused(liveTvHero(channel))
+                    },
                     modifier = cardModifier,
                 )
             }
@@ -381,7 +433,7 @@ private fun PreviewHomeRow(
         LazyRow(
             state = listState,
             modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
-            contentPadding = PaddingValues(start = 38.dp, end = 18.dp, top = 4.dp, bottom = 4.dp),
+            contentPadding = PaddingValues(start = 38.dp, end = 18.dp, top = 7.dp, bottom = 7.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(channel.programs, key = { it.media.id }) { program ->
@@ -462,6 +514,7 @@ private fun HomeHero(
     onOpenMediaDetails: (MediaItem, String?) -> Unit,
     onOpenApp: (InstalledApp) -> Unit,
     onFocused: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     TouchCard(
         onClick = {
@@ -470,10 +523,7 @@ private fun HomeHero(
                 content.app != null -> onOpenApp(content.app)
             }
         },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(300.dp)
-            .onFocusChanged { if (it.isFocused) onFocused() },
+        modifier = modifier.onFocusChanged { if (it.isFocused) onFocused() },
         scale = CardDefaults.scale(focusedScale = 1.0f),
     ) {
         Crossfade(
@@ -534,6 +584,7 @@ private fun HomeHero(
                             model = artwork,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
+                            alignment = Alignment.TopCenter,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -580,9 +631,9 @@ private fun HomeHero(
                                     )
                                 } else {
                                     arrayOf(
-                                        0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.04f),
-                                        0.50f to MaterialTheme.colorScheme.background.copy(alpha = 0.03f),
-                                        0.78f to MaterialTheme.colorScheme.background.copy(alpha = 0.38f),
+                                        0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.03f),
+                                        0.65f to MaterialTheme.colorScheme.background.copy(alpha = 0.03f),
+                                        0.86f to MaterialTheme.colorScheme.background.copy(alpha = 0.34f),
                                         1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
                                     )
                                 },
@@ -594,7 +645,7 @@ private fun HomeHero(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .fillMaxWidth(0.43f)
-                        .padding(start = 38.dp, end = 12.dp, bottom = 24.dp),
+                        .padding(start = 38.dp, end = 12.dp, bottom = 86.dp),
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     heroContent.logoUri?.takeIf { it.isNotBlank() }?.let { logo ->
@@ -700,7 +751,11 @@ private data class HomeHeroContent(
     val app: InstalledApp? = null,
 )
 
-private fun mediaHero(item: MediaItem, sourceLabel: String?): HomeHeroContent {
+private fun mediaHero(
+    item: MediaItem,
+    sourceLabel: String?,
+    artworkOverride: Pair<String?, Boolean>? = null,
+): HomeHeroContent {
     val metadata = buildList {
         when (item.type) {
             MediaType.Movie -> add("Film")
@@ -717,7 +772,7 @@ private fun mediaHero(item: MediaItem, sourceLabel: String?): HomeHeroContent {
         item.releaseYear?.let { add(it.toString()) }
         item.voteAverage?.takeIf { it > 0.0 }?.let { add("TMDB %.1f".format(it)) }
     }.joinToString(" · ")
-    val artwork = mediaHeroArtwork(item)
+    val artwork = artworkOverride ?: mediaHeroArtwork(item)
 
     return HomeHeroContent(
         key = "media:${item.source.provider}:${item.source.sourceId}",
@@ -731,6 +786,47 @@ private fun mediaHero(item: MediaItem, sourceLabel: String?): HomeHeroContent {
         detailsMedia = item,
         sourceLabel = sourceLabel,
     )
+}
+
+internal fun watchNextCardArtwork(item: MediaItem, mode: WatchNextArtworkMode): String? {
+    if (item.type != MediaType.Episode) return item.preferredArtworkUri
+    return when (mode) {
+        WatchNextArtworkMode.Episode -> item.episodeStillUri
+            ?: item.backdropUri
+            ?: item.sourceArtworkUri
+            ?: item.posterUri
+        WatchNextArtworkMode.Series -> item.backdropUri
+            ?: item.episodeStillUri
+            ?: item.sourceArtworkUri
+            ?: item.posterUri
+    }
+}
+
+internal fun watchNextHeroArtwork(
+    item: MediaItem,
+    mode: WatchNextArtworkMode,
+): Pair<String?, Boolean> {
+    if (item.type != MediaType.Episode) return mediaHeroArtwork(item)
+
+    if (item.tmdbId != null) {
+        return when (mode) {
+            WatchNextArtworkMode.Episode -> (item.episodeStillUri ?: item.backdropUri) to false
+            WatchNextArtworkMode.Series -> (item.backdropUri ?: item.episodeStillUri) to false
+        }
+    }
+
+    return when (mode) {
+        WatchNextArtworkMode.Episode -> when {
+            !item.episodeStillUri.isNullOrBlank() -> item.episodeStillUri to false
+            !item.backdropUri.isNullOrBlank() -> item.backdropUri to false
+            else -> item.sourceArtworkUri to true
+        }
+        WatchNextArtworkMode.Series -> when {
+            !item.backdropUri.isNullOrBlank() -> item.backdropUri to false
+            !item.episodeStillUri.isNullOrBlank() -> item.episodeStillUri to false
+            else -> item.sourceArtworkUri to true
+        }
+    }
 }
 
 internal fun mediaHeroArtwork(item: MediaItem): Pair<String?, Boolean> {
