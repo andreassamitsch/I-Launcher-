@@ -39,13 +39,13 @@ fun LiveTvCard(
     var focused by remember(channel.serviceReference) { mutableStateOf(false) }
 
     Column(
-        modifier = Modifier.width(204.dp),
+        modifier = Modifier.width(172.dp),
     ) {
         TouchCard(
             onClick = onClick,
             modifier = modifier
                 .fillMaxWidth()
-                .height(115.dp)
+                .height(97.dp)
                 .onFocusChanged { focusState ->
                     focused = focusState.isFocused
                     if (focusState.isFocused) onFocused?.invoke()
@@ -71,8 +71,8 @@ fun LiveTvCard(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .align(Alignment.Center)
-                            .padding(14.dp)
-                            .size(width = 146.dp, height = 48.dp),
+                            .padding(12.dp)
+                            .size(width = 122.dp, height = 42.dp),
                     )
                 } else {
                     Text(
@@ -89,8 +89,8 @@ fun LiveTvCard(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(6.dp)
-                            .size(width = 54.dp, height = 23.dp),
+                            .padding(5.dp)
+                            .size(width = 46.dp, height = 20.dp),
                     )
                 }
 
@@ -116,16 +116,16 @@ fun LiveTvCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(38.dp)
+                .height(34.dp)
                 .padding(top = 5.dp, start = 2.dp, end = 2.dp),
         ) {
             Text(
                 text = channel.now?.title ?: channel.name,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.alpha(if (focused) 1f else 0.88f),
+                modifier = Modifier.alpha(if (focused) 1f else 0.84f),
             )
             if (channel.now != null) {
                 Text(
