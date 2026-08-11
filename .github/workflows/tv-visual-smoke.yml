@@ -74,6 +74,9 @@ jobs:
             adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity --es screen search-results
             sleep 3
             adb exec-out screencap -p > build/tv-visual/search-results.png
+            adb shell input keyevent 20
+            sleep 1
+            adb exec-out screencap -p > build/tv-visual/search-results-focus.png
 
       - name: Upload TV visual smoke screenshots
         uses: actions/upload-artifact@v4
