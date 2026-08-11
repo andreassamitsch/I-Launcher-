@@ -35,6 +35,20 @@ class PreviewResolverTypeHintTest {
         assertEquals(MediaType.Movie, resolverTypeHint(media))
     }
 
+    @Test
+    fun `preview resolver key is versioned to bypass stale negative mappings`() {
+        val media = media(type = MediaType.Movie)
+
+        assertEquals("test-source:preview-resolver-v2", resolverSourceKey(media))
+    }
+
+    @Test
+    fun `watch next resolver key remains stable`() {
+        val media = media(type = MediaType.Movie, provider = "android_watch_next")
+
+        assertEquals("test-source", resolverSourceKey(media))
+    }
+
     private fun media(
         type: MediaType,
         provider: String = "android_preview_channel",
