@@ -221,54 +221,65 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 homeRowOrder.forEach { rowKey ->
-                    when (rowKey) {
-                        HomePreferences.ROW_WATCH_NEXT -> WatchNextHomeRow(
-                            items = watchNextItems,
-                            error = watchNextError,
-                            hasTvListingsPermission = hasTvListingsPermission,
-                            onRequestTvListingsPermission = onRequestTvListingsPermission,
-                            appLabels = appLabels,
-                            listState = watchNextListState,
-                            restoreSourceId = watchNextFocusRestoreSourceId,
-                            restoreRequester = watchNextRestoreFocusRequester,
-                            artworkMode = watchNextCardArtworkMode,
-                            heroArtworkMode = watchNextHeroArtworkMode,
-                            onOpen = onOpenWatchNext,
-                            onDetails = onOpenWatchNextDetails,
-                            onFocused = ::selectHero,
-                        )
+                    key(rowKey) {
+                        AnchoredHomeRow(
+                            scrollState = contentScrollState,
+                            targetTop = HOME_FIRST_RAIL_TOP,
+                        ) { onRowFocused ->
+                            when (rowKey) {
+                                HomePreferences.ROW_WATCH_NEXT -> WatchNextHomeRow(
+                                    items = watchNextItems,
+                                    error = watchNextError,
+                                    hasTvListingsPermission = hasTvListingsPermission,
+                                    onRequestTvListingsPermission = onRequestTvListingsPermission,
+                                    appLabels = appLabels,
+                                    listState = watchNextListState,
+                                    restoreSourceId = watchNextFocusRestoreSourceId,
+                                    restoreRequester = watchNextRestoreFocusRequester,
+                                    artworkMode = watchNextCardArtworkMode,
+                                    heroArtworkMode = watchNextHeroArtworkMode,
+                                    onOpen = onOpenWatchNext,
+                                    onDetails = onOpenWatchNextDetails,
+                                    onRowFocused = onRowFocused,
+                                    onFocused = ::selectHero,
+                                )
 
-                        HomePreferences.ROW_LIVE_TV -> if (liveTvState.configured) {
-                            LiveTvHomeRow(
-                                state = liveTvState,
-                                listState = liveTvListState,
-                                restoreServiceReference = liveTvFocusRestoreServiceReference,
-                                restoreRequester = liveTvRestoreFocusRequester,
-                                onConfigure = onOpenLiveTv,
-                                onPlay = onPlayLiveTvChannel,
-                                onChannelFocused = onLiveTvFocused,
-                                onFocused = ::selectHero,
-                            )
-                        }
+                                HomePreferences.ROW_LIVE_TV -> if (liveTvState.configured) {
+                                    LiveTvHomeRow(
+                                        state = liveTvState,
+                                        listState = liveTvListState,
+                                        restoreServiceReference = liveTvFocusRestoreServiceReference,
+                                        restoreRequester = liveTvRestoreFocusRequester,
+                                        onConfigure = onOpenLiveTv,
+                                        onPlay = onPlayLiveTvChannel,
+                                        onChannelFocused = onLiveTvFocused,
+                                        onRowFocused = onRowFocused,
+                                        onFocused = ::selectHero,
+                                    )
+                                }
 
-                        HomePreferences.ROW_APPS -> AppsHomeRow(
-                            apps = apps,
-                            listState = appsListState,
-                            movingAppPackage = movingAppPackage,
-                            onMoveMode = { movingAppPackage = it },
-                            onMove = onMoveHomeApp,
-                            onOpen = onOpenApp,
-                            onFocused = { onNavigationVisibilityChange(false) },
-                        )
+                                HomePreferences.ROW_APPS -> AppsHomeRow(
+                                    apps = apps,
+                                    listState = appsListState,
+                                    movingAppPackage = movingAppPackage,
+                                    onMoveMode = { movingAppPackage = it },
+                                    onMove = onMoveHomeApp,
+                                    onOpen = onOpenApp,
+                                    onRowFocused = onRowFocused,
+                                    onFocused = { onNavigationVisibilityChange(false) },
+                                )
 
-                        else -> previewByRowKey[rowKey]?.let { channel ->
-                            PreviewHomeRow(
-                                channel = channel,
-                                sourceApp = channel.packageName?.let(appsByPackage::get),
-                                sourceLabel = channel.packageName?.let(appLabels::get) ?: channel.title,
-                                onOpen = onOpenPreviewProgram,
-                                onFocused = ::selectHero,
-                            )
+                                else -> previewByRowKey[rowKey]?.let { channel ->
+                                    PreviewHomeRow(
+                                        channel = channel,
+                                        sourceApp = channel.packageName?.let(appsByPackage::get),
+                                        sourceLabel = channel.packageName?.let(appLabels::get) ?: channel.title,
+                                        onOpen = onOpenPreviewProgram,
+                                        onRowFocused = onRowFocused,
+                                        onFocused = ::selectHero,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -301,6 +312,7 @@ private fun WatchNextHomeRow(
     heroArtworkMode: WatchNextArtworkMode,
     onOpen: (EnrichedWatchNextItem) -> Unit,
     onDetails: (EnrichedWatchNextItem) -> Unit,
+    onRowFocused: () -> Unit,
     onFocused: (HomeHeroContent) -> Unit,
 ) {
     HomeRowHeader("Weiterschauen")
@@ -347,6 +359,7 @@ private fun WatchNextHomeRow(
                     onClick = { onOpen(item) },
                     onDetails = { onDetails(item) },
                     onFocused = {
+                        onRowFocused()
                         onFocused(
                             mediaHero(
                                 item = item.media,
@@ -371,6 +384,7 @@ private fun LiveTvHomeRow(
     onConfigure: () -> Unit,
     onPlay: (LiveTvChannel) -> Unit,
     onChannelFocused: (LiveTvChannel) -> Unit,
+    onRowFocused: () -> Unit,
     onFocused: (HomeHeroContent) -> Unit,
 ) {
     HomeRowHeader("Jetzt im TV")
@@ -394,6 +408,7 @@ private fun LiveTvHomeRow(
                     channel = channel,
                     onClick = { onPlay(channel) },
                     onFocused = {
+                        onRowFocused()
                         onChannelFocused(channel)
                         onFocused(liveTvHero(channel))
                     },
@@ -418,6 +433,7 @@ private fun PreviewHomeRow(
     sourceApp: InstalledApp?,
     sourceLabel: String,
     onOpen: (AppContentChannel, AppContentProgram) -> Unit,
+    onRowFocused: () -> Unit,
     onFocused: (HomeHeroContent) -> Unit,
 ) {
     key(channel.id) {
@@ -438,7 +454,10 @@ private fun PreviewHomeRow(
                 WatchNextCard(
                     item = program.media,
                     onClick = { onOpen(channel, program) },
-                    onFocused = { onFocused(mediaHero(program.media, sourceLabel)) },
+                    onFocused = {
+                        onRowFocused()
+                        onFocused(mediaHero(program.media, sourceLabel))
+                    },
                 )
             }
         }
@@ -453,6 +472,7 @@ private fun AppsHomeRow(
     onMoveMode: (String?) -> Unit,
     onMove: (String, Int) -> Unit,
     onOpen: (InstalledApp) -> Unit,
+    onRowFocused: () -> Unit,
     onFocused: () -> Unit,
 ) {
     HomeRowHeader("Meine Apps")
@@ -478,7 +498,10 @@ private fun AppsHomeRow(
                     onLongClick = { onMoveMode(app.packageName) },
                     moveMode = moveMode,
                     onMove = { delta -> onMove(app.packageName, delta) },
-                    onFocused = onFocused,
+                    onFocused = {
+                        onRowFocused()
+                        onFocused()
+                    },
                 )
             }
         }
