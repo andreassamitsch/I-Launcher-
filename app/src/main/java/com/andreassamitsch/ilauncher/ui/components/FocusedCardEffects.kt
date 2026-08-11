@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -54,45 +55,52 @@ internal fun BoxScope.FocusedArtworkGlow(
 ) {
     if (!focused || artworkUri.isNullOrBlank()) return
 
-    // Re-render the focused artwork behind the card so the halo automatically carries the card's
-    // own colours. Blur is the outer draw effect while the inner source layer is rounded and
-    // enlarged, so the final aura spreads beyond the card without reading as a second rectangle.
+    // The rounded image is the *source* of the effect. Blur and scale live on the outer layer, so
+    // the colour halo remains truly unbounded instead of clipping back to the card's rounded rect.
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        AsyncImage(
-            model = artworkUri,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
+        Box(
             modifier = Modifier
                 .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = 1.20f
+                    scaleY = 1.32f
+                    alpha = 0.20f + breath * 0.08f
+                }
                 .blur(
                     radius = 30.dp,
                     edgeTreatment = BlurredEdgeTreatment.Unbounded,
-                )
-                .graphicsLayer {
-                    scaleX = 1.18f
-                    scaleY = 1.30f
-                    alpha = 0.17f + breath * 0.07f
-                    shape = MediaCardShape
-                    clip = true
-                },
-        )
+                ),
+        ) {
+            AsyncImage(
+                model = artworkUri,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(MediaCardShape),
+            )
+        }
     } else {
         // Pre-Android-12 Compose has no hardware blur. Keep the fallback deliberately faint so it
         // reads as a colour aura instead of a second card rectangle.
-        AsyncImage(
-            model = artworkUri,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
                     scaleX = 1.16f
                     scaleY = 1.22f
-                    alpha = 0.045f + breath * 0.02f
-                    shape = MediaCardShape
-                    clip = true
+                    alpha = 0.05f + breath * 0.02f
                 },
-        )
+        ) {
+            AsyncImage(
+                model = artworkUri,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(MediaCardShape),
+            )
+        }
     }
 }
 
