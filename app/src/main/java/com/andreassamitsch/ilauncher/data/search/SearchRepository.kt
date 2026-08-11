@@ -6,6 +6,7 @@ import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.model.AppContentChannel
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
+import com.andreassamitsch.ilauncher.model.LiveTvProgram
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.model.SearchResultKind
@@ -15,6 +16,15 @@ import java.util.Locale
 class SearchRepository(
     private val tmdbSearchRepository: TmdbSearchRepository? = null,
 ) {
+    @Volatile
+    private var cachedEpgState: EpgState? = null
+
+    @Volatile
+    private var cachedLiveTvChannels: List<LiveTvChannel>? = null
+
+    @Volatile
+    private var cachedEpgDocuments: List<EpgSearchDocument> = emptyList()
+
     val isTmdbConfigured: Boolean
         get() = tmdbSearchRepository?.isConfigured == true
 
@@ -32,7 +42,6 @@ class SearchRepository(
         val includeLongMetadata = normalizedQuery.length >= MIN_METADATA_QUERY_LENGTH
 
         val appLabels = apps.associate { it.packageName to it.label }
-        val channelsByRef = liveTvChannels.associateBy { it.serviceReference }
         var sequence = 0
         val matches = mutableListOf<ScoredSearchItem>()
 
@@ -116,44 +125,33 @@ class SearchRepository(
         }
 
         val epgMatches = mutableListOf<ScoredSearchItem>()
-        epgState.guideByServiceReference.forEach { (serviceReference, programs) ->
-            val channel = channelsByRef[serviceReference]
-            programs.forEach programLoop@{ program ->
-                if (program.endUtcMillis < nowUtcMillis) return@programLoop
-                val titleScore = scoreText(normalizedQuery, program.title)
-                val metadataScore = if (includeLongMetadata) {
-                    scoreText(
-                        normalizedQuery,
-                        listOfNotNull(
-                            program.subtitle,
-                            program.shortDescription,
-                            program.longDescription,
-                            program.categories?.joinToString(" "),
-                            channel?.name,
-                        ).joinToString(" "),
-                    )
-                } else {
-                    scoreText(normalizedQuery, channel?.name)
-                }
-                val score = maxOf(titleScore, metadataScore.takeIf { it > 0 }?.minus(220) ?: 0)
-                if (score <= 0) return@programLoop
+        epgSearchDocuments(liveTvChannels, epgState).forEach { document ->
+            val program = document.program
+            if (program.endUtcMillis < nowUtcMillis) return@forEach
 
-                epgMatches += ScoredSearchItem(
-                    score = score,
-                    priority = PRIORITY_EPG,
-                    sequence = sequence++,
-                    item = SearchItem(
-                        id = "search:epg:$serviceReference:${program.startUtcMillis}",
-                        kind = SearchResultKind.EpgProgram,
-                        title = program.title,
-                        subtitle = program.subtitle,
-                        artworkUri = program.preferredArtworkUri ?: channel?.piconUri,
-                        sourceLabel = channel?.name ?: "TV",
-                        serviceReference = serviceReference,
-                        programStartUtcMillis = program.startUtcMillis,
-                    ),
-                )
-            }
+            val titleScore = scoreNormalizedText(normalizedQuery, document.normalizedTitle)
+            val metadataScore = scoreNormalizedText(
+                normalizedQuery,
+                if (includeLongMetadata) document.normalizedLongMetadata else document.normalizedChannelName,
+            )
+            val score = maxOf(titleScore, metadataScore.takeIf { it > 0 }?.minus(220) ?: 0)
+            if (score <= 0) return@forEach
+
+            epgMatches += ScoredSearchItem(
+                score = score,
+                priority = PRIORITY_EPG,
+                sequence = sequence++,
+                item = SearchItem(
+                    id = "search:epg:${document.serviceReference}:${program.startUtcMillis}",
+                    kind = SearchResultKind.EpgProgram,
+                    title = program.title,
+                    subtitle = program.subtitle,
+                    artworkUri = program.preferredArtworkUri ?: document.channel?.piconUri,
+                    sourceLabel = document.channel?.name ?: "TV",
+                    serviceReference = document.serviceReference,
+                    programStartUtcMillis = program.startUtcMillis,
+                ),
+            )
         }
         matches += epgMatches
             .sortedWith(scoredComparator)
@@ -244,8 +242,10 @@ class SearchRepository(
         return score.takeIf { it > 0 }
     }
 
-    internal fun scoreText(query: String, value: String?): Int {
-        val normalizedValue = normalize(value.orEmpty())
+    internal fun scoreText(query: String, value: String?): Int =
+        scoreNormalizedText(query, normalize(value.orEmpty()))
+
+    private fun scoreNormalizedText(query: String, normalizedValue: String): Int {
         if (query.isBlank() || normalizedValue.isBlank()) return 0
         if (normalizedValue == query) return 1_000
         if (normalizedValue.startsWith(query)) return 920
@@ -257,6 +257,51 @@ class SearchRepository(
         return 0
     }
 
+    private fun epgSearchDocuments(
+        liveTvChannels: List<LiveTvChannel>,
+        epgState: EpgState,
+    ): List<EpgSearchDocument> {
+        if (cachedEpgState === epgState && cachedLiveTvChannels === liveTvChannels) {
+            return cachedEpgDocuments
+        }
+        return synchronized(this) {
+            if (cachedEpgState === epgState && cachedLiveTvChannels === liveTvChannels) {
+                return@synchronized cachedEpgDocuments
+            }
+            val channelsByRef = liveTvChannels.associateBy { it.serviceReference }
+            val documents = buildList {
+                epgState.guideByServiceReference.forEach { (serviceReference, programs) ->
+                    val channel = channelsByRef[serviceReference]
+                    val normalizedChannelName = normalize(channel?.name.orEmpty())
+                    programs.forEach { program ->
+                        add(
+                            EpgSearchDocument(
+                                serviceReference = serviceReference,
+                                channel = channel,
+                                program = program,
+                                normalizedTitle = normalize(program.title),
+                                normalizedChannelName = normalizedChannelName,
+                                normalizedLongMetadata = normalize(
+                                    listOfNotNull(
+                                        program.subtitle,
+                                        program.shortDescription,
+                                        program.longDescription,
+                                        program.categories?.joinToString(" "),
+                                        channel?.name,
+                                    ).joinToString(" "),
+                                ),
+                            ),
+                        )
+                    }
+                }
+            }
+            cachedEpgState = epgState
+            cachedLiveTvChannels = liveTvChannels
+            cachedEpgDocuments = documents
+            documents
+        }
+    }
+
     internal fun normalize(value: String): String = Normalizer
         .normalize(value, Normalizer.Form.NFD)
         .replace(COMBINING_MARKS_REGEX, "")
@@ -264,6 +309,15 @@ class SearchRepository(
         .replace(NON_ALPHANUMERIC_REGEX, " ")
         .trim()
         .replace(MULTI_SPACE_REGEX, " ")
+
+    private data class EpgSearchDocument(
+        val serviceReference: String,
+        val channel: LiveTvChannel?,
+        val program: LiveTvProgram,
+        val normalizedTitle: String,
+        val normalizedChannelName: String,
+        val normalizedLongMetadata: String,
+    )
 
     private data class ScoredSearchItem(
         val score: Int,
