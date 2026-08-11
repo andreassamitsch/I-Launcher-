@@ -75,6 +75,7 @@ import kotlinx.coroutines.delay
 private val HOME_HERO_HEIGHT = 360.dp
 private val HOME_FIRST_RAIL_TOP = 275.dp
 private val HOME_MEDIA_RAIL_VERTICAL_PADDING = 26.dp
+private val HOME_BOTTOM_FOCUS_RESERVE = 132.dp
 
 @Composable
 fun HomeScreen(
@@ -292,7 +293,9 @@ fun HomeScreen(
                         modifier = Modifier.padding(horizontal = 38.dp),
                     )
                 }
-                Spacer(Modifier.height(14.dp))
+                // Give the final Home row enough trailing content to reach the same focus anchor
+                // as every preceding row. This space is only revealed while navigating deep Home.
+                Spacer(Modifier.height(HOME_BOTTOM_FOCUS_RESERVE))
             }
         }
     }
