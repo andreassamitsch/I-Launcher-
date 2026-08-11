@@ -74,8 +74,7 @@ import kotlinx.coroutines.delay
 
 private val HOME_HERO_HEIGHT = 360.dp
 private val HOME_FIRST_RAIL_TOP = 275.dp
-private val HOME_MEDIA_RAIL_VERTICAL_PADDING = 14.dp
-private val HOME_SCROLL_SCRIM_HEIGHT = 150.dp
+private val HOME_MEDIA_RAIL_VERTICAL_PADDING = 26.dp
 
 @Composable
 fun HomeScreen(
@@ -283,26 +282,6 @@ fun HomeScreen(
                     )
                 }
                 Spacer(Modifier.height(14.dp))
-            }
-
-            if (contentScrollState.value > 0) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .height(HOME_SCROLL_SCRIM_HEIGHT)
-                        .background(
-                            Brush.verticalGradient(
-                                colorStops = arrayOf(
-                                    0.00f to MaterialTheme.colorScheme.background,
-                                    0.30f to MaterialTheme.colorScheme.background.copy(alpha = 0.99f),
-                                    0.62f to MaterialTheme.colorScheme.background.copy(alpha = 0.88f),
-                                    0.82f to MaterialTheme.colorScheme.background.copy(alpha = 0.40f),
-                                    1.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.0f),
-                                ),
-                            ),
-                        ),
-                )
             }
         }
     }
