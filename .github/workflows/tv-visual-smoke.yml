@@ -51,8 +51,7 @@ jobs:
           script: |
             gradle :app:assembleDebug --stacktrace
             adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb shell am start -W -n \
-              com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity
+            adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity
             sleep 4
             mkdir -p build/tv-visual
             adb exec-out screencap -p > build/tv-visual/home-initial.png
@@ -64,9 +63,7 @@ jobs:
 
             # Small log preview is a fallback for direct artifact inspection.
             if command -v ffmpeg >/dev/null 2>&1; then
-              ffmpeg -hide_banner -loglevel error -y \
-                -i build/tv-visual/home-first-rail.png \
-                -vf scale=640:-2 -q:v 12 build/tv-visual/home-first-rail-small.jpg
+              ffmpeg -hide_banner -loglevel error -y -i build/tv-visual/home-first-rail.png -vf scale=640:-2 -q:v 12 build/tv-visual/home-first-rail-small.jpg
               echo "VISUAL_PREVIEW_BASE64_BEGIN"
               base64 -w0 build/tv-visual/home-first-rail-small.jpg
               echo
