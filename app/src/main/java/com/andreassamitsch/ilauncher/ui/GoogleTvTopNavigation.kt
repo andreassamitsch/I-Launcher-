@@ -1,5 +1,7 @@
 package com.andreassamitsch.ilauncher.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
@@ -15,15 +17,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.ButtonDefaults
@@ -38,9 +45,10 @@ internal val GoogleTvTopNavigationHeight = 58.dp
  *
  * The navigation is an overlay layer and never participates in Home's row-keyline geometry.
  * Content destinations stay on the left while search/settings are compact utilities on the right,
- * matching the current Google-TV/TCL layout more closely. Selection and focus remain separate: the
- * opened destination owns the bright pill while another focused destination uses only a weak focus
- * surface until it is actually activated.
+ * matching current Google-TV/TCL layouts. On Home, leaving the navigation for the content rails
+ * visually collapses the bar to the small top chevron seen on Google TV. The invisible navigation
+ * remains in the focus tree at the same coordinates, so UP can focus it again without reflowing or
+ * scrolling Home; gaining focus immediately fades the bar back in.
  */
 @Composable
 internal fun GoogleTvTopNavigation(
@@ -55,6 +63,18 @@ internal fun GoogleTvTopNavigation(
         activeSection
     }
     val selectedFocusRequester = remember { FocusRequester() }
+    var navigationHasFocus by remember { mutableStateOf(true) }
+    val collapsed = activeSection == LauncherSection.Home && !navigationHasFocus
+    val navAlpha by animateFloatAsState(
+        targetValue = if (collapsed) 0f else 1f,
+        animationSpec = tween(durationMillis = 150),
+        label = "top-nav-alpha",
+    )
+    val cueAlpha by animateFloatAsState(
+        targetValue = if (collapsed) 1f else 0f,
+        animationSpec = tween(durationMillis = 180),
+        label = "top-nav-cue-alpha",
+    )
 
     LaunchedEffect(selectedSection) {
         selectedFocusRequester.requestFocus()
@@ -64,68 +84,83 @@ internal fun GoogleTvTopNavigation(
         modifier = modifier
             .fillMaxWidth()
             .height(GoogleTvTopNavigationHeight)
-            .zIndex(20f)
-            .background(
-                Brush.verticalGradient(
-                    0f to Color.Black.copy(alpha = 0.30f),
-                    0.72f to Color.Black.copy(alpha = 0.09f),
-                    1f to Color.Transparent,
-                ),
-            ),
+            .zIndex(20f),
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(GoogleTvTopNavigationHeight)
-                .padding(start = 38.dp, end = 30.dp, top = 10.dp, bottom = 8.dp)
-                .focusGroup(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                .graphicsLayer { alpha = navAlpha }
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.30f),
+                        0.72f to Color.Black.copy(alpha = 0.09f),
+                        1f to Color.Transparent,
+                    ),
+                ),
         ) {
-            Text(
-                text = "I Launcher",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.93f),
-                modifier = Modifier.padding(end = 8.dp),
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(GoogleTvTopNavigationHeight)
+                    .padding(start = 38.dp, end = 30.dp, top = 10.dp, bottom = 8.dp)
+                    .onFocusChanged { navigationHasFocus = it.hasFocus }
+                    .focusGroup(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Text(
+                    text = "I Launcher",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.93f),
+                    modifier = Modifier.padding(end = 8.dp),
+                )
 
-            GoogleTvNavDestination(
-                label = "Empfehlungen",
-                section = LauncherSection.Home,
-                selected = selectedSection == LauncherSection.Home,
-                focusRequester = if (selectedSection == LauncherSection.Home) selectedFocusRequester else null,
-                onClick = { onSelect(LauncherSection.Home) },
-                onLongClick = onOpenHomeSettings,
-            )
-            GoogleTvNavDestination(
-                label = "Apps",
-                section = LauncherSection.Apps,
-                selected = selectedSection == LauncherSection.Apps,
-                focusRequester = if (selectedSection == LauncherSection.Apps) selectedFocusRequester else null,
-                onClick = { onSelect(LauncherSection.Apps) },
-            )
+                GoogleTvNavDestination(
+                    label = "Empfehlungen",
+                    section = LauncherSection.Home,
+                    selected = selectedSection == LauncherSection.Home,
+                    focusRequester = if (selectedSection == LauncherSection.Home) selectedFocusRequester else null,
+                    onClick = { onSelect(LauncherSection.Home) },
+                    onLongClick = onOpenHomeSettings,
+                )
+                GoogleTvNavDestination(
+                    label = "Apps",
+                    section = LauncherSection.Apps,
+                    selected = selectedSection == LauncherSection.Apps,
+                    focusRequester = if (selectedSection == LauncherSection.Apps) selectedFocusRequester else null,
+                    onClick = { onSelect(LauncherSection.Apps) },
+                )
 
-            Spacer(Modifier.weight(1f))
+                Spacer(Modifier.weight(1f))
 
-            GoogleTvNavDestination(
-                label = null,
-                section = LauncherSection.Search,
-                selected = selectedSection == LauncherSection.Search,
-                focusRequester = if (selectedSection == LauncherSection.Search) selectedFocusRequester else null,
-                onClick = { onSelect(LauncherSection.Search) },
-                compact = true,
-                glyph = GoogleTvUtilityGlyph.Search,
-            )
-            GoogleTvNavDestination(
-                label = null,
-                section = LauncherSection.Settings,
-                selected = selectedSection == LauncherSection.Settings,
-                focusRequester = if (selectedSection == LauncherSection.Settings) selectedFocusRequester else null,
-                onClick = { onSelect(LauncherSection.Settings) },
-                compact = true,
-                glyph = GoogleTvUtilityGlyph.Settings,
-            )
+                GoogleTvNavDestination(
+                    label = null,
+                    section = LauncherSection.Search,
+                    selected = selectedSection == LauncherSection.Search,
+                    focusRequester = if (selectedSection == LauncherSection.Search) selectedFocusRequester else null,
+                    onClick = { onSelect(LauncherSection.Search) },
+                    compact = true,
+                    glyph = GoogleTvUtilityGlyph.Search,
+                )
+                GoogleTvNavDestination(
+                    label = null,
+                    section = LauncherSection.Settings,
+                    selected = selectedSection == LauncherSection.Settings,
+                    focusRequester = if (selectedSection == LauncherSection.Settings) selectedFocusRequester else null,
+                    onClick = { onSelect(LauncherSection.Settings) },
+                    compact = true,
+                    glyph = GoogleTvUtilityGlyph.Settings,
+                )
+            }
         }
+
+        GoogleTvCollapsedNavigationCue(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 7.dp)
+                .graphicsLayer { alpha = cueAlpha },
+        )
     }
 }
 
@@ -136,9 +171,9 @@ internal fun GoogleTvCollapsedNavigationCue(
     Canvas(
         modifier = modifier
             .size(width = 26.dp, height = 18.dp)
-            .zIndex(20f),
+            .zIndex(21f),
     ) {
-        val color = Color.White.copy(alpha = 0.58f)
+        val color = Color.White.copy(alpha = 0.62f)
         val stroke = 1.6.dp.toPx()
         val y = size.height * 0.62f
         drawLine(
