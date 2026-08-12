@@ -18,6 +18,8 @@ Der TMDB-Resolver behandelt ein vom Provider geliefertes Erscheinungsjahr als st
 
 Home besteht aus einem ruhigen Hero und frei sortierbaren Content-Reihen. Die vertikale Reihenfolge sowie die App-Reihenfolge werden lokal gespeichert. `Home` lange OK öffnet die Home-spezifische Konfiguration; App lange OK startet den Verschiebemodus.
 
+Die aus der bereitgestellten Google-TV-Launcher-APKM abgeleiteten Home-/Rail-/Keyline-/Focus-Prinzipien sind als dauerhafte technische Referenz in [`docs/reference/GOOGLE_TV_HOME_CONCEPT.md`](docs/reference/GOOGLE_TV_HOME_CONCEPT.md) dokumentiert. Bei Änderungen an Home-Scroll, Row-Keyline, `focusGroup()`, horizontalem Bring-Into-View oder Focus-Decoration diese Referenz zusätzlich zu `AGENTS.md` heranziehen.
+
 Der Start-Hero ist Local First: erster Watch-Next-Inhalt, danach erster sichtbarer Preview-Program-Inhalt, danach neutraler Fallback. Live TV übernimmt ihn erst durch aktiven Fokus. Das Fokussieren der Apps-Reihe ändert den Medien-Hero nicht, damit die Bühne visuell stabil bleibt.
 
 Der Hero ist eine cinematische Vollbreitenfläche und liegt **hinter der ersten Content-Reihe**. Die erste Rail beginnt bereits im unteren Hero-Bereich; Artwork und unterer Verlauf dürfen dadurch ungefähr bis in die obere Hälfte der ersten Karten hinein sichtbar bleiben. Der Hero ist nicht als eigener Block oberhalb der Rails zu verstehen. TMDB-verknüpfte Filme und Serien verwenden ausschließlich ein breites Backdrop als bildfüllenden `Crop`-Hintergrund; Episoden verwenden zuerst ein Episoden-Still und danach das Serien-Backdrop. Vollflächige Backdrops werden `TopCenter` ausgerichtet, damit der obere Bildbereich beim notwendigen Crop erhalten bleibt und das Motiv nicht vertikal mittig abgeschnitten wird.
