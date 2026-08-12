@@ -53,58 +53,77 @@ jobs:
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             mkdir -p build/tv-visual
 
+            assert_preview_foreground() {
+              resumed="$(adb shell dumpsys activity activities | grep -m1 'mResumedActivity' || true)"
+              echo "Foreground: $resumed"
+              if ! echo "$resumed" | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity'; then
+                echo "UiPreviewActivity left the foreground unexpectedly" >&2
+                adb logcat -d -v time > build/tv-visual/logcat-failure.txt || true
+                adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt || true
+                return 1
+              fi
+            }
+
+            capture_preview() {
+              target="$1"
+              assert_preview_foreground
+              adb exec-out screencap -p > "build/tv-visual/$target"
+            }
+
             # First pass: deterministic screenshots only. Keep screenrecord out of this pass so a
             # renderer/screencap failure can be attributed to the UI rather than encoder contention.
+            adb logcat -c
             adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity
             sleep 4
-            adb exec-out screencap -p > build/tv-visual/home-initial.png
+            capture_preview home-initial.png
             adb shell input keyevent 20
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-0.png
+            capture_preview home-first-rail-horizontal-0.png
 
             # Horizontal stability regression: Google-TV-style row alignment must be a row-entry
             # operation. Moving left/right inside one rail may change card focus/Hero, never the
             # vertical rail position.
             adb shell input keyevent 22
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-1.png
+            capture_preview home-first-rail-horizontal-1.png
             adb shell input keyevent 22
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-2.png
+            capture_preview home-first-rail-horizontal-2.png
             adb shell input keyevent 22
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-3.png
+            capture_preview home-first-rail-horizontal-3.png
             adb shell input keyevent 21
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-4.png
+            capture_preview home-first-rail-horizontal-4.png
             adb shell input keyevent 21
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-5.png
+            capture_preview home-first-rail-horizontal-5.png
 
             adb shell input keyevent 20
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/home-second-rail.png
+            capture_preview home-second-rail.png
             adb shell input keyevent 22
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/home-second-rail-horizontal-1.png
+            capture_preview home-second-rail-horizontal-1.png
             adb shell input keyevent 22
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/home-second-rail-horizontal-2.png
+            capture_preview home-second-rail-horizontal-2.png
             adb shell input keyevent 20
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/home-third-rail.png
+            capture_preview home-third-rail.png
             adb shell input keyevent 20
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/home-fourth-rail.png
+            capture_preview home-fourth-rail.png
             adb shell input keyevent 20
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/home-bottom.png
+            capture_preview home-bottom.png
 
             # Second pass: record both horizontal and vertical navigation without concurrent
             # screencaps. This catches transient row movement that static screenshots can miss.
             adb shell am force-stop com.andreassamitsch.ilauncher
             adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity
             sleep 3
+            assert_preview_foreground
             adb shell rm -f /sdcard/home-scroll.mp4
             adb shell 'screenrecord --time-limit 18 /sdcard/home-scroll.mp4 >/dev/null 2>&1 &'
             sleep 1
@@ -136,6 +155,7 @@ jobs:
             sleep 1
             adb shell input keyevent 19
             sleep 5
+            assert_preview_foreground
             adb pull /sdcard/home-scroll.mp4 build/tv-visual/home-scroll.mp4 || true
 
             adb shell am force-stop com.andreassamitsch.ilauncher
@@ -143,20 +163,20 @@ jobs:
             sleep 3
             adb shell input keyevent 20
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/home-epg-fallback.png
+            capture_preview home-epg-fallback.png
 
             adb shell am force-stop com.andreassamitsch.ilauncher
             adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity --es screen search-discover
             sleep 3
-            adb exec-out screencap -p > build/tv-visual/search-discover.png
+            capture_preview search-discover.png
 
             adb shell am force-stop com.andreassamitsch.ilauncher
             adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity --es screen search-results
             sleep 3
-            adb exec-out screencap -p > build/tv-visual/search-results.png
+            capture_preview search-results.png
             adb shell input keyevent 20
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/search-results-focus.png
+            capture_preview search-results-focus.png
 
       - name: Upload TV visual smoke screenshots
         if: always()
