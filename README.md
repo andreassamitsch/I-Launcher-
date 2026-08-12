@@ -17,9 +17,11 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-Der aktuelle Entwicklungsstand enthält den Google-TV-inspirierten Home-/Search-/Player-UX-Pass inklusive edge-to-edge Hero, Hero/Rail-Überlagerung, Top-Crop, dynamischem inhaltsbezogenem Karten-Glow, Breath-Fokusrahmen, konfigurierbarer Watch-Next-Bildwahl, Preview-Channel-TMDB-Opt-in, Live-TV-Focus-Enrichment, robustem TMDB-Jahresfallback und direkter Kodi-TMDb-Helper-Suche.
+Der aktuelle Entwicklungsstand enthält den Google-TV-inspirierten Home-/Search-/Player-UX-Pass inklusive edge-to-edge Hero, Hero/Rail-Überlagerung, Top-Crop, stabiler Row-Keyline, dynamischem artwork-farbigem Karten-Glow, Breath-Fokusrahmen und Google-TV-artiger Overlay-Navigation. Auf Home blendet die Top-Navigation beim Wechsel in die Content-Rails ohne Layout-Reflow zu einem kleinen Chevron aus; `UP` stellt sie wieder her. Dazu kommen konfigurierbare Watch-Next-Bildwahl, Preview-Channel-TMDB-Opt-in, Live-TV-Focus-Enrichment, robuster TMDB-Jahres-/Typ-Fallback und direkte Kodi-TMDb-Helper-Suche.
 
-Signierter Teststand: **`0.1.0-dev.265` (`26000265`)**, `updateCompatible=true`, `tmdbConfigured=true`, App-Source `79e043446a7f264a5227916ffbc790ef61900572`. Android CI **#490** und TV Visual Smoke **#99** sind erfolgreich. Die finalen 1920×1080-Screenshots wurden auf Hero/Rail-Überlagerung, edge-to-edge Darstellung, EPG-Fallback sowie den statischen Focus-Glow/Border-Zustand geprüft. Zeitlicher Breath-Effekt, reales Live-TV-TMDB-Nachladen, neue Home-Optionen, `ZeroZeroZero (2019)` und der Kodi-TMDb-Helper-Handoff benötigen den TCL-Gerätetest.
+Der aktuelle Anwendungscode wurde mit Android CI, deterministischen 1920×1080-Screenshots, Deep-Scroll, Foreground-/Crash-Prüfungen und D-Pad-Navigationsvideo validiert. Die jeweils aktuell signierte Development-Version wird automatisch im Branch `downloads` veröffentlicht; `downloads/update.json` ist die maßgebliche Quelle für Version, Signaturkompatibilität, TMDB-Konfiguration und Source-SHA. Reale D-Pad-/Glow-/Nav-Wirkung bleibt zusätzlich auf TCL-Hardware zu bestätigen.
+
+Die aus der Google-TV-Launcher-Analyse abgeleiteten Home-/Keyline-/Navigation-/Glow-Prinzipien sind dauerhaft in [`docs/reference/GOOGLE_TV_HOME_CONCEPT.md`](docs/reference/GOOGLE_TV_HOME_CONCEPT.md) dokumentiert.
 
 Ausführliche Regeln und Architektur: [`AGENTS.md`](AGENTS.md), [`ROADMAP.md`](ROADMAP.md), [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
