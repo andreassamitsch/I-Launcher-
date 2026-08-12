@@ -53,42 +53,43 @@ jobs:
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             mkdir -p build/tv-visual
 
-            # android-emulator-runner executes script lines independently, therefore foreground
-            # assertions stay single-line commands instead of shell functions. Any unexpected
-            # return to the system launcher fails the job and preserves logcat/activity state.
+            # Android 14 dumpsys uses topResumedActivity/ResumedActivity. If Home unexpectedly
+            # loses the foreground, fail immediately and preserve logs instead of uploading a
+            # misleading screenshot of the system launcher.
             adb logcat -c
             adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity
             sleep 4
-            adb shell dumpsys activity activities | grep -m1 mResumedActivity | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-visual/home-nav-selected.png
 
-            # Top-navigation behavior: selected Home starts as the only active pill. LEFT may focus
-            # Search, RIGHT returns to Home, then DOWN enters content without changing the Hero stage.
+            # Top-navigation behavior: selected Home starts as the only active pill. LEFT focuses
+            # Search with a weaker focus surface, RIGHT returns Home, DOWN enters content without
+            # changing the Hero stage.
             adb shell input keyevent 21
             sleep 1
-            adb shell dumpsys activity activities | grep -m1 mResumedActivity | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-visual/home-nav-search-focus.png
             adb shell input keyevent 22
             sleep 1
             adb exec-out screencap -p > build/tv-visual/home-initial.png
             adb shell input keyevent 20
             sleep 1
-            adb shell dumpsys activity activities | grep -m1 mResumedActivity | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-0.png
 
             # Horizontal stability + dynamic glow regression. The fixture deliberately alternates
             # blue/gold/purple artwork so the focus halo must visibly follow the focused card.
             adb shell input keyevent 22
             sleep 1
-            adb shell dumpsys activity activities | grep -m1 mResumedActivity | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-1.png
             adb shell input keyevent 22
             sleep 1
-            adb shell dumpsys activity activities | grep -m1 mResumedActivity | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-2.png
             adb shell input keyevent 22
             sleep 1
-            adb shell dumpsys activity activities | grep -m1 mResumedActivity | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-3.png
             adb shell input keyevent 21
             sleep 1
@@ -99,7 +100,7 @@ jobs:
 
             adb shell input keyevent 20
             sleep 1
-            adb shell dumpsys activity activities | grep -m1 mResumedActivity | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-visual/home-second-rail.png
             adb shell input keyevent 22
             sleep 1
@@ -117,12 +118,11 @@ jobs:
             sleep 1
             adb exec-out screencap -p > build/tv-visual/home-bottom.png
 
-            # Second pass: record both horizontal and vertical navigation without concurrent
-            # screencaps. This catches transient movement that static screenshots can miss.
+            # Second pass: record horizontal + vertical navigation without concurrent screencaps.
             adb shell am force-stop com.andreassamitsch.ilauncher
             adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity
             sleep 3
-            adb shell dumpsys activity activities | grep -m1 mResumedActivity | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
             adb shell rm -f /sdcard/home-scroll.mp4
             adb shell 'screenrecord --time-limit 18 /sdcard/home-scroll.mp4 >/dev/null 2>&1 &'
             sleep 1
@@ -154,7 +154,7 @@ jobs:
             sleep 1
             adb shell input keyevent 19
             sleep 5
-            adb shell dumpsys activity activities | grep -m1 mResumedActivity | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
             adb pull /sdcard/home-scroll.mp4 build/tv-visual/home-scroll.mp4 || true
 
             adb shell am force-stop com.andreassamitsch.ilauncher
@@ -162,7 +162,7 @@ jobs:
             sleep 3
             adb shell input keyevent 20
             sleep 1
-            adb shell dumpsys activity activities | grep -m1 mResumedActivity | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-visual/home-epg-fallback.png
 
             adb shell am force-stop com.andreassamitsch.ilauncher
