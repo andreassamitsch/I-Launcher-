@@ -77,6 +77,18 @@ jobs:
             adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-0.png
 
+            # Hardware regression from dev.306: one UP from the top Home rail must return directly
+            # to the selected navigation destination. The collapsed bar must therefore become
+            # visible again without routing through the large overlapping Hero focus surface.
+            adb shell input keyevent 19
+            sleep 1
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
+            adb exec-out screencap -p > build/tv-visual/home-nav-restored-from-first-rail.png
+            adb shell input keyevent 20
+            sleep 1
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
+            adb exec-out screencap -p > build/tv-visual/home-first-rail-after-nav-restore.png
+
             # Horizontal stability + dynamic glow regression. The fixture deliberately alternates
             # blue/gold/purple artwork so the focus halo must visibly follow the focused card.
             adb shell input keyevent 22
@@ -124,7 +136,11 @@ jobs:
             sleep 3
             adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
             adb shell rm -f /sdcard/home-scroll.mp4
-            adb shell 'screenrecord --time-limit 18 /sdcard/home-scroll.mp4 >/dev/null 2>&1 &'
+            adb shell 'screenrecord --time-limit 22 /sdcard/home-scroll.mp4 >/dev/null 2>&1 &'
+            sleep 1
+            adb shell input keyevent 20
+            sleep 1
+            adb shell input keyevent 19
             sleep 1
             adb shell input keyevent 20
             sleep 1
