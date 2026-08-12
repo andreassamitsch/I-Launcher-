@@ -47,8 +47,9 @@ internal val GoogleTvTopNavigationHeight = 58.dp
  * Content destinations stay on the left while search/settings are compact utilities on the right,
  * matching current Google-TV/TCL layouts. On Home, leaving the navigation for the content rails
  * visually collapses the bar to the small top chevron seen on Google TV. The invisible navigation
- * remains in the focus tree at the same coordinates, so UP can focus it again without reflowing or
- * scrolling Home; gaining focus immediately fades the bar back in.
+ * remains in the focus tree at the same coordinates. Home additionally exposes one explicit shared
+ * FocusRequester because the large Hero focus rectangle overlaps this bar and geometric UP-search
+ * is therefore not deterministic on real TV focus engines.
  */
 @Composable
 internal fun GoogleTvTopNavigation(
@@ -62,7 +63,12 @@ internal fun GoogleTvTopNavigation(
     } else {
         activeSection
     }
-    val selectedFocusRequester = remember { FocusRequester() }
+    val nonHomeSelectedFocusRequester = remember { FocusRequester() }
+    val selectedFocusRequester = if (selectedSection == LauncherSection.Home) {
+        HomeTopNavigationFocusRequester
+    } else {
+        nonHomeSelectedFocusRequester
+    }
     var navigationHasFocus by remember { mutableStateOf(true) }
     val collapsed = activeSection == LauncherSection.Home && !navigationHasFocus
     val navAlpha by animateFloatAsState(
@@ -76,7 +82,7 @@ internal fun GoogleTvTopNavigation(
         label = "top-nav-cue-alpha",
     )
 
-    LaunchedEffect(selectedSection) {
+    LaunchedEffect(selectedSection, selectedFocusRequester) {
         selectedFocusRequester.requestFocus()
     }
 
