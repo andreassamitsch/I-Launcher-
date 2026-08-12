@@ -17,9 +17,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
@@ -125,20 +128,40 @@ internal fun BoxScope.FocusedArtworkGlow(
     if (!focused || artworkUri.isNullOrBlank()) return
 
     val sampled = rememberArtworkGlowColor(artworkUri, focused)
+    val outerAlpha = 0.24f + breath * 0.06f
+    val innerAlpha = 0.34f + breath * 0.07f
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
                 scaleX = 1.025f
                 scaleY = 1.04f
-                shape = MediaCardShape
-                clip = false
-                shadowElevation = 24.dp.toPx()
-                ambientShadowColor = sampled.copy(alpha = 0.43f + breath * 0.10f)
-                spotShadowColor = sampled.copy(alpha = 0.58f + breath * 0.12f)
             }
-            // The real card is drawn above this source surface, so only its coloured halo remains.
-            .background(sampled.copy(alpha = 0.025f), MediaCardShape),
+            // Compose dropShadow is independent of Android's single-light-source elevation shadow,
+            // so the artwork tint is preserved consistently. Two low-alpha layers produce the
+            // broad Google-TV-like aura without a visible rectangular layer edge.
+            .dropShadow(
+                shape = MediaCardShape,
+                shadow = Shadow(
+                    radius = 20.dp,
+                    spread = 7.dp,
+                    color = sampled.copy(alpha = outerAlpha),
+                    offset = DpOffset.Zero,
+                ),
+            )
+            .dropShadow(
+                shape = MediaCardShape,
+                shadow = Shadow(
+                    radius = 8.dp,
+                    spread = 3.dp,
+                    color = sampled.copy(alpha = innerAlpha),
+                    offset = DpOffset.Zero,
+                ),
+            )
+            // The actual card is rendered above this source surface; keep the source almost
+            // transparent so the user sees a halo, not a second tinted card.
+            .background(sampled.copy(alpha = 0.018f), MediaCardShape),
     )
 }
 
