@@ -36,10 +36,10 @@ internal val GoogleTvTopNavigationHeight = 58.dp
 /**
  * Google-TV-inspired destination navigation.
  *
- * Destination selection and D-Pad focus are deliberately separate states: the current destination
- * keeps its compact filled pill while focus is down in Home content. When a destination is opened,
- * its selected tab receives the initial focus so we never render two competing pills. The complete
- * navigation floats over the Hero and therefore never changes Home's vertical layout/keyline.
+ * Selection and focus stay distinct. The currently opened destination owns the bright selected
+ * pill. Moving focus over a different destination uses a deliberately weaker translucent focus
+ * surface so two destinations never look simultaneously "active". The bar floats over the Hero
+ * and therefore never participates in Home's row-keyline geometry.
  */
 @Composable
 internal fun GoogleTvTopNavigation(
@@ -97,7 +97,7 @@ internal fun GoogleTvTopNavigation(
                 onClick = { onSelect(LauncherSection.Search) },
             )
             GoogleTvNavDestination(
-                label = "Für dich",
+                label = "Empfehlungen",
                 section = LauncherSection.Home,
                 selected = selectedSection == LauncherSection.Home,
                 focusRequester = if (selectedSection == LauncherSection.Home) selectedFocusRequester else null,
@@ -138,16 +138,12 @@ private fun GoogleTvNavDestination(
     compact: Boolean = false,
     showSearchIcon: Boolean = false,
 ) {
-    val idleContainer = if (selected) {
-        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.94f)
-    } else {
-        Color.Transparent
-    }
-    val idleContent = if (selected) {
-        MaterialTheme.colorScheme.surface
-    } else {
-        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.82f)
-    }
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val surface = MaterialTheme.colorScheme.surface
+    val idleContainer = if (selected) onSurface.copy(alpha = 0.94f) else Color.Transparent
+    val idleContent = if (selected) surface else onSurface.copy(alpha = 0.82f)
+    val focusedContainer = if (selected) onSurface else onSurface.copy(alpha = 0.16f)
+    val focusedContent = if (selected) surface else onSurface
     val focusModifier = focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
 
     TouchButton(
@@ -156,15 +152,15 @@ private fun GoogleTvNavDestination(
         colors = ButtonDefaults.colors(
             containerColor = idleContainer,
             contentColor = idleContent,
-            focusedContainerColor = MaterialTheme.colorScheme.onSurface,
-            focusedContentColor = MaterialTheme.colorScheme.surface,
-            pressedContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f),
-            pressedContentColor = MaterialTheme.colorScheme.surface,
+            focusedContainerColor = focusedContainer,
+            focusedContentColor = focusedContent,
+            pressedContainerColor = if (selected) onSurface.copy(alpha = 0.86f) else onSurface.copy(alpha = 0.24f),
+            pressedContentColor = if (selected) surface else onSurface,
             disabledContainerColor = Color.Transparent,
             disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.36f),
         ),
         scale = ButtonDefaults.scale(
-            focusedScale = 1.02f,
+            focusedScale = if (selected) 1.015f else 1.025f,
             pressedScale = 0.985f,
         ),
         contentPadding = PaddingValues(
@@ -176,7 +172,7 @@ private fun GoogleTvNavDestination(
             .then(if (compact) Modifier.width(38.dp) else Modifier),
     ) {
         if (showSearchIcon) {
-            SearchGlyph()
+            SearchGlyph(color = if (selected) surface else onSurface.copy(alpha = 0.90f))
             Spacer(Modifier.width(7.dp))
         }
         Text(
@@ -188,8 +184,7 @@ private fun GoogleTvNavDestination(
 }
 
 @Composable
-private fun SearchGlyph() {
-    val color = MaterialTheme.colorScheme.surface
+private fun SearchGlyph(color: Color) {
     Canvas(modifier = Modifier.size(15.dp)) {
         val stroke = 1.7.dp.toPx()
         val radius = size.minDimension * 0.29f
