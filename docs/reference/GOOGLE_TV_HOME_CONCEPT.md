@@ -1,12 +1,11 @@
 # Google TV Home – analysiertes Referenzkonzept
 
-> **Zweck:** Dauerhafte technische Referenz für I-Launcher-Home-, Rail-, Focus-, Navigation-, Glow- und Hero-Arbeiten.
+> **Zweck:** Dauerhafte technische Referenz für I-Launcher-Home-, Rail-, Focus- und Hero-Arbeiten.
 >
-> Diese Datei dokumentiert **beobachtete Architektur- und UX-Prinzipien** aus der Analyse einer bereitgestellten Google-TV-Launcher-APKM, aus aktuellen Google-TV-/TCL-Referenzansichten und aus deren Übertragung auf unsere eigene Compose-Implementierung. Sie enthält **keinen übernommenen proprietären Google-Code, keine Assets und keinen dekompilierten Quellcode**.
+> Diese Datei dokumentiert **beobachtete Architektur- und UX-Prinzipien** aus der Analyse einer bereitgestellten Google-TV-Launcher-APKM sowie deren Übertragung auf unsere eigene Compose-Implementierung. Sie enthält **keinen übernommenen proprietären Google-Code, keine Assets und keinen dekompilierten Quellcode**.
 
 Stand der Referenzanalyse: 2026-08-12  
-I-Launcher-Referenzcommit für den stabilen Row-Keyline-Fix: `4b9699e611faa31f38d2969d1fd847034d02cfc9`  
-I-Launcher-Referenzcommit für Navigation + dynamischen Glow: `4933aa1ea4a5d568ab0b2a6b07c235eb0fbb8625`
+I-Launcher-Referenzcommit für den stabilen Row-Keyline-Fix: `4b9699e611faa31f38d2969d1fd847034d02cfc9`
 
 ## 1. Warum diese Referenz existiert
 
@@ -43,8 +42,7 @@ Das erkennbare Leanback-artige Modell trennt:
 1. vertikale Row-/Grid-Ausrichtung,
 2. horizontale Fokusbewegung innerhalb einer Row,
 3. Focus-Decoration/Glow als visuelle Ebene,
-4. Content-/Hero-Aktualisierung als Reaktion auf den Fokus,
-5. die Top-Navigation als eigene Overlay-/Focus-Ebene außerhalb der Row-Geometrie.
+4. Content-/Hero-Aktualisierung als Reaktion auf den Fokus.
 
 ## 3. Zentrales Keyline-Modell
 
@@ -93,7 +91,7 @@ Der stabile I-Launcher-Ansatz nach der Analyse:
 ### Äußerer Home-Scroll
 
 - automatische descendant-`bringIntoView`-Propagation darf nicht die vertikale Home-Position bei LEFT/RIGHT verändern,
-- die Grenze zum äußeren Vertical-Scroll wird so kontrolliert, dass horizontale Kartenfokuswechsel keinen zusätzlichen Y-Scroll auslösen,
+- die Grenze zum äußeren Vertical-Scroll muss daher so kontrolliert werden, dass horizontale Kartenfokuswechsel keinen zusätzlichen Y-Scroll auslösen,
 - der explizite Row-Entry-Keyline-Mechanismus bleibt alleiniger Besitzer der vertikalen Fokusausrichtung.
 
 ### Innere `LazyRow`
@@ -133,6 +131,15 @@ Aus der Google-TV-artigen Home-Komposition und unseren bisherigen Tests ergibt s
 
 Für die letzte Home-Rail muss genügend **Bottom-Scroll-Reserve** vorhanden sein, damit auch sie dieselbe Keyline erreichen kann. Die letzte Reihe darf nicht nur deshalb tiefer stehen, weil das Scrollende zu früh erreicht ist.
 
+### 6.1 Hero bleibt immer hinter der Rail
+
+Die überlappende Rail besitzt visuell Vorrang vor dem Hero – auch dann, wenn der Hero selbst Fokus bekommt. Compose-for-TV-Material-Surfaces heben fokussierte Flächen für Focus-Decoration intern an; ein großflächiger Hero darf dadurch nicht versehentlich vor die Rail wechseln. In I Launcher besitzt die statische Hero-Surface deshalb eine niedrigere Basis-Z-Ebene als die Content-Rails. Normale Medienkarten behalten ihre reguläre Fokus-Z-Ebene.
+
+Regressionkriterium:
+
+- fokussierter Hero darf niemals Karten, Glow, Titel oder Rail-Flächen überzeichnen,
+- Änderung der Z-Reihenfolge darf keine Layoutgröße, Focus-Hitbox oder Keyline verändern.
+
 ## 7. Fokusdarstellung / Glow
 
 Die Google-TV-Analyse zeigte eine eigene visuelle Focus-/Glow-Ebene (`FocusFrameDecoration`, `GlowDrawable`). Das relevante Prinzip für uns:
@@ -142,56 +149,23 @@ Die Google-TV-Analyse zeigte eine eigene visuelle Focus-/Glow-Ebene (`FocusFrame
 - Glow/Border dürfen keinen zusätzlichen Fokuspunkt erzeugen,
 - Scale/Glow dürfen die Row-Keyline nicht beeinflussen,
 - fokussierte Karten brauchen ausreichend Draw-Space bzw. korrekte Z-Reihenfolge, damit Nachbarkarten den Halo nicht abschneiden,
-- visuelle Focus-Effekte sollen rendererfreundlich bleiben,
-- die Glow-Farbe soll sichtbar zum aktuellen Artwork passen und nicht als feste Marken-/Diagnosefarbe erscheinen.
+- visuelle Focus-Effekte sollen möglichst rendererfreundlich bleiben.
 
-### Aktuelle I-Launcher-Umsetzung
+I Launcher gewinnt die Glow-Farbe der einzelnen fokussierten Medienkarte aus einer winzigen gecachten Softwareprobe derselben Artwork-URI. Zwei explizite Compose-`dropShadow()`-Ebenen zeichnen daraus den farbigen Halo; der weiße Breath-Rahmen bleibt eine getrennte Focus-Decoration. Große Live-Blur-/Radial-Layer werden vermieden, nachdem sie im SwiftShader-Smoke reproduzierbar Rendererprobleme verursacht hatten.
 
-Die Kartenfarbe wird nicht über eine neue Palette-Bibliothek oder eine zusätzliche Netzwerkquelle bestimmt. Stattdessen:
+## 8. Top-Navigation und Fokusgraph
 
-1. Für die **aktuell fokussierte** Karte wird über Coil eine kleine `32×18`-Software-Bitmap aus derselben Artwork-URI angefordert.
-2. `allowHardware(false)` und explizite Zielmaße erlauben sichere CPU-seitige Pixelanalyse – auch für Quellen ohne positive Intrinsic-Größe.
-3. Transparente, fast schwarze und nahezu weiße/entsättigte Pixel werden schwach oder gar nicht gewichtet.
-4. Gesättigte Mitteltöne bestimmen die Aura stärker; Chroma wird leicht angehoben, die Helligkeit begrenzt.
-5. Das Ergebnis wird pro Artwork-URI in einem kleinen lokalen Speicher-Cache gehalten.
-6. Zwei Compose-`dropShadow()`-Ebenen erzeugen einen breiten und einen engeren farbigen Halo um die abgerundete Kartenform.
-7. Der weiße Focus-Rahmen besitzt weiterhin einen langsamen, subtilen `Breath` über Alpha und Strichbreite.
+Die Google-TV-artige Top-Navigation ist eine Overlay-Ebene und darf niemals Hero- oder Rail-Geometrie verschieben. Auf Home gilt:
 
-Damit bleibt der Effekt inhaltsbezogen, ohne eine dauerhafte Pixelanalyse für unfokussierte/off-screen Karten zu betreiben. Große Live-Blur-/Radial-Layer wurden verworfen, weil sie im SwiftShader-Smoke reproduzierbar Renderer-/Screencap-Probleme erzeugten.
+- Navigation sichtbar im oberen Fokusbereich,
+- `DOWN` in die Content-Rails blendet die Leiste visuell aus; nur ein kleines Chevron bleibt,
+- das Ausblenden ist reine Alpha-/Decoration-Änderung, kein Entfernen aus dem Layout,
+- `UP` aus der obersten Rail muss mit **einem** Tastendruck direkt zur ausgewählten Home-Destination zurückkehren,
+- Hero und Navigation überlappen räumlich; deshalb darf dieser Rückweg nicht allein von geometrischer Fokus-Suche abhängen,
+- I Launcher besitzt für die oberste Home-Rail einen expliziten `DPAD_UP`-Fokus-Edge auf die Home-Navigation,
+- tiefere Rails behalten normales `UP/DOWN` zwischen den Rows.
 
-## 8. Google-TV-artige Top-Navigation
-
-Die Top-Navigation ist **keine normale Zeile oberhalb des Home-Layouts**. Sie ist eine eigene Overlay-Ebene über dem Hero und darf dadurch die Hero-/Rail-Keyline weder beim Einblenden noch beim Ausblenden verändern.
-
-### Struktur
-
-Für die aktuelle I-Launcher-Funktionsmenge gilt:
-
-- links: Branding + echte Content-Destinations (`Empfehlungen`, `Apps`),
-- rechts: kompakte Utility-Aktionen (`Suche`, `Einstellungen`),
-- keine erfundenen Tabs für Filme/Serien/Mediathek, solange diese keine echten Launcher-Destinations besitzen.
-
-Google-TV-Tabsets unterscheiden sich nach Region/Version. Deshalb ist die **Hierarchie** die Referenz, nicht das blinde Kopieren jedes Google-Tabs.
-
-### Selected vs. Focused
-
-- die aktuell geöffnete Destination besitzt die helle kompakte Selected-Pill,
-- eine andere nur fokussierte Destination erhält lediglich eine schwächere/transparente Focus-Fläche,
-- Selection und Focus sind getrennte Zustände,
-- beim Öffnen einer Destination erhält deren Selected-Element initial Fokus, damit nicht zwei Ziele gleichzeitig wie „aktiv“ wirken.
-
-### Verhalten im Home-Content
-
-Auf Home gilt das Muster aus der Google-TV-Referenzansicht:
-
-- solange die Top-Navigation Fokus besitzt, ist die komplette Leiste sichtbar,
-- bei `DOWN` in Hero/Content-Rails blendet die Leiste als Overlay aus,
-- oben bleibt nur ein kleines dezentes Chevron (`^`) als Hinweis auf die erreichbare Navigation,
-- die unsichtbare Leiste **bleibt im Fokusbaum an derselben Position**,
-- `UP` kann sie dadurch wieder fokussieren; bei Fokusgewinn wird sie eingeblendet,
-- **es findet keinerlei Reflow oder Änderung der Home-Keyline statt**.
-
-Diese Trennung ist entscheidend: sichtbare Navigation darf niemals wieder als Padding/Spacer in die vertikale Home-Geometrie ein- oder ausgebaut werden.
+Der Regressionstest muss mindestens `Nav -> DOWN erste Rail -> UP Nav -> DOWN erste Rail` enthalten. Ein Smoke ist nur dann erfolgreich bewertet, wenn die Screenshots tatsächlich den wieder sichtbaren/fokussierten Nav-Zustand zeigen; ein lediglich technisch grüner Workflow reicht nicht.
 
 ## 9. Fokus- und Scroll-Eigentümerschaft als feste Regel
 
@@ -199,13 +173,13 @@ Bei künftigen Home-Änderungen zuerst bestimmen, **welche Ebene welche Bewegung
 
 | Ebene | Zuständigkeit |
 |---|---|
-| Top Navigation | Destination-/Utility-Fokus als Overlay, kein Home-Reflow |
 | Home Vertical Scroll / Row Stage | Y-Ausrichtung der aktiven Rail |
 | Rail / `focusGroup()` | Eintritt/Verlassen der Row |
 | `LazyRow` | horizontales X-Scrollen |
 | Medienkarte | Fokus, Auswahl, Hero-/Metadaten-Update |
 | Focus Decoration | Glow, Border, Breath, kleine Scale |
-| Hero | Darstellung des aktuell fokussierten Inhalts |
+| Hero | Darstellung des aktuell fokussierten Inhalts; visuell unter Rails |
+| Top Navigation | eigener expliziter Fokusbereich oberhalb der ersten Rail |
 
 Keine Ebene soll eine Bewegung „korrigieren“, die eigentlich einer anderen Ebene gehört.
 
@@ -225,23 +199,20 @@ Keine Ebene soll eine Bewegung „korrigieren“, die eigentlich einer anderen E
 2. Ziel-Keyline relativ zum aktuellen `ScrollState` berechnen.
 3. Scrollwert gegen `0..maxValue` begrenzen.
 4. Prüfen, ob Bottom-Reserve für die letzten Rows ausreicht.
-5. Sicherstellen, dass Nav-Sichtbarkeit nur Alpha/Decoration ändert und **nicht** die Layoutgeometrie.
+5. Für die oberste Rail prüfen, ob der explizite UP-Edge zur Navigation aktiv ist.
 
-### Wenn Glow abgeschnitten/farblos wird
+### Wenn der Hero die Rail überzeichnet
+
+1. Prüfen, ob der Hero als fokussierte TV-Material-Surface intern angehoben wird.
+2. Basis-Z-Ebene des statischen Hero gegen Rail-Z-Ebene prüfen.
+3. Keine Lösung über Layoutverschiebung oder Clip erzwingen.
+
+### Wenn Glow abgeschnitten wird
 
 1. Z-Reihenfolge der fokussierten Karte prüfen.
 2. Draw-Space/Padding der Rail prüfen.
 3. sicherstellen, dass Clip nur dort aktiv ist, wo tatsächlich gewollt,
-4. keinen Glow durch Layout-Vergrößerung erzwingen,
-5. prüfen, ob die kleine Software-Bitmap erfolgreich geladen wird und nicht auf die Fallback-Farbe fällt,
-6. Glow-Fixtures mit klar unterschiedlichen Farben (blau/gold/violett) im Visual-Smoke vergleichen.
-
-### Wenn die Top-Navigation Home verschiebt
-
-1. prüfen, ob die Nav weiterhin Overlay in einem gemeinsamen `Box` ist,
-2. kein Home-`padding(top=navHeight)` oder Spacer beim Sichtbarkeitswechsel hinzufügen,
-3. Nav-Sichtbarkeit über Alpha/Focus-State ändern, nicht über Ein-/Ausbau aus dem Layout,
-4. `UP`/`DOWN` im D-Pad-Video prüfen, nicht nur statische Screenshots.
+4. keinen Glow durch Layout-Vergrößerung erzwingen.
 
 ## 11. Dinge, die wir bewusst **nicht** übernehmen
 
@@ -254,7 +225,6 @@ Nicht übernehmen:
 - Google-spezifische Content-Zwänge,
 - proprietäre Assets oder dekompilierten Code,
 - unnötige Netzwerkabhängigkeiten,
-- nicht funktionale Fake-Tabs nur zur optischen Kopie,
 - komplexe Effekte, wenn sie D-Pad-Stabilität oder Performance verschlechtern.
 
 Priorität bleibt gemäß `AGENTS.md`:
@@ -272,16 +242,11 @@ Priorität bleibt gemäß `AGENTS.md`:
 
 - `AGENTS.md` – verbindliche Entwicklungsrichtlinien
 - `ARCHITECTURE.md` – aktuelle I-Launcher-Architektur
-- `app/src/main/java/com/andreassamitsch/ilauncher/ui/GoogleTvTopNavigation.kt` – aktuelle Top-Navigation
-- `app/src/main/java/com/andreassamitsch/ilauncher/ui/components/FocusedCardEffects.kt` – Glow-/Breath-Implementierung
-- `app/src/main/java/com/andreassamitsch/ilauncher/ui/home/HomeRowFocusAnchor.kt` – Row-Keyline-Implementierung
-- `.github/workflows/tv-visual-smoke.yml` – D-Pad-/Screenshot-/Foreground-Regressionen
+- `app/src/main/java/com/andreassamitsch/ilauncher/ui/home/HomeRowFocusAnchor.kt` – aktuelle Row-Keyline- und oberster-Rail-zu-Nav-Fokuslogik
+- `app/src/main/java/com/andreassamitsch/ilauncher/ui/HomeNavigationFocus.kt` – gemeinsamer Nav-Fokus-Requester
+- `.github/workflows/tv-visual-smoke.yml` – D-Pad-/Screenshot-Regressionen
 - PR #10 – Verlauf des Google-TV-Home-/Focus-Polish und der Fehleranalyse
 
-## 13. Merksätze
+## 13. Merksatz
 
-> **Row owns Y, card owns focus/content, LazyRow owns X.**
-
-> **Navigation is an overlay, not Home geometry.**
-
-> **Google-TV-artige Home-Navigation bleibt ruhig, weil LEFT/RIGHT Inhalt in X bewegt, UP/DOWN die aktive Bühne in Y – und weder Glow noch Top-Navigation diese Eigentümerschaft verändern.**
+> **Google-TV-artige Home-Navigation bleibt ruhig, wenn jede Ebene nur ihre eigene Aufgabe besitzt: Row bewegt Y, LazyRow bewegt X, Focus-Decoration zeichnet, Hero bleibt unter der Rail und die Top-Navigation besitzt einen expliziten Fokus-Edge.**
