@@ -60,13 +60,36 @@ jobs:
             adb exec-out screencap -p > build/tv-visual/home-initial.png
             adb shell input keyevent 20
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/home-first-rail.png
+            adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-0.png
+
+            # Horizontal stability regression: Google-TV-style row alignment must be a row-entry
+            # operation. Moving left/right inside one rail may change card focus/Hero, never the
+            # vertical rail position.
             adb shell input keyevent 22
             sleep 1
-            adb exec-out screencap -p > build/tv-visual/home-first-rail-glow.png
+            adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-1.png
+            adb shell input keyevent 22
+            sleep 1
+            adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-2.png
+            adb shell input keyevent 22
+            sleep 1
+            adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-3.png
+            adb shell input keyevent 21
+            sleep 1
+            adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-4.png
+            adb shell input keyevent 21
+            sleep 1
+            adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-5.png
+
             adb shell input keyevent 20
             sleep 1
             adb exec-out screencap -p > build/tv-visual/home-second-rail.png
+            adb shell input keyevent 22
+            sleep 1
+            adb exec-out screencap -p > build/tv-visual/home-second-rail-horizontal-1.png
+            adb shell input keyevent 22
+            sleep 1
+            adb exec-out screencap -p > build/tv-visual/home-second-rail-horizontal-2.png
             adb shell input keyevent 20
             sleep 1
             adb exec-out screencap -p > build/tv-visual/home-third-rail.png
@@ -77,15 +100,29 @@ jobs:
             sleep 1
             adb exec-out screencap -p > build/tv-visual/home-bottom.png
 
-            # Second pass: record navigation without concurrent screencaps. This catches transient
-            # row movement and focus-anchor behaviour while avoiding 1080p encoder+screencap load.
+            # Second pass: record both horizontal and vertical navigation without concurrent
+            # screencaps. This catches transient row movement that static screenshots can miss.
             adb shell am force-stop com.andreassamitsch.ilauncher
             adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity
             sleep 3
             adb shell rm -f /sdcard/home-scroll.mp4
-            adb shell 'screenrecord --time-limit 14 /sdcard/home-scroll.mp4 >/dev/null 2>&1 &'
+            adb shell 'screenrecord --time-limit 18 /sdcard/home-scroll.mp4 >/dev/null 2>&1 &'
             sleep 1
             adb shell input keyevent 20
+            sleep 1
+            adb shell input keyevent 22
+            sleep 1
+            adb shell input keyevent 22
+            sleep 1
+            adb shell input keyevent 22
+            sleep 1
+            adb shell input keyevent 21
+            sleep 1
+            adb shell input keyevent 21
+            sleep 1
+            adb shell input keyevent 20
+            sleep 1
+            adb shell input keyevent 22
             sleep 1
             adb shell input keyevent 22
             sleep 1
@@ -95,12 +132,10 @@ jobs:
             sleep 1
             adb shell input keyevent 20
             sleep 1
-            adb shell input keyevent 20
-            sleep 1
             adb shell input keyevent 19
             sleep 1
             adb shell input keyevent 19
-            sleep 7
+            sleep 5
             adb pull /sdcard/home-scroll.mp4 build/tv-visual/home-scroll.mp4 || true
 
             adb shell am force-stop com.andreassamitsch.ilauncher
