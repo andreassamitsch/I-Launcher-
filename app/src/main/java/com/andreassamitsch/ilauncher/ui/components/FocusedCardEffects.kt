@@ -89,20 +89,26 @@ private fun rememberArtworkGlowColor(
             return@produceState
         }
 
-        // The card image itself may be a hardware bitmap. Pixel sampling must not read that bitmap
-        // directly. A tiny dedicated Coil request reuses Coil's memory/disk cache but explicitly
-        // asks for a software bitmap that is safe to inspect on the CPU.
-        val request = ImageRequest.Builder(context)
-            .data(uri)
-            .size(GlowSampleWidth, GlowSampleHeight)
-            .allowHardware(false)
-            .build()
-        val result = SingletonImageLoader.get(context).execute(request)
-        if (result is SuccessResult) {
-            val bitmap = result.image.toBitmap()
-            val pixels = IntArray(bitmap.width * bitmap.height)
-            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-            val sampled = extractArtworkGlowColor(pixels) ?: GlowFallbackColor
+        // The display image may be a hardware bitmap. Pixel sampling therefore uses a tiny,
+        // dedicated software request that reuses Coil's normal caches. Some DrawableImage sources
+        // (including Android resources) report no positive intrinsic size, so toBitmap must receive
+        // explicit dimensions rather than relying on Image.width/Image.height defaults.
+        runCatching {
+            val request = ImageRequest.Builder(context)
+                .data(uri)
+                .size(GlowSampleWidth, GlowSampleHeight)
+                .allowHardware(false)
+                .build()
+            val result = SingletonImageLoader.get(context).execute(request)
+            if (result is SuccessResult) {
+                val bitmap = result.image.toBitmap(GlowSampleWidth, GlowSampleHeight)
+                val pixels = IntArray(bitmap.width * bitmap.height)
+                bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+                extractArtworkGlowColor(pixels) ?: GlowFallbackColor
+            } else {
+                GlowFallbackColor
+            }
+        }.getOrDefault(GlowFallbackColor).let { sampled ->
             GlowColorCache.put(uri, sampled)
             value = sampled
         }
