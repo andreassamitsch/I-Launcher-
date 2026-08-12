@@ -1,5 +1,6 @@
 package com.andreassamitsch.ilauncher.ui.home
 
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Column
@@ -12,8 +13,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
@@ -32,10 +33,11 @@ import kotlinx.coroutines.launch
  * Automatic child bring-into-view propagation into Home's vertical ScrollState is stopped by the
  * vertical focus boundary installed in touchScrollFallback().
  *
- * The first row needs one explicit UP edge to the overlay navigation. Hero and navigation overlap
- * spatially, so real TV focus engines cannot reliably infer that edge from bounds alone. A parent
- * focusProperties override applies the same deterministic UP destination to every card in the top
- * row without altering the row's layout or horizontal navigation.
+ * Home's overlay navigation and the large Hero overlap spatially. On real TV focus engines an
+ * automatic UP search from the first rail can therefore choose the Hero and then get trapped below
+ * the invisible navigation. While Home is at its top scroll position this row intercepts DPAD_UP
+ * before child focus search and sends it directly to the selected Home navigation destination.
+ * Lower rows keep normal UP/DOWN focus behavior because their anchored scroll position is > 0.
  */
 @Composable
 internal fun AnchoredHomeRow(
@@ -47,9 +49,7 @@ internal fun AnchoredHomeRow(
     var rowHasFocus by remember { mutableStateOf(false) }
     val targetTopPx = with(LocalDensity.current) { targetTop.toPx() }
     val scope = rememberCoroutineScope()
-    val isTopHomeRow = scrollState.value <= 2 &&
-        rowTopInRoot.isFinite() &&
-        abs(rowTopInRoot - targetTopPx) <= 3f
+    val homeAtTop = scrollState.value <= 2
 
     fun anchorRow() {
         scope.launch {
@@ -72,8 +72,18 @@ internal fun AnchoredHomeRow(
 
     Column(
         modifier = Modifier
-            .focusProperties {
-                if (isTopHomeRow) up = HomeTopNavigationFocusRequester
+            .onPreviewKeyEvent { composeEvent ->
+                val event = composeEvent.nativeKeyEvent
+                if (
+                    homeAtTop &&
+                    event.keyCode == AndroidKeyEvent.KEYCODE_DPAD_UP &&
+                    event.action == AndroidKeyEvent.ACTION_DOWN
+                ) {
+                    HomeTopNavigationFocusRequester.requestFocus()
+                    true
+                } else {
+                    false
+                }
             }
             .onFocusChanged { focusState ->
                 val gainedRowFocus = focusState.hasFocus && !rowHasFocus
