@@ -3,6 +3,8 @@ package com.andreassamitsch.ilauncher.ui.home
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.relocation.BringIntoViewResponder
+import androidx.compose.foundation.relocation.bringIntoViewResponder
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -13,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
@@ -28,8 +31,16 @@ import kotlinx.coroutines.launch
  * rail may move the vertical keyline, while left/right movement inside the same rail must not
  * trigger another vertical alignment pass. Compose focus events bubble through the row, so we
  * observe descendant focus at this stable row container and anchor only on the false -> true
- * `hasFocus` transition. The per-card callback remains for call-site compatibility but is a no-op.
+ * `hasFocus` transition.
+ *
+ * A focused child in a LazyRow also sends a platform bring-into-view request. The LazyRow must be
+ * allowed to satisfy the horizontal part of that request, but the request must not continue into
+ * Home's vertical ScrollState and move the entire row. This responder is deliberately placed
+ * outside the horizontal scrollable: the LazyRow remains the nearest responder for X scrolling,
+ * while this row boundary consumes the remaining parent request. Vertical movement is therefore
+ * owned exclusively by the explicit keyline anchor below.
  */
+@Suppress("DEPRECATION")
 @Composable
 internal fun AnchoredHomeRow(
     scrollState: ScrollState,
@@ -40,6 +51,17 @@ internal fun AnchoredHomeRow(
     var rowHasFocus by remember { mutableStateOf(false) }
     val targetTopPx = with(LocalDensity.current) { targetTop.toPx() }
     val scope = rememberCoroutineScope()
+    val verticalBringIntoViewBoundary = remember {
+        object : BringIntoViewResponder {
+            // Do not ask the vertical Home parent to move for a descendant-card request. The row
+            // itself will be aligned by anchorRow() when focus first enters this focus group.
+            override fun calculateRectForParent(localRect: Rect): Rect = Rect.Zero
+
+            // Horizontal movement was already handled by the inner LazyRow. There is no local
+            // vertical adjustment to perform at this row boundary.
+            override suspend fun bringChildIntoView(localRect: () -> Rect?) = Unit
+        }
+    }
 
     fun anchorRow() {
         scope.launch {
@@ -62,6 +84,9 @@ internal fun AnchoredHomeRow(
 
     Column(
         modifier = Modifier
+            // Intercept only after the nested horizontal scrollable had its chance to reveal the
+            // focused card. This prevents the outer vertical ScrollState from reacting to LEFT/RIGHT.
+            .bringIntoViewResponder(verticalBringIntoViewBoundary)
             // focusGroup mirrors the Google-TV/Leanback row model: horizontal children form one
             // vertical navigation unit instead of each card acting like a fresh row target.
             .onFocusChanged { focusState ->
