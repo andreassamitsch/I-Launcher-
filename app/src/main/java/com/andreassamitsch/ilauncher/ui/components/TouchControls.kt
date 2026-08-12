@@ -25,6 +25,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.relocation.BringIntoViewModifierNode
+import androidx.compose.ui.zIndex
 import androidx.tv.material3.Border
 import androidx.tv.material3.Button as TvButton
 import androidx.tv.material3.ButtonColors
@@ -114,14 +115,22 @@ fun TouchCard(
     } else {
         border
     }
+    // tv-material raises every focused Surface by zIndex 0.5 so card glows are not covered by
+    // siblings. That is correct for normal rail cards, but wrong for Home's intentionally
+    // underneath Hero: when the Hero gains focus it must never paint over the overlapping rail.
+    // zIndex modifiers are additive, so -1 keeps the Hero below default-z rail content even while
+    // tv-material applies its focused +0.5 layer.
+    val focusLayeringModifier = if (isStaticHeroSurface) Modifier.zIndex(-1f) else Modifier
 
     TvCard(
         onClick = onClick,
         onLongClick = if (handleTvLongClick) onLongClick else null,
-        modifier = modifier.touchTap(
-            onClick = onClick,
-            onLongClick = onLongClick,
-        ),
+        modifier = modifier
+            .then(focusLayeringModifier)
+            .touchTap(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            ),
         scale = scale,
         shape = resolvedShape,
         border = resolvedBorder,
