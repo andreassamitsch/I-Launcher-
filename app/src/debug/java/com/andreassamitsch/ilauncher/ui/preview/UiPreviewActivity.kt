@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -16,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
@@ -35,6 +37,8 @@ import com.andreassamitsch.ilauncher.model.MediaSource
 import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.model.SearchResultKind
+import com.andreassamitsch.ilauncher.ui.GoogleTvTopNavigation
+import com.andreassamitsch.ilauncher.ui.LauncherSection
 import com.andreassamitsch.ilauncher.ui.home.HomeScreen
 import com.andreassamitsch.ilauncher.ui.search.SearchScreen
 import com.andreassamitsch.ilauncher.ui.theme.ILauncherTheme
@@ -97,26 +101,35 @@ class UiPreviewActivity : ComponentActivity() {
                             } else {
                                 channels.map { HomePreferences.previewRowKey(it.id) } + HomePreferences.ROW_APPS
                             }
-                            HomeScreen(
-                                apps = fixtureApps,
-                                watchNextItems = emptyList(),
-                                watchNextError = null,
-                                previewChannels = channels,
-                                previewChannelsError = null,
-                                hasTvListingsPermission = true,
-                                liveTvState = liveTvState,
-                                homeRowOrder = rowOrder,
-                                onMoveHomeApp = { _, _ -> },
-                                onRequestTvListingsPermission = {},
-                                onOpenApp = {},
-                                onOpenWatchNext = {},
-                                onOpenWatchNextDetails = {},
-                                onOpenMediaDetails = { _, _ -> },
-                                onOpenPreviewProgram = { _, _ -> },
-                                onOpenLiveTv = {},
-                                onPlayLiveTvChannel = {},
-                                onNavigationVisibilityChange = {},
-                            )
+                            var activeSection by remember { mutableStateOf(LauncherSection.Home) }
+                            Box(Modifier.fillMaxSize()) {
+                                HomeScreen(
+                                    apps = fixtureApps,
+                                    watchNextItems = emptyList(),
+                                    watchNextError = null,
+                                    previewChannels = channels,
+                                    previewChannelsError = null,
+                                    hasTvListingsPermission = true,
+                                    liveTvState = liveTvState,
+                                    homeRowOrder = rowOrder,
+                                    onMoveHomeApp = { _, _ -> },
+                                    onRequestTvListingsPermission = {},
+                                    onOpenApp = {},
+                                    onOpenWatchNext = {},
+                                    onOpenWatchNextDetails = {},
+                                    onOpenMediaDetails = { _, _ -> },
+                                    onOpenPreviewProgram = { _, _ -> },
+                                    onOpenLiveTv = {},
+                                    onPlayLiveTvChannel = {},
+                                    onNavigationVisibilityChange = {},
+                                )
+                                GoogleTvTopNavigation(
+                                    activeSection = activeSection,
+                                    onSelect = { activeSection = it },
+                                    onOpenHomeSettings = {},
+                                    modifier = Modifier.align(Alignment.TopStart),
+                                )
+                            }
                         }
                     }
                 }
