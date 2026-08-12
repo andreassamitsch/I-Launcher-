@@ -37,8 +37,8 @@ import kotlinx.coroutines.launch
  * allowed to satisfy the horizontal part of that request, but the request must not continue into
  * Home's vertical ScrollState and move the entire row. This responder is deliberately placed
  * outside the horizontal scrollable: the LazyRow remains the nearest responder for X scrolling,
- * while this row boundary consumes the remaining parent request. Vertical movement is therefore
- * owned exclusively by the explicit keyline anchor below.
+ * while this row boundary maps the remaining parent request to an already-visible point at the
+ * row centre. Vertical movement is therefore owned exclusively by the explicit keyline anchor.
  */
 @Suppress("DEPRECATION")
 @Composable
@@ -48,14 +48,25 @@ internal fun AnchoredHomeRow(
     content: @Composable (onRowFocused: () -> Unit) -> Unit,
 ) {
     var rowTopInRoot by remember { mutableFloatStateOf(Float.NaN) }
+    var rowHeightPx by remember { mutableFloatStateOf(Float.NaN) }
     var rowHasFocus by remember { mutableStateOf(false) }
     val targetTopPx = with(LocalDensity.current) { targetTop.toPx() }
     val scope = rememberCoroutineScope()
     val verticalBringIntoViewBoundary = remember {
         object : BringIntoViewResponder {
-            // Do not ask the vertical Home parent to move for a descendant-card request. The row
-            // itself will be aligned by anchorRow() when focus first enters this focus group.
-            override fun calculateRectForParent(localRect: Rect): Rect = Rect.Zero
+            // Returning Rect.Zero points at the row's leading edge and can itself make the outer
+            // vertical scrollable relocate. A one-pixel target at the stable row centre is already
+            // visible after keyline alignment, so LEFT/RIGHT creates no vertical scroll demand.
+            override fun calculateRectForParent(localRect: Rect): Rect {
+                val height = rowHeightPx
+                val centreY = if (height.isFinite() && height > 1f) height / 2f else 1f
+                return Rect(
+                    left = 0f,
+                    top = centreY,
+                    right = 1f,
+                    bottom = centreY + 1f,
+                )
+            }
 
             // Horizontal movement was already handled by the inner LazyRow. There is no local
             // vertical adjustment to perform at this row boundary.
@@ -97,6 +108,7 @@ internal fun AnchoredHomeRow(
             .focusGroup()
             .onGloballyPositioned { coordinates ->
                 rowTopInRoot = coordinates.positionInRoot().y
+                rowHeightPx = coordinates.size.height.toFloat()
             },
     ) {
         // Child focus still updates Hero/content state at the call sites, but vertical alignment is
