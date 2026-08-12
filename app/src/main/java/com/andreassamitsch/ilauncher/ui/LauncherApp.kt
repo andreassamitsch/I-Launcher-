@@ -4,16 +4,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -26,13 +22,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
@@ -87,13 +82,6 @@ enum class LauncherSection(val label: String) {
     LiveTv("Live TV"),
 }
 
-private val PRIMARY_SECTIONS = listOf(
-    LauncherSection.Home,
-    LauncherSection.Search,
-    LauncherSection.Apps,
-    LauncherSection.Settings,
-)
-
 private const val TMDB_ENRICHMENT_BATCH_SIZE = 4
 private const val TMDB_ENRICHMENT_RETRY_DELAY_MILLIS = 1_500L
 private const val LOCAL_SEARCH_DEBOUNCE_MILLIS = 120L
@@ -115,7 +103,6 @@ fun LauncherApp(
     val activity = context as? ComponentActivity
     val scope = rememberCoroutineScope()
     var section by rememberSaveable { mutableStateOf(LauncherSection.Home) }
-    var navigationVisible by rememberSaveable { mutableStateOf(true) }
     var showHomeSettings by rememberSaveable { mutableStateOf(false) }
     var selectedDetailsSourceId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedSearchDetailsMedia by remember { mutableStateOf<MediaItem?>(null) }
@@ -363,7 +350,6 @@ fun LauncherApp(
             }
         }
     }
-    LaunchedEffect(section) { if (section != LauncherSection.Home) navigationVisible = true }
 
     val selectedDetailsItem = selectedDetailsSourceId?.let { selectedSourceId ->
         homeWatchNextItems.firstOrNull { it.media.source.sourceId == selectedSourceId }
@@ -410,7 +396,6 @@ fun LauncherApp(
     BackHandler(enabled = showHomeSettings && selectedDetailsMedia == null && selectedLiveTvServiceReference == null) {
         showHomeSettings = false
         section = LauncherSection.Home
-        navigationVisible = true
     }
     BackHandler(
         enabled = !showHomeSettings && selectedDetailsMedia == null && selectedLiveTvServiceReference == null && section == LauncherSection.LiveTv,
@@ -566,78 +551,12 @@ fun LauncherApp(
                 onSetPreviewChannelTmdbEnrichment = previewChannelPreferences::setTmdbEnrichmentEnabled,
                 onBack = {
                     showHomeSettings = false
-                    navigationVisible = true
+                    section = LauncherSection.Home
                 },
                 modifier = Modifier.padding(horizontal = 38.dp, vertical = 12.dp),
             )
 
-            else -> Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(if (navigationVisible) 2.dp else 0.dp),
-            ) {
-                if (navigationVisible) {
-                    val activePrimarySection = if (section == LauncherSection.LiveTv) LauncherSection.Settings else section
-                    Row(
-                        modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        PRIMARY_SECTIONS.forEach { item ->
-                            val active = activePrimarySection == item
-                            val navColors = ButtonDefaults.colors(
-                                containerColor = Color.Transparent,
-                                contentColor = if (active) {
-                                    MaterialTheme.colorScheme.onSurface
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f)
-                                },
-                                focusedContainerColor = MaterialTheme.colorScheme.onSurface,
-                                focusedContentColor = MaterialTheme.colorScheme.surface,
-                                pressedContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.88f),
-                                pressedContentColor = MaterialTheme.colorScheme.surface,
-                                disabledContainerColor = Color.Transparent,
-                                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
-                            )
-                            TouchButton(
-                                onClick = {
-                                    showHomeSettings = false
-                                    section = item
-                                },
-                                onLongClick = if (item == LauncherSection.Home) {
-                                    {
-                                        section = LauncherSection.Home
-                                        navigationVisible = true
-                                        showHomeSettings = true
-                                    }
-                                } else null,
-                                scale = ButtonDefaults.scale(
-                                    focusedScale = 1.025f,
-                                    pressedScale = 0.985f,
-                                ),
-                                colors = navColors,
-                                contentPadding = PaddingValues(horizontal = 15.dp, vertical = 0.dp),
-                                modifier = Modifier
-                                    .height(40.dp)
-                                    .then(
-                                        if (active) {
-                                            Modifier.border(
-                                                width = 1.5.dp,
-                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.82f),
-                                                shape = RoundedCornerShape(50),
-                                            )
-                                        } else {
-                                            Modifier
-                                        },
-                                    ),
-                            ) {
-                                Text(
-                                    text = item.label,
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
-                            }
-                        }
-                    }
-                }
-
+            else -> Box(modifier = Modifier.fillMaxSize()) {
                 when (section) {
                     LauncherSection.Home -> HomeScreen(
                         apps = orderedHomeApps,
@@ -676,7 +595,9 @@ fun LauncherApp(
                             initialPlayerEpgProgramStartUtcMillis = null
                             selectedLiveTvServiceReference = channel.serviceReference
                         },
-                        onNavigationVisibilityChange = { navigationVisible = it },
+                        // Google TV keeps the selected destination visible independently of card focus.
+                        // Home content must therefore never reflow just because focus enters a rail.
+                        onNavigationVisibilityChange = {},
                         watchNextCardArtworkMode = watchNextCardArtworkMode,
                         watchNextHeroArtworkMode = watchNextHeroArtworkMode,
                         onLiveTvFocused = { channel ->
@@ -709,19 +630,31 @@ fun LauncherApp(
                         listState = searchListState,
                         focusRestoreResultId = searchFocusRestoreResultId,
                         focusRestoreGeneration = searchFocusRestoreGeneration,
-                        modifier = Modifier.padding(horizontal = 20.dp),
+                        modifier = Modifier.padding(
+                            start = 20.dp,
+                            end = 20.dp,
+                            top = GoogleTvTopNavigationHeight,
+                        ),
                     )
 
                     LauncherSection.Apps -> AppsScreen(
                         apps = apps,
                         onOpenApp = openApp,
-                        modifier = Modifier.padding(horizontal = 20.dp),
+                        modifier = Modifier.padding(
+                            start = 20.dp,
+                            end = 20.dp,
+                            top = GoogleTvTopNavigationHeight,
+                        ),
                     )
 
                     LauncherSection.Settings -> Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 24.dp),
+                            .padding(
+                                start = 24.dp,
+                                end = 24.dp,
+                                top = GoogleTvTopNavigationHeight + 6.dp,
+                            ),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         TouchButton(
@@ -807,9 +740,26 @@ fun LauncherApp(
                                 epgRepository.refresh(openWebifRepository.state.value.channels, force = true)
                             }
                         },
-                        modifier = Modifier.padding(horizontal = 20.dp),
+                        modifier = Modifier.padding(
+                            start = 20.dp,
+                            end = 20.dp,
+                            top = GoogleTvTopNavigationHeight,
+                        ),
                     )
                 }
+
+                GoogleTvTopNavigation(
+                    activeSection = section,
+                    onSelect = { destination ->
+                        showHomeSettings = false
+                        section = destination
+                    },
+                    onOpenHomeSettings = {
+                        section = LauncherSection.Home
+                        showHomeSettings = true
+                    },
+                    modifier = Modifier.align(Alignment.TopStart),
+                )
             }
         }
     }
