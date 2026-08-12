@@ -36,10 +36,11 @@ internal val GoogleTvTopNavigationHeight = 58.dp
 /**
  * Google-TV-inspired destination navigation.
  *
- * Selection and focus stay distinct. The currently opened destination owns the bright selected
- * pill. Moving focus over a different destination uses a deliberately weaker translucent focus
- * surface so two destinations never look simultaneously "active". The bar floats over the Hero
- * and therefore never participates in Home's row-keyline geometry.
+ * The navigation is an overlay layer and never participates in Home's row-keyline geometry.
+ * Content destinations stay on the left while search/settings are compact utilities on the right,
+ * matching the current Google-TV/TCL layout more closely. Selection and focus remain separate: the
+ * opened destination owns the bright pill while another focused destination uses only a weak focus
+ * surface until it is actually activated.
  */
 @Composable
 internal fun GoogleTvTopNavigation(
@@ -89,14 +90,6 @@ internal fun GoogleTvTopNavigation(
             )
 
             GoogleTvNavDestination(
-                label = "Suche",
-                section = LauncherSection.Search,
-                selected = selectedSection == LauncherSection.Search,
-                focusRequester = if (selectedSection == LauncherSection.Search) selectedFocusRequester else null,
-                showSearchIcon = true,
-                onClick = { onSelect(LauncherSection.Search) },
-            )
-            GoogleTvNavDestination(
                 label = "Empfehlungen",
                 section = LauncherSection.Home,
                 selected = selectedSection == LauncherSection.Home,
@@ -115,28 +108,72 @@ internal fun GoogleTvTopNavigation(
             Spacer(Modifier.weight(1f))
 
             GoogleTvNavDestination(
-                label = "⚙",
+                label = null,
+                section = LauncherSection.Search,
+                selected = selectedSection == LauncherSection.Search,
+                focusRequester = if (selectedSection == LauncherSection.Search) selectedFocusRequester else null,
+                onClick = { onSelect(LauncherSection.Search) },
+                compact = true,
+                glyph = GoogleTvUtilityGlyph.Search,
+            )
+            GoogleTvNavDestination(
+                label = null,
                 section = LauncherSection.Settings,
                 selected = selectedSection == LauncherSection.Settings,
                 focusRequester = if (selectedSection == LauncherSection.Settings) selectedFocusRequester else null,
                 onClick = { onSelect(LauncherSection.Settings) },
                 compact = true,
+                glyph = GoogleTvUtilityGlyph.Settings,
             )
         }
     }
 }
 
+@Composable
+internal fun GoogleTvCollapsedNavigationCue(
+    modifier: Modifier = Modifier,
+) {
+    Canvas(
+        modifier = modifier
+            .size(width = 26.dp, height = 18.dp)
+            .zIndex(20f),
+    ) {
+        val color = Color.White.copy(alpha = 0.58f)
+        val stroke = 1.6.dp.toPx()
+        val y = size.height * 0.62f
+        drawLine(
+            color = color,
+            start = androidx.compose.ui.geometry.Offset(size.width * 0.28f, y),
+            end = androidx.compose.ui.geometry.Offset(size.width * 0.50f, size.height * 0.36f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = color,
+            start = androidx.compose.ui.geometry.Offset(size.width * 0.50f, size.height * 0.36f),
+            end = androidx.compose.ui.geometry.Offset(size.width * 0.72f, y),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+    }
+}
+
+private enum class GoogleTvUtilityGlyph {
+    Search,
+    Settings,
+}
+
 @Suppress("UNUSED_PARAMETER")
 @Composable
 private fun GoogleTvNavDestination(
-    label: String,
+    label: String?,
     section: LauncherSection,
     selected: Boolean,
     focusRequester: FocusRequester?,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     compact: Boolean = false,
-    showSearchIcon: Boolean = false,
+    glyph: GoogleTvUtilityGlyph? = null,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val surface = MaterialTheme.colorScheme.surface
@@ -164,28 +201,31 @@ private fun GoogleTvNavDestination(
             pressedScale = 0.985f,
         ),
         contentPadding = PaddingValues(
-            horizontal = if (compact) 11.dp else 13.dp,
+            horizontal = if (compact) 0.dp else 13.dp,
             vertical = 0.dp,
         ),
         modifier = focusModifier
             .height(36.dp)
             .then(if (compact) Modifier.width(38.dp) else Modifier),
     ) {
-        if (showSearchIcon) {
-            SearchGlyph(color = if (selected) surface else onSurface.copy(alpha = 0.90f))
-            Spacer(Modifier.width(7.dp))
+        when (glyph) {
+            GoogleTvUtilityGlyph.Search -> SearchGlyph(if (selected) surface else onSurface.copy(alpha = 0.90f))
+            GoogleTvUtilityGlyph.Settings -> SettingsGlyph(if (selected) surface else onSurface.copy(alpha = 0.90f))
+            null -> Unit
         }
-        Text(
-            text = label,
-            style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-        )
+        label?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+            )
+        }
     }
 }
 
 @Composable
 private fun SearchGlyph(color: Color) {
-    Canvas(modifier = Modifier.size(15.dp)) {
+    Canvas(modifier = Modifier.size(16.dp)) {
         val stroke = 1.7.dp.toPx()
         val radius = size.minDimension * 0.29f
         val centerX = size.width * 0.43f
@@ -203,5 +243,33 @@ private fun SearchGlyph(color: Color) {
             strokeWidth = stroke,
             cap = StrokeCap.Round,
         )
+    }
+}
+
+@Composable
+private fun SettingsGlyph(color: Color) {
+    Canvas(modifier = Modifier.size(17.dp)) {
+        val stroke = 1.55.dp.toPx()
+        val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+        drawCircle(
+            color = color,
+            radius = size.minDimension * 0.22f,
+            center = center,
+            style = Stroke(width = stroke),
+        )
+        repeat(8) { index ->
+            val angle = Math.toRadians((index * 45.0) - 90.0)
+            val inner = size.minDimension * 0.34f
+            val outer = size.minDimension * 0.45f
+            val dx = kotlin.math.cos(angle).toFloat()
+            val dy = kotlin.math.sin(angle).toFloat()
+            drawLine(
+                color = color,
+                start = androidx.compose.ui.geometry.Offset(center.x + dx * inner, center.y + dy * inner),
+                end = androidx.compose.ui.geometry.Offset(center.x + dx * outer, center.y + dy * outer),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+        }
     }
 }
