@@ -6,7 +6,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -14,7 +13,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
@@ -26,7 +24,6 @@ import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.model.SearchResultKind
 import com.andreassamitsch.ilauncher.ui.GoogleTvTopNavigation
-import com.andreassamitsch.ilauncher.ui.GoogleTvTopNavigationHeight
 import com.andreassamitsch.ilauncher.ui.LauncherSection
 import com.andreassamitsch.ilauncher.ui.discover.ContentDiscoveryScreen
 import com.andreassamitsch.ilauncher.ui.theme.ILauncherTheme
@@ -77,12 +74,11 @@ class DiscoveryPreviewActivity : ComponentActivity() {
                             listState = rememberLazyListState(),
                             focusRestoreResultId = null,
                             focusRestoreGeneration = 0,
-                            modifier = Modifier.padding(top = GoogleTvTopNavigationHeight),
                         )
                         GoogleTvTopNavigation(
                             activeSection = activeSection,
                             onSelect = { activeSection = it },
-                            onOpenHomeSettings = {},
+                            onOpenSectionSettings = {},
                             modifier = Modifier.align(Alignment.TopStart),
                         )
                     }
@@ -117,6 +113,7 @@ class DiscoveryPreviewActivity : ComponentActivity() {
                         id = "fixture-${type.name.lowercase()}-$rowIndex-$index",
                         type = type,
                         title = title,
+                        overview = "Eine längere Beispielbeschreibung für $title. Sie zeigt im visuellen Test, dass der neue Discovery-Hero denselben Textbereich und dieselbe Scrolllogik wie die Home-Seite verwendet.",
                         releaseYear = 2026 - index,
                         tmdbId = 10_000 + rowIndex * 100 + index,
                         backdropUri = resourceUri(art[(index + rowIndex) % art.size]),
