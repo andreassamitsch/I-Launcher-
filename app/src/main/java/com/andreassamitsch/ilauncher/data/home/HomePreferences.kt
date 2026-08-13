@@ -11,6 +11,13 @@ enum class WatchNextArtworkMode {
     Series,
 }
 
+enum class HeroTextScrollSpeed(val linesPerSecond: Float) {
+    Off(0f),
+    Slow(0.28f),
+    Normal(0.42f),
+    Fast(0.65f),
+}
+
 class HomePreferences(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences(
         PREFS_NAME,
@@ -34,6 +41,9 @@ class HomePreferences(context: Context) {
     )
     val watchNextHeroArtworkMode: StateFlow<WatchNextArtworkMode> =
         _watchNextHeroArtworkMode.asStateFlow()
+
+    private val _heroTextScrollSpeed = MutableStateFlow(loadHeroTextScrollSpeed())
+    val heroTextScrollSpeed: StateFlow<HeroTextScrollSpeed> = _heroTextScrollSpeed.asStateFlow()
 
     fun moveRow(availableKeys: List<String>, key: String, delta: Int) {
         val current = mergeOrder(_rowOrder.value, availableKeys)
@@ -65,6 +75,11 @@ class HomePreferences(context: Context) {
         _watchNextHeroArtworkMode.value = mode
     }
 
+    fun setHeroTextScrollSpeed(speed: HeroTextScrollSpeed) {
+        preferences.edit().putString(KEY_HERO_TEXT_SCROLL_SPEED, speed.name).apply()
+        _heroTextScrollSpeed.value = speed
+    }
+
     private fun saveRowOrder(order: List<String>) {
         preferences.edit().putString(KEY_ROW_ORDER, encode(order)).apply()
         _rowOrder.value = order
@@ -82,6 +97,11 @@ class HomePreferences(context: Context) {
             ?.let { raw -> runCatching { WatchNextArtworkMode.valueOf(raw) }.getOrNull() }
             ?: WatchNextArtworkMode.Episode
 
+    private fun loadHeroTextScrollSpeed(): HeroTextScrollSpeed =
+        preferences.getString(KEY_HERO_TEXT_SCROLL_SPEED, null)
+            ?.let { raw -> runCatching { HeroTextScrollSpeed.valueOf(raw) }.getOrNull() }
+            ?: HeroTextScrollSpeed.Normal
+
     companion object {
         const val ROW_WATCH_NEXT = "watch_next"
         const val ROW_LIVE_TV = "live_tv"
@@ -92,6 +112,7 @@ class HomePreferences(context: Context) {
         private const val KEY_APP_ORDER = "app_order"
         private const val KEY_WATCH_NEXT_CARD_ARTWORK_MODE = "watch_next_card_artwork_mode"
         private const val KEY_WATCH_NEXT_HERO_ARTWORK_MODE = "watch_next_hero_artwork_mode"
+        private const val KEY_HERO_TEXT_SCROLL_SPEED = "hero_text_scroll_speed"
         private const val SEPARATOR = "\u001F"
 
         fun previewRowKey(channelId: String): String = "$ROW_PREVIEW_PREFIX$channelId"
