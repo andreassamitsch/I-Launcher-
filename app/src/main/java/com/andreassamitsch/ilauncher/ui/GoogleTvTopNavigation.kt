@@ -116,12 +116,14 @@ internal fun GoogleTvTopNavigation(
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 GoogleTvNavDestination(
-                    label = "Empfehlungen",
+                    label = null,
                     section = LauncherSection.Home,
                     selected = selectedSection == LauncherSection.Home,
                     focusRequester = if (selectedSection == LauncherSection.Home) selectedFocusRequester else null,
                     onClick = { onSelect(LauncherSection.Home) },
                     onLongClick = onOpenHomeSettings,
+                    compact = true,
+                    glyph = GoogleTvUtilityGlyph.Home,
                 )
                 GoogleTvNavDestination(
                     label = "Filme",
@@ -200,6 +202,7 @@ internal fun GoogleTvCollapsedNavigationCue(
 }
 
 private enum class GoogleTvUtilityGlyph {
+    Home,
     Search,
     Settings,
 }
@@ -250,6 +253,7 @@ private fun GoogleTvNavDestination(
             .then(if (compact) Modifier.width(38.dp) else Modifier),
     ) {
         when (glyph) {
+            GoogleTvUtilityGlyph.Home -> HomeGlyph(if (selected) surface else onSurface.copy(alpha = 0.90f))
             GoogleTvUtilityGlyph.Search -> SearchGlyph(if (selected) surface else onSurface.copy(alpha = 0.90f))
             GoogleTvUtilityGlyph.Settings -> SettingsGlyph(if (selected) surface else onSurface.copy(alpha = 0.90f))
             null -> Unit
@@ -261,6 +265,32 @@ private fun GoogleTvNavDestination(
                 maxLines = 1,
             )
         }
+    }
+}
+
+@Composable
+private fun HomeGlyph(color: Color) {
+    Canvas(modifier = Modifier.size(18.dp)) {
+        val stroke = 1.7.dp.toPx()
+        val house = Path().apply {
+            moveTo(size.width * 0.16f, size.height * 0.48f)
+            lineTo(size.width * 0.50f, size.height * 0.18f)
+            lineTo(size.width * 0.84f, size.height * 0.48f)
+            lineTo(size.width * 0.75f, size.height * 0.48f)
+            lineTo(size.width * 0.75f, size.height * 0.82f)
+            lineTo(size.width * 0.25f, size.height * 0.82f)
+            lineTo(size.width * 0.25f, size.height * 0.48f)
+            close()
+        }
+        drawPath(
+            path = house,
+            color = color,
+            style = Stroke(
+                width = stroke,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round,
+            ),
+        )
     }
 }
 
