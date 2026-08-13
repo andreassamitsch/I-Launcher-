@@ -8,7 +8,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
@@ -29,12 +33,16 @@ internal fun PersonDetailsScreen(
     modifier: Modifier = Modifier,
 ) {
     val scroll = rememberScrollState()
+    val backRequester = remember(person?.tmdbId) { FocusRequester() }
+    LaunchedEffect(person?.tmdbId, isLoading) {
+        runCatching { backRequester.requestFocus() }
+    }
     Column(
         modifier.fillMaxSize().verticalScroll(scroll)
             .touchScrollFallback(scroll, Orientation.Vertical)
             .padding(start = 44.dp, end = 30.dp, top = 30.dp, bottom = 80.dp),
     ) {
-        TouchButton(onClick = onBack) { Text("Zurück") }
+        TouchButton(onClick = onBack, modifier = Modifier.focusRequester(backRequester)) { Text("Zurück") }
         Spacer(Modifier.height(24.dp))
         if (person == null) {
             Text(
