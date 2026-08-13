@@ -221,7 +221,7 @@ private fun DiscoveryRow(
         ) {
             items(section.items, key = SearchItem::id) { result ->
                 val media = result.media ?: return@items
-                var cardModifier = Modifier
+                var cardModifier: Modifier = Modifier
                 if (result.id == restoreResultId) cardModifier = cardModifier.focusRequester(restoreRequester)
                 navRequester?.let { requester -> cardModifier = cardModifier.focusProperties { up = requester } }
                 WatchNextCard(
