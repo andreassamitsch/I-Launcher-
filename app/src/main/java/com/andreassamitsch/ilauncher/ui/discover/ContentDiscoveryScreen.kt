@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,12 +26,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.home.HeroTextScrollSpeed
 import com.andreassamitsch.ilauncher.data.search.SearchBrowseSection
-import com.andreassamitsch.ilauncher.model.MediaItem
+import com.andreassamitsch.ilauncher.data.tmdb.TmdbDiscoveryPreferences
+import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.ui.components.WatchNextCard
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
@@ -47,17 +50,6 @@ private val DiscoveryCardSpacing = 14.dp
 private val DiscoveryBottomFocusReserve = 120.dp
 private const val DiscoveryHeroDetailsDelayMillis = 350L
 
-/**
- * Deliberate TMDB discovery surface for one media type.
- *
- * The page follows the same visual contract as Home: the hero owns the backdrop layer while the
- * first media rail overlaps its lower edge. Focusing a card updates the hero without moving the
- * row keyline. The top navigation remains a separate overlay owned by LauncherApp.
- *
- * Browse results deliberately stay lightweight. After focus settles briefly, the caller may enrich
- * only that Hero with cached TMDB details. This supplies logos and alternate backdrops without
- * issuing detail requests for cards the user merely flies over with the D-pad.
- */
 @Composable
 fun ContentDiscoveryScreen(
     title: String,
@@ -70,35 +62,72 @@ fun ContentDiscoveryScreen(
     focusRestoreResultId: String?,
     focusRestoreGeneration: Int,
     heroTextScrollSpeed: HeroTextScrollSpeed = HeroTextScrollSpeed.Normal,
-    loadHeroDetails: suspend (MediaItem) -> MediaItem = { it },
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val discoveryLoader = LocalTmdbDiscoveryLoader.current
+    val discoveryPreferences = remember(context) { TmdbDiscoveryPreferences(context) }
+    val movieRowKeys by discoveryPreferences.movieRowKeys.collectAsState()
+    val seriesRowKeys by discoveryPreferences.seriesRowKeys.collectAsState()
+    val baseMediaType = remember(sections) {
+        sections.asSequence()
+            .flatMap { it.items.asSequence() }
+            .mapNotNull { it.media?.type }
+            .firstOrNull { it == MediaType.Movie || it == MediaType.Series }
+    }
+    val selectedRowKeys = when (baseMediaType) {
+        MediaType.Movie -> movieRowKeys
+        MediaType.Series -> seriesRowKeys
+        else -> emptyList()
+    }
+    var selectedSections by remember(baseMediaType) {
+        mutableStateOf<List<SearchBrowseSection>?>(null)
+    }
+
+    LaunchedEffect(baseMediaType, selectedRowKeys, sections, discoveryLoader) {
+        val type = baseMediaType ?: run {
+            selectedSections = null
+            return@LaunchedEffect
+        }
+        val loader = discoveryLoader ?: run {
+            selectedSections = null
+            return@LaunchedEffect
+        }
+        if (selectedRowKeys.isEmpty() || sections.map(SearchBrowseSection::key) == selectedRowKeys) {
+            selectedSections = null
+            return@LaunchedEffect
+        }
+        val loaded = runCatching { loader.browse(type, selectedRowKeys) }.getOrDefault(emptyList())
+        selectedSections = loaded.takeIf(List<SearchBrowseSection>::isNotEmpty)
+    }
+
+    val effectiveSections = selectedSections ?: sections
     val restoreRequester = remember(focusRestoreResultId) { FocusRequester() }
-    val firstResult = remember(sections) {
-        sections.asSequence().flatMap { it.items.asSequence() }.firstOrNull { it.media != null }
+    val firstResult = remember(effectiveSections) {
+        effectiveSections.asSequence().flatMap { it.items.asSequence() }.firstOrNull { it.media != null }
     }
     var heroResult by remember { mutableStateOf<SearchItem?>(firstResult) }
     var heroMedia by remember { mutableStateOf(firstResult?.media) }
 
-    LaunchedEffect(sections, firstResult) {
+    LaunchedEffect(effectiveSections, firstResult) {
         val currentId = heroResult?.id
-        val currentStillExists = currentId != null && sections.any { section ->
+        val currentStillExists = currentId != null && effectiveSections.any { section ->
             section.items.any { it.id == currentId }
         }
         if (!currentStillExists) heroResult = firstResult
     }
 
-    LaunchedEffect(heroResult?.id) {
+    LaunchedEffect(heroResult?.id, discoveryLoader) {
         val base = heroResult?.media
         heroMedia = base
-        if (base?.tmdbId == null) return@LaunchedEffect
+        if (base?.tmdbId == null || discoveryLoader == null) return@LaunchedEffect
         delay(DiscoveryHeroDetailsDelayMillis)
-        heroMedia = runCatching { loadHeroDetails(base) }.getOrDefault(base)
+        heroMedia = runCatching { discoveryLoader.loadDetails(base) }.getOrDefault(base)
     }
 
-    LaunchedEffect(focusRestoreGeneration, focusRestoreResultId, sections) {
+    LaunchedEffect(focusRestoreGeneration, focusRestoreResultId, effectiveSections) {
         if (focusRestoreGeneration <= 0 || focusRestoreResultId == null) return@LaunchedEffect
-        val sectionIndex = sections.indexOfFirst { section ->
+        val sectionIndex = effectiveSections.indexOfFirst { section ->
             section.items.any { it.id == focusRestoreResultId }
         }
         if (sectionIndex >= 0) {
@@ -145,11 +174,8 @@ fun ContentDiscoveryScreen(
                 !tmdbConfigured -> DiscoveryMessage(
                     "TMDB ist nicht konfiguriert. Ohne TMDB-Zugang können diese Inhalte nicht geladen werden.",
                 )
-
-                sections.isEmpty() && isLoading -> DiscoveryMessage("TMDB-Inhalte werden geladen …")
-
-                sections.isEmpty() -> DiscoveryMessage("Keine TMDB-Inhalte verfügbar.")
-
+                effectiveSections.isEmpty() && isLoading -> DiscoveryMessage("TMDB-Inhalte werden geladen …")
+                effectiveSections.isEmpty() -> DiscoveryMessage("Keine TMDB-Inhalte verfügbar.")
                 else -> LazyColumn(
                     state = listState,
                     modifier = Modifier
@@ -158,7 +184,7 @@ fun ContentDiscoveryScreen(
                     contentPadding = PaddingValues(bottom = DiscoveryBottomFocusReserve),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(sections, key = SearchBrowseSection::key) { section ->
+                    items(effectiveSections, key = SearchBrowseSection::key) { section ->
                         DiscoveryRow(
                             section = section,
                             focusRestoreResultId = focusRestoreResultId,
