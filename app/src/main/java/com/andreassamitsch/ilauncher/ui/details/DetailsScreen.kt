@@ -31,6 +31,7 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.R
 import com.andreassamitsch.ilauncher.data.handoff.ContentSearchHandoff
+import com.andreassamitsch.ilauncher.data.handoff.ContentSearchTarget
 import com.andreassamitsch.ilauncher.data.youtube.YouTubeEmbedPlayer
 import com.andreassamitsch.ilauncher.model.*
 import com.andreassamitsch.ilauncher.ui.components.TouchButton
@@ -49,7 +50,6 @@ fun DetailsScreen(
     onTrailerSearch: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val loader = LocalTmdbDiscoveryLoader.current
     var displayItem by remember(item.id) { mutableStateOf(item) }
     var credits by remember(item.id) { mutableStateOf(MediaCredits()) }
@@ -127,7 +127,6 @@ fun DetailsScreen(
         credits = credits,
         onOpenPerson = { selectedPersonId = it.tmdbId },
         onPlay = onPlay,
-        onBack = onBack,
         onTrailer = onTrailer,
         onTrailerSearch = onTrailerSearch,
         modifier = modifier,
@@ -141,7 +140,6 @@ private fun MediaDetailsContent(
     credits: MediaCredits,
     onOpenPerson: (MediaPerson) -> Unit,
     onPlay: (() -> Unit)?,
-    onBack: () -> Unit,
     onTrailer: (() -> Unit)?,
     onTrailerSearch: (() -> Unit)?,
     modifier: Modifier,
@@ -163,12 +161,13 @@ private fun MediaDetailsContent(
         onPlay != null -> "play"
         externalTargets.isNotEmpty() -> "external:${externalTargets.first().name}"
         hasTrailer -> "trailer"
-        else -> "back"
+        else -> null
     }
     val artwork = item.heroBackdropUri ?: item.backdropUri ?: item.episodeStillUri
         ?: item.sourceArtworkUri ?: item.posterUri ?: item.preferredArtworkUri
 
     LaunchedEffect(item.id, firstActionKey) {
+        if (firstActionKey == null) return@LaunchedEffect
         withFrameNanos { }
         runCatching { firstActionRequester.requestFocus() }
     }
@@ -207,7 +206,6 @@ private fun MediaDetailsContent(
 
         Column(
             Modifier.fillMaxSize().verticalScroll(scrollState)
-                .touchScrollFallback(scrollState, Orientation.Vertical)
                 .padding(horizontal = 44.dp, vertical = 26.dp),
         ) {
             Spacer(Modifier.height(62.dp))
@@ -264,30 +262,12 @@ private fun MediaDetailsContent(
                     }
                 }
                 externalTargets.forEach { target ->
-                    val appIcon = remember(target, handoff) { handoff.appIcon(target) }
-                    TouchButton(
-                        onClick = { handoff.launch(target, item.title) },
-                        modifier = Modifier.firstAction("external:${target.name}").size(52.dp),
-                        contentPadding = PaddingValues(0.dp),
-                    ) {
-                        Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
-                            appIcon?.let { icon ->
-                                AsyncImage(
-                                    model = icon,
-                                    contentDescription = "${target.displayName} durchsuchen",
-                                    modifier = Modifier.size(32.dp),
-                                )
-                            }
-                            Image(
-                                painter = painterResource(R.drawable.ic_search),
-                                contentDescription = null,
-                                modifier = Modifier.align(Alignment.BottomEnd).size(15.dp)
-                                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(50))
-                                    .padding(2.dp),
-                                colorFilter = ColorFilter.tint(LocalContentColor.current),
-                            )
-                        }
-                    }
+                    ProviderSearchAction(
+                        target = target,
+                        handoff = handoff,
+                        title = item.title,
+                        modifier = Modifier.firstAction("external:${target.name}"),
+                    )
                 }
                 when {
                     internalTrailerId != null -> TouchButton(
@@ -297,7 +277,6 @@ private fun MediaDetailsContent(
                     onTrailer != null -> TouchButton(onClick = onTrailer, modifier = Modifier.firstAction("trailer")) { Text("Trailer") }
                     onTrailerSearch != null -> TouchButton(onClick = onTrailerSearch, modifier = Modifier.firstAction("trailer")) { Text("Trailer suchen") }
                 }
-                TouchButton(onClick = onBack, modifier = Modifier.firstAction("back")) { Text("Zurück") }
             }
 
             item.overview?.takeIf(String::isNotBlank)?.let { overview ->
@@ -320,6 +299,43 @@ private fun MediaDetailsContent(
             }
             Spacer(Modifier.height(70.dp))
         }
+    }
+}
+
+@Composable
+private fun ProviderSearchAction(
+    target: ContentSearchTarget,
+    handoff: ContentSearchHandoff,
+    title: String,
+    modifier: Modifier = Modifier,
+) {
+    val appIcon = remember(target, handoff) { handoff.appIcon(target) }
+    TouchButton(
+        onClick = { handoff.launch(target, title) },
+        modifier = modifier.width(82.dp).height(48.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+    ) {
+        if (appIcon != null) {
+            AsyncImage(
+                model = appIcon,
+                contentDescription = target.displayName,
+                modifier = Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)),
+            )
+        } else {
+            Text(target.displayName.take(1), style = MaterialTheme.typography.labelLarge)
+        }
+        Spacer(Modifier.width(8.dp))
+        Box(
+            Modifier.width(1.dp).height(20.dp)
+                .background(LocalContentColor.current.copy(alpha = .22f)),
+        )
+        Spacer(Modifier.width(8.dp))
+        Image(
+            painter = painterResource(R.drawable.ic_search),
+            contentDescription = "In ${target.displayName} suchen",
+            modifier = Modifier.size(17.dp),
+            colorFilter = ColorFilter.tint(LocalContentColor.current),
+        )
     }
 }
 
