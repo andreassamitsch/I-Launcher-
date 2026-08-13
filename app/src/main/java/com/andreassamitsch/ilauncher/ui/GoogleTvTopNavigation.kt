@@ -46,12 +46,10 @@ internal val GoogleTvTopNavigationHeight = 58.dp
  * Google-TV-inspired destination navigation.
  *
  * The navigation is an overlay layer and never participates in Home's row-keyline geometry.
- * Content destinations stay on the left while search/settings are compact utilities on the right,
- * matching current Google-TV/TCL layouts. On Home, leaving the navigation for the content rails
- * visually collapses the bar to the small top chevron seen on Google TV. The invisible navigation
- * remains in the focus tree at the same coordinates. Home additionally exposes one explicit shared
- * FocusRequester because the large Hero focus rectangle overlaps this bar and geometric UP-search
- * is therefore not deterministic on real TV focus engines.
+ * Personal Home and deliberate TMDB discovery are first-class destinations. The full Apps page is
+ * intentionally not a top-level destination; it is opened from the Home app dock instead.
+ * Search/settings remain compact utilities on the right. On Home, leaving the navigation for the
+ * content rails visually collapses the bar to a small top chevron while it remains in the focus tree.
  */
 @Composable
 internal fun GoogleTvTopNavigation(
@@ -60,16 +58,16 @@ internal fun GoogleTvTopNavigation(
     onOpenHomeSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val selectedSection = if (activeSection == LauncherSection.LiveTv) {
-        LauncherSection.Settings
-    } else {
-        activeSection
+    val selectedSection: LauncherSection? = when (activeSection) {
+        LauncherSection.LiveTv -> LauncherSection.Settings
+        LauncherSection.Apps -> null // Internal page reached from the Home app dock.
+        else -> activeSection
     }
     val nonHomeSelectedFocusRequester = remember { FocusRequester() }
-    val selectedFocusRequester = if (selectedSection == LauncherSection.Home) {
-        HomeTopNavigationFocusRequester
-    } else {
-        nonHomeSelectedFocusRequester
+    val selectedFocusRequester: FocusRequester? = when (selectedSection) {
+        LauncherSection.Home -> HomeTopNavigationFocusRequester
+        null -> null
+        else -> nonHomeSelectedFocusRequester
     }
     var navigationHasFocus by remember { mutableStateOf(true) }
     val collapsed = activeSection == LauncherSection.Home && !navigationHasFocus
@@ -85,7 +83,7 @@ internal fun GoogleTvTopNavigation(
     )
 
     LaunchedEffect(selectedSection, selectedFocusRequester) {
-        selectedFocusRequester.requestFocus()
+        selectedFocusRequester?.requestFocus()
     }
 
     Box(
@@ -117,13 +115,6 @@ internal fun GoogleTvTopNavigation(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                Text(
-                    text = "I Launcher",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.93f),
-                    modifier = Modifier.padding(end = 8.dp),
-                )
-
                 GoogleTvNavDestination(
                     label = "Empfehlungen",
                     section = LauncherSection.Home,
@@ -133,11 +124,18 @@ internal fun GoogleTvTopNavigation(
                     onLongClick = onOpenHomeSettings,
                 )
                 GoogleTvNavDestination(
-                    label = "Apps",
-                    section = LauncherSection.Apps,
-                    selected = selectedSection == LauncherSection.Apps,
-                    focusRequester = if (selectedSection == LauncherSection.Apps) selectedFocusRequester else null,
-                    onClick = { onSelect(LauncherSection.Apps) },
+                    label = "Filme",
+                    section = LauncherSection.Movies,
+                    selected = selectedSection == LauncherSection.Movies,
+                    focusRequester = if (selectedSection == LauncherSection.Movies) selectedFocusRequester else null,
+                    onClick = { onSelect(LauncherSection.Movies) },
+                )
+                GoogleTvNavDestination(
+                    label = "Serien",
+                    section = LauncherSection.Series,
+                    selected = selectedSection == LauncherSection.Series,
+                    focusRequester = if (selectedSection == LauncherSection.Series) selectedFocusRequester else null,
+                    onClick = { onSelect(LauncherSection.Series) },
                 )
 
                 Spacer(Modifier.weight(1f))
