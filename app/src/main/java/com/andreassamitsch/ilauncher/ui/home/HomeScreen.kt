@@ -50,14 +50,17 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.Border
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
+import com.andreassamitsch.ilauncher.data.home.HeroTextScrollSpeed
 import com.andreassamitsch.ilauncher.data.home.HomePreferences
 import com.andreassamitsch.ilauncher.data.home.WatchNextArtworkMode
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifState
@@ -83,9 +86,12 @@ import kotlinx.coroutines.delay
 private val HOME_HERO_HEIGHT = 360.dp
 private val HOME_FIRST_RAIL_TOP = 275.dp
 private val HOME_MEDIA_RAIL_VERTICAL_PADDING = 26.dp
+private val HOME_MEDIA_CARD_SPACING = 14.dp
 private val HOME_BOTTOM_FOCUS_RESERVE = 132.dp
 private val HOME_APP_DOCK_ICON_SIZE = 82.dp
 private val HOME_APP_DOCK_CARD_WIDTH = 94.dp
+private val HERO_DESCRIPTION_HEIGHT = 68.dp
+private val HERO_DESCRIPTION_LINE_HEIGHT = 18.sp
 
 @Composable
 fun HomeScreen(
@@ -111,6 +117,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     watchNextCardArtworkMode: WatchNextArtworkMode = WatchNextArtworkMode.Episode,
     watchNextHeroArtworkMode: WatchNextArtworkMode = WatchNextArtworkMode.Episode,
+    heroTextScrollSpeed: HeroTextScrollSpeed = HeroTextScrollSpeed.Normal,
     onLiveTvFocused: (LiveTvChannel) -> Unit = {},
     watchNextListState: LazyListState = rememberLazyListState(),
     liveTvListState: LazyListState = rememberLazyListState(),
@@ -208,6 +215,7 @@ fun HomeScreen(
             onOpenMediaDetails = onOpenMediaDetails,
             onOpenApp = onOpenApp,
             onFocused = { onNavigationVisibilityChange(true) },
+            textScrollSpeed = heroTextScrollSpeed,
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .fillMaxWidth()
@@ -351,7 +359,7 @@ private fun WatchNextHomeRow(
                 top = HOME_MEDIA_RAIL_VERTICAL_PADDING,
                 bottom = HOME_MEDIA_RAIL_VERTICAL_PADDING,
             ),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(HOME_MEDIA_CARD_SPACING),
         ) {
             items(
                 items = items,
@@ -406,7 +414,7 @@ private fun LiveTvHomeRow(
                 top = HOME_MEDIA_RAIL_VERTICAL_PADDING,
                 bottom = HOME_MEDIA_RAIL_VERTICAL_PADDING,
             ),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(HOME_MEDIA_CARD_SPACING),
         ) {
             items(state.channels, key = LiveTvChannel::serviceReference) { channel ->
                 val cardModifier = if (channel.serviceReference == restoreServiceReference) {
@@ -456,7 +464,7 @@ private fun PreviewHomeRow(
                 top = HOME_MEDIA_RAIL_VERTICAL_PADDING,
                 bottom = HOME_MEDIA_RAIL_VERTICAL_PADDING,
             ),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(HOME_MEDIA_CARD_SPACING),
         ) {
             items(channel.programs, key = { it.media.id }) { program ->
                 WatchNextCard(
@@ -626,11 +634,12 @@ private fun HomeRowHeader(title: String, sourceApp: InstalledApp? = null) {
 }
 
 @Composable
-private fun HomeHero(
+internal fun HomeHero(
     content: HomeHeroContent,
     onOpenMediaDetails: (MediaItem, String?) -> Unit,
     onOpenApp: (InstalledApp) -> Unit,
     onFocused: () -> Unit,
+    textScrollSpeed: HeroTextScrollSpeed = HeroTextScrollSpeed.Normal,
     modifier: Modifier = Modifier,
 ) {
     TouchCard(
@@ -761,8 +770,8 @@ private fun HomeHero(
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .fillMaxWidth(0.43f)
-                        .padding(start = 38.dp, end = 12.dp, bottom = 86.dp),
+                        .fillMaxWidth(0.46f)
+                        .padding(start = 38.dp, end = 12.dp, bottom = 82.dp),
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     heroContent.logoUri?.takeIf { it.isNotBlank() }?.let { logo ->
@@ -800,9 +809,13 @@ private fun HomeHero(
                         )
                     }
                     heroContent.description?.takeIf { it.isNotBlank() }?.let { description ->
-                        AutoScrollingHeroDescription(heroContent.key, description)
+                        AutoScrollingHeroDescription(
+                            key = heroContent.key,
+                            text = description,
+                            speed = textScrollSpeed,
+                        )
                     }
-                    if (heroContent.detailsMedia != null || heroContent.app != null) {
+                    if (heroContent.app != null) {
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
@@ -810,7 +823,7 @@ private fun HomeHero(
                                 .padding(horizontal = 14.dp, vertical = 6.dp),
                         ) {
                             Text(
-                                text = if (heroContent.app != null) "Öffnen" else "Details",
+                                text = "Öffnen",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.background,
                             )
@@ -823,13 +836,22 @@ private fun HomeHero(
 }
 
 @Composable
-private fun AutoScrollingHeroDescription(key: String, text: String) {
+private fun AutoScrollingHeroDescription(
+    key: String,
+    text: String,
+    speed: HeroTextScrollSpeed,
+) {
     val scrollState = remember(key, text) { androidx.compose.foundation.ScrollState(0) }
-    LaunchedEffect(key, text, scrollState.maxValue) {
-        if (scrollState.maxValue <= 0) return@LaunchedEffect
+    val density = LocalDensity.current
+    val lineHeightPx = with(density) { HERO_DESCRIPTION_LINE_HEIGHT.toPx() }
+    LaunchedEffect(key, text, speed, scrollState.maxValue, lineHeightPx) {
+        val duration = heroTextScrollDurationMillis(
+            distancePx = scrollState.maxValue,
+            lineHeightPx = lineHeightPx,
+            speed = speed,
+        ) ?: return@LaunchedEffect
         delay(7_500)
         while (true) {
-            val duration = (scrollState.maxValue * 125).coerceIn(16_000, 52_000)
             scrollState.animateScrollTo(
                 scrollState.maxValue,
                 animationSpec = tween(durationMillis = duration, easing = LinearEasing),
@@ -842,18 +864,18 @@ private fun AutoScrollingHeroDescription(key: String, text: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(44.dp)
+            .height(HERO_DESCRIPTION_HEIGHT)
             .verticalScroll(scrollState),
     ) {
         Text(
             text = text,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodySmall.copy(lineHeight = HERO_DESCRIPTION_LINE_HEIGHT),
             color = MaterialTheme.colorScheme.onBackground,
         )
     }
 }
 
-private data class HomeHeroContent(
+internal data class HomeHeroContent(
     val key: String,
     val title: String,
     val eyebrow: String? = null,
@@ -868,7 +890,7 @@ private data class HomeHeroContent(
     val app: InstalledApp? = null,
 )
 
-private fun mediaHero(
+internal fun mediaHero(
     item: MediaItem,
     sourceLabel: String?,
     artworkOverride: Pair<String?, Boolean>? = null,
