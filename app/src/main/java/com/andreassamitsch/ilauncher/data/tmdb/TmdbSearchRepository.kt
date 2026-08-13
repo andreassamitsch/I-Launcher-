@@ -24,7 +24,7 @@ class TmdbSearchRepository(
     private val imageConfigurationStore = TmdbImageConfigurationStore(appContext)
     private val queryCache = LinkedHashMap<String, CachedSearch>()
     private val detailsCache = LinkedHashMap<String, CachedDetails>()
-    private var browseCache: CachedBrowse? = null
+    private val browseCache = LinkedHashMap<MediaType, CachedBrowse>()
 
     val isConfigured: Boolean
         get() = network.isConfigured
@@ -56,52 +56,101 @@ class TmdbSearchRepository(
         items
     }
 
-    suspend fun browse(): List<TmdbBrowseSection> = withContext(Dispatchers.IO) {
-        if (!network.isConfigured) return@withContext emptyList()
+    /**
+     * Deliberate content discovery is split by media type. Home stays personal/local while the
+     * Movies and Series destinations can spend network work on trends, popularity and categories.
+     * Each page is cached independently so switching tabs does not re-fetch unchanged TMDB rows.
+     */
+    suspend fun browse(type: MediaType): List<TmdbBrowseSection> = withContext(Dispatchers.IO) {
+        if (!network.isConfigured || type !in setOf(MediaType.Movie, MediaType.Series)) {
+            return@withContext emptyList()
+        }
         val now = System.currentTimeMillis()
-        browseCache
+        browseCache[type]
             ?.takeIf { now - it.updatedAtUtcMillis <= BROWSE_CACHE_MILLIS }
             ?.let { return@withContext it.sections }
 
         val sections = runCatching {
             val images = ensureImageConfiguration(now)
             coroutineScope {
-                val trendingTv = async {
-                    network.api.trendingTv(language = LANGUAGE).results
-                        .mapNotNull { it.toSearchMedia(images, MediaType.Series) }
+                val trending = async { loadTrending(type, images) }
+                val popular = async {
+                    loadDiscover(
+                        type = type,
+                        images = images,
+                        sortBy = SORT_POPULARITY,
+                        genreId = null,
+                        voteCountGte = 0,
+                    )
                 }
-                val trendingMovies = async {
-                    network.api.trendingMovies(language = LANGUAGE).results
-                        .mapNotNull { it.toSearchMedia(images, MediaType.Movie) }
+                val topRated = async {
+                    loadDiscover(
+                        type = type,
+                        images = images,
+                        sortBy = SORT_RATING,
+                        genreId = null,
+                        voteCountGte = if (type == MediaType.Movie) 300 else 200,
+                    )
                 }
-                val sciFiTv = async {
-                    network.api.discoverTv(
-                        language = LANGUAGE,
-                        withGenres = TV_SCI_FI_GENRE_ID,
-                        voteCountGte = 200,
-                    ).results.mapNotNull { it.toSearchMedia(images, MediaType.Series) }
-                }
-                val sciFiMovies = async {
-                    network.api.discoverMovies(
-                        language = LANGUAGE,
-                        withGenres = MOVIE_SCI_FI_GENRE_ID,
-                        voteCountGte = 300,
-                    ).results.mapNotNull { it.toSearchMedia(images, MediaType.Movie) }
+                val categoryRows = discoveryCategories(type).map { category ->
+                    category to async {
+                        loadDiscover(
+                            type = type,
+                            images = images,
+                            sortBy = SORT_POPULARITY,
+                            genreId = category.genreId,
+                            voteCountGte = CATEGORY_MIN_VOTE_COUNT,
+                        )
+                    }
                 }
 
-                listOf(
-                    TmdbBrowseSection("trending-tv", "Serien im Trend", trendingTv.await().take(BROWSE_ROW_LIMIT)),
-                    TmdbBrowseSection("trending-movies", "Filme im Trend", trendingMovies.await().take(BROWSE_ROW_LIMIT)),
-                    TmdbBrowseSection("top-sci-fi-tv", "Top Science-Fiction-Serien", sciFiTv.await().take(BROWSE_ROW_LIMIT)),
-                    TmdbBrowseSection("top-sci-fi-movies", "Top Science-Fiction-Filme", sciFiMovies.await().take(BROWSE_ROW_LIMIT)),
-                ).filter { it.items.isNotEmpty() }
+                buildList {
+                    add(
+                        TmdbBrowseSection(
+                            key = "${type.cacheKey()}-trending",
+                            title = if (type == MediaType.Movie) "Filme im Trend" else "Serien im Trend",
+                            items = trending.await().take(BROWSE_ROW_LIMIT),
+                        ),
+                    )
+                    add(
+                        TmdbBrowseSection(
+                            key = "${type.cacheKey()}-popular",
+                            title = if (type == MediaType.Movie) "Beliebte Filme" else "Beliebte Serien",
+                            items = popular.await().take(BROWSE_ROW_LIMIT),
+                        ),
+                    )
+                    add(
+                        TmdbBrowseSection(
+                            key = "${type.cacheKey()}-top-rated",
+                            title = if (type == MediaType.Movie) "Top bewertete Filme" else "Top bewertete Serien",
+                            items = topRated.await().take(BROWSE_ROW_LIMIT),
+                        ),
+                    )
+                    categoryRows.forEach { (category, deferred) ->
+                        add(
+                            TmdbBrowseSection(
+                                key = "${type.cacheKey()}-genre-${category.genreId}",
+                                title = category.title,
+                                items = deferred.await().take(BROWSE_ROW_LIMIT),
+                            ),
+                        )
+                    }
+                }.filter { it.items.isNotEmpty() }
             }
         }.onFailure { throwable ->
-            Log.w(SEARCH_TAG, "TMDB browse failed (${throwable.javaClass.simpleName})")
+            Log.w(SEARCH_TAG, "TMDB ${type.cacheKey()} discovery failed (${throwable.javaClass.simpleName})")
         }.getOrDefault(emptyList())
 
-        browseCache = CachedBrowse(sections, now)
+        browseCache[type] = CachedBrowse(sections, now)
+        trimCache(browseCache, MAX_BROWSE_CACHE_ENTRIES)
         sections
+    }
+
+    /** Kept for the search surface and older callers; discovery pages should prefer [browse]. */
+    suspend fun browse(): List<TmdbBrowseSection> {
+        val series = browse(MediaType.Series)
+        val movies = browse(MediaType.Movie)
+        return series.take(2) + movies.take(2)
     }
 
     suspend fun loadDetails(item: MediaItem): MediaItem? = withContext(Dispatchers.IO) {
@@ -130,6 +179,43 @@ class TmdbSearchRepository(
         detailsCache[key] = CachedDetails(detailed, now)
         trimCache(detailsCache, MAX_DETAILS_CACHE_ENTRIES)
         detailed
+    }
+
+    private suspend fun loadTrending(
+        type: MediaType,
+        images: TmdbImageConfiguration?,
+    ): List<MediaItem> {
+        val results = when (type) {
+            MediaType.Movie -> network.api.trendingMovies(language = LANGUAGE).results
+            MediaType.Series -> network.api.trendingTv(language = LANGUAGE).results
+            else -> emptyList()
+        }
+        return results.mapNotNull { it.toSearchMedia(images, type) }
+    }
+
+    private suspend fun loadDiscover(
+        type: MediaType,
+        images: TmdbImageConfiguration?,
+        sortBy: String,
+        genreId: String?,
+        voteCountGte: Int,
+    ): List<MediaItem> {
+        val results = when (type) {
+            MediaType.Movie -> network.api.discoverMovies(
+                language = LANGUAGE,
+                sortBy = sortBy,
+                withGenres = genreId,
+                voteCountGte = voteCountGte,
+            ).results
+            MediaType.Series -> network.api.discoverTv(
+                language = LANGUAGE,
+                sortBy = sortBy,
+                withGenres = genreId,
+                voteCountGte = voteCountGte,
+            ).results
+            else -> emptyList()
+        }
+        return results.mapNotNull { it.toSearchMedia(images, type) }
     }
 
     private suspend fun ensureImageConfiguration(now: Long): TmdbImageConfiguration? {
@@ -232,12 +318,41 @@ class TmdbSearchRepository(
         else -> 3
     }
 
+    private fun MediaType.cacheKey(): String = when (this) {
+        MediaType.Movie -> "movie"
+        MediaType.Series -> "series"
+        else -> name.lowercase()
+    }
+
+    private fun discoveryCategories(type: MediaType): List<DiscoveryCategory> = when (type) {
+        MediaType.Movie -> listOf(
+            DiscoveryCategory("28", "Action"),
+            DiscoveryCategory("35", "Komödien"),
+            DiscoveryCategory("878", "Science-Fiction"),
+            DiscoveryCategory("53", "Thriller"),
+            DiscoveryCategory("10751", "Familie"),
+        )
+        MediaType.Series -> listOf(
+            DiscoveryCategory("18", "Drama"),
+            DiscoveryCategory("80", "Krimi"),
+            DiscoveryCategory("35", "Komödien"),
+            DiscoveryCategory("10765", "Sci-Fi & Fantasy"),
+            DiscoveryCategory("99", "Dokumentationen"),
+        )
+        else -> emptyList()
+    }
+
     private fun <K, V> trimCache(cache: LinkedHashMap<K, V>, maxEntries: Int) {
         while (cache.size > maxEntries) {
             val oldest = cache.keys.firstOrNull() ?: return
             cache.remove(oldest)
         }
     }
+
+    private data class DiscoveryCategory(
+        val genreId: String,
+        val title: String,
+    )
 
     private data class CachedSearch(
         val items: List<MediaItem>,
@@ -256,13 +371,15 @@ class TmdbSearchRepository(
 
     private companion object {
         const val LANGUAGE = "de-DE"
-        const val MOVIE_SCI_FI_GENRE_ID = "878"
-        const val TV_SCI_FI_GENRE_ID = "10765"
         const val BROWSE_ROW_LIMIT = 16
+        const val CATEGORY_MIN_VOTE_COUNT = 50
+        const val SORT_POPULARITY = "popularity.desc"
+        const val SORT_RATING = "vote_average.desc"
         const val SEARCH_CACHE_MILLIS = 15L * 60L * 1_000L
         const val DETAILS_CACHE_MILLIS = 60L * 60L * 1_000L
         const val BROWSE_CACHE_MILLIS = 60L * 60L * 1_000L
         const val MAX_QUERY_CACHE_ENTRIES = 20
         const val MAX_DETAILS_CACHE_ENTRIES = 24
+        const val MAX_BROWSE_CACHE_ENTRIES = 2
     }
 }
