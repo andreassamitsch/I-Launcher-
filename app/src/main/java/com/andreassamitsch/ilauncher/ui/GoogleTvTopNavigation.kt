@@ -28,7 +28,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
@@ -289,28 +291,48 @@ private fun SearchGlyph(color: Color) {
 
 @Composable
 private fun SettingsGlyph(color: Color) {
-    Canvas(modifier = Modifier.size(17.dp)) {
+    Canvas(modifier = Modifier.size(18.dp)) {
         val stroke = 1.55.dp.toPx()
-        val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+        val centerX = size.width / 2f
+        val centerY = size.height / 2f
+        val rootRadius = size.minDimension * 0.33f
+        val toothRadius = size.minDimension * 0.46f
+        val gear = Path()
+
+        // Six connected teeth read as a mechanical gear at TV viewing distance. The previous
+        // eight detached spokes resembled a sun/brightness glyph on real hardware.
+        repeat(6) { tooth ->
+            val centerAngle = tooth * 60.0 - 90.0
+            val points = listOf(
+                -30.0 to rootRadius,
+                -18.0 to rootRadius,
+                -12.0 to toothRadius,
+                12.0 to toothRadius,
+                18.0 to rootRadius,
+                30.0 to rootRadius,
+            )
+            points.forEach { (offsetDegrees, radius) ->
+                val angle = Math.toRadians(centerAngle + offsetDegrees)
+                val x = centerX + kotlin.math.cos(angle).toFloat() * radius
+                val y = centerY + kotlin.math.sin(angle).toFloat() * radius
+                if (gear.isEmpty) gear.moveTo(x, y) else gear.lineTo(x, y)
+            }
+        }
+        gear.close()
+
+        drawPath(
+            path = gear,
+            color = color,
+            style = Stroke(
+                width = stroke,
+                join = StrokeJoin.Round,
+            ),
+        )
         drawCircle(
             color = color,
-            radius = size.minDimension * 0.22f,
-            center = center,
+            radius = size.minDimension * 0.15f,
+            center = androidx.compose.ui.geometry.Offset(centerX, centerY),
             style = Stroke(width = stroke),
         )
-        repeat(8) { index ->
-            val angle = Math.toRadians((index * 45.0) - 90.0)
-            val inner = size.minDimension * 0.34f
-            val outer = size.minDimension * 0.45f
-            val dx = kotlin.math.cos(angle).toFloat()
-            val dy = kotlin.math.sin(angle).toFloat()
-            drawLine(
-                color = color,
-                start = androidx.compose.ui.geometry.Offset(center.x + dx * inner, center.y + dy * inner),
-                end = androidx.compose.ui.geometry.Offset(center.x + dx * outer, center.y + dy * outer),
-                strokeWidth = stroke,
-                cap = StrokeCap.Round,
-            )
-        }
     }
 }
