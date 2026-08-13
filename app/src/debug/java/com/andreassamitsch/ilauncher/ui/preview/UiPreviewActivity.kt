@@ -126,7 +126,7 @@ class UiPreviewActivity : ComponentActivity() {
                                 GoogleTvTopNavigation(
                                     activeSection = activeSection,
                                     onSelect = { activeSection = it },
-                                    onOpenHomeSettings = {},
+                                    onOpenSectionSettings = {},
                                     modifier = Modifier.align(Alignment.TopStart),
                                 )
                             }
