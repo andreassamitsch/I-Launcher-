@@ -18,6 +18,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import com.andreassamitsch.ilauncher.R
 import com.andreassamitsch.ilauncher.data.search.SearchBrowseSection
+import com.andreassamitsch.ilauncher.data.tmdb.TmdbDiscoveryCatalog
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.MediaSource
 import com.andreassamitsch.ilauncher.model.MediaType
@@ -26,9 +27,10 @@ import com.andreassamitsch.ilauncher.model.SearchResultKind
 import com.andreassamitsch.ilauncher.ui.GoogleTvTopNavigation
 import com.andreassamitsch.ilauncher.ui.LauncherSection
 import com.andreassamitsch.ilauncher.ui.discover.ContentDiscoveryScreen
+import com.andreassamitsch.ilauncher.ui.discover.ContentDiscoverySettingsScreen
 import com.andreassamitsch.ilauncher.ui.theme.ILauncherTheme
 
-/** Deterministic, network-free visual fixture for the Movies/Series discovery destinations. */
+/** Deterministic, network-free visual fixture for Movies/Series discovery and hidden settings. */
 class DiscoveryPreviewActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,6 +45,7 @@ class DiscoveryPreviewActivity : ComponentActivity() {
         } else {
             MediaType.Movie
         }
+        val requestedScreen = intent.getStringExtra(EXTRA_SCREEN)
 
         setContent {
             ILauncherTheme {
@@ -53,34 +56,48 @@ class DiscoveryPreviewActivity : ComponentActivity() {
                         contentColor = MaterialTheme.colorScheme.onBackground,
                     ),
                 ) {
-                    var activeSection by remember(requestedType) {
-                        mutableStateOf(
-                            if (requestedType == MediaType.Series) LauncherSection.Series
-                            else LauncherSection.Movies,
+                    if (requestedScreen == SCREEN_SETTINGS) {
+                        val selectedKeys = remember(requestedType) {
+                            TmdbDiscoveryCatalog.defaultRowKeys(requestedType).take(1)
+                        }
+                        ContentDiscoverySettingsScreen(
+                            mediaType = requestedType,
+                            selectedRowKeys = selectedKeys,
+                            onSetVisible = { _, _ -> },
+                            onMove = { _, _ -> },
+                            onReset = {},
+                            onBack = {},
                         )
-                    }
-                    Box(Modifier.fillMaxSize()) {
-                        ContentDiscoveryScreen(
-                            title = if (requestedType == MediaType.Movie) "Filme entdecken" else "Serien entdecken",
-                            subtitle = if (requestedType == MediaType.Movie) {
-                                "Trends, beliebte Titel, Top-Bewertungen und Filmkategorien von TMDB."
-                            } else {
-                                "Trends, beliebte Serien, Top-Bewertungen und Kategorien von TMDB."
-                            },
-                            sections = fixtureSections(requestedType),
-                            isLoading = false,
-                            tmdbConfigured = true,
-                            onOpenResult = {},
-                            listState = rememberLazyListState(),
-                            focusRestoreResultId = null,
-                            focusRestoreGeneration = 0,
-                        )
-                        GoogleTvTopNavigation(
-                            activeSection = activeSection,
-                            onSelect = { activeSection = it },
-                            onOpenSectionSettings = {},
-                            modifier = Modifier.align(Alignment.TopStart),
-                        )
+                    } else {
+                        var activeSection by remember(requestedType) {
+                            mutableStateOf(
+                                if (requestedType == MediaType.Series) LauncherSection.Series
+                                else LauncherSection.Movies,
+                            )
+                        }
+                        Box(Modifier.fillMaxSize()) {
+                            ContentDiscoveryScreen(
+                                title = if (requestedType == MediaType.Movie) "Filme entdecken" else "Serien entdecken",
+                                subtitle = if (requestedType == MediaType.Movie) {
+                                    "Trends, beliebte Titel, Top-Bewertungen und Filmkategorien von TMDB."
+                                } else {
+                                    "Trends, beliebte Serien, Top-Bewertungen und Kategorien von TMDB."
+                                },
+                                sections = fixtureSections(requestedType),
+                                isLoading = false,
+                                tmdbConfigured = true,
+                                onOpenResult = {},
+                                listState = rememberLazyListState(),
+                                focusRestoreResultId = null,
+                                focusRestoreGeneration = 0,
+                            )
+                            GoogleTvTopNavigation(
+                                activeSection = activeSection,
+                                onSelect = { activeSection = it },
+                                onOpenSectionSettings = {},
+                                modifier = Modifier.align(Alignment.TopStart),
+                            )
+                        }
                     }
                 }
             }
@@ -141,5 +158,7 @@ class DiscoveryPreviewActivity : ComponentActivity() {
     private companion object {
         const val EXTRA_TYPE = "type"
         const val TYPE_SERIES = "series"
+        const val EXTRA_SCREEN = "screen"
+        const val SCREEN_SETTINGS = "settings"
     }
 }
