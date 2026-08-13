@@ -1,6 +1,5 @@
 package com.andreassamitsch.ilauncher.ui.discover
 
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,7 +20,6 @@ import com.andreassamitsch.ilauncher.data.tmdb.TmdbDiscoveryRowDefinition
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbDiscoveryRowKind
 import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.ui.components.TouchButton
-import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 
 @Composable
 fun ContentDiscoverySettingsScreen(
@@ -51,7 +49,6 @@ fun ContentDiscoverySettingsScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
-            .touchScrollFallback(scrollState, Orientation.Vertical)
             .padding(bottom = 30.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
