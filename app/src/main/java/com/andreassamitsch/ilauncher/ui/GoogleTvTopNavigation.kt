@@ -129,8 +129,20 @@ internal fun GoogleTvCollapsedNavigationCue(modifier: Modifier = Modifier) {
         val color = Color.White.copy(alpha = 0.62f)
         val stroke = 1.6.dp.toPx()
         val y = size.height * 0.62f
-        drawLine(color, Offset(size.width * 0.28f, y), Offset(size.width * 0.50f, size.height * 0.36f), stroke, StrokeCap.Round)
-        drawLine(color, Offset(size.width * 0.50f, size.height * 0.36f), Offset(size.width * 0.72f, y), stroke, StrokeCap.Round)
+        drawLine(
+            color,
+            androidx.compose.ui.geometry.Offset(size.width * 0.28f, y),
+            androidx.compose.ui.geometry.Offset(size.width * 0.50f, size.height * 0.36f),
+            stroke,
+            StrokeCap.Round,
+        )
+        drawLine(
+            color,
+            androidx.compose.ui.geometry.Offset(size.width * 0.50f, size.height * 0.36f),
+            androidx.compose.ui.geometry.Offset(size.width * 0.72f, y),
+            stroke,
+            StrokeCap.Round,
+        )
     }
 }
 
@@ -206,9 +218,15 @@ private fun SearchGlyph(color: Color) {
     Canvas(Modifier.size(16.dp)) {
         val stroke = 1.7.dp.toPx()
         val radius = size.minDimension * .29f
-        val center = Offset(size.width * .43f, size.height * .43f)
+        val center = androidx.compose.ui.geometry.Offset(size.width * .43f, size.height * .43f)
         drawCircle(color, radius, center, style = Stroke(stroke))
-        drawLine(color, Offset(center.x + radius * .72f, center.y + radius * .72f), Offset(size.width * .83f, size.height * .83f), stroke, StrokeCap.Round)
+        drawLine(
+            color,
+            androidx.compose.ui.geometry.Offset(center.x + radius * .72f, center.y + radius * .72f),
+            androidx.compose.ui.geometry.Offset(size.width * .83f, size.height * .83f),
+            stroke,
+            StrokeCap.Round,
+        )
     }
 }
 
@@ -233,6 +251,11 @@ private fun SettingsGlyph(color: Color) {
         }
         gear.close()
         drawPath(gear, color, style = Stroke(stroke, join = StrokeJoin.Round))
-        drawCircle(color, size.minDimension * .15f, Offset(centerX, centerY), style = Stroke(stroke))
+        drawCircle(
+            color,
+            size.minDimension * .15f,
+            androidx.compose.ui.geometry.Offset(centerX, centerY),
+            style = Stroke(stroke),
+        )
     }
 }
