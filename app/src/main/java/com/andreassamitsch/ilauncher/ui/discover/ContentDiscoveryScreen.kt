@@ -52,12 +52,19 @@ fun ContentDiscoveryScreen(
     modifier: Modifier = Modifier,
 ) {
     val restoreRequester = remember(focusRestoreResultId) { FocusRequester() }
-
-    LaunchedEffect(focusRestoreGeneration, focusRestoreResultId, sections) {
-        if (focusRestoreGeneration <= 0 || focusRestoreResultId == null) return@LaunchedEffect
-        val sectionIndex = sections.indexOfFirst { section ->
-            section.items.any { it.id == focusRestoreResultId }
+    // The same TMDB title can legitimately appear in several discovery rows. Attach the single
+    // FocusRequester only to its first occurrence so returning from details stays deterministic.
+    val restoreSectionKey = remember(sections, focusRestoreResultId) {
+        focusRestoreResultId?.let { resultId ->
+            sections.firstOrNull { section -> section.items.any { it.id == resultId } }?.key
         }
+    }
+
+    LaunchedEffect(focusRestoreGeneration, focusRestoreResultId, restoreSectionKey, sections) {
+        if (focusRestoreGeneration <= 0 || focusRestoreResultId == null || restoreSectionKey == null) {
+            return@LaunchedEffect
+        }
+        val sectionIndex = sections.indexOfFirst { it.key == restoreSectionKey }
         if (sectionIndex >= 0) {
             // Header occupies item 0 in the vertical list.
             listState.scrollToItem(sectionIndex + 1)
@@ -103,6 +110,7 @@ fun ContentDiscoveryScreen(
             ) { _, section ->
                 DiscoveryRow(
                     section = section,
+                    restoreSectionKey = restoreSectionKey,
                     focusRestoreResultId = focusRestoreResultId,
                     restoreRequester = restoreRequester,
                     onOpenResult = onOpenResult,
@@ -132,6 +140,7 @@ fun ContentDiscoveryScreen(
 @Composable
 private fun DiscoveryRow(
     section: SearchBrowseSection,
+    restoreSectionKey: String?,
     focusRestoreResultId: String?,
     restoreRequester: FocusRequester,
     onOpenResult: (SearchItem) -> Unit,
@@ -169,7 +178,9 @@ private fun DiscoveryRow(
                 key = SearchItem::id,
             ) { result ->
                 val media = requireNotNull(result.media)
-                val cardModifier = if (result.id == focusRestoreResultId) {
+                val cardModifier = if (
+                    section.key == restoreSectionKey && result.id == focusRestoreResultId
+                ) {
                     Modifier.focusRequester(restoreRequester)
                 } else {
                     Modifier
