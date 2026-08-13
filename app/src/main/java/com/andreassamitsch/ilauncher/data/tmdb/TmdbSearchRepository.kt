@@ -251,14 +251,17 @@ class TmdbSearchRepository(
             type = type,
             title = displayTitle,
             originalTitle = original,
+            overview = overview,
             releaseYear = TmdbRepository.yearOf(releaseDate ?: firstAirDate),
             tmdbId = id,
             posterUri = images?.url(TmdbImageKind.Poster, posterPath),
             backdropUri = images?.url(TmdbImageKind.Backdrop, backdropPath),
+            voteAverage = voteAverage.takeIf { it > 0.0 },
             source = MediaSource(
                 provider = "tmdb_search",
                 sourceId = "tmdb:${type.name}:$id",
             ),
+            resolverConfidence = 1f,
         )
     }
 
