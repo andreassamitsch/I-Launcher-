@@ -39,7 +39,6 @@ internal fun PersonDetailsScreen(
     }
     Column(
         modifier.fillMaxSize().verticalScroll(scroll)
-            .touchScrollFallback(scroll, Orientation.Vertical)
             .padding(start = 44.dp, end = 30.dp, top = 30.dp, bottom = 80.dp),
     ) {
         TouchButton(onClick = onBack, modifier = Modifier.focusRequester(backRequester)) { Text("Zurück") }
