@@ -5,34 +5,15 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.ButtonDefaults
@@ -42,16 +23,6 @@ import com.andreassamitsch.ilauncher.ui.components.TouchButton
 
 internal val GoogleTvTopNavigationHeight = 58.dp
 
-/**
- * Google-TV-inspired destination navigation.
- *
- * The navigation is an overlay layer and never participates in Home's row-keyline geometry.
- * Personal Home and deliberate TMDB discovery are first-class destinations. The full Apps page is
- * intentionally not a top-level destination; it is opened from the Home app dock instead.
- * Search/settings remain compact utilities on the right. On Home, leaving the navigation for the
- * content rails visually collapses the bar to a small top chevron while it remains in the focus tree.
- * Long OK on Home/Movies/Series deliberately exposes the configuration belonging to that page.
- */
 @Composable
 internal fun GoogleTvTopNavigation(
     activeSection: LauncherSection,
@@ -59,44 +30,29 @@ internal fun GoogleTvTopNavigation(
     onOpenSectionSettings: (LauncherSection) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val selectedSection: LauncherSection? = when (activeSection) {
+    val selectedSection = when (activeSection) {
         LauncherSection.LiveTv -> LauncherSection.Settings
-        LauncherSection.Apps -> null // Internal page reached from the Home app dock.
+        LauncherSection.Apps -> null
         else -> activeSection
     }
-    val nonHomeSelectedFocusRequester = remember { FocusRequester() }
-    val selectedFocusRequester: FocusRequester? = when (selectedSection) {
+    val utilityRequester = remember { FocusRequester() }
+    val selectedRequester = when (selectedSection) {
         LauncherSection.Home -> HomeTopNavigationFocusRequester
+        LauncherSection.Movies -> MoviesTopNavigationFocusRequester
+        LauncherSection.Series -> SeriesTopNavigationFocusRequester
         null -> null
-        else -> nonHomeSelectedFocusRequester
+        else -> utilityRequester
     }
-    var navigationHasFocus by remember { mutableStateOf(true) }
-    val collapsed = activeSection == LauncherSection.Home && !navigationHasFocus
-    val navAlpha by animateFloatAsState(
-        targetValue = if (collapsed) 0f else 1f,
-        animationSpec = tween(durationMillis = 150),
-        label = "top-nav-alpha",
-    )
-    val cueAlpha by animateFloatAsState(
-        targetValue = if (collapsed) 1f else 0f,
-        animationSpec = tween(durationMillis = 180),
-        label = "top-nav-cue-alpha",
-    )
+    var hasFocus by remember { mutableStateOf(true) }
+    val collapsed = activeSection == LauncherSection.Home && !hasFocus
+    val navAlpha by animateFloatAsState(if (collapsed) 0f else 1f, tween(150), label = "top-nav-alpha")
+    val cueAlpha by animateFloatAsState(if (collapsed) 1f else 0f, tween(180), label = "top-nav-cue-alpha")
 
-    LaunchedEffect(selectedSection, selectedFocusRequester) {
-        selectedFocusRequester?.requestFocus()
-    }
+    LaunchedEffect(selectedSection, selectedRequester) { selectedRequester?.requestFocus() }
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(GoogleTvTopNavigationHeight)
-            .zIndex(20f),
-    ) {
+    Box(modifier.fillMaxWidth().height(GoogleTvTopNavigationHeight).zIndex(20f)) {
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(GoogleTvTopNavigationHeight)
+            Modifier.fillMaxWidth().height(GoogleTvTopNavigationHeight)
                 .graphicsLayer { alpha = navAlpha }
                 .background(
                     Brush.verticalGradient(
@@ -107,137 +63,104 @@ internal fun GoogleTvTopNavigation(
                 ),
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(GoogleTvTopNavigationHeight)
+                Modifier.fillMaxWidth().height(GoogleTvTopNavigationHeight)
                     .padding(start = 38.dp, end = 30.dp, top = 10.dp, bottom = 8.dp)
-                    .onFocusChanged { navigationHasFocus = it.hasFocus }
+                    .onFocusChanged { hasFocus = it.hasFocus }
                     .focusGroup(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                GoogleTvNavDestination(
+                NavDestination(
                     label = null,
                     section = LauncherSection.Home,
                     selected = selectedSection == LauncherSection.Home,
-                    focusRequester = if (selectedSection == LauncherSection.Home) selectedFocusRequester else null,
+                    requester = selectedRequester.takeIf { selectedSection == LauncherSection.Home },
                     onClick = { onSelect(LauncherSection.Home) },
                     onLongClick = { onOpenSectionSettings(LauncherSection.Home) },
                     compact = true,
-                    glyph = GoogleTvUtilityGlyph.Home,
+                    glyph = NavGlyph.Home,
                 )
-                GoogleTvNavDestination(
-                    label = "Filme",
-                    section = LauncherSection.Movies,
-                    selected = selectedSection == LauncherSection.Movies,
-                    focusRequester = if (selectedSection == LauncherSection.Movies) selectedFocusRequester else null,
-                    onClick = { onSelect(LauncherSection.Movies) },
-                    onLongClick = { onOpenSectionSettings(LauncherSection.Movies) },
+                NavDestination(
+                    "Filme",
+                    LauncherSection.Movies,
+                    selectedSection == LauncherSection.Movies,
+                    selectedRequester.takeIf { selectedSection == LauncherSection.Movies },
+                    { onSelect(LauncherSection.Movies) },
+                    { onOpenSectionSettings(LauncherSection.Movies) },
                 )
-                GoogleTvNavDestination(
-                    label = "Serien",
-                    section = LauncherSection.Series,
-                    selected = selectedSection == LauncherSection.Series,
-                    focusRequester = if (selectedSection == LauncherSection.Series) selectedFocusRequester else null,
-                    onClick = { onSelect(LauncherSection.Series) },
-                    onLongClick = { onOpenSectionSettings(LauncherSection.Series) },
+                NavDestination(
+                    "Serien",
+                    LauncherSection.Series,
+                    selectedSection == LauncherSection.Series,
+                    selectedRequester.takeIf { selectedSection == LauncherSection.Series },
+                    { onSelect(LauncherSection.Series) },
+                    { onOpenSectionSettings(LauncherSection.Series) },
                 )
-
                 Spacer(Modifier.weight(1f))
-
-                GoogleTvNavDestination(
-                    label = null,
-                    section = LauncherSection.Search,
-                    selected = selectedSection == LauncherSection.Search,
-                    focusRequester = if (selectedSection == LauncherSection.Search) selectedFocusRequester else null,
-                    onClick = { onSelect(LauncherSection.Search) },
+                NavDestination(
+                    null,
+                    LauncherSection.Search,
+                    selectedSection == LauncherSection.Search,
+                    selectedRequester.takeIf { selectedSection == LauncherSection.Search },
+                    { onSelect(LauncherSection.Search) },
                     compact = true,
-                    glyph = GoogleTvUtilityGlyph.Search,
+                    glyph = NavGlyph.Search,
                 )
-                GoogleTvNavDestination(
-                    label = null,
-                    section = LauncherSection.Settings,
-                    selected = selectedSection == LauncherSection.Settings,
-                    focusRequester = if (selectedSection == LauncherSection.Settings) selectedFocusRequester else null,
-                    onClick = { onSelect(LauncherSection.Settings) },
+                NavDestination(
+                    null,
+                    LauncherSection.Settings,
+                    selectedSection == LauncherSection.Settings,
+                    selectedRequester.takeIf { selectedSection == LauncherSection.Settings },
+                    { onSelect(LauncherSection.Settings) },
                     compact = true,
-                    glyph = GoogleTvUtilityGlyph.Settings,
+                    glyph = NavGlyph.Settings,
                 )
             }
         }
-
         GoogleTvCollapsedNavigationCue(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 7.dp)
-                .graphicsLayer { alpha = cueAlpha },
+            Modifier.align(Alignment.TopCenter).padding(top = 7.dp).graphicsLayer { alpha = cueAlpha },
         )
     }
 }
 
 @Composable
-internal fun GoogleTvCollapsedNavigationCue(
-    modifier: Modifier = Modifier,
-) {
-    Canvas(
-        modifier = modifier
-            .size(width = 26.dp, height = 18.dp)
-            .zIndex(21f),
-    ) {
+internal fun GoogleTvCollapsedNavigationCue(modifier: Modifier = Modifier) {
+    Canvas(modifier.size(width = 26.dp, height = 18.dp).zIndex(21f)) {
         val color = Color.White.copy(alpha = 0.62f)
         val stroke = 1.6.dp.toPx()
         val y = size.height * 0.62f
-        drawLine(
-            color = color,
-            start = androidx.compose.ui.geometry.Offset(size.width * 0.28f, y),
-            end = androidx.compose.ui.geometry.Offset(size.width * 0.50f, size.height * 0.36f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = color,
-            start = androidx.compose.ui.geometry.Offset(size.width * 0.50f, size.height * 0.36f),
-            end = androidx.compose.ui.geometry.Offset(size.width * 0.72f, y),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round,
-        )
+        drawLine(color, Offset(size.width * 0.28f, y), Offset(size.width * 0.50f, size.height * 0.36f), stroke, StrokeCap.Round)
+        drawLine(color, Offset(size.width * 0.50f, size.height * 0.36f), Offset(size.width * 0.72f, y), stroke, StrokeCap.Round)
     }
 }
 
-private enum class GoogleTvUtilityGlyph {
-    Home,
-    Search,
-    Settings,
-}
+private enum class NavGlyph { Home, Search, Settings }
 
 @Suppress("UNUSED_PARAMETER")
 @Composable
-private fun GoogleTvNavDestination(
+private fun NavDestination(
     label: String?,
     section: LauncherSection,
     selected: Boolean,
-    focusRequester: FocusRequester?,
+    requester: FocusRequester?,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     compact: Boolean = false,
-    glyph: GoogleTvUtilityGlyph? = null,
+    glyph: NavGlyph? = null,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val surface = MaterialTheme.colorScheme.surface
     val idleContainer = if (selected) onSurface.copy(alpha = 0.94f) else Color.Transparent
     val idleContent = if (selected) surface else onSurface.copy(alpha = 0.82f)
-    val focusedContainer = if (selected) onSurface else onSurface.copy(alpha = 0.16f)
-    val focusedContent = if (selected) surface else onSurface
-    val focusModifier = focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
-
+    val focusModifier = requester?.let { Modifier.focusRequester(it) } ?: Modifier
     TouchButton(
         onClick = onClick,
         onLongClick = onLongClick,
         colors = ButtonDefaults.colors(
             containerColor = idleContainer,
             contentColor = idleContent,
-            focusedContainerColor = focusedContainer,
-            focusedContentColor = focusedContent,
+            focusedContainerColor = if (selected) onSurface else onSurface.copy(alpha = 0.16f),
+            focusedContentColor = if (selected) surface else onSurface,
             pressedContainerColor = if (selected) onSurface.copy(alpha = 0.86f) else onSurface.copy(alpha = 0.24f),
             pressedContentColor = if (selected) surface else onSurface,
             disabledContainerColor = Color.Transparent,
@@ -247,123 +170,69 @@ private fun GoogleTvNavDestination(
             focusedScale = if (selected) 1.015f else 1.025f,
             pressedScale = 0.985f,
         ),
-        contentPadding = PaddingValues(
-            horizontal = if (compact) 0.dp else 13.dp,
-            vertical = 0.dp,
-        ),
-        modifier = focusModifier
-            .height(36.dp)
-            .then(if (compact) Modifier.width(38.dp) else Modifier),
+        contentPadding = PaddingValues(horizontal = if (compact) 0.dp else 13.dp, vertical = 0.dp),
+        modifier = focusModifier.height(36.dp).then(if (compact) Modifier.width(38.dp) else Modifier),
     ) {
+        val glyphColor = if (selected) surface else onSurface.copy(alpha = 0.90f)
         when (glyph) {
-            GoogleTvUtilityGlyph.Home -> HomeGlyph(if (selected) surface else onSurface.copy(alpha = 0.90f))
-            GoogleTvUtilityGlyph.Search -> SearchGlyph(if (selected) surface else onSurface.copy(alpha = 0.90f))
-            GoogleTvUtilityGlyph.Settings -> SettingsGlyph(if (selected) surface else onSurface.copy(alpha = 0.90f))
+            NavGlyph.Home -> HomeGlyph(glyphColor)
+            NavGlyph.Search -> SearchGlyph(glyphColor)
+            NavGlyph.Settings -> SettingsGlyph(glyphColor)
             null -> Unit
         }
-        label?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.labelLarge,
-                maxLines = 1,
-            )
-        }
+        label?.let { Text(it, style = MaterialTheme.typography.labelLarge, maxLines = 1) }
     }
 }
 
 @Composable
 private fun HomeGlyph(color: Color) {
-    Canvas(modifier = Modifier.size(18.dp)) {
-        val stroke = 1.7.dp.toPx()
+    Canvas(Modifier.size(18.dp)) {
         val house = Path().apply {
-            moveTo(size.width * 0.16f, size.height * 0.48f)
-            lineTo(size.width * 0.50f, size.height * 0.18f)
-            lineTo(size.width * 0.84f, size.height * 0.48f)
-            lineTo(size.width * 0.75f, size.height * 0.48f)
-            lineTo(size.width * 0.75f, size.height * 0.82f)
-            lineTo(size.width * 0.25f, size.height * 0.82f)
-            lineTo(size.width * 0.25f, size.height * 0.48f)
+            moveTo(size.width * .16f, size.height * .48f)
+            lineTo(size.width * .50f, size.height * .18f)
+            lineTo(size.width * .84f, size.height * .48f)
+            lineTo(size.width * .75f, size.height * .48f)
+            lineTo(size.width * .75f, size.height * .82f)
+            lineTo(size.width * .25f, size.height * .82f)
+            lineTo(size.width * .25f, size.height * .48f)
             close()
         }
-        drawPath(
-            path = house,
-            color = color,
-            style = Stroke(
-                width = stroke,
-                cap = StrokeCap.Round,
-                join = StrokeJoin.Round,
-            ),
-        )
+        drawPath(house, color, style = Stroke(1.7.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 }
 
 @Composable
 private fun SearchGlyph(color: Color) {
-    Canvas(modifier = Modifier.size(16.dp)) {
+    Canvas(Modifier.size(16.dp)) {
         val stroke = 1.7.dp.toPx()
-        val radius = size.minDimension * 0.29f
-        val centerX = size.width * 0.43f
-        val centerY = size.height * 0.43f
-        drawCircle(
-            color = color,
-            radius = radius,
-            center = androidx.compose.ui.geometry.Offset(centerX, centerY),
-            style = Stroke(width = stroke),
-        )
-        drawLine(
-            color = color,
-            start = androidx.compose.ui.geometry.Offset(centerX + radius * 0.72f, centerY + radius * 0.72f),
-            end = androidx.compose.ui.geometry.Offset(size.width * 0.83f, size.height * 0.83f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round,
-        )
+        val radius = size.minDimension * .29f
+        val center = Offset(size.width * .43f, size.height * .43f)
+        drawCircle(color, radius, center, style = Stroke(stroke))
+        drawLine(color, Offset(center.x + radius * .72f, center.y + radius * .72f), Offset(size.width * .83f, size.height * .83f), stroke, StrokeCap.Round)
     }
 }
 
 @Composable
 private fun SettingsGlyph(color: Color) {
-    Canvas(modifier = Modifier.size(18.dp)) {
+    Canvas(Modifier.size(18.dp)) {
         val stroke = 1.55.dp.toPx()
         val centerX = size.width / 2f
         val centerY = size.height / 2f
-        val rootRadius = size.minDimension * 0.33f
-        val toothRadius = size.minDimension * 0.46f
+        val root = size.minDimension * .33f
+        val tooth = size.minDimension * .46f
         val gear = Path()
-
-        // Six connected teeth read as a mechanical gear at TV viewing distance. The previous
-        // eight detached spokes resembled a sun/brightness glyph on real hardware.
-        repeat(6) { tooth ->
-            val centerAngle = tooth * 60.0 - 90.0
-            val points = listOf(
-                -30.0 to rootRadius,
-                -18.0 to rootRadius,
-                -12.0 to toothRadius,
-                12.0 to toothRadius,
-                18.0 to rootRadius,
-                30.0 to rootRadius,
-            )
-            points.forEach { (offsetDegrees, radius) ->
-                val angle = Math.toRadians(centerAngle + offsetDegrees)
-                val x = centerX + kotlin.math.cos(angle).toFloat() * radius
-                val y = centerY + kotlin.math.sin(angle).toFloat() * radius
-                if (gear.isEmpty) gear.moveTo(x, y) else gear.lineTo(x, y)
-            }
+        repeat(6) { index ->
+            val centerAngle = index * 60.0 - 90.0
+            listOf(-30.0 to root, -18.0 to root, -12.0 to tooth, 12.0 to tooth, 18.0 to root, 30.0 to root)
+                .forEach { (offset, radius) ->
+                    val angle = Math.toRadians(centerAngle + offset)
+                    val x = centerX + kotlin.math.cos(angle).toFloat() * radius
+                    val y = centerY + kotlin.math.sin(angle).toFloat() * radius
+                    if (gear.isEmpty) gear.moveTo(x, y) else gear.lineTo(x, y)
+                }
         }
         gear.close()
-
-        drawPath(
-            path = gear,
-            color = color,
-            style = Stroke(
-                width = stroke,
-                join = StrokeJoin.Round,
-            ),
-        )
-        drawCircle(
-            color = color,
-            radius = size.minDimension * 0.15f,
-            center = androidx.compose.ui.geometry.Offset(centerX, centerY),
-            style = Stroke(width = stroke),
-        )
+        drawPath(gear, color, style = Stroke(stroke, join = StrokeJoin.Round))
+        drawCircle(color, size.minDimension * .15f, Offset(centerX, centerY), style = Stroke(stroke))
     }
 }
