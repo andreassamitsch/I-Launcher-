@@ -62,6 +62,7 @@ import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import com.andreassamitsch.ilauncher.ui.apps.AppsScreen
 import com.andreassamitsch.ilauncher.ui.components.TouchButton
 import com.andreassamitsch.ilauncher.ui.details.DetailsScreen
+import com.andreassamitsch.ilauncher.ui.discover.ContentDiscoveryScreen
 import com.andreassamitsch.ilauncher.ui.home.HomeRowOption
 import com.andreassamitsch.ilauncher.ui.home.HomeScreen
 import com.andreassamitsch.ilauncher.ui.home.HomeSettingsScreen
@@ -76,6 +77,8 @@ import kotlinx.coroutines.withContext
 
 enum class LauncherSection(val label: String) {
     Home("Home"),
+    Movies("Filme"),
+    Series("Serien"),
     Search("Suche"),
     Apps("Apps"),
     Settings("Einstellungen"),
@@ -121,13 +124,17 @@ fun LauncherApp(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var localSearchResults by remember { mutableStateOf<List<SearchItem>>(emptyList()) }
     var tmdbSearchResults by remember { mutableStateOf<List<SearchItem>>(emptyList()) }
-    var browseSections by remember { mutableStateOf<List<SearchBrowseSection>>(emptyList()) }
+    var movieBrowseSections by remember { mutableStateOf<List<SearchBrowseSection>>(emptyList()) }
+    var seriesBrowseSections by remember { mutableStateOf<List<SearchBrowseSection>>(emptyList()) }
     var isTmdbSearchLoading by remember { mutableStateOf(false) }
-    var isBrowseLoading by remember { mutableStateOf(false) }
+    var isMovieBrowseLoading by remember { mutableStateOf(false) }
+    var isSeriesBrowseLoading by remember { mutableStateOf(false) }
     val watchNextListState = rememberLazyListState()
     val appsListState = rememberLazyListState()
     val liveTvListState = rememberLazyListState()
     val searchListState = rememberLazyListState()
+    val movieBrowseListState = rememberLazyListState()
+    val seriesBrowseListState = rememberLazyListState()
     val updateState by updateManager.state.collectAsState()
     val openWebifState by openWebifRepository.state.collectAsState()
     val epgState by epgRepository.state.collectAsState()
@@ -316,13 +323,21 @@ fun LauncherApp(
         }
     }
 
-    LaunchedEffect(section, searchQuery, searchRepository) {
-        if (section != LauncherSection.Search || searchQuery.isNotBlank() || !searchRepository.isTmdbConfigured) {
-            return@LaunchedEffect
+    LaunchedEffect(section, searchRepository) {
+        if (!searchRepository.isTmdbConfigured) return@LaunchedEffect
+        when (section) {
+            LauncherSection.Movies -> if (movieBrowseSections.isEmpty() && !isMovieBrowseLoading) {
+                isMovieBrowseLoading = true
+                movieBrowseSections = searchRepository.browseTmdb(MediaType.Movie)
+                isMovieBrowseLoading = false
+            }
+            LauncherSection.Series -> if (seriesBrowseSections.isEmpty() && !isSeriesBrowseLoading) {
+                isSeriesBrowseLoading = true
+                seriesBrowseSections = searchRepository.browseTmdb(MediaType.Series)
+                isSeriesBrowseLoading = false
+            }
+            else -> Unit
         }
-        isBrowseLoading = true
-        browseSections = searchRepository.browseTmdb()
-        isBrowseLoading = false
     }
 
     val sourceLinkedTmdbResults = remember(tmdbSearchResults, homeWatchNextItems, visiblePreviewChannels, appLabels) {
@@ -397,6 +412,9 @@ fun LauncherApp(
         showHomeSettings = false
         section = LauncherSection.Home
     }
+    BackHandler(
+        enabled = !showHomeSettings && selectedDetailsMedia == null && selectedLiveTvServiceReference == null && section == LauncherSection.Apps,
+    ) { section = LauncherSection.Home }
     BackHandler(
         enabled = !showHomeSettings && selectedDetailsMedia == null && selectedLiveTvServiceReference == null && section == LauncherSection.LiveTv,
     ) { section = LauncherSection.Settings }
@@ -572,6 +590,7 @@ fun LauncherApp(
                         },
                         onRequestTvListingsPermission = requestTvListingsPermission,
                         onOpenApp = openApp,
+                        onOpenAllApps = { section = LauncherSection.Apps },
                         onOpenWatchNext = openWatchNext,
                         onOpenWatchNextDetails = { item ->
                             liveTvFocusRestoreServiceReference = null
@@ -595,8 +614,6 @@ fun LauncherApp(
                             initialPlayerEpgProgramStartUtcMillis = null
                             selectedLiveTvServiceReference = channel.serviceReference
                         },
-                        // Google TV keeps the selected destination visible independently of card focus.
-                        // Home content must therefore never reflow just because focus enters a rail.
                         onNavigationVisibilityChange = {},
                         watchNextCardArtworkMode = watchNextCardArtworkMode,
                         watchNextHeroArtworkMode = watchNextHeroArtworkMode,
@@ -616,14 +633,40 @@ fun LauncherApp(
                         liveTvFocusRestoreGeneration = liveTvFocusRestoreGeneration,
                     )
 
+                    LauncherSection.Movies -> ContentDiscoveryScreen(
+                        title = "Filme entdecken",
+                        subtitle = "Trends, beliebte Titel, Top-Bewertungen und Filmkategorien von TMDB.",
+                        sections = movieBrowseSections,
+                        isLoading = isMovieBrowseLoading,
+                        tmdbConfigured = searchRepository.isTmdbConfigured,
+                        onOpenResult = openSearchResult,
+                        listState = movieBrowseListState,
+                        focusRestoreResultId = searchFocusRestoreResultId,
+                        focusRestoreGeneration = searchFocusRestoreGeneration,
+                        modifier = Modifier.padding(top = GoogleTvTopNavigationHeight),
+                    )
+
+                    LauncherSection.Series -> ContentDiscoveryScreen(
+                        title = "Serien entdecken",
+                        subtitle = "Trends, beliebte Serien, Top-Bewertungen und Kategorien von TMDB.",
+                        sections = seriesBrowseSections,
+                        isLoading = isSeriesBrowseLoading,
+                        tmdbConfigured = searchRepository.isTmdbConfigured,
+                        onOpenResult = openSearchResult,
+                        listState = seriesBrowseListState,
+                        focusRestoreResultId = searchFocusRestoreResultId,
+                        focusRestoreGeneration = searchFocusRestoreGeneration,
+                        modifier = Modifier.padding(top = GoogleTvTopNavigationHeight),
+                    )
+
                     LauncherSection.Search -> SearchScreen(
                         query = searchQuery,
                         onQueryChange = { searchQuery = it },
                         localResults = mergedLocalSearchResults,
                         tmdbResults = pureTmdbSearchResults,
-                        browseSections = browseSections,
+                        browseSections = emptyList(),
                         isTmdbLoading = isTmdbSearchLoading,
-                        isBrowseLoading = isBrowseLoading,
+                        isBrowseLoading = false,
                         tmdbConfigured = searchRepository.isTmdbConfigured,
                         apps = apps,
                         onOpenResult = openSearchResult,
