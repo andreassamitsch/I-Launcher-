@@ -18,6 +18,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbDiscoveryCatalog
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbDiscoveryRowDefinition
+import com.andreassamitsch.ilauncher.data.tmdb.TmdbDiscoveryRowKind
 import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.ui.components.TouchButton
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
@@ -42,6 +43,8 @@ fun ContentDiscoverySettingsScreen(
         val selected = selectedRowKeys.toSet()
         allRows.filter { it.key !in selected }
     }
+    val hiddenLists = remember(hiddenRows) { hiddenRows.filter { it.kind != TmdbDiscoveryRowKind.Genre } }
+    val hiddenGenres = remember(hiddenRows) { hiddenRows.filter { it.kind == TmdbDiscoveryRowKind.Genre } }
     val pageName = if (mediaType == MediaType.Movie) "Filme" else "Serien"
 
     Column(
@@ -68,7 +71,7 @@ fun ContentDiscoverySettingsScreen(
 
         Text("Sichtbare TMDB-Reihen", style = MaterialTheme.typography.headlineSmall)
         Text(
-            "Reihenfolge und Auswahl gelten nur für die $pageName-Seite. Mindestens eine Reihe bleibt sichtbar.",
+            "Reihenfolge und Auswahl gelten nur für die $pageName-Seite. Mindestens eine Reihe bleibt sichtbar. Zusätzliche Listen werden erst geladen, wenn du sie hier aktivierst.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
@@ -98,9 +101,18 @@ fun ContentDiscoverySettingsScreen(
             }
         }
 
-        if (hiddenRows.isNotEmpty()) {
-            Text("Weitere TMDB-Reihen", style = MaterialTheme.typography.headlineSmall)
-            hiddenRows.forEach { row ->
+        if (hiddenLists.isNotEmpty()) {
+            Text("Weitere TMDB-Listen", style = MaterialTheme.typography.headlineSmall)
+            hiddenLists.forEach { row ->
+                TouchButton(onClick = { onSetVisible(row.key, true) }) {
+                    Text("+ ${row.title}")
+                }
+            }
+        }
+
+        if (hiddenGenres.isNotEmpty()) {
+            Text("Weitere TMDB-Genres", style = MaterialTheme.typography.headlineSmall)
+            hiddenGenres.forEach { row ->
                 TouchButton(onClick = { onSetVisible(row.key, true) }) {
                     Text("+ ${row.title}")
                 }

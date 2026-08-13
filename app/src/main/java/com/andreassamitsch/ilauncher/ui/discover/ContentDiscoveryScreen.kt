@@ -30,6 +30,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.home.HeroTextScrollSpeed
 import com.andreassamitsch.ilauncher.data.search.SearchBrowseSection
+import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.ui.components.WatchNextCard
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
@@ -44,6 +45,7 @@ private val DiscoveryFirstRailTop = 275.dp
 private val DiscoveryRailVerticalPadding = 26.dp
 private val DiscoveryCardSpacing = 14.dp
 private val DiscoveryBottomFocusReserve = 120.dp
+private const val DiscoveryHeroDetailsDelayMillis = 350L
 
 /**
  * Deliberate TMDB discovery surface for one media type.
@@ -51,6 +53,10 @@ private val DiscoveryBottomFocusReserve = 120.dp
  * The page follows the same visual contract as Home: the hero owns the backdrop layer while the
  * first media rail overlaps its lower edge. Focusing a card updates the hero without moving the
  * row keyline. The top navigation remains a separate overlay owned by LauncherApp.
+ *
+ * Browse results deliberately stay lightweight. After focus settles briefly, the caller may enrich
+ * only that Hero with cached TMDB details. This supplies logos and alternate backdrops without
+ * issuing detail requests for cards the user merely flies over with the D-pad.
  */
 @Composable
 fun ContentDiscoveryScreen(
@@ -64,6 +70,7 @@ fun ContentDiscoveryScreen(
     focusRestoreResultId: String?,
     focusRestoreGeneration: Int,
     heroTextScrollSpeed: HeroTextScrollSpeed = HeroTextScrollSpeed.Normal,
+    loadHeroDetails: suspend (MediaItem) -> MediaItem = { it },
     modifier: Modifier = Modifier,
 ) {
     val restoreRequester = remember(focusRestoreResultId) { FocusRequester() }
@@ -71,6 +78,7 @@ fun ContentDiscoveryScreen(
         sections.asSequence().flatMap { it.items.asSequence() }.firstOrNull { it.media != null }
     }
     var heroResult by remember { mutableStateOf<SearchItem?>(firstResult) }
+    var heroMedia by remember { mutableStateOf(firstResult?.media) }
 
     LaunchedEffect(sections, firstResult) {
         val currentId = heroResult?.id
@@ -78,6 +86,14 @@ fun ContentDiscoveryScreen(
             section.items.any { it.id == currentId }
         }
         if (!currentStillExists) heroResult = firstResult
+    }
+
+    LaunchedEffect(heroResult?.id) {
+        val base = heroResult?.media
+        heroMedia = base
+        if (base?.tmdbId == null) return@LaunchedEffect
+        delay(DiscoveryHeroDetailsDelayMillis)
+        heroMedia = runCatching { loadHeroDetails(base) }.getOrDefault(base)
     }
 
     LaunchedEffect(focusRestoreGeneration, focusRestoreResultId, sections) {
@@ -92,8 +108,13 @@ fun ContentDiscoveryScreen(
         }
     }
 
-    val heroContent = heroResult?.media?.let { media ->
-        mediaHero(media, sourceLabel = "TMDB").copy(eyebrow = title)
+    val heroContent = heroMedia?.let { media ->
+        val heroBackdrop = media.heroBackdropUri ?: media.backdropUri
+        mediaHero(
+            item = media,
+            sourceLabel = "TMDB",
+            artworkOverride = heroBackdrop?.let { it to false },
+        ).copy(eyebrow = title)
     } ?: HomeHeroContent(
         key = "discovery:$title",
         eyebrow = title,

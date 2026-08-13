@@ -46,6 +46,30 @@ internal interface TmdbApi {
         @Query("language") language: String,
     ): TmdbSearchResponseDto
 
+    @GET("3/movie/now_playing")
+    suspend fun nowPlayingMovies(
+        @Query("language") language: String,
+        @Query("page") page: Int = 1,
+    ): TmdbSearchResponseDto
+
+    @GET("3/movie/upcoming")
+    suspend fun upcomingMovies(
+        @Query("language") language: String,
+        @Query("page") page: Int = 1,
+    ): TmdbSearchResponseDto
+
+    @GET("3/tv/airing_today")
+    suspend fun airingTodayTv(
+        @Query("language") language: String,
+        @Query("page") page: Int = 1,
+    ): TmdbSearchResponseDto
+
+    @GET("3/tv/on_the_air")
+    suspend fun onTheAirTv(
+        @Query("language") language: String,
+        @Query("page") page: Int = 1,
+    ): TmdbSearchResponseDto
+
     @GET("3/discover/movie")
     suspend fun discoverMovies(
         @Query("language") language: String,

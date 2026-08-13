@@ -38,6 +38,7 @@ data class MediaItem(
     val episodeTitle: String? = null,
     val posterUri: String? = null,
     val backdropUri: String? = null,
+    val heroBackdropUri: String? = null,
     val logoUri: String? = null,
     val episodeStillUri: String? = null,
     val sourceArtworkUri: String? = null,
