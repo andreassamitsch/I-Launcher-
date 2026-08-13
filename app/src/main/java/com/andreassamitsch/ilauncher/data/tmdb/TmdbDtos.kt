@@ -33,6 +33,7 @@ internal data class TmdbImageConfigurationDto(
     @SerializedName("logo_sizes") val logoSizes: List<String> = emptyList(),
     @SerializedName("poster_sizes") val posterSizes: List<String> = emptyList(),
     @SerializedName("still_sizes") val stillSizes: List<String> = emptyList(),
+    @SerializedName("profile_sizes") val profileSizes: List<String> = emptyList(),
 )
 
 internal data class TmdbMediaDetailsDto(
@@ -96,4 +97,66 @@ internal data class TmdbExternalIdsDto(
     @SerializedName("imdb_id") val imdbId: String? = null,
     @SerializedName("tvdb_id") val tvdbId: Int? = null,
     @SerializedName("wikidata_id") val wikidataId: String? = null,
+)
+
+internal data class TmdbCreditsDto(
+    val cast: List<TmdbCreditPersonDto> = emptyList(),
+    val crew: List<TmdbCreditPersonDto> = emptyList(),
+)
+
+internal data class TmdbCreditPersonDto(
+    val id: Int = 0,
+    val name: String? = null,
+    val character: String? = null,
+    val job: String? = null,
+    val department: String? = null,
+    val order: Int? = null,
+    @SerializedName("profile_path") val profilePath: String? = null,
+    val roles: List<TmdbCreditRoleDto> = emptyList(),
+    val jobs: List<TmdbCreditJobDto> = emptyList(),
+)
+
+internal data class TmdbCreditRoleDto(
+    val character: String? = null,
+    @SerializedName("episode_count") val episodeCount: Int = 0,
+)
+
+internal data class TmdbCreditJobDto(
+    val job: String? = null,
+    @SerializedName("episode_count") val episodeCount: Int = 0,
+)
+
+internal data class TmdbPersonDetailsDto(
+    val id: Int = 0,
+    val name: String? = null,
+    val biography: String? = null,
+    @SerializedName("profile_path") val profilePath: String? = null,
+    @SerializedName("known_for_department") val knownForDepartment: String? = null,
+    val birthday: String? = null,
+    val deathday: String? = null,
+    @SerializedName("place_of_birth") val placeOfBirth: String? = null,
+)
+
+internal data class TmdbCombinedCreditsDto(
+    val cast: List<TmdbPersonCreditDto> = emptyList(),
+    val crew: List<TmdbPersonCreditDto> = emptyList(),
+)
+
+internal data class TmdbPersonCreditDto(
+    val id: Int = 0,
+    @SerializedName("media_type") val mediaType: String? = null,
+    val title: String? = null,
+    @SerializedName("original_title") val originalTitle: String? = null,
+    val name: String? = null,
+    @SerializedName("original_name") val originalName: String? = null,
+    val overview: String? = null,
+    @SerializedName("release_date") val releaseDate: String? = null,
+    @SerializedName("first_air_date") val firstAirDate: String? = null,
+    @SerializedName("poster_path") val posterPath: String? = null,
+    @SerializedName("backdrop_path") val backdropPath: String? = null,
+    @SerializedName("vote_average") val voteAverage: Double = 0.0,
+    val popularity: Double = 0.0,
+    val adult: Boolean = false,
+    val character: String? = null,
+    val job: String? = null,
 )
