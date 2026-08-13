@@ -52,7 +52,7 @@ internal interface TmdbApi {
         @Query("include_adult") includeAdult: Boolean = false,
         @Query("include_video") includeVideo: Boolean = false,
         @Query("sort_by") sortBy: String = "vote_average.desc",
-        @Query("with_genres") withGenres: String,
+        @Query("with_genres") withGenres: String? = null,
         @Query("vote_count.gte") voteCountGte: Int = 300,
         @Query("page") page: Int = 1,
     ): TmdbSearchResponseDto
@@ -62,7 +62,7 @@ internal interface TmdbApi {
         @Query("language") language: String,
         @Query("include_adult") includeAdult: Boolean = false,
         @Query("sort_by") sortBy: String = "vote_average.desc",
-        @Query("with_genres") withGenres: String,
+        @Query("with_genres") withGenres: String? = null,
         @Query("vote_count.gte") voteCountGte: Int = 200,
         @Query("page") page: Int = 1,
     ): TmdbSearchResponseDto
