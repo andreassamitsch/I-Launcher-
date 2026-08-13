@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.andreassamitsch.ilauncher.data.home.HeroTextScrollSpeed
 import com.andreassamitsch.ilauncher.data.home.WatchNextArtworkMode
 import com.andreassamitsch.ilauncher.model.AppContentChannelsLoadResult
 import com.andreassamitsch.ilauncher.model.InstalledApp
@@ -43,6 +44,8 @@ fun HomeSettingsScreen(
     onSetWatchNextCardArtworkMode: (WatchNextArtworkMode) -> Unit,
     watchNextHeroArtworkMode: WatchNextArtworkMode,
     onSetWatchNextHeroArtworkMode: (WatchNextArtworkMode) -> Unit,
+    heroTextScrollSpeed: HeroTextScrollSpeed,
+    onSetHeroTextScrollSpeed: (HeroTextScrollSpeed) -> Unit,
     hiddenPreviewChannelIds: Set<String>,
     onSetPreviewChannelVisible: (String, Boolean) -> Unit,
     onShowAllPreviewChannels: () -> Unit,
@@ -106,6 +109,28 @@ fun HomeSettingsScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         TouchButton(onClick = onResetApps) { Text("App-Reihenfolge zurücksetzen") }
+
+        Text("Hero-Text – Scrollgeschwindigkeit", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "Die Geschwindigkeit wird in Zeilen pro Sekunde berechnet. Dadurch bleibt sie bei anderer Schrift- oder Zeilenhöhe gleich und hängt nicht von der Länge des Textfelds ab.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            HeroTextScrollSpeed.entries.forEach { speed ->
+                val label = when (speed) {
+                    HeroTextScrollSpeed.Off -> "Aus"
+                    HeroTextScrollSpeed.Slow -> "Langsam"
+                    HeroTextScrollSpeed.Normal -> "Normal"
+                    HeroTextScrollSpeed.Fast -> "Schnell"
+                }
+                TouchButton(onClick = { onSetHeroTextScrollSpeed(speed) }) {
+                    Text(if (heroTextScrollSpeed == speed) "✓ $label" else label)
+                }
+            }
+        }
 
         Text("Weiterschauen – Bilder", style = MaterialTheme.typography.headlineSmall)
         Text(
