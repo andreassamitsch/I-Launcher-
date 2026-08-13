@@ -2,22 +2,36 @@ package com.andreassamitsch.ilauncher.ui.discover
 
 import androidx.compose.runtime.staticCompositionLocalOf
 import com.andreassamitsch.ilauncher.data.search.SearchBrowseSection
+import com.andreassamitsch.ilauncher.data.tmdb.TmdbPeopleRepository
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbSearchRepository
+import com.andreassamitsch.ilauncher.model.MediaCredits
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.MediaType
+import com.andreassamitsch.ilauncher.model.PersonDetails
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.model.SearchResultKind
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 /**
- * Small UI-facing adapter for the TMDB discovery surface.
+ * UI-facing adapter for TMDB discovery and people details.
  *
- * LauncherApp keeps owning the normal browse state. This loader is only used for user-enabled
- * optional rows and for settled-focus Hero enrichment, so those operations remain lazy and cached
- * inside TmdbSearchRepository instead of being duplicated in the composables.
+ * Optional rows, card-detail prefetch and person navigation stay lazy here while the repositories
+ * own network/cache policy. Prefetching is bounded so fast D-Pad movement never opens an unbounded
+ * burst of TMDB detail requests.
  */
 class TmdbDiscoveryLoader(
     private val repository: TmdbSearchRepository,
+    private val peopleRepository: TmdbPeopleRepository,
 ) {
+    private val prefetchedDetails = ConcurrentHashMap<String, MediaItem>()
+    private val prefetching = ConcurrentHashMap.newKeySet<String>()
+    private val prefetchSemaphore = Semaphore(PREFETCH_CONCURRENCY)
+
     suspend fun browse(type: MediaType, rowKeys: List<String>): List<SearchBrowseSection> =
         repository.browse(type, rowKeys).map { section ->
             SearchBrowseSection(
@@ -27,7 +41,54 @@ class TmdbDiscoveryLoader(
             )
         }
 
-    suspend fun loadDetails(item: MediaItem): MediaItem = repository.loadDetails(item) ?: item
+    fun peekDetails(item: MediaItem): MediaItem? = detailKey(item)?.let(prefetchedDetails::get)
+
+    suspend fun loadDetails(item: MediaItem): MediaItem {
+        val key = detailKey(item)
+        if (key != null) prefetchedDetails[key]?.let { return it }
+        val detailed = repository.loadDetails(item) ?: item
+        if (key != null) rememberPrefetched(key, detailed)
+        return detailed
+    }
+
+    suspend fun prefetchDetails(items: List<MediaItem>) = coroutineScope {
+        items
+            .distinctBy(::detailKey)
+            .map { item ->
+                async {
+                    val key = detailKey(item) ?: return@async
+                    if (prefetchedDetails.containsKey(key) || !prefetching.add(key)) return@async
+                    try {
+                        prefetchSemaphore.withPermit {
+                            repository.loadDetails(item)?.let { rememberPrefetched(key, it) }
+                        }
+                    } finally {
+                        prefetching.remove(key)
+                    }
+                }
+            }
+            .awaitAll()
+    }
+
+    suspend fun loadCredits(item: MediaItem): MediaCredits = peopleRepository.loadCredits(item)
+
+    suspend fun loadPerson(personId: Int): PersonDetails? = peopleRepository.loadPerson(personId)
+
+    private fun rememberPrefetched(key: String, media: MediaItem) {
+        prefetchedDetails[key] = media
+        while (prefetchedDetails.size > MAX_PREFETCHED_DETAILS) {
+            prefetchedDetails.keys.firstOrNull()?.let(prefetchedDetails::remove) ?: break
+        }
+    }
+
+    private fun detailKey(item: MediaItem): String? {
+        val tmdbId = item.tmdbId ?: return null
+        return when (item.type) {
+            MediaType.Movie -> "movie:$tmdbId"
+            MediaType.Series -> "series:$tmdbId"
+            else -> null
+        }
+    }
 
     private fun toSearchItem(media: MediaItem): SearchItem = SearchItem(
         id = "search:tmdb:${media.type}:${media.tmdbId}",
@@ -38,6 +99,11 @@ class TmdbDiscoveryLoader(
         sourceLabel = "TMDB",
         media = media,
     )
+
+    private companion object {
+        const val PREFETCH_CONCURRENCY = 3
+        const val MAX_PREFETCHED_DETAILS = 64
+    }
 }
 
 val LocalTmdbDiscoveryLoader = staticCompositionLocalOf<TmdbDiscoveryLoader?> { null }
