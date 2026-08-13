@@ -20,6 +20,8 @@ private const val TAG = "KODI_TMDB_HELPER"
 class KodiSearchLauncher(private val context: Context) {
     fun isAvailable(): Boolean = context.packageManager.getLaunchIntentForPackage(KODI_PACKAGE) != null
 
+    fun resolvedPackageName(): String? = KODI_PACKAGE.takeIf { isAvailable() }
+
     fun launch(query: String): Boolean {
         if (!isAvailable()) return false
         val normalizedQuery = query.trim().replace(Regex("\\s+"), " ")
@@ -34,9 +36,6 @@ class KodiSearchLauncher(private val context: Context) {
             return false
         }
 
-        // Stock Kodi exposes no Android intent that navigates to an arbitrary plugin directory.
-        // Kodi's own JSON-RPC TCP server is the supported navigation API when local remote control
-        // is enabled. TMDb Helper's current search route accepts info=search, tmdb_type and query.
         thread(name = "i-launcher-kodi-tmdb-helper") {
             val pluginPath = tmdbHelperSearchPath(normalizedQuery)
             val success = activateKodiVideoWindow(pluginPath)
@@ -57,17 +56,10 @@ class KodiSearchLauncher(private val context: Context) {
     private fun activateKodiVideoWindow(pluginPath: String): Boolean {
         val socket = connectToKodiJsonRpc() ?: return false
         return socket.use { connectedSocket ->
-            runCatching {
-                sendActivateWindowRequest(connectedSocket, pluginPath)
-            }.getOrDefault(false)
+            runCatching { sendActivateWindowRequest(connectedSocket, pluginPath) }.getOrDefault(false)
         }
     }
 
-    /**
-     * Kodi may need a short moment after Android launches its activity before the local JSON-RPC
-     * listener is reachable. Retry only the TCP connection. Once a connection succeeds, the GUI
-     * command itself is sent exactly once so an ambiguous/late response can never re-run a search.
-     */
     private fun connectToKodiJsonRpc(): Socket? {
         repeat(KODI_RPC_STARTUP_ATTEMPTS) { attempt ->
             if (attempt > 0) Thread.sleep(KODI_RPC_RETRY_MILLIS)
@@ -102,8 +94,6 @@ class KodiSearchLauncher(private val context: Context) {
         writer.write(request.toString())
         writer.flush()
 
-        // Raw Kodi JSON-RPC/TCP does not delimit messages with line breaks. Notifications may also
-        // arrive before our response, so read complete JSON objects and wait for our request id.
         val reader = InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8)
         repeat(KODI_RPC_MAX_RESPONSE_MESSAGES) {
             val response = readKodiJsonMessage(reader) ?: return false
@@ -127,10 +117,6 @@ class KodiSearchLauncher(private val context: Context) {
     }
 }
 
-/**
- * Reads one object from Kodi's delimiter-free raw JSON-RPC stream. Curly braces inside quoted
- * strings do not affect framing, and the reader remains positioned at the next message.
- */
 internal fun readKodiJsonMessage(reader: Reader): String? {
     val message = StringBuilder()
     var started = false
