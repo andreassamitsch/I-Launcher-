@@ -54,49 +54,39 @@ jobs:
             gradle :app:assembleDebug --stacktrace
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             mkdir -p build/tv-discovery-visual
-
-            check_foreground() {
-              adb shell dumpsys activity activities \
-                | grep -m1 -E 'topResumedActivity|ResumedActivity' \
-                | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.DiscoveryPreviewActivity' \
-                || (adb logcat -d -v time > build/tv-discovery-visual/logcat-failure.txt; \
-                    adb shell dumpsys activity activities > build/tv-discovery-visual/activity-failure.txt; exit 1)
-            }
-
             adb logcat -c
             adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.DiscoveryPreviewActivity
             sleep 3
-            check_foreground
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.DiscoveryPreviewActivity' || (adb logcat -d -v time > build/tv-discovery-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-discovery-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-discovery-visual/movies-nav.png
             adb shell input keyevent 20
             sleep 1
-            check_foreground
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.DiscoveryPreviewActivity' || (adb logcat -d -v time > build/tv-discovery-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-discovery-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-discovery-visual/movies-first-card.png
             adb shell input keyevent 22
             sleep 1
-            check_foreground
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.DiscoveryPreviewActivity' || (adb logcat -d -v time > build/tv-discovery-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-discovery-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-discovery-visual/movies-second-card.png
             adb shell input keyevent 20
             sleep 1
-            check_foreground
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.DiscoveryPreviewActivity' || (adb logcat -d -v time > build/tv-discovery-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-discovery-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-discovery-visual/movies-second-row.png
-
             adb shell am force-stop com.andreassamitsch.ilauncher
             adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.DiscoveryPreviewActivity --es type series
             sleep 3
-            check_foreground
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.DiscoveryPreviewActivity' || (adb logcat -d -v time > build/tv-discovery-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-discovery-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-discovery-visual/series-nav.png
             adb shell input keyevent 20
             sleep 1
-            check_foreground
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.DiscoveryPreviewActivity' || (adb logcat -d -v time > build/tv-discovery-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-discovery-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-discovery-visual/series-first-card.png
             adb shell input keyevent 22
             sleep 1
-            check_foreground
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.DiscoveryPreviewActivity' || (adb logcat -d -v time > build/tv-discovery-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-discovery-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-discovery-visual/series-second-card.png
             adb shell input keyevent 20
             sleep 1
-            check_foreground
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.DiscoveryPreviewActivity' || (adb logcat -d -v time > build/tv-discovery-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-discovery-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-discovery-visual/series-second-row.png
 
       - name: Upload TV discovery visual smoke screenshots
