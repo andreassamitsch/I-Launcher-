@@ -50,12 +50,13 @@ internal val GoogleTvTopNavigationHeight = 58.dp
  * intentionally not a top-level destination; it is opened from the Home app dock instead.
  * Search/settings remain compact utilities on the right. On Home, leaving the navigation for the
  * content rails visually collapses the bar to a small top chevron while it remains in the focus tree.
+ * Long OK on Home/Movies/Series deliberately exposes the configuration belonging to that page.
  */
 @Composable
 internal fun GoogleTvTopNavigation(
     activeSection: LauncherSection,
     onSelect: (LauncherSection) -> Unit,
-    onOpenHomeSettings: () -> Unit,
+    onOpenSectionSettings: (LauncherSection) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val selectedSection: LauncherSection? = when (activeSection) {
@@ -121,7 +122,7 @@ internal fun GoogleTvTopNavigation(
                     selected = selectedSection == LauncherSection.Home,
                     focusRequester = if (selectedSection == LauncherSection.Home) selectedFocusRequester else null,
                     onClick = { onSelect(LauncherSection.Home) },
-                    onLongClick = onOpenHomeSettings,
+                    onLongClick = { onOpenSectionSettings(LauncherSection.Home) },
                     compact = true,
                     glyph = GoogleTvUtilityGlyph.Home,
                 )
@@ -131,6 +132,7 @@ internal fun GoogleTvTopNavigation(
                     selected = selectedSection == LauncherSection.Movies,
                     focusRequester = if (selectedSection == LauncherSection.Movies) selectedFocusRequester else null,
                     onClick = { onSelect(LauncherSection.Movies) },
+                    onLongClick = { onOpenSectionSettings(LauncherSection.Movies) },
                 )
                 GoogleTvNavDestination(
                     label = "Serien",
@@ -138,6 +140,7 @@ internal fun GoogleTvTopNavigation(
                     selected = selectedSection == LauncherSection.Series,
                     focusRequester = if (selectedSection == LauncherSection.Series) selectedFocusRequester else null,
                     onClick = { onSelect(LauncherSection.Series) },
+                    onLongClick = { onOpenSectionSettings(LauncherSection.Series) },
                 )
 
                 Spacer(Modifier.weight(1f))
