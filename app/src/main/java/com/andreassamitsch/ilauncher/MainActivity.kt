@@ -8,6 +8,7 @@ import com.andreassamitsch.ilauncher.data.apps.InstalledAppsRepository
 import com.andreassamitsch.ilauncher.data.epg.EpgRepository
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifRepository
 import com.andreassamitsch.ilauncher.data.search.SearchRepository
+import com.andreassamitsch.ilauncher.data.tmdb.TmdbPeopleRepository
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbRepository
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbSearchRepository
 import com.andreassamitsch.ilauncher.data.tv.PreviewChannelsRepository
@@ -28,8 +29,9 @@ class MainActivity : ComponentActivity() {
         val previewChannelsRepository = PreviewChannelsRepository(applicationContext)
         val tmdbRepository = TmdbRepository(applicationContext)
         val tmdbSearchRepository = TmdbSearchRepository(applicationContext)
+        val tmdbPeopleRepository = TmdbPeopleRepository(applicationContext)
         val searchRepository = SearchRepository(tmdbSearchRepository)
-        val tmdbDiscoveryLoader = TmdbDiscoveryLoader(tmdbSearchRepository)
+        val tmdbDiscoveryLoader = TmdbDiscoveryLoader(tmdbSearchRepository, tmdbPeopleRepository)
         val watchNextEnrichmentRepository = WatchNextEnrichmentRepository(tmdbRepository)
         val openWebifRepository = OpenWebifRepository(applicationContext)
         val epgRepository = EpgRepository(applicationContext, tmdbRepository)
