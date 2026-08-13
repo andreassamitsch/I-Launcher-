@@ -8,6 +8,7 @@ import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
 import com.andreassamitsch.ilauncher.model.MediaItem
+import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.model.SearchResultKind
 import java.text.Normalizer
@@ -195,6 +196,19 @@ class SearchRepository(
             .map(::tmdbSearchItem)
     }
 
+    suspend fun browseTmdb(type: MediaType): List<SearchBrowseSection> {
+        val provider = tmdbSearchRepository ?: return emptyList()
+        if (!provider.isConfigured || type !in setOf(MediaType.Movie, MediaType.Series)) return emptyList()
+        return provider.browse(type).map { section ->
+            SearchBrowseSection(
+                key = section.key,
+                title = section.title,
+                items = section.items.map(::tmdbSearchItem),
+            )
+        }
+    }
+
+    /** Backward-compatible mixed browse used only by legacy/search callers. */
     suspend fun browseTmdb(): List<SearchBrowseSection> {
         val provider = tmdbSearchRepository ?: return emptyList()
         if (!provider.isConfigured) return emptyList()
