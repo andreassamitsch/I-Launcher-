@@ -1,31 +1,16 @@
 package com.andreassamitsch.ilauncher.ui.discover
 
 import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
@@ -35,12 +20,17 @@ import com.andreassamitsch.ilauncher.data.search.SearchBrowseSection
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbDiscoveryPreferences
 import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.model.SearchItem
+import com.andreassamitsch.ilauncher.ui.MoviesTopNavigationFocusRequester
+import com.andreassamitsch.ilauncher.ui.SeriesTopNavigationFocusRequester
 import com.andreassamitsch.ilauncher.ui.components.WatchNextCard
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import com.andreassamitsch.ilauncher.ui.home.HomeHero
 import com.andreassamitsch.ilauncher.ui.home.HomeHeroContent
 import com.andreassamitsch.ilauncher.ui.home.mediaHero
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 private val DiscoveryHorizontalPadding = 38.dp
 private val DiscoveryHeroHeight = 360.dp
@@ -65,85 +55,71 @@ fun ContentDiscoveryScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val discoveryLoader = LocalTmdbDiscoveryLoader.current
-    val discoveryPreferences = remember(context) { TmdbDiscoveryPreferences(context) }
-    val movieRowKeys by discoveryPreferences.movieRowKeys.collectAsState()
-    val seriesRowKeys by discoveryPreferences.seriesRowKeys.collectAsState()
-    val baseMediaType = remember(sections) {
-        sections.asSequence()
-            .flatMap { it.items.asSequence() }
-            .mapNotNull { it.media?.type }
+    val loader = LocalTmdbDiscoveryLoader.current
+    val prefs = remember(context) { TmdbDiscoveryPreferences(context) }
+    val movieKeys by prefs.movieRowKeys.collectAsState()
+    val seriesKeys by prefs.seriesRowKeys.collectAsState()
+    val mediaType = remember(sections) {
+        sections.asSequence().flatMap { it.items.asSequence() }.mapNotNull { it.media?.type }
             .firstOrNull { it == MediaType.Movie || it == MediaType.Series }
     }
-    val selectedRowKeys = when (baseMediaType) {
-        MediaType.Movie -> movieRowKeys
-        MediaType.Series -> seriesRowKeys
+    val selectedKeys = when (mediaType) {
+        MediaType.Movie -> movieKeys
+        MediaType.Series -> seriesKeys
         else -> emptyList()
     }
-    var selectedSections by remember(baseMediaType) {
-        mutableStateOf<List<SearchBrowseSection>?>(null)
+    val navRequester = when (mediaType) {
+        MediaType.Movie -> MoviesTopNavigationFocusRequester
+        MediaType.Series -> SeriesTopNavigationFocusRequester
+        else -> null
+    }
+    var selectedSections by remember(mediaType) { mutableStateOf<List<SearchBrowseSection>?>(null) }
+
+    LaunchedEffect(mediaType, selectedKeys, sections, loader) {
+        val type = mediaType
+        if (type == null || loader == null || selectedKeys.isEmpty() || sections.map { it.key } == selectedKeys) {
+            selectedSections = null
+        } else {
+            selectedSections = runCatching { loader.browse(type, selectedKeys) }
+                .getOrDefault(emptyList()).takeIf { it.isNotEmpty() }
+        }
     }
 
-    LaunchedEffect(baseMediaType, selectedRowKeys, sections, discoveryLoader) {
-        val type = baseMediaType ?: run {
-            selectedSections = null
-            return@LaunchedEffect
-        }
-        val loader = discoveryLoader ?: run {
-            selectedSections = null
-            return@LaunchedEffect
-        }
-        if (selectedRowKeys.isEmpty() || sections.map(SearchBrowseSection::key) == selectedRowKeys) {
-            selectedSections = null
-            return@LaunchedEffect
-        }
-        val loaded = runCatching { loader.browse(type, selectedRowKeys) }.getOrDefault(emptyList())
-        selectedSections = loaded.takeIf(List<SearchBrowseSection>::isNotEmpty)
-    }
-
-    val effectiveSections = selectedSections ?: sections
+    val rows = selectedSections ?: sections
     val restoreRequester = remember(focusRestoreResultId) { FocusRequester() }
-    val firstResult = remember(effectiveSections) {
-        effectiveSections.asSequence().flatMap { it.items.asSequence() }.firstOrNull { it.media != null }
+    val firstResult = remember(rows) {
+        rows.asSequence().flatMap { it.items.asSequence() }.firstOrNull { it.media != null }
     }
     var heroResult by remember { mutableStateOf<SearchItem?>(firstResult) }
     var heroMedia by remember { mutableStateOf(firstResult?.media) }
 
-    LaunchedEffect(effectiveSections, firstResult) {
-        val currentId = heroResult?.id
-        val currentStillExists = currentId != null && effectiveSections.any { section ->
-            section.items.any { it.id == currentId }
-        }
-        if (!currentStillExists) heroResult = firstResult
+    LaunchedEffect(rows, firstResult) {
+        if (rows.none { row -> row.items.any { it.id == heroResult?.id } }) heroResult = firstResult
     }
-
-    LaunchedEffect(heroResult?.id, discoveryLoader) {
+    LaunchedEffect(heroResult?.id, loader) {
         val base = heroResult?.media
         heroMedia = base
-        if (base?.tmdbId == null || discoveryLoader == null) return@LaunchedEffect
+        if (base?.tmdbId == null || loader == null) return@LaunchedEffect
+        loader.peekDetails(base)?.let { heroMedia = it; return@LaunchedEffect }
         delay(DiscoveryHeroDetailsDelayMillis)
-        heroMedia = runCatching { discoveryLoader.loadDetails(base) }.getOrDefault(base)
+        heroMedia = runCatching { loader.loadDetails(base) }.getOrDefault(base)
     }
-
-    LaunchedEffect(focusRestoreGeneration, focusRestoreResultId, effectiveSections) {
+    LaunchedEffect(focusRestoreGeneration, focusRestoreResultId, rows) {
         if (focusRestoreGeneration <= 0 || focusRestoreResultId == null) return@LaunchedEffect
-        val sectionIndex = effectiveSections.indexOfFirst { section ->
-            section.items.any { it.id == focusRestoreResultId }
-        }
-        if (sectionIndex >= 0) {
-            listState.scrollToItem(sectionIndex)
+        val rowIndex = rows.indexOfFirst { row -> row.items.any { it.id == focusRestoreResultId } }
+        if (rowIndex >= 0) {
+            listState.scrollToItem(rowIndex)
             delay(50)
             runCatching { restoreRequester.requestFocus() }
         }
     }
 
-    val heroContent = heroMedia?.let { media ->
-        val heroBackdrop = media.heroBackdropUri ?: media.backdropUri
+    val hero = heroMedia?.let { media ->
         mediaHero(
             item = media,
             sourceLabel = "TMDB",
-            artworkOverride = heroBackdrop?.let { it to false },
-        ).copy(eyebrow = title)
+            artworkOverride = (media.heroBackdropUri ?: media.backdropUri)?.let { it to false },
+        ).copy(eyebrow = null)
     } ?: HomeHeroContent(
         key = "discovery:$title",
         eyebrow = title,
@@ -151,45 +127,34 @@ fun ContentDiscoveryScreen(
         description = subtitle,
     )
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(modifier.fillMaxSize()) {
         HomeHero(
-            content = heroContent,
+            content = hero,
             onOpenMediaDetails = { _, _ -> heroResult?.let(onOpenResult) },
             onOpenApp = {},
             onFocused = {},
             textScrollSpeed = heroTextScrollSpeed,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .fillMaxWidth()
-                .height(DiscoveryHeroHeight),
+            modifier = Modifier.align(Alignment.TopStart).fillMaxWidth().height(DiscoveryHeroHeight),
         )
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = DiscoveryFirstRailTop)
-                .clipToBounds(),
-        ) {
+        Box(Modifier.fillMaxSize().padding(top = DiscoveryFirstRailTop).clipToBounds()) {
             when {
-                !tmdbConfigured -> DiscoveryMessage(
-                    "TMDB ist nicht konfiguriert. Ohne TMDB-Zugang können diese Inhalte nicht geladen werden.",
-                )
-                effectiveSections.isEmpty() && isLoading -> DiscoveryMessage("TMDB-Inhalte werden geladen …")
-                effectiveSections.isEmpty() -> DiscoveryMessage("Keine TMDB-Inhalte verfügbar.")
+                !tmdbConfigured -> DiscoveryMessage("TMDB ist nicht konfiguriert. Ohne TMDB-Zugang können diese Inhalte nicht geladen werden.")
+                rows.isEmpty() && isLoading -> DiscoveryMessage("TMDB-Inhalte werden geladen …")
+                rows.isEmpty() -> DiscoveryMessage("Keine TMDB-Inhalte verfügbar.")
                 else -> LazyColumn(
                     state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .touchScrollFallback(listState, Orientation.Vertical),
+                    modifier = Modifier.fillMaxSize().touchScrollFallback(listState, Orientation.Vertical),
                     contentPadding = PaddingValues(bottom = DiscoveryBottomFocusReserve),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(effectiveSections, key = SearchBrowseSection::key) { section ->
+                    items(rows, key = SearchBrowseSection::key) { row ->
                         DiscoveryRow(
-                            section = section,
-                            focusRestoreResultId = focusRestoreResultId,
+                            section = row,
+                            restoreResultId = focusRestoreResultId,
                             restoreRequester = restoreRequester,
-                            onOpenResult = onOpenResult,
+                            navRequester = navRequester.takeIf { row.key == rows.firstOrNull()?.key },
+                            loader = loader,
+                            onOpen = onOpenResult,
                             onFocused = { heroResult = it },
                         )
                     }
@@ -202,7 +167,7 @@ fun ContentDiscoveryScreen(
 @Composable
 private fun DiscoveryMessage(text: String) {
     Text(
-        text = text,
+        text,
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = DiscoveryHorizontalPadding, vertical = 24.dp),
@@ -212,22 +177,40 @@ private fun DiscoveryMessage(text: String) {
 @Composable
 private fun DiscoveryRow(
     section: SearchBrowseSection,
-    focusRestoreResultId: String?,
+    restoreResultId: String?,
     restoreRequester: FocusRequester,
-    onOpenResult: (SearchItem) -> Unit,
+    navRequester: FocusRequester?,
+    loader: TmdbDiscoveryLoader?,
+    onOpen: (SearchItem) -> Unit,
     onFocused: (SearchItem) -> Unit,
 ) {
     val rowState = rememberLazyListState()
+    var hasFocus by remember(section.key) { mutableStateOf(false) }
+    LaunchedEffect(hasFocus, section.items, loader) {
+        if (!hasFocus || loader == null) return@LaunchedEffect
+        snapshotFlow { rowState.layoutInfo.visibleItemsInfo.map { it.index } }
+            .map { visible ->
+                if (visible.isEmpty()) emptyList() else {
+                    val first = (visible.minOrNull()!! - 1).coerceAtLeast(0)
+                    val last = (visible.maxOrNull()!! + 1).coerceAtMost(section.items.lastIndex)
+                    (first..last).mapNotNull { section.items.getOrNull(it)?.media }
+                }
+            }
+            .distinctUntilChanged()
+            .collectLatest { if (it.isNotEmpty()) loader.prefetchDetails(it) }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
-            text = section.title,
+            section.title,
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(start = DiscoveryHorizontalPadding, top = 5.dp),
         )
         LazyRow(
             state = rowState,
-            modifier = Modifier.touchScrollFallback(rowState, Orientation.Horizontal),
+            modifier = Modifier.onFocusChanged { hasFocus = it.hasFocus }
+                .touchScrollFallback(rowState, Orientation.Horizontal),
             contentPadding = PaddingValues(
                 start = DiscoveryHorizontalPadding,
                 end = 18.dp,
@@ -238,15 +221,14 @@ private fun DiscoveryRow(
         ) {
             items(section.items, key = SearchItem::id) { result ->
                 val media = result.media ?: return@items
+                var cardModifier = Modifier
+                if (result.id == restoreResultId) cardModifier = cardModifier.focusRequester(restoreRequester)
+                navRequester?.let { requester -> cardModifier = cardModifier.focusProperties { up = requester } }
                 WatchNextCard(
                     item = media,
-                    onClick = { onOpenResult(result) },
+                    onClick = { onOpen(result) },
                     onFocused = { onFocused(result) },
-                    modifier = if (result.id == focusRestoreResultId) {
-                        Modifier.focusRequester(restoreRequester)
-                    } else {
-                        Modifier
-                    },
+                    modifier = cardModifier,
                 )
             }
         }
