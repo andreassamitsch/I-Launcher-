@@ -38,6 +38,7 @@ import com.andreassamitsch.ilauncher.data.home.HomePreferences
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifRepository
 import com.andreassamitsch.ilauncher.data.search.SearchBrowseSection
 import com.andreassamitsch.ilauncher.data.search.SearchRepository
+import com.andreassamitsch.ilauncher.data.tmdb.TmdbDiscoveryPreferences
 import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.data.tv.PreviewChannelPreferences
 import com.andreassamitsch.ilauncher.data.tv.PreviewChannelsRepository
@@ -63,6 +64,7 @@ import com.andreassamitsch.ilauncher.ui.apps.AppsScreen
 import com.andreassamitsch.ilauncher.ui.components.TouchButton
 import com.andreassamitsch.ilauncher.ui.details.DetailsScreen
 import com.andreassamitsch.ilauncher.ui.discover.ContentDiscoveryScreen
+import com.andreassamitsch.ilauncher.ui.discover.ContentDiscoverySettingsScreen
 import com.andreassamitsch.ilauncher.ui.home.HomeRowOption
 import com.andreassamitsch.ilauncher.ui.home.HomeScreen
 import com.andreassamitsch.ilauncher.ui.home.HomeSettingsScreen
@@ -107,6 +109,7 @@ fun LauncherApp(
     val scope = rememberCoroutineScope()
     var section by rememberSaveable { mutableStateOf(LauncherSection.Home) }
     var showHomeSettings by rememberSaveable { mutableStateOf(false) }
+    var discoverySettingsSection by rememberSaveable { mutableStateOf<LauncherSection?>(null) }
     var selectedDetailsSourceId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedSearchDetailsMedia by remember { mutableStateOf<MediaItem?>(null) }
     var selectedSearchDetailsResultId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -152,6 +155,10 @@ fun LauncherApp(
     val savedHomeAppOrder by homePreferences.appOrder.collectAsState()
     val watchNextCardArtworkMode by homePreferences.watchNextCardArtworkMode.collectAsState()
     val watchNextHeroArtworkMode by homePreferences.watchNextHeroArtworkMode.collectAsState()
+    val heroTextScrollSpeed by homePreferences.heroTextScrollSpeed.collectAsState()
+    val tmdbDiscoveryPreferences = remember(context) { TmdbDiscoveryPreferences(context) }
+    val movieDiscoveryRowKeys by tmdbDiscoveryPreferences.movieRowKeys.collectAsState()
+    val seriesDiscoveryRowKeys by tmdbDiscoveryPreferences.seriesRowKeys.collectAsState()
 
     val tvListingsPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -340,6 +347,13 @@ fun LauncherApp(
         }
     }
 
+    val visibleMovieBrowseSections = remember(movieBrowseSections, movieDiscoveryRowKeys) {
+        orderBrowseSections(movieBrowseSections, movieDiscoveryRowKeys)
+    }
+    val visibleSeriesBrowseSections = remember(seriesBrowseSections, seriesDiscoveryRowKeys) {
+        orderBrowseSections(seriesBrowseSections, seriesDiscoveryRowKeys)
+    }
+
     val sourceLinkedTmdbResults = remember(tmdbSearchResults, homeWatchNextItems, visiblePreviewChannels, appLabels) {
         tmdbSearchResults.map { result ->
             linkTmdbResultToLocalSource(result, homeWatchNextItems, visiblePreviewChannels, appLabels)
@@ -413,10 +427,15 @@ fun LauncherApp(
         section = LauncherSection.Home
     }
     BackHandler(
-        enabled = !showHomeSettings && selectedDetailsMedia == null && selectedLiveTvServiceReference == null && section == LauncherSection.Apps,
+        enabled = discoverySettingsSection != null && selectedDetailsMedia == null && selectedLiveTvServiceReference == null,
+    ) {
+        discoverySettingsSection = null
+    }
+    BackHandler(
+        enabled = !showHomeSettings && discoverySettingsSection == null && selectedDetailsMedia == null && selectedLiveTvServiceReference == null && section == LauncherSection.Apps,
     ) { section = LauncherSection.Home }
     BackHandler(
-        enabled = !showHomeSettings && selectedDetailsMedia == null && selectedLiveTvServiceReference == null && section == LauncherSection.LiveTv,
+        enabled = !showHomeSettings && discoverySettingsSection == null && selectedDetailsMedia == null && selectedLiveTvServiceReference == null && section == LauncherSection.LiveTv,
     ) { section = LauncherSection.Settings }
 
     DisposableEffect(activity) {
@@ -562,6 +581,8 @@ fun LauncherApp(
                 onSetWatchNextCardArtworkMode = homePreferences::setWatchNextCardArtworkMode,
                 watchNextHeroArtworkMode = watchNextHeroArtworkMode,
                 onSetWatchNextHeroArtworkMode = homePreferences::setWatchNextHeroArtworkMode,
+                heroTextScrollSpeed = heroTextScrollSpeed,
+                onSetHeroTextScrollSpeed = homePreferences::setHeroTextScrollSpeed,
                 hiddenPreviewChannelIds = hiddenPreviewChannelIds,
                 onSetPreviewChannelVisible = previewChannelPreferences::setVisible,
                 onShowAllPreviewChannels = previewChannelPreferences::showAll,
@@ -573,6 +594,23 @@ fun LauncherApp(
                 },
                 modifier = Modifier.padding(horizontal = 38.dp, vertical = 12.dp),
             )
+
+            discoverySettingsSection != null -> {
+                val settingsSection = requireNotNull(discoverySettingsSection)
+                val mediaType = if (settingsSection == LauncherSection.Movies) MediaType.Movie else MediaType.Series
+                val selectedRowKeys = if (mediaType == MediaType.Movie) movieDiscoveryRowKeys else seriesDiscoveryRowKeys
+                ContentDiscoverySettingsScreen(
+                    mediaType = mediaType,
+                    selectedRowKeys = selectedRowKeys,
+                    onSetVisible = { key, visible ->
+                        tmdbDiscoveryPreferences.setVisible(mediaType, key, visible)
+                    },
+                    onMove = { key, delta -> tmdbDiscoveryPreferences.move(mediaType, key, delta) },
+                    onReset = { tmdbDiscoveryPreferences.reset(mediaType) },
+                    onBack = { discoverySettingsSection = null },
+                    modifier = Modifier.padding(horizontal = 38.dp, vertical = 12.dp),
+                )
+            }
 
             else -> Box(modifier = Modifier.fillMaxSize()) {
                 when (section) {
@@ -617,6 +655,7 @@ fun LauncherApp(
                         onNavigationVisibilityChange = {},
                         watchNextCardArtworkMode = watchNextCardArtworkMode,
                         watchNextHeroArtworkMode = watchNextHeroArtworkMode,
+                        heroTextScrollSpeed = heroTextScrollSpeed,
                         onLiveTvFocused = { channel ->
                             channel.now?.let { program ->
                                 scope.launch {
@@ -636,27 +675,27 @@ fun LauncherApp(
                     LauncherSection.Movies -> ContentDiscoveryScreen(
                         title = "Filme entdecken",
                         subtitle = "Trends, beliebte Titel, Top-Bewertungen und Filmkategorien von TMDB.",
-                        sections = movieBrowseSections,
+                        sections = visibleMovieBrowseSections,
                         isLoading = isMovieBrowseLoading,
                         tmdbConfigured = searchRepository.isTmdbConfigured,
                         onOpenResult = openSearchResult,
                         listState = movieBrowseListState,
                         focusRestoreResultId = searchFocusRestoreResultId,
                         focusRestoreGeneration = searchFocusRestoreGeneration,
-                        modifier = Modifier.padding(top = GoogleTvTopNavigationHeight),
+                        heroTextScrollSpeed = heroTextScrollSpeed,
                     )
 
                     LauncherSection.Series -> ContentDiscoveryScreen(
                         title = "Serien entdecken",
                         subtitle = "Trends, beliebte Serien, Top-Bewertungen und Kategorien von TMDB.",
-                        sections = seriesBrowseSections,
+                        sections = visibleSeriesBrowseSections,
                         isLoading = isSeriesBrowseLoading,
                         tmdbConfigured = searchRepository.isTmdbConfigured,
                         onOpenResult = openSearchResult,
                         listState = seriesBrowseListState,
                         focusRestoreResultId = searchFocusRestoreResultId,
                         focusRestoreGeneration = searchFocusRestoreGeneration,
-                        modifier = Modifier.padding(top = GoogleTvTopNavigationHeight),
+                        heroTextScrollSpeed = heroTextScrollSpeed,
                     )
 
                     LauncherSection.Search -> SearchScreen(
@@ -795,17 +834,39 @@ fun LauncherApp(
                     activeSection = section,
                     onSelect = { destination ->
                         showHomeSettings = false
+                        discoverySettingsSection = null
                         section = destination
                     },
-                    onOpenHomeSettings = {
-                        section = LauncherSection.Home
-                        showHomeSettings = true
+                    onOpenSectionSettings = { destination ->
+                        when (destination) {
+                            LauncherSection.Home -> {
+                                discoverySettingsSection = null
+                                section = LauncherSection.Home
+                                showHomeSettings = true
+                            }
+                            LauncherSection.Movies,
+                            LauncherSection.Series,
+                            -> {
+                                showHomeSettings = false
+                                section = destination
+                                discoverySettingsSection = destination
+                            }
+                            else -> Unit
+                        }
                     },
                     modifier = Modifier.align(Alignment.TopStart),
                 )
             }
         }
     }
+}
+
+private fun orderBrowseSections(
+    sections: List<SearchBrowseSection>,
+    selectedKeys: List<String>,
+): List<SearchBrowseSection> {
+    val byKey = sections.associateBy(SearchBrowseSection::key)
+    return selectedKeys.mapNotNull(byKey::get)
 }
 
 private fun epgProgramMedia(channel: LiveTvChannel, program: LiveTvProgram): MediaItem = MediaItem(
