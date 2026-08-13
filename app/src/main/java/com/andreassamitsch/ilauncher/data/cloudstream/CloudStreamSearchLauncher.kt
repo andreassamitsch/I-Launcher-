@@ -6,7 +6,9 @@ import android.content.pm.PackageManager
 import android.net.Uri
 
 class CloudStreamSearchLauncher(private val context: Context) {
-    fun isAvailable(): Boolean = resolvePackage(query = "test") != null
+    fun resolvedPackageName(): String? = resolvePackage(query = "test")
+
+    fun isAvailable(): Boolean = resolvedPackageName() != null
 
     fun launch(query: String): Boolean {
         val packageName = resolvePackage(query) ?: return false
