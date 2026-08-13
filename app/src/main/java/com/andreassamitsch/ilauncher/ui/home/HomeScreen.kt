@@ -3,8 +3,10 @@ package com.andreassamitsch.ilauncher.ui.home
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,11 +21,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -36,16 +40,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import androidx.tv.material3.Border
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -76,6 +84,8 @@ private val HOME_HERO_HEIGHT = 360.dp
 private val HOME_FIRST_RAIL_TOP = 275.dp
 private val HOME_MEDIA_RAIL_VERTICAL_PADDING = 26.dp
 private val HOME_BOTTOM_FOCUS_RESERVE = 132.dp
+private val HOME_APP_DOCK_ICON_SIZE = 82.dp
+private val HOME_APP_DOCK_CARD_WIDTH = 94.dp
 
 @Composable
 fun HomeScreen(
@@ -90,6 +100,7 @@ fun HomeScreen(
     onMoveHomeApp: (String, Int) -> Unit,
     onRequestTvListingsPermission: () -> Unit,
     onOpenApp: (InstalledApp) -> Unit,
+    onOpenAllApps: () -> Unit,
     onOpenWatchNext: (EnrichedWatchNextItem) -> Unit,
     onOpenWatchNextDetails: (EnrichedWatchNextItem) -> Unit,
     onOpenMediaDetails: (MediaItem, String?) -> Unit,
@@ -157,8 +168,6 @@ fun HomeScreen(
         if (!heroSelectedByUser) hero = defaultHero
     }
 
-    // A Live-TV focus may trigger asynchronous TMDB enrichment. Keep the selected Hero bound to
-    // the stable serviceReference so the richer programme copy replaces the initial EPG-only Hero.
     LaunchedEffect(liveTvState.channels, hero.key) {
         val serviceReference = hero.key.takeIf { it.startsWith("live:") }
             ?.removePrefix("live:")
@@ -205,9 +214,6 @@ fun HomeScreen(
                 .height(HOME_HERO_HEIGHT),
         )
 
-        // Content deliberately overlays the lower Hero instead of starting after it. This mirrors
-        // Google TV's stage-to-rail composition: the artwork remains visible behind roughly the
-        // upper half of the first card row and then fades into the page background.
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -266,6 +272,7 @@ fun HomeScreen(
                                     onMoveMode = { movingAppPackage = it },
                                     onMove = onMoveHomeApp,
                                     onOpen = onOpenApp,
+                                    onOpenAllApps = onOpenAllApps,
                                     onRowFocused = onRowFocused,
                                     onFocused = { onNavigationVisibilityChange(false) },
                                 )
@@ -293,8 +300,6 @@ fun HomeScreen(
                         modifier = Modifier.padding(horizontal = 38.dp),
                     )
                 }
-                // Give the final Home row enough trailing content to reach the same focus anchor
-                // as every preceding row. This space is only revealed while navigating deep Home.
                 Spacer(Modifier.height(HOME_BOTTOM_FOCUS_RESERVE))
             }
         }
@@ -475,6 +480,7 @@ private fun AppsHomeRow(
     onMoveMode: (String?) -> Unit,
     onMove: (String, Int) -> Unit,
     onOpen: (InstalledApp) -> Unit,
+    onOpenAllApps: () -> Unit,
     onRowFocused: () -> Unit,
     onFocused: () -> Unit,
 ) {
@@ -507,7 +513,94 @@ private fun AppsHomeRow(
                     },
                 )
             }
+            item(key = "all-apps") {
+                AllAppsDockCard(
+                    onClick = onOpenAllApps,
+                    onFocused = {
+                        onRowFocused()
+                        onFocused()
+                    },
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun AllAppsDockCard(
+    onClick: () -> Unit,
+    onFocused: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val foreground = MaterialTheme.colorScheme.onSurface
+
+    Column(
+        modifier = Modifier
+            .width(HOME_APP_DOCK_CARD_WIDTH)
+            .zIndex(if (focused) 1f else 0f),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        TouchCard(
+            onClick = onClick,
+            modifier = Modifier
+                .size(HOME_APP_DOCK_ICON_SIZE)
+                .onFocusChanged { focusState ->
+                    focused = focusState.isFocused
+                    if (focusState.isFocused) onFocused()
+                },
+            scale = CardDefaults.scale(focusedScale = 1.075f),
+            shape = CardDefaults.shape(shape = CircleShape),
+            border = CardDefaults.border(
+                border = Border.None,
+                focusedBorder = Border.None,
+                pressedBorder = Border.None,
+            ),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Canvas(modifier = Modifier.size(30.dp)) {
+                    val radius = 2.25.dp.toPx()
+                    val gap = size.minDimension / 4f
+                    val start = size.minDimension / 4f
+                    repeat(3) { row ->
+                        repeat(3) { column ->
+                            drawCircle(
+                                color = foreground.copy(alpha = 0.92f),
+                                radius = radius,
+                                center = androidx.compose.ui.geometry.Offset(
+                                    x = start + column * gap,
+                                    y = start + row * gap,
+                                ),
+                            )
+                        }
+                    }
+                }
+                if (focused) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .border(2.dp, Color.White.copy(alpha = 0.92f), CircleShape),
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = "Alle Apps",
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .width(HOME_APP_DOCK_CARD_WIDTH)
+                .height(22.dp)
+                .alpha(1f),
+        )
     }
 }
 
