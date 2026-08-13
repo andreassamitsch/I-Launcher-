@@ -13,6 +13,7 @@ internal data class TmdbSearchResultDto(
     @SerializedName("original_title") val originalTitle: String? = null,
     val name: String? = null,
     @SerializedName("original_name") val originalName: String? = null,
+    val overview: String? = null,
     @SerializedName("release_date") val releaseDate: String? = null,
     @SerializedName("first_air_date") val firstAirDate: String? = null,
     val popularity: Double = 0.0,
