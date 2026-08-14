@@ -5,7 +5,7 @@ import org.junit.Test
 
 class TmdbPersonWorksPolicyTest {
     @Test
-    fun nonNarrativeTvAndSelfAppearancesAreFilteredButMoviesRemain() {
+    fun nonNarrativeAndGenericAppearancesAreFilteredAcrossMoviesAndTv() {
         val credits = TmdbCombinedCreditsDto(
             cast = listOf(
                 TmdbPersonCreditDto(
@@ -43,17 +43,34 @@ class TmdbPersonWorksPolicyTest {
                 TmdbPersonCreditDto(
                     id = 5,
                     mediaType = "movie",
-                    title = "Documentary Film",
+                    title = "Documentary Appearance",
                     character = "Self",
                     popularity = 10.0,
                     voteCount = 300,
+                ),
+                TmdbPersonCreditDto(
+                    id = 6,
+                    mediaType = "movie",
+                    title = "Scripted Movie",
+                    character = "Mara",
+                    popularity = 18.0,
+                    voteCount = 1_200,
+                ),
+                TmdbPersonCreditDto(
+                    id = 7,
+                    mediaType = "tv",
+                    name = "Unclassified Interview",
+                    genreIds = emptyList(),
+                    character = "Interviewee",
+                    popularity = 500.0,
+                    voteCount = 100,
                 ),
             ),
         )
 
         val result = credits.rankedRelevantPersonCredits("Acting")
 
-        assertEquals(setOf(3, 5), result.map { it.id }.toSet())
+        assertEquals(setOf(3, 6), result.map { it.id }.toSet())
     }
 
     @Test
@@ -86,6 +103,37 @@ class TmdbPersonWorksPolicyTest {
         val result = credits.rankedRelevantPersonCredits("Acting")
 
         assertEquals(listOf(10, 20), result.map { it.id })
+    }
+
+    @Test
+    fun broadlyKnownWorkRanksAheadOfHighlyRatedNicheTitle() {
+        val credits = TmdbCombinedCreditsDto(
+            cast = listOf(
+                TmdbPersonCreditDto(
+                    id = 30,
+                    mediaType = "tv",
+                    name = "Well Known Series",
+                    genreIds = listOf(18),
+                    character = "Lead",
+                    popularity = 95.0,
+                    voteAverage = 7.6,
+                    voteCount = 5_500,
+                ),
+                TmdbPersonCreditDto(
+                    id = 40,
+                    mediaType = "movie",
+                    title = "Niche Festival Film",
+                    character = "Lead",
+                    popularity = 4.0,
+                    voteAverage = 9.4,
+                    voteCount = 85,
+                ),
+            ),
+        )
+
+        val result = credits.rankedRelevantPersonCredits("Acting")
+
+        assertEquals(listOf(30, 40), result.map { it.id })
     }
 
     @Test
