@@ -3,9 +3,11 @@ package com.andreassamitsch.ilauncher.ui.discover
 import androidx.compose.runtime.staticCompositionLocalOf
 import com.andreassamitsch.ilauncher.data.search.SearchBrowseSection
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbPeopleRepository
+import com.andreassamitsch.ilauncher.data.tmdb.TmdbRelationsRepository
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbSearchRepository
 import com.andreassamitsch.ilauncher.model.MediaCredits
 import com.andreassamitsch.ilauncher.model.MediaItem
+import com.andreassamitsch.ilauncher.model.MediaRelatedContent
 import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.model.PersonDetails
 import com.andreassamitsch.ilauncher.model.SearchItem
@@ -18,15 +20,16 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
 /**
- * UI-facing adapter for TMDB discovery and people details.
+ * UI-facing adapter for TMDB discovery, relations and people details.
  *
- * Optional rows, card-detail prefetch and person navigation stay lazy here while the repositories
- * own network/cache policy. Prefetching is bounded so fast D-Pad movement never opens an unbounded
- * burst of TMDB detail requests.
+ * Optional rows, card-detail prefetch, related content and person navigation stay lazy here while
+ * the repositories own network/cache policy. Prefetching is bounded so fast D-Pad movement never
+ * opens an unbounded burst of TMDB detail requests.
  */
 class TmdbDiscoveryLoader(
     private val repository: TmdbSearchRepository,
     private val peopleRepository: TmdbPeopleRepository,
+    private val relationsRepository: TmdbRelationsRepository,
 ) {
     private val prefetchedDetails = ConcurrentHashMap<String, MediaItem>()
     private val prefetching = ConcurrentHashMap.newKeySet<String>()
@@ -69,6 +72,8 @@ class TmdbDiscoveryLoader(
             }
             .awaitAll()
     }
+
+    suspend fun loadRelated(item: MediaItem): MediaRelatedContent = relationsRepository.load(item)
 
     suspend fun loadCredits(item: MediaItem): MediaCredits = peopleRepository.loadCredits(item)
 

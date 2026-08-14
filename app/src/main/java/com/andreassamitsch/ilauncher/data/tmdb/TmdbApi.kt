@@ -109,6 +109,26 @@ internal interface TmdbApi {
         @Query("include_video_language") includeVideoLanguage: String = "de,en,null",
     ): TmdbMediaDetailsDto
 
+    @GET("3/movie/{movieId}")
+    suspend fun movieRelations(
+        @Path("movieId") movieId: Int,
+        @Query("language") language: String,
+        @Query("append_to_response") appendToResponse: String = "similar",
+    ): TmdbMediaRelationsDto
+
+    @GET("3/tv/{seriesId}")
+    suspend fun tvRelations(
+        @Path("seriesId") seriesId: Int,
+        @Query("language") language: String,
+        @Query("append_to_response") appendToResponse: String = "similar",
+    ): TmdbMediaRelationsDto
+
+    @GET("3/collection/{collectionId}")
+    suspend fun collectionDetails(
+        @Path("collectionId") collectionId: Int,
+        @Query("language") language: String,
+    ): TmdbCollectionDetailsDto
+
     @GET("3/movie/{movieId}/credits")
     suspend fun movieCredits(
         @Path("movieId") movieId: Int,

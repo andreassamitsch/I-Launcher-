@@ -21,6 +21,7 @@ internal data class TmdbSearchResultDto(
     @SerializedName("vote_count") val voteCount: Int = 0,
     @SerializedName("poster_path") val posterPath: String? = null,
     @SerializedName("backdrop_path") val backdropPath: String? = null,
+    val adult: Boolean = false,
 )
 
 internal data class TmdbConfigurationDto(
@@ -53,6 +54,22 @@ internal data class TmdbMediaDetailsDto(
     val videos: TmdbVideoResponseDto? = null,
     @SerializedName("vote_average") val voteAverage: Double? = null,
     @SerializedName("external_ids") val externalIds: TmdbExternalIdsDto? = null,
+)
+
+internal data class TmdbMediaRelationsDto(
+    @SerializedName("belongs_to_collection") val belongsToCollection: TmdbCollectionRefDto? = null,
+    val similar: TmdbSearchResponseDto? = null,
+)
+
+internal data class TmdbCollectionRefDto(
+    val id: Int = 0,
+    val name: String? = null,
+)
+
+internal data class TmdbCollectionDetailsDto(
+    val id: Int = 0,
+    val name: String? = null,
+    val parts: List<TmdbSearchResultDto> = emptyList(),
 )
 
 internal data class TmdbEpisodeDetailsDto(

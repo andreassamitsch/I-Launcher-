@@ -36,9 +36,12 @@ import com.andreassamitsch.ilauncher.data.youtube.YouTubeEmbedPlayer
 import com.andreassamitsch.ilauncher.model.*
 import com.andreassamitsch.ilauncher.ui.components.TouchButton
 import com.andreassamitsch.ilauncher.ui.components.TouchCard
+import com.andreassamitsch.ilauncher.ui.components.WatchNextCard
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import com.andreassamitsch.ilauncher.ui.discover.LocalTmdbDiscoveryLoader
 import com.andreassamitsch.ilauncher.ui.trailer.TrailerPlayerActivity
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 @Composable
 fun DetailsScreen(
@@ -52,6 +55,7 @@ fun DetailsScreen(
 ) {
     val loader = LocalTmdbDiscoveryLoader.current
     var displayItem by remember(item.id) { mutableStateOf(item) }
+    var relatedContent by remember(item.id) { mutableStateOf(MediaRelatedContent.Empty) }
     var credits by remember(item.id) { mutableStateOf(MediaCredits()) }
     var selectedPersonId by remember(item.id) { mutableStateOf<Int?>(null) }
     var selectedPerson by remember(item.id) { mutableStateOf<PersonDetails?>(null) }
@@ -60,14 +64,32 @@ fun DetailsScreen(
 
     LaunchedEffect(item.id, loader) {
         displayItem = item
-        if (loader != null && item.tmdbId != null && item.type in setOf(MediaType.Movie, MediaType.Series)) {
-            displayItem = runCatching { loader.loadDetails(item) }.getOrDefault(item)
+        relatedContent = MediaRelatedContent.Empty
+        credits = MediaCredits()
+
+        val detailed = if (
+            loader != null &&
+            item.tmdbId != null &&
+            item.type in setOf(MediaType.Movie, MediaType.Series)
+        ) {
+            runCatching { loader.loadDetails(item) }.getOrDefault(item)
+        } else {
+            item
         }
-    }
-    LaunchedEffect(displayItem.tmdbId, displayItem.type, loader) {
-        credits = if (loader != null && displayItem.tmdbId != null) {
-            runCatching { loader.loadCredits(displayItem) }.getOrDefault(MediaCredits())
-        } else MediaCredits()
+        displayItem = detailed
+
+        if (loader != null && detailed.tmdbId != null) {
+            coroutineScope {
+                val relatedDeferred = async {
+                    runCatching { loader.loadRelated(detailed) }.getOrDefault(MediaRelatedContent.Empty)
+                }
+                val creditsDeferred = async {
+                    runCatching { loader.loadCredits(detailed) }.getOrDefault(MediaCredits())
+                }
+                relatedContent = relatedDeferred.await()
+                credits = creditsDeferred.await()
+            }
+        }
     }
     LaunchedEffect(selectedPersonId, loader) {
         val personId = selectedPersonId ?: run {
@@ -124,7 +146,9 @@ fun DetailsScreen(
     MediaDetailsContent(
         item = displayItem,
         sourceLabel = sourceLabel,
+        relatedContent = relatedContent,
         credits = credits,
+        onOpenMedia = { relatedMedia = it },
         onOpenPerson = { selectedPersonId = it.tmdbId },
         onPlay = onPlay,
         onTrailer = onTrailer,
@@ -137,7 +161,9 @@ fun DetailsScreen(
 private fun MediaDetailsContent(
     item: MediaItem,
     sourceLabel: String?,
+    relatedContent: MediaRelatedContent,
     credits: MediaCredits,
+    onOpenMedia: (MediaItem) -> Unit,
     onOpenPerson: (MediaPerson) -> Unit,
     onPlay: (() -> Unit)?,
     onTrailer: (() -> Unit)?,
@@ -289,13 +315,40 @@ private fun MediaDetailsContent(
                 )
             }
 
-            if (credits.directors.isNotEmpty()) {
+            val hasSimilar = relatedContent.similar.isNotEmpty()
+            val collection = relatedContent.collection?.takeIf { it.items.isNotEmpty() }
+            val hasCollection = collection != null
+
+            if (hasSimilar) {
                 Spacer(Modifier.height(30.dp))
-                PersonRow("Regie", credits.directors, onOpenPerson)
+                MediaRow(
+                    title = when (item.type) {
+                        MediaType.Movie -> "Ähnliche Filme"
+                        else -> "Ähnliche Serien"
+                    },
+                    items = relatedContent.similar,
+                    onOpen = onOpenMedia,
+                )
+            }
+            collection?.let { mediaCollection ->
+                Spacer(Modifier.height(if (hasSimilar) 22.dp else 30.dp))
+                MediaRow(
+                    title = "Filmreihe · ${mediaCollection.title}",
+                    items = mediaCollection.items,
+                    onOpen = onOpenMedia,
+                )
             }
             if (credits.cast.isNotEmpty()) {
-                Spacer(Modifier.height(22.dp))
-                PersonRow("Besetzung", credits.cast, onOpenPerson)
+                Spacer(Modifier.height(if (hasSimilar || hasCollection) 22.dp else 30.dp))
+                PersonRow("Schauspieler", credits.cast, onOpenPerson)
+            }
+            if (credits.directors.isNotEmpty()) {
+                Spacer(
+                    Modifier.height(
+                        if (hasSimilar || hasCollection || credits.cast.isNotEmpty()) 22.dp else 30.dp,
+                    ),
+                )
+                PersonRow("Regie", credits.directors, onOpenPerson)
             }
             Spacer(Modifier.height(70.dp))
         }
@@ -336,6 +389,26 @@ private fun ProviderSearchAction(
             modifier = Modifier.size(17.dp),
             colorFilter = ColorFilter.tint(LocalContentColor.current),
         )
+    }
+}
+
+@Composable
+private fun MediaRow(
+    title: String,
+    items: List<MediaItem>,
+    onOpen: (MediaItem) -> Unit,
+) {
+    Text(title, style = MaterialTheme.typography.titleMedium)
+    val rowState = rememberLazyListState()
+    LazyRow(
+        state = rowState,
+        modifier = Modifier.fillMaxWidth().touchScrollFallback(rowState, Orientation.Horizontal),
+        contentPadding = PaddingValues(top = 18.dp, bottom = 24.dp, end = 30.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        items(items, key = { "detail-related-${it.type}-${it.tmdbId}" }) { media ->
+            WatchNextCard(item = media, onClick = { onOpen(media) })
+        }
     }
 }
 
