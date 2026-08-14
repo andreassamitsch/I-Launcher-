@@ -37,6 +37,15 @@ private val SELF_APPEARANCE_PREFIXES = listOf(
     "themselves —",
     "themselves (",
 )
+private val GENERIC_SHOW_APPEARANCE_EXACT = setOf(
+    "guest",
+    "guest host",
+    "interviewee",
+    "presenter",
+    "contestant",
+    "panelist",
+    "correspondent",
+)
 
 internal fun TmdbCombinedCreditsDto.rankedRelevantPersonCredits(
     knownForDepartment: String?,
@@ -69,17 +78,23 @@ internal fun TmdbPersonCreditDto.isDisplayablePersonWork(): Boolean {
     }
     if (!hasValidTitle) return false
 
+    // A person's filmography should show actual acting/directing works, not talk-show,
+    // reality or documentary-style self appearances that TMDB also returns as credits.
+    if (character.isSelfAppearanceRole()) return false
     if (mediaType == "tv") {
         if (genreIds.any(NON_NARRATIVE_TV_GENRE_IDS::contains)) return false
-        if (character.isSelfAppearanceRole()) return false
+        if (character.isGenericShowAppearanceRole()) return false
     }
     return true
 }
 
 internal fun TmdbPersonCreditDto.personWorkRecognitionScore(): Double {
-    val voteSignal = ln(voteCount.coerceAtLeast(0).toDouble() + 1.0) * 10.0
-    val popularitySignal = ln(popularity.coerceAtLeast(0.0) + 1.0) * 4.0
-    val ratingSignal = voteAverage.coerceIn(0.0, 10.0) * 0.6
+    // vote_count is the more durable signal for how established a title is, while TMDB
+    // popularity adds current/lifetime discovery relevance. Log scaling prevents a single
+    // viral spike from pushing a lightly-voted title ahead of broadly known work.
+    val voteSignal = ln(voteCount.coerceAtLeast(0).toDouble() + 1.0) * 9.0
+    val popularitySignal = ln(popularity.coerceAtLeast(0.0) + 1.0) * 7.0
+    val ratingSignal = voteAverage.coerceIn(0.0, 10.0) * 0.35
     val artworkSignal = if (!posterPath.isNullOrBlank() || !backdropPath.isNullOrBlank()) 0.5 else 0.0
     return voteSignal + popularitySignal + ratingSignal + artworkSignal
 }
@@ -91,6 +106,11 @@ private fun String?.isSelfAppearanceRole(): Boolean {
     val normalized = this?.trim()?.lowercase(Locale.ROOT) ?: return false
     return normalized in SELF_APPEARANCE_EXACT ||
         SELF_APPEARANCE_PREFIXES.any(normalized::startsWith)
+}
+
+private fun String?.isGenericShowAppearanceRole(): Boolean {
+    val normalized = this?.trim()?.lowercase(Locale.ROOT) ?: return false
+    return normalized in GENERIC_SHOW_APPEARANCE_EXACT
 }
 
 class TmdbPeopleRepository(
