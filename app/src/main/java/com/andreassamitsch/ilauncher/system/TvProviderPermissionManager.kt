@@ -12,6 +12,7 @@ internal object TvListingsPermissionRecoveryPolicy {
         granted: Boolean,
         isDevelopmentBuild: Boolean,
         currentVersionCode: Int,
+        isUpdatedInstall: Boolean,
         initialRequestShown: Boolean,
         lastGrantedVersionCode: Int,
         lastRecoveryAttemptVersionCode: Int,
@@ -23,7 +24,7 @@ internal object TvListingsPermissionRecoveryPolicy {
         val trackedUpdateLoss =
             lastGrantedVersionCode > 0 && currentVersionCode > lastGrantedVersionCode
         val existingDevelopmentInstallWithoutHistory =
-            lastGrantedVersionCode <= 0 && initialRequestShown
+            lastGrantedVersionCode <= 0 && (isUpdatedInstall || initialRequestShown)
 
         return trackedUpdateLoss || existingDevelopmentInstallWithoutHistory
     }
@@ -67,6 +68,7 @@ object TvProviderPermissionManager {
                 granted = false,
                 isDevelopmentBuild = BuildConfig.DEBUG,
                 currentVersionCode = BuildConfig.VERSION_CODE,
+                isUpdatedInstall = isUpdatedInstall(context),
                 initialRequestShown = preferences.getBoolean(KEY_INITIAL_REQUEST_SHOWN, false),
                 lastGrantedVersionCode = preferences.getInt(KEY_LAST_GRANTED_VERSION_CODE, -1),
                 lastRecoveryAttemptVersionCode = preferences.getInt(
@@ -119,4 +121,9 @@ object TvProviderPermissionManager {
             .remove(KEY_LAST_RECOVERY_ATTEMPT_VERSION_CODE)
             .apply()
     }
+
+    private fun isUpdatedInstall(context: Context): Boolean = runCatching {
+        val info = context.packageManager.getPackageInfo(context.packageName, 0)
+        info.lastUpdateTime > info.firstInstallTime
+    }.getOrDefault(false)
 }
