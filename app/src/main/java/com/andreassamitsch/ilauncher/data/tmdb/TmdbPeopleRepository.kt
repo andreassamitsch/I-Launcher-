@@ -9,12 +9,89 @@ import com.andreassamitsch.ilauncher.model.MediaPerson
 import com.andreassamitsch.ilauncher.model.MediaSource
 import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.model.PersonDetails
+import java.util.Locale
+import kotlin.math.ln
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 
 private const val PEOPLE_TAG = "TMDB_PEOPLE"
+private val NON_NARRATIVE_TV_GENRE_IDS = setOf(10763, 10764, 10767) // News, Reality, Talk
+private val SELF_APPEARANCE_EXACT = setOf("self", "himself", "herself", "themselves")
+private val SELF_APPEARANCE_PREFIXES = listOf(
+    "self -",
+    "self –",
+    "self —",
+    "self (",
+    "himself -",
+    "himself –",
+    "himself —",
+    "himself (",
+    "herself -",
+    "herself –",
+    "herself —",
+    "herself (",
+    "themselves -",
+    "themselves –",
+    "themselves —",
+    "themselves (",
+)
+
+internal fun TmdbCombinedCreditsDto.rankedRelevantPersonCredits(
+    knownForDepartment: String?,
+): List<TmdbPersonCreditDto> {
+    val candidates = when {
+        knownForDepartment.equals("Acting", ignoreCase = true) -> cast
+        knownForDepartment.equals("Directing", ignoreCase = true) -> crew.filter(TmdbPersonCreditDto::isDirectorCredit)
+        else -> cast + crew
+    }
+
+    return candidates
+        .asSequence()
+        .filter(TmdbPersonCreditDto::isDisplayablePersonWork)
+        .sortedWith(
+            compareByDescending<TmdbPersonCreditDto> { it.personWorkRecognitionScore() }
+                .thenByDescending { it.voteCount }
+                .thenByDescending { it.popularity }
+                .thenByDescending { it.voteAverage },
+        )
+        .distinctBy { credit -> "${credit.mediaType}:${credit.id}" }
+        .toList()
+}
+
+internal fun TmdbPersonCreditDto.isDisplayablePersonWork(): Boolean {
+    if (adult || id <= 0) return false
+    val hasValidTitle = when (mediaType) {
+        "movie" -> !title.isNullOrBlank()
+        "tv" -> !name.isNullOrBlank()
+        else -> false
+    }
+    if (!hasValidTitle) return false
+
+    if (mediaType == "tv") {
+        if (genreIds.any(NON_NARRATIVE_TV_GENRE_IDS::contains)) return false
+        if (character.isSelfAppearanceRole()) return false
+    }
+    return true
+}
+
+internal fun TmdbPersonCreditDto.personWorkRecognitionScore(): Double {
+    val voteSignal = ln(voteCount.coerceAtLeast(0).toDouble() + 1.0) * 10.0
+    val popularitySignal = ln(popularity.coerceAtLeast(0.0) + 1.0) * 4.0
+    val ratingSignal = voteAverage.coerceIn(0.0, 10.0) * 0.6
+    val artworkSignal = if (!posterPath.isNullOrBlank() || !backdropPath.isNullOrBlank()) 0.5 else 0.0
+    return voteSignal + popularitySignal + ratingSignal + artworkSignal
+}
+
+private fun TmdbPersonCreditDto.isDirectorCredit(): Boolean =
+    job?.contains("director", ignoreCase = true) == true
+
+private fun String?.isSelfAppearanceRole(): Boolean {
+    val normalized = this?.trim()?.lowercase(Locale.ROOT) ?: return false
+    return normalized in SELF_APPEARANCE_EXACT ||
+        SELF_APPEARANCE_PREFIXES.any(normalized::startsWith)
+}
 
 class TmdbPeopleRepository(
     context: Context,
@@ -79,9 +156,8 @@ class TmdbPeopleRepository(
                 val images = imagesDeferred.await()
                 val displayName = details.name?.takeIf(String::isNotBlank) ?: return@coroutineScope null
                 val works = combinedCredits
-                    .allRelevantCredits()
+                    .rankedRelevantPersonCredits(details.knownForDepartment)
                     .mapNotNull { it.toMediaItem(images.content) }
-                    .distinctBy { media -> "${media.type}:${media.tmdbId}" }
                     .take(PERSON_WORK_LIMIT)
 
                 PersonDetails(
@@ -169,17 +245,6 @@ class TmdbPeopleRepository(
 
         return MediaCredits(cast = castPeople, directors = directors)
     }
-
-    private fun TmdbCombinedCreditsDto.allRelevantCredits(): List<TmdbPersonCreditDto> =
-        (cast + crew)
-            .asSequence()
-            .filter { !it.adult }
-            .filter { it.mediaType == "movie" || it.mediaType == "tv" }
-            .sortedWith(
-                compareByDescending<TmdbPersonCreditDto> { it.popularity }
-                    .thenByDescending { it.voteAverage },
-            )
-            .toList()
 
     private fun TmdbPersonCreditDto.toMediaItem(images: TmdbImageConfiguration?): MediaItem? {
         val type = when (mediaType) {
