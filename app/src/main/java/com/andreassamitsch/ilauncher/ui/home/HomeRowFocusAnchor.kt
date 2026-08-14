@@ -14,15 +14,52 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.relocation.BringIntoViewModifierNode
 import androidx.compose.ui.unit.Dp
 import com.andreassamitsch.ilauncher.ui.HomeTopNavigationFocusRequester
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
+
+/**
+ * Home alone owns vertical positioning through its explicit row keyline. A horizontally focused
+ * child may still request bring-into-view for its LazyRow, but that request must stop at the row
+ * before it can move Home's outer vertical ScrollState.
+ *
+ * Keep this boundary local to AnchoredHomeRow. Generic vertically scrollable pages intentionally
+ * do not install it, so DPAD focus there can bring controls below the viewport into view.
+ */
+private data object VerticalFocusBringIntoViewBoundaryElement :
+    ModifierNodeElement<VerticalFocusBringIntoViewBoundaryNode>() {
+    override fun create(): VerticalFocusBringIntoViewBoundaryNode =
+        VerticalFocusBringIntoViewBoundaryNode()
+
+    override fun update(node: VerticalFocusBringIntoViewBoundaryNode) = Unit
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "homeVerticalFocusBringIntoViewBoundary"
+    }
+}
+
+private class VerticalFocusBringIntoViewBoundaryNode :
+    Modifier.Node(),
+    BringIntoViewModifierNode {
+    override suspend fun bringIntoView(
+        childCoordinates: LayoutCoordinates,
+        boundsProvider: () -> Rect?,
+    ) {
+        // Intentionally satisfied here. Entering another Home row is aligned explicitly below;
+        // LEFT/RIGHT child focus must never move the whole Home page vertically.
+    }
+}
 
 /**
  * Keeps the currently focused Home row at one stable vertical stage position.
@@ -31,7 +68,7 @@ import kotlinx.coroutines.launch
  * vertical focus unit. We mirror that model here: entering another row may move the Home keyline,
  * while LEFT/RIGHT movement inside the same focus group never schedules another vertical scroll.
  * Automatic child bring-into-view propagation into Home's vertical ScrollState is stopped by the
- * vertical focus boundary installed in touchScrollFallback().
+ * boundary installed directly on this Home row.
  *
  * Home's overlay navigation and the large Hero overlap spatially. On real TV focus engines an
  * automatic UP search from the first rail can therefore choose the Hero and then get trapped below
@@ -72,6 +109,7 @@ internal fun AnchoredHomeRow(
 
     Column(
         modifier = Modifier
+            .then(VerticalFocusBringIntoViewBoundaryElement)
             .onPreviewKeyEvent { composeEvent ->
                 val event = composeEvent.nativeKeyEvent
                 if (
