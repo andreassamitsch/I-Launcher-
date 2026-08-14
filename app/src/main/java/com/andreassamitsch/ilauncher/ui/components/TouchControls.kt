@@ -16,15 +16,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.node.ModifierNodeElement
-import androidx.compose.ui.platform.InspectorInfo
-import androidx.compose.ui.relocation.BringIntoViewModifierNode
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.Border
 import androidx.tv.material3.Button as TvButton
@@ -158,71 +153,38 @@ fun Modifier.touchTap(
 }
 
 /**
- * A TV row owns vertical positioning through its explicit row keyline. Focus relocation generated
- * by a horizontally focused child must therefore stop before it reaches the outer vertical
- * scrollable. The horizontal LazyRow still performs its own bring-into-view because this boundary
- * is installed only for Orientation.Vertical fallback modifiers.
+ * Adds pointer dragging to a Compose scroll state without changing TV focus relocation.
+ *
+ * Normal vertically scrollable pages must keep Compose's automatic bring-into-view propagation so
+ * DPAD focus can move the viewport to controls below the fold. Home's exceptional row-keyline
+ * boundary therefore lives in AnchoredHomeRow instead of this generic input helper.
  */
-private data object VerticalFocusBringIntoViewBoundaryElement :
-    ModifierNodeElement<VerticalFocusBringIntoViewBoundaryNode>() {
-    override fun create(): VerticalFocusBringIntoViewBoundaryNode =
-        VerticalFocusBringIntoViewBoundaryNode()
-
-    override fun update(node: VerticalFocusBringIntoViewBoundaryNode) = Unit
-
-    override fun InspectorInfo.inspectableProperties() {
-        name = "verticalFocusBringIntoViewBoundary"
-    }
-}
-
-private class VerticalFocusBringIntoViewBoundaryNode :
-    Modifier.Node(),
-    BringIntoViewModifierNode {
-    override suspend fun bringIntoView(
-        childCoordinates: LayoutCoordinates,
-        boundsProvider: () -> Rect?,
-    ) {
-        // Intentionally satisfied here. UP/DOWN row changes are aligned explicitly by
-        // AnchoredHomeRow; propagating a LEFT/RIGHT child request would move the whole Home page.
-    }
-}
-
 fun Modifier.touchScrollFallback(
     state: ScrollableState,
     orientation: Orientation,
-): Modifier {
-    val focusRelocationBoundary = if (orientation == Orientation.Vertical) {
-        VerticalFocusBringIntoViewBoundaryElement
-    } else {
-        Modifier
-    }
+): Modifier = pointerInput(state, orientation) {
+    awaitEachGesture {
+        val down = awaitFirstDown(
+            requireUnconsumed = false,
+            pass = PointerEventPass.Final,
+        )
+        var lastPosition: Offset = down.position
 
-    return this
-        .then(focusRelocationBoundary)
-        .pointerInput(state, orientation) {
-            awaitEachGesture {
-                val down = awaitFirstDown(
-                    requireUnconsumed = false,
-                    pass = PointerEventPass.Final,
-                )
-                var lastPosition: Offset = down.position
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Final)
+            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+            if (!change.pressed) break
 
-                while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Final)
-                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                    if (!change.pressed) break
+            val currentPosition = change.position
+            val dragDelta = when (orientation) {
+                Orientation.Vertical -> currentPosition.y - lastPosition.y
+                Orientation.Horizontal -> currentPosition.x - lastPosition.x
+            }
+            lastPosition = currentPosition
 
-                    val currentPosition = change.position
-                    val dragDelta = when (orientation) {
-                        Orientation.Vertical -> currentPosition.y - lastPosition.y
-                        Orientation.Horizontal -> currentPosition.x - lastPosition.x
-                    }
-                    lastPosition = currentPosition
-
-                    if (!change.isConsumed && dragDelta != 0f) {
-                        state.dispatchRawDelta(-dragDelta)
-                    }
-                }
+            if (!change.isConsumed && dragDelta != 0f) {
+                state.dispatchRawDelta(-dragDelta)
             }
         }
+    }
 }
