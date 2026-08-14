@@ -12,14 +12,21 @@ internal object TvListingsPermissionRecoveryPolicy {
         granted: Boolean,
         isDevelopmentBuild: Boolean,
         currentVersionCode: Int,
+        initialRequestShown: Boolean,
         lastGrantedVersionCode: Int,
         lastRecoveryAttemptVersionCode: Int,
-    ): Boolean =
-        !granted &&
-            isDevelopmentBuild &&
-            lastGrantedVersionCode > 0 &&
-            currentVersionCode > lastGrantedVersionCode &&
-            lastRecoveryAttemptVersionCode != currentVersionCode
+    ): Boolean {
+        if (granted || !isDevelopmentBuild || lastRecoveryAttemptVersionCode == currentVersionCode) {
+            return false
+        }
+
+        val trackedUpdateLoss =
+            lastGrantedVersionCode > 0 && currentVersionCode > lastGrantedVersionCode
+        val existingDevelopmentInstallWithoutHistory =
+            lastGrantedVersionCode <= 0 && initialRequestShown
+
+        return trackedUpdateLoss || existingDevelopmentInstallWithoutHistory
+    }
 }
 
 object TvProviderPermissionManager {
@@ -42,9 +49,10 @@ object TvProviderPermissionManager {
     /**
      * The first install asks once as before. Development builds also get one automatic recovery
      * request per version when READ_TV_LISTINGS was granted in an older build but disappeared after
-     * an APK update. A deliberate revoke inside the same version therefore does not cause a prompt
-     * loop, while an OEM/package-installer permission reset no longer requires another manual ADB
-     * grant on every development update.
+     * an APK update. Existing development installs created before grant-history tracking get one
+     * migration recovery request as well. A deliberate revoke inside a tracked version therefore
+     * does not cause a prompt loop, while an OEM/package-installer permission reset no longer
+     * requires another manual ADB grant on every development update.
      */
     fun shouldShowInitialRequest(context: Context): Boolean {
         val granted = isReadTvListingsGranted(context)
@@ -59,6 +67,7 @@ object TvProviderPermissionManager {
                 granted = false,
                 isDevelopmentBuild = BuildConfig.DEBUG,
                 currentVersionCode = BuildConfig.VERSION_CODE,
+                initialRequestShown = preferences.getBoolean(KEY_INITIAL_REQUEST_SHOWN, false),
                 lastGrantedVersionCode = preferences.getInt(KEY_LAST_GRANTED_VERSION_CODE, -1),
                 lastRecoveryAttemptVersionCode = preferences.getInt(
                     KEY_LAST_RECOVERY_ATTEMPT_VERSION_CODE,
@@ -73,25 +82,15 @@ object TvProviderPermissionManager {
     }
 
     fun markInitialRequestShown(context: Context) {
-        val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val granted = isReadTvListingsGranted(context)
-        val isRecoveryAttempt = TvListingsPermissionRecoveryPolicy.shouldRecoverAfterUpdate(
-            granted = granted,
-            isDevelopmentBuild = BuildConfig.DEBUG,
-            currentVersionCode = BuildConfig.VERSION_CODE,
-            lastGrantedVersionCode = preferences.getInt(KEY_LAST_GRANTED_VERSION_CODE, -1),
-            lastRecoveryAttemptVersionCode = preferences.getInt(
-                KEY_LAST_RECOVERY_ATTEMPT_VERSION_CODE,
-                -1,
-            ),
-        )
-
-        preferences.edit().apply {
-            putBoolean(KEY_INITIAL_REQUEST_SHOWN, true)
-            if (isRecoveryAttempt) {
-                putInt(KEY_LAST_RECOVERY_ATTEMPT_VERSION_CODE, BuildConfig.VERSION_CODE)
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_INITIAL_REQUEST_SHOWN, true)
+            .apply {
+                if (BuildConfig.DEBUG) {
+                    putInt(KEY_LAST_RECOVERY_ATTEMPT_VERSION_CODE, BuildConfig.VERSION_CODE)
+                }
             }
-        }.apply()
+            .apply()
     }
 
     fun openAppDetails(context: Context): Boolean {
