@@ -12,7 +12,22 @@ class TvListingsPermissionRecoveryPolicyTest {
                 granted = false,
                 isDevelopmentBuild = true,
                 currentVersionCode = 102,
+                initialRequestShown = true,
                 lastGrantedVersionCode = 101,
+                lastRecoveryAttemptVersionCode = -1,
+            ),
+        )
+    }
+
+    @Test
+    fun bootstrapsExistingDevelopmentInstallWithoutGrantHistory() {
+        assertTrue(
+            TvListingsPermissionRecoveryPolicy.shouldRecoverAfterUpdate(
+                granted = false,
+                isDevelopmentBuild = true,
+                currentVersionCode = 102,
+                initialRequestShown = true,
+                lastGrantedVersionCode = -1,
                 lastRecoveryAttemptVersionCode = -1,
             ),
         )
@@ -25,6 +40,7 @@ class TvListingsPermissionRecoveryPolicyTest {
                 granted = true,
                 isDevelopmentBuild = true,
                 currentVersionCode = 102,
+                initialRequestShown = true,
                 lastGrantedVersionCode = 101,
                 lastRecoveryAttemptVersionCode = -1,
             ),
@@ -38,19 +54,31 @@ class TvListingsPermissionRecoveryPolicyTest {
                 granted = false,
                 isDevelopmentBuild = true,
                 currentVersionCode = 102,
+                initialRequestShown = true,
                 lastGrantedVersionCode = 101,
+                lastRecoveryAttemptVersionCode = 102,
+            ),
+        )
+        assertFalse(
+            TvListingsPermissionRecoveryPolicy.shouldRecoverAfterUpdate(
+                granted = false,
+                isDevelopmentBuild = true,
+                currentVersionCode = 102,
+                initialRequestShown = true,
+                lastGrantedVersionCode = -1,
                 lastRecoveryAttemptVersionCode = 102,
             ),
         )
     }
 
     @Test
-    fun sameVersionRevokeIsNotTreatedAsUpdateLoss() {
+    fun sameVersionRevokeIsNotTreatedAsTrackedUpdateLoss() {
         assertFalse(
             TvListingsPermissionRecoveryPolicy.shouldRecoverAfterUpdate(
                 granted = false,
                 isDevelopmentBuild = true,
                 currentVersionCode = 102,
+                initialRequestShown = true,
                 lastGrantedVersionCode = 102,
                 lastRecoveryAttemptVersionCode = -1,
             ),
@@ -58,12 +86,13 @@ class TvListingsPermissionRecoveryPolicyTest {
     }
 
     @Test
-    fun firstInstallAndReleaseBuildDoNotUseDevelopmentRecovery() {
+    fun freshInstallAndReleaseBuildDoNotUseDevelopmentRecovery() {
         assertFalse(
             TvListingsPermissionRecoveryPolicy.shouldRecoverAfterUpdate(
                 granted = false,
                 isDevelopmentBuild = true,
                 currentVersionCode = 102,
+                initialRequestShown = false,
                 lastGrantedVersionCode = -1,
                 lastRecoveryAttemptVersionCode = -1,
             ),
@@ -73,6 +102,7 @@ class TvListingsPermissionRecoveryPolicyTest {
                 granted = false,
                 isDevelopmentBuild = false,
                 currentVersionCode = 102,
+                initialRequestShown = true,
                 lastGrantedVersionCode = 101,
                 lastRecoveryAttemptVersionCode = -1,
             ),
