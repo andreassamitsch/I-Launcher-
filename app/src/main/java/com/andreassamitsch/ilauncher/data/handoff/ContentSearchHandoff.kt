@@ -2,17 +2,24 @@ package com.andreassamitsch.ilauncher.data.handoff
 
 import android.content.Context
 import android.graphics.drawable.Drawable
-import com.andreassamitsch.ilauncher.data.cloudstream.CloudStreamSearchLauncher
+import com.andreassamitsch.ilauncher.data.cloudstream.CloudStreamLaunchMode
+import com.andreassamitsch.ilauncher.data.cloudstream.CloudStreamLauncher
 import com.andreassamitsch.ilauncher.data.kodi.KodiSearchLauncher
+import com.andreassamitsch.ilauncher.model.MediaItem
 
 enum class ContentSearchTarget(val displayName: String) {
     CloudStream("CloudStream"),
     Kodi("Kodi"),
 }
 
+enum class ContentHandoffMode {
+    DirectPlay,
+    Search,
+}
+
 class ContentSearchHandoff(context: Context) {
     private val appContext = context.applicationContext
-    private val cloudStream = CloudStreamSearchLauncher(appContext)
+    private val cloudStream = CloudStreamLauncher(appContext)
     private val kodi = KodiSearchLauncher(appContext)
 
     fun availableTargets(): List<ContentSearchTarget> = buildList {
@@ -28,12 +35,21 @@ class ContentSearchHandoff(context: Context) {
         return runCatching { appContext.packageManager.getApplicationIcon(packageName) }.getOrNull()
     }
 
-    fun launch(target: ContentSearchTarget, title: String): Boolean {
-        val query = normalizeContentSearchQuery(title)
-        if (query.isBlank()) return false
-        return when (target) {
-            ContentSearchTarget.CloudStream -> cloudStream.launch(query)
-            ContentSearchTarget.Kodi -> kodi.launch(query)
+    fun mode(target: ContentSearchTarget, item: MediaItem): ContentHandoffMode = when (target) {
+        ContentSearchTarget.CloudStream -> when (cloudStream.actionMode(item)) {
+            CloudStreamLaunchMode.DirectPlay -> ContentHandoffMode.DirectPlay
+            CloudStreamLaunchMode.SearchFallback,
+            null,
+            -> ContentHandoffMode.Search
+        }
+        ContentSearchTarget.Kodi -> ContentHandoffMode.Search
+    }
+
+    fun launch(target: ContentSearchTarget, item: MediaItem): Boolean = when (target) {
+        ContentSearchTarget.CloudStream -> cloudStream.launch(item) != null
+        ContentSearchTarget.Kodi -> {
+            val query = normalizeContentSearchQuery(item.title)
+            query.isNotBlank() && kodi.launch(query)
         }
     }
 }

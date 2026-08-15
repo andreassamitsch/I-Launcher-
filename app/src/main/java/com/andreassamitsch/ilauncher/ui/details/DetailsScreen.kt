@@ -30,6 +30,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.R
+import com.andreassamitsch.ilauncher.data.handoff.ContentHandoffMode
 import com.andreassamitsch.ilauncher.data.handoff.ContentSearchHandoff
 import com.andreassamitsch.ilauncher.data.handoff.ContentSearchTarget
 import com.andreassamitsch.ilauncher.data.youtube.YouTubeEmbedPlayer
@@ -178,7 +179,7 @@ private fun MediaDetailsContent(
             ?.takeIf { YouTubeEmbedPlayer.html(it) != null }
     }
     val handoff = remember(context) { ContentSearchHandoff(context.applicationContext) }
-    val externalTargets = remember(item.tmdbId, item.tmdbEpisodeId, onPlay, handoff) {
+    val externalTargets = remember(item, onPlay, handoff) {
         if ((item.tmdbId != null || item.tmdbEpisodeId != null) && onPlay == null) handoff.availableTargets()
         else emptyList()
     }
@@ -288,10 +289,10 @@ private fun MediaDetailsContent(
                     }
                 }
                 externalTargets.forEach { target ->
-                    ProviderSearchAction(
+                    ProviderHandoffAction(
                         target = target,
                         handoff = handoff,
-                        title = item.title,
+                        item = item,
                         modifier = Modifier.firstAction("external:${target.name}"),
                     )
                 }
@@ -356,15 +357,22 @@ private fun MediaDetailsContent(
 }
 
 @Composable
-private fun ProviderSearchAction(
+private fun ProviderHandoffAction(
     target: ContentSearchTarget,
     handoff: ContentSearchHandoff,
-    title: String,
+    item: MediaItem,
     modifier: Modifier = Modifier,
 ) {
     val appIcon = remember(target, handoff) { handoff.appIcon(target) }
+    val mode = remember(target, item, handoff) { handoff.mode(target, item) }
+    val isDirectPlay = mode == ContentHandoffMode.DirectPlay
+    val actionDescription = if (isDirectPlay) {
+        "Mit ${target.displayName} abspielen"
+    } else {
+        "In ${target.displayName} suchen"
+    }
     TouchButton(
-        onClick = { handoff.launch(target, title) },
+        onClick = { handoff.launch(target, item) },
         modifier = modifier.width(82.dp).height(48.dp),
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
     ) {
@@ -384,8 +392,8 @@ private fun ProviderSearchAction(
         )
         Spacer(Modifier.width(8.dp))
         Image(
-            painter = painterResource(R.drawable.ic_search),
-            contentDescription = "In ${target.displayName} suchen",
+            painter = painterResource(if (isDirectPlay) R.drawable.ic_play else R.drawable.ic_search),
+            contentDescription = actionDescription,
             modifier = Modifier.size(17.dp),
             colorFilter = ColorFilter.tint(LocalContentColor.current),
         )
