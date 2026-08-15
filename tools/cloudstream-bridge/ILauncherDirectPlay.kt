@@ -1,6 +1,5 @@
 package com.lagradost.cloudstream3
 
-import android.net.Uri
 import androidx.fragment.app.FragmentActivity
 import com.lagradost.cloudstream3.APIHolder.apis
 import com.lagradost.cloudstream3.LoadResponse.Companion.isMovie
@@ -24,6 +23,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
+import java.net.URI
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import kotlin.math.abs
 
 /**
@@ -48,10 +51,7 @@ object ILauncherDirectPlay {
         val imdbId: String?,
     )
 
-    private data class Match(
-        val response: LoadResponse,
-        val fromSyncId: Boolean,
-    )
+    private data class Match(val response: LoadResponse)
 
     fun handle(activity: FragmentActivity, rawUri: String): Boolean {
         val request = parseRequest(rawUri) ?: return false
@@ -90,11 +90,12 @@ object ILauncherDirectPlay {
     }
 
     internal fun parseRequest(rawUri: String): Request? {
-        val uri = runCatching { Uri.parse(rawUri) }.getOrNull() ?: return null
+        val uri = runCatching { URI(rawUri) }.getOrNull() ?: return null
         if (uri.scheme != SCHEME || uri.host != API_VERSION) return null
-        val title = uri.getQueryParameter("title")?.let(::normalizeWhitespace).orEmpty()
+        val query = parseQuery(uri.rawQuery)
+        val title = query["title"]?.let(::normalizeWhitespace).orEmpty()
         if (title.isBlank()) return null
-        val type = when (uri.getQueryParameter("type")?.lowercase()) {
+        val type = when (query["type"]?.lowercase()) {
             "movie" -> MediaKind.Movie
             "series" -> MediaKind.Series
             "episode" -> MediaKind.Episode
@@ -102,24 +103,34 @@ object ILauncherDirectPlay {
         }
         return Request(
             title = title,
-            originalTitle = uri.getQueryParameter("originalTitle")
+            originalTitle = query["originalTitle"]
                 ?.let(::normalizeWhitespace)
                 ?.takeIf(String::isNotBlank),
-            year = uri.getQueryParameter("year")?.toIntOrNull(),
+            year = query["year"]?.toIntOrNull(),
             kind = type,
-            season = uri.getQueryParameter("season")?.toIntOrNull(),
-            episode = uri.getQueryParameter("episode")?.toIntOrNull(),
-            imdbId = uri.getQueryParameter("imdbId")?.trim()?.takeIf(String::isNotBlank),
+            season = query["season"]?.toIntOrNull(),
+            episode = query["episode"]?.toIntOrNull(),
+            imdbId = query["imdbId"]?.trim()?.takeIf(String::isNotBlank),
         )
     }
+
+    internal fun parseQuery(rawQuery: String?): Map<String, String> = rawQuery.orEmpty()
+        .split('&')
+        .asSequence()
+        .filter(String::isNotBlank)
+        .map { pair ->
+            val key = pair.substringBefore('=')
+            val value = pair.substringAfter('=', "")
+            decode(key) to decode(value)
+        }
+        .filter { it.first.isNotBlank() }
+        .associate { it }
 
     private suspend fun awaitProviders(activity: FragmentActivity): List<MainAPI> {
         repeat(48) {
             val activeNames = activity.getApiSettings()
             val current = apis.withLock {
-                apis.filter { api ->
-                    activeNames.contains(api.name)
-                }
+                apis.filter { api -> activeNames.contains(api.name) }
             }
             if (current.isNotEmpty()) return current
             delay(250)
@@ -141,7 +152,7 @@ object ILauncherDirectPlay {
                         (result as? Resource.Success)?.value
                     }
                     if (loaded != null && loadedMatches(loaded, request, trustIdentity = true)) {
-                        return Match(loaded, fromSyncId = true)
+                        return Match(loaded)
                     }
                 }
         }
@@ -179,7 +190,7 @@ object ILauncherDirectPlay {
                 }
             } ?: continue
             if (loadedMatches(loaded, request, trustIdentity = false)) {
-                return Match(loaded, fromSyncId = false)
+                return Match(loaded)
             }
         }
         return null
@@ -303,20 +314,22 @@ object ILauncherDirectPlay {
         "$apiName|$parentId|$index|$data".hashCode()
 
     private fun openResolvedDetails(activity: FragmentActivity, response: LoadResponse) {
-        main {
-            activity.loadResult(response.url, response.apiName, response.name)
-        }
+        main { activity.loadResult(response.url, response.apiName, response.name) }
     }
 
     private fun fallbackToSearch(activity: FragmentActivity, title: String) {
+        val encodedTitle = URLEncoder.encode(title, StandardCharsets.UTF_8.name()).replace("+", "%20")
         main {
             MainActivity.handleAppIntentUrl(
                 activity,
-                "$SCHEME_SEARCH://${Uri.encode(title)}",
+                "$SCHEME_SEARCH://$encodedTitle",
                 isWebview = false,
             )
         }
     }
+
+    private fun decode(value: String): String =
+        URLDecoder.decode(value, StandardCharsets.UTF_8.name())
 
     private const val SCHEME_SEARCH = "cloudstreamsearch"
 }
