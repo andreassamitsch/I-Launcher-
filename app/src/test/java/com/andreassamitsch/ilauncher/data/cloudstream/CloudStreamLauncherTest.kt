@@ -36,6 +36,7 @@ class CloudStreamLauncherTest {
         assertEquals("tt15239678", params["imdbId"])
         assertFalse(params.containsKey("season"))
         assertFalse(params.containsKey("episode"))
+        assertFalse(params.containsKey("selection"))
     }
 
     @Test
@@ -62,6 +63,24 @@ class CloudStreamLauncherTest {
         assertEquals("Spur & Rätsel / Teil 1", params["episodeTitle"])
         assertEquals("123", params["tmdbId"])
         assertEquals("456", params["tmdbEpisodeId"])
+    }
+
+    @Test
+    fun `long ok provider chooser is explicit protocol mode`() {
+        val params = URI(
+            buildCloudStreamPlayUri(
+                CloudStreamMediaRequest(
+                    title = "Fallout",
+                    year = 2024,
+                    type = MediaType.Series,
+                    tmdbId = 106379,
+                ),
+                providerSelection = CloudStreamProviderSelection.Choose,
+            ),
+        ).queryParameters()
+
+        assertEquals("choose", params["selection"])
+        assertEquals("106379", params["tmdbId"])
     }
 
     @Test

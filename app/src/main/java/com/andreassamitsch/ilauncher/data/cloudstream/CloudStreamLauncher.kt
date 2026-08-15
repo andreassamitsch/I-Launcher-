@@ -14,6 +14,11 @@ enum class CloudStreamLaunchMode {
     SearchFallback,
 }
 
+enum class CloudStreamProviderSelection {
+    Automatic,
+    Choose,
+}
+
 data class CloudStreamMediaRequest(
     val title: String,
     val originalTitle: String? = null,
@@ -28,31 +33,29 @@ data class CloudStreamMediaRequest(
 )
 
 class CloudStreamLauncher(private val context: Context) {
-    fun resolvedPackageName(): String? = resolvePackage(searchIntent(query = "test"))
+    fun resolvedPackageName(): String? = directPackageName() ?: searchPackageName()
 
     fun isAvailable(): Boolean = resolvedPackageName() != null
 
     fun actionMode(item: MediaItem): CloudStreamLaunchMode? {
-        val packageName = resolvedPackageName() ?: return null
-        val request = item.toCloudStreamMediaRequest()
-        return if (directPlayIntent(request).setPackage(packageName).resolveActivity(context.packageManager) != null) {
-            CloudStreamLaunchMode.DirectPlay
-        } else {
-            CloudStreamLaunchMode.SearchFallback
-        }
+        if (directPackageName() != null) return CloudStreamLaunchMode.DirectPlay
+        return if (searchPackageName() != null) CloudStreamLaunchMode.SearchFallback else null
     }
 
-    fun launch(item: MediaItem): CloudStreamLaunchMode? {
-        val packageName = resolvedPackageName() ?: return null
+    fun launch(
+        item: MediaItem,
+        providerSelection: CloudStreamProviderSelection = CloudStreamProviderSelection.Automatic,
+    ): CloudStreamLaunchMode? {
         val request = item.toCloudStreamMediaRequest()
-        val directIntent = directPlayIntent(request).setPackage(packageName)
+        val directPackage = directPackageName()
         val mode: CloudStreamLaunchMode
-        val intent = if (directIntent.resolveActivity(context.packageManager) != null) {
+        val intent = if (directPackage != null) {
             mode = CloudStreamLaunchMode.DirectPlay
-            directIntent
+            directPlayIntent(request, providerSelection).setPackage(directPackage)
         } else {
+            val searchPackage = searchPackageName() ?: return null
             mode = CloudStreamLaunchMode.SearchFallback
-            searchIntent(request.title).setPackage(packageName)
+            searchIntent(request.title).setPackage(searchPackage)
         }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
         return runCatching {
@@ -60,6 +63,15 @@ class CloudStreamLauncher(private val context: Context) {
             mode
         }.getOrNull()
     }
+
+    private fun directPackageName(): String? = resolvePackage(
+        Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("cloudstreamplay://v1?title=capability&type=movie"),
+        ),
+    )
+
+    private fun searchPackageName(): String? = resolvePackage(searchIntent(query = "test"))
 
     private fun resolvePackage(intent: Intent): String? {
         val packageManager = context.packageManager
@@ -71,13 +83,16 @@ class CloudStreamLauncher(private val context: Context) {
         if (discovered != null) return discovered
 
         return PACKAGE_CANDIDATES.firstOrNull { packageName ->
-            intent.setPackage(packageName).resolveActivity(packageManager) != null
+            Intent(intent).setPackage(packageName).resolveActivity(packageManager) != null
         }
     }
 
-    private fun directPlayIntent(request: CloudStreamMediaRequest): Intent = Intent(
+    private fun directPlayIntent(
+        request: CloudStreamMediaRequest,
+        providerSelection: CloudStreamProviderSelection,
+    ): Intent = Intent(
         Intent.ACTION_VIEW,
-        Uri.parse(buildCloudStreamPlayUri(request)),
+        Uri.parse(buildCloudStreamPlayUri(request, providerSelection)),
     )
 
     private fun searchIntent(query: String): Intent = Intent(
@@ -89,10 +104,10 @@ class CloudStreamLauncher(private val context: Context) {
         const val SEARCH_SCHEME = "cloudstreamsearch"
         const val BASE_PACKAGE = "com.lagradost.cloudstream3"
         val PACKAGE_CANDIDATES = listOf(
-            BASE_PACKAGE,
+            "$BASE_PACKAGE.prerelease.debug",
             "$BASE_PACKAGE.prerelease",
             "$BASE_PACKAGE.debug",
-            "$BASE_PACKAGE.prerelease.debug",
+            BASE_PACKAGE,
         )
     }
 }
@@ -110,7 +125,10 @@ internal fun MediaItem.toCloudStreamMediaRequest(): CloudStreamMediaRequest = Cl
     imdbId = imdbId?.trim()?.takeIf(String::isNotBlank),
 )
 
-internal fun buildCloudStreamPlayUri(request: CloudStreamMediaRequest): String {
+internal fun buildCloudStreamPlayUri(
+    request: CloudStreamMediaRequest,
+    providerSelection: CloudStreamProviderSelection = CloudStreamProviderSelection.Automatic,
+): String {
     val parameters = buildList {
         add("title" to normalizeCloudStreamTitle(request.title))
         request.originalTitle?.let(::normalizeCloudStreamTitle)?.takeIf(String::isNotBlank)?.let { add("originalTitle" to it) }
@@ -122,6 +140,7 @@ internal fun buildCloudStreamPlayUri(request: CloudStreamMediaRequest): String {
         request.tmdbId?.let { add("tmdbId" to it.toString()) }
         request.tmdbEpisodeId?.let { add("tmdbEpisodeId" to it.toString()) }
         request.imdbId?.trim()?.takeIf(String::isNotBlank)?.let { add("imdbId" to it) }
+        if (providerSelection == CloudStreamProviderSelection.Choose) add("selection" to "choose")
     }
     return buildString {
         append("cloudstreamplay://v1")

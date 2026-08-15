@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.drawable.Drawable
 import com.andreassamitsch.ilauncher.data.cloudstream.CloudStreamLaunchMode
 import com.andreassamitsch.ilauncher.data.cloudstream.CloudStreamLauncher
+import com.andreassamitsch.ilauncher.data.cloudstream.CloudStreamProviderSelection
 import com.andreassamitsch.ilauncher.data.kodi.KodiSearchLauncher
 import com.andreassamitsch.ilauncher.model.MediaItem
 
@@ -51,6 +52,12 @@ class ContentSearchHandoff(context: Context) {
             val query = normalizeContentSearchQuery(item.title)
             query.isNotBlank() && kodi.launch(query)
         }
+    }
+
+    fun launchProviderChooser(target: ContentSearchTarget, item: MediaItem): Boolean = when (target) {
+        ContentSearchTarget.CloudStream ->
+            cloudStream.launch(item, CloudStreamProviderSelection.Choose) == CloudStreamLaunchMode.DirectPlay
+        ContentSearchTarget.Kodi -> false
     }
 }
 

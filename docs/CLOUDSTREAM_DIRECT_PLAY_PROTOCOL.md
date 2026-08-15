@@ -25,7 +25,7 @@ Die Capability wird über einen normalen Android-`ACTION_VIEW`-Intent entdeckt. 
 cloudstreamplay://v1
 ```
 
-I Launcher prüft die Capability für das tatsächlich installierte CloudStream-Paket per `resolveActivity()`. Ist sie nicht vorhanden, bleibt `cloudstreamsearch://` der automatische Fallback.
+I Launcher prüft die Capability für das tatsächlich installierte CloudStream-Paket per `resolveActivity()`. Ist sie nicht vorhanden, bleibt `cloudstreamsearch://` der automatische Fallback. Wenn parallel mehrere CloudStream-Paketvarianten installiert sind, wird ein Build mit `cloudstreamplay://v1` gegenüber einem reinen Search-Handoff bevorzugt.
 
 ### Query-Parameter
 
@@ -40,28 +40,65 @@ I Launcher prüft die Capability für das tatsächlich installierte CloudStream-
 | `episodeTitle` | nein | Episodentitel |
 | `tmdbId` | nein | TMDB-ID des Films bzw. der Serie |
 | `tmdbEpisodeId` | nein | TMDB-ID der Episode |
-| `imdbId` | nein | IMDb-ID, bevorzugte direkte Sync-ID für unterstützende CloudStream-Provider |
+| `imdbId` | nein | IMDb-ID; innerhalb eines Providers bevorzugt für `getLoadUrl()` |
+| `selection` | nein | `choose` öffnet die manuelle Auswahl der tatsächlich passenden Provider; fehlt der Wert, läuft der automatische Pfad |
 
-Beispiel:
+Beispiel automatischer Start:
 
 ```text
 cloudstreamplay://v1?title=Fallout&type=episode&year=2024&season=2&episode=4&tmdbId=106379&imdbId=tt12637874
 ```
 
+Beispiel manuelle Providerwahl:
+
+```text
+cloudstreamplay://v1?title=Fallout&type=episode&season=2&episode=4&tmdbId=106379&selection=choose
+```
+
 Alle Werte werden UTF-8 URL-encoded. Unbekannte optionale Parameter werden weggelassen.
+
+## Provider-Priorität
+
+Provider-/Extension-Namen sind CloudStream-Runtime-Daten und werden deshalb ausschließlich im CloudStream-Prozess gespeichert. I Launcher hält keine zweite Plugin-Liste.
+
+Kurzes OK auf der CloudStream-Aktion verwendet diese Reihenfolge:
+
+1. zuletzt erfolgreich aufgelöster Provider für exakt diese Medienidentität,
+2. vom Benutzer festgelegte globale Provider-Reihenfolge,
+3. neu hinzugekommene bzw. noch nicht priorisierte aktive Provider in CloudStreams bestehender Reihenfolge.
+
+Für die Inhaltsidentität wird bevorzugt `tmdbEpisodeId`, danach `tmdbId` inklusive Staffel/Folge, danach `imdbId` und erst zuletzt eine normalisierte Titel-/Jahr-Identität verwendet. Es werden nur Provider-Namen gespeichert, keine Stream-URLs oder Tokens.
+
+Die Provider werden mit begrenzter Parallelität gestartet, aber in Prioritätsreihenfolge ausgewertet. Ein langsamer niedriger priorisierter Provider kann damit bereits arbeiten, gewinnt aber nicht gegen einen höher priorisierten gültigen Treffer.
+
+Innerhalb jedes einzelnen Providers gilt weiterhin: IMDb-`getLoadUrl()` zuerst, sofern unterstützt; sonst konservative Titelsuche.
+
+## Manuelle Providerwahl und Priorisierung
+
+Langes OK auf der CloudStream-Aktion sendet `selection=choose`.
+
+- CloudStream ermittelt alle sicheren direkten Treffer der aktiven Provider.
+- Angezeigt werden nur Provider, die den konkreten Film bzw. die konkrete Serie/Episode sicher auflösen konnten.
+- Auswahl eines Providers startet genau diesen Treffer und merkt ihn als letzten erfolgreichen Provider für diese Medienidentität.
+- Im Dialog führt `Priorität` zur globalen Provider-Reihenfolge.
+- Dort können aktive Provider per `Nach oben` / `Nach unten` sortiert werden.
+- Ist ein priorisierter Provider für einen späteren Inhalt nicht verfügbar oder liefert keinen sicheren Treffer, wird automatisch der nächste versucht.
+
+Wenn bei langer OK-Taste kein sicherer direkter Treffer existiert, kann der Benutzer entweder die normale CloudStream-Suche öffnen oder trotzdem die Provider-Priorität bearbeiten.
 
 ## Implementierter CloudStream-Ablauf
 
 1. Der Intent läuft weiterhin durch CloudStreams bestehende `AccountSelectActivity`, damit Account-/PIN-Logik nicht umgangen wird.
 2. Die Bridge wartet begrenzt auf die normale Plugin-/Provider-Runtime und berücksichtigt die für den Account aktiven Provider.
-3. Wenn `imdbId` vorhanden ist, werden Provider mit `SyncIdName.Imdb`/`getLoadUrl()` zuerst versucht.
-4. Sonst werden Provider mit begrenzter Parallelität durchsucht. Automatischer Direktstart akzeptiert nur konservative exakte normalisierte Titel-/Originaltitel-Matches und passenden Medientyp; bekannte Jahreswerte dürfen höchstens um ein Jahr abweichen.
-5. Der Treffer wird über die vorhandene `APIRepository.load()`-Logik geladen.
-6. Film: aus `MovieLoadResponse.dataUrl` wird CloudStreams vorhandener `ResultEpisode`/`RepoLinkGenerator`-Playerpfad aufgebaut und der interne Player direkt geöffnet.
-7. Konkrete Episode: bei `TvSeriesLoadResponse` wird exakt die angeforderte Staffel/Folge gewählt und mit `RepoLinkGenerator` direkt gestartet.
-8. Serie ohne konkrete Staffel/Folge: die bereits aufgelöste Provider-Detailseite wird geöffnet. Damit entfallen Suche und Trefferliste, aber es wird nicht willkürlich Episode 1 gestartet.
-9. `loadLinks()` bleibt im normalen CloudStream-Playerpfad und wird nicht vom I Launcher ausgeführt oder vorzeitig persistiert.
-10. Gibt es keinen sicheren Match, fällt die Bridge kontrolliert auf `cloudstreamsearch://<title>` zurück.
+3. Provider werden nach Inhalt-Cache und Benutzerpriorität sortiert.
+4. Innerhalb eines Providers wird bei vorhandener `imdbId` und `SyncIdName.Imdb` zuerst `getLoadUrl()` versucht.
+5. Sonst wird konservativ nach Titel/Originaltitel gesucht. Automatischer Direktstart akzeptiert nur exakte normalisierte Titel-/Originaltitel-Matches und passenden Medientyp; bekannte Jahreswerte dürfen höchstens um ein Jahr abweichen.
+6. Der Treffer wird über die vorhandene `APIRepository.load()`-Logik geladen.
+7. Film: aus `MovieLoadResponse.dataUrl` wird CloudStreams vorhandener `ResultEpisode`/`RepoLinkGenerator`-Playerpfad aufgebaut und der interne Player direkt geöffnet.
+8. Konkrete Episode: bei `TvSeriesLoadResponse` wird exakt die angeforderte Staffel/Folge gewählt und mit `RepoLinkGenerator` direkt gestartet.
+9. Serie ohne konkrete Staffel/Folge: die bereits aufgelöste Provider-Detailseite wird geöffnet. Damit entfallen Suche und Trefferliste, aber es wird nicht willkürlich Episode 1 gestartet.
+10. `loadLinks()` bleibt im normalen CloudStream-Playerpfad und wird nicht vom I Launcher ausgeführt oder vorzeitig persistiert.
+11. Gibt es keinen sicheren Match, fällt die Bridge kontrolliert auf `cloudstreamsearch://<title>` zurück.
 
 ## Sicherheit und Stabilität
 
@@ -82,4 +119,4 @@ Die neue Bridge-Testlinie wird daher mit der vorhandenen stabilen Projekt-Develo
 
 Wenn `cloudstreamplay://v1` vom installierten CloudStream-Paket aufgelöst werden kann, verwendet die CloudStream-Aktion auf der Detailseite den Direct-Handoff. Andernfalls verwendet dieselbe Aktion weiterhin `cloudstreamsearch://`.
 
-Film und konkrete Episode können direkt in den CloudStream-Player springen. Eine reine Serienidentität ohne Staffel/Folge wird bis zur Einführung eines Staffel-/Episodenbrowsers in I Launcher direkt auf die bereits gefundene CloudStream-Serienseite geführt.
+Kurzes OK startet automatisch nach Cache/Priorität. Langes OK öffnet die Provider-Auswahl. Film und konkrete Episode können direkt in den CloudStream-Player springen. Eine reine Serienidentität ohne Staffel/Folge wird bis zur Einführung eines Staffel-/Episodenbrowsers in I Launcher direkt auf die bereits gefundene CloudStream-Serienseite geführt.

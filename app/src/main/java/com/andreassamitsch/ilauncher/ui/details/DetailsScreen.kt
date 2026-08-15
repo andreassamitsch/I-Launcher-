@@ -373,6 +373,11 @@ private fun ProviderHandoffAction(
     }
     TouchButton(
         onClick = { handoff.launch(target, item) },
+        onLongClick = if (target == ContentSearchTarget.CloudStream && isDirectPlay) {
+            { handoff.launchProviderChooser(target, item) }
+        } else {
+            null
+        },
         modifier = modifier.width(82.dp).height(48.dp),
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
     ) {
