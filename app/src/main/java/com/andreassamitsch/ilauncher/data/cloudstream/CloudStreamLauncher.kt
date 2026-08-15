@@ -75,16 +75,22 @@ class CloudStreamLauncher(private val context: Context) {
 
     private fun resolvePackage(intent: Intent): String? {
         val packageManager = context.packageManager
+
+        // Android does not guarantee that queryIntentActivities() returns multiple CloudStream
+        // variants in the order we want. Probe our known package variants explicitly first so
+        // the I-Launcher bridge build wins over an installed official CloudStream app.
+        val explicitKnownPackage = CLOUDSTREAM_PACKAGE_CANDIDATES.firstOrNull { packageName ->
+            Intent(intent).setPackage(packageName).resolveActivity(packageManager) != null
+        }
+        if (explicitKnownPackage != null) return explicitKnownPackage
+
         val discovered = packageManager
             .queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
             .asSequence()
             .map { it.activityInfo.packageName }
-            .firstOrNull { it == BASE_PACKAGE || it.startsWith("$BASE_PACKAGE.") }
-        if (discovered != null) return discovered
+            .toList()
 
-        return PACKAGE_CANDIDATES.firstOrNull { packageName ->
-            Intent(intent).setPackage(packageName).resolveActivity(packageManager) != null
-        }
+        return selectPreferredCloudStreamPackage(discovered)
     }
 
     private fun directPlayIntent(
@@ -102,14 +108,28 @@ class CloudStreamLauncher(private val context: Context) {
 
     private companion object {
         const val SEARCH_SCHEME = "cloudstreamsearch"
-        const val BASE_PACKAGE = "com.lagradost.cloudstream3"
-        val PACKAGE_CANDIDATES = listOf(
-            "$BASE_PACKAGE.prerelease.debug",
-            "$BASE_PACKAGE.prerelease",
-            "$BASE_PACKAGE.debug",
-            BASE_PACKAGE,
-        )
     }
+}
+
+private const val CLOUDSTREAM_BASE_PACKAGE = "com.lagradost.cloudstream3"
+
+internal val CLOUDSTREAM_PACKAGE_CANDIDATES = listOf(
+    "$CLOUDSTREAM_BASE_PACKAGE.prerelease.debug",
+    "$CLOUDSTREAM_BASE_PACKAGE.prerelease",
+    "$CLOUDSTREAM_BASE_PACKAGE.debug",
+    CLOUDSTREAM_BASE_PACKAGE,
+)
+
+internal fun selectPreferredCloudStreamPackage(packageNames: Iterable<String>): String? {
+    val cloudStreamPackages = packageNames
+        .filter { packageName ->
+            packageName == CLOUDSTREAM_BASE_PACKAGE || packageName.startsWith("$CLOUDSTREAM_BASE_PACKAGE.")
+        }
+        .distinct()
+        .toList()
+
+    return CLOUDSTREAM_PACKAGE_CANDIDATES.firstOrNull(cloudStreamPackages::contains)
+        ?: cloudStreamPackages.sorted().firstOrNull()
 }
 
 internal fun MediaItem.toCloudStreamMediaRequest(): CloudStreamMediaRequest = CloudStreamMediaRequest(
