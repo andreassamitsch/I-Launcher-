@@ -84,6 +84,43 @@ class CloudStreamLauncherTest {
     }
 
     @Test
+    fun `bridge prerelease debug package wins over official package regardless of discovery order`() {
+        val selected = selectPreferredCloudStreamPackage(
+            listOf(
+                "com.lagradost.cloudstream3",
+                "com.lagradost.cloudstream3.prerelease.debug",
+            ),
+        )
+
+        assertEquals("com.lagradost.cloudstream3.prerelease.debug", selected)
+    }
+
+    @Test
+    fun `known CloudStream variants use fixed bridge first priority`() {
+        assertEquals(
+            listOf(
+                "com.lagradost.cloudstream3.prerelease.debug",
+                "com.lagradost.cloudstream3.prerelease",
+                "com.lagradost.cloudstream3.debug",
+                "com.lagradost.cloudstream3",
+            ),
+            CLOUDSTREAM_PACKAGE_CANDIDATES,
+        )
+    }
+
+    @Test
+    fun `unknown CloudStream variant is only fallback when no known package is available`() {
+        val selected = selectPreferredCloudStreamPackage(
+            listOf(
+                "com.example.notcloudstream",
+                "com.lagradost.cloudstream3.custom",
+            ),
+        )
+
+        assertEquals("com.lagradost.cloudstream3.custom", selected)
+    }
+
+    @Test
     fun `media item mapping normalizes titles and keeps external ids`() {
         val request = MediaItem(
             id = "test",
