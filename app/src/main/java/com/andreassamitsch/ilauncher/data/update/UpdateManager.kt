@@ -18,7 +18,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-private const val UPDATE_METADATA_URL =
+private const val UPDATE_METADATA_BASE_URL =
     "https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/downloads/update.json"
 private const val UPDATE_FILE_NAME = "I-Launcher-update.apk"
 private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
@@ -65,6 +65,9 @@ object UpdateVersionPolicy {
         remoteVersionCode > localVersionCode
 }
 
+internal fun buildUpdateMetadataUrl(cacheBuster: Long): String =
+    "$UPDATE_METADATA_BASE_URL?check=$cacheBuster"
+
 class UpdateManager(context: Context) {
     private val appContext = context.applicationContext
     private val downloadManager = appContext.getSystemService(DownloadManager::class.java)
@@ -78,12 +81,20 @@ class UpdateManager(context: Context) {
 
         val result = runCatching {
             withContext(Dispatchers.IO) {
-                val connection = (URL(UPDATE_METADATA_URL).openConnection() as HttpURLConnection).apply {
+                // raw.githubusercontent.com may be served through intermediate caches. A unique
+                // query per check prevents a just-published update.json from being hidden behind
+                // a stale CDN response. useCaches=false alone only controls the local URLConnection
+                // cache and is not sufficient for that case.
+                val metadataUrl = buildUpdateMetadataUrl(System.currentTimeMillis())
+                val connection = (URL(metadataUrl).openConnection() as HttpURLConnection).apply {
                     connectTimeout = 6_000
                     readTimeout = 6_000
                     instanceFollowRedirects = true
                     useCaches = false
+                    defaultUseCaches = false
                     setRequestProperty("Accept", "application/json")
+                    setRequestProperty("Cache-Control", "no-cache, no-store, max-age=0")
+                    setRequestProperty("Pragma", "no-cache")
                 }
 
                 try {
