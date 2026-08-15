@@ -1,9 +1,11 @@
 package com.lagradost.cloudstream3
 
 import android.content.Context
+import android.util.Log
 import android.widget.ArrayAdapter
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.ViewModelProvider
 import com.lagradost.cloudstream3.APIHolder.apis
 import com.lagradost.cloudstream3.LoadResponse.Companion.isMovie
 import com.lagradost.cloudstream3.mvvm.Resource
@@ -15,6 +17,7 @@ import com.lagradost.cloudstream3.ui.player.LOADTYPE_INAPP
 import com.lagradost.cloudstream3.ui.player.RepoLinkGenerator
 import com.lagradost.cloudstream3.ui.result.buildResultEpisode
 import com.lagradost.cloudstream3.ui.result.getId
+import com.lagradost.cloudstream3.ui.search.SearchViewModel
 import com.lagradost.cloudstream3.utils.AppContextUtils.getApiSettings
 import com.lagradost.cloudstream3.utils.AppContextUtils.loadResult
 import com.lagradost.cloudstream3.utils.Coroutines.ioSafe
@@ -70,10 +73,15 @@ object ILauncherDirectPlay {
 
     fun handle(activity: FragmentActivity, rawUri: String): Boolean {
         val request = parseRequest(rawUri) ?: return false
+        val identity = sha256(mediaIdentity(request)).take(12)
+        Log.i(TAG, "start kind=${request.kind} selection=${request.providerSelection} identity=$identity")
+
         ioSafe {
             try {
                 val providers = awaitProviders(activity)
                 val orderedProviders = orderProviders(activity, providers, request)
+                Log.i(TAG, "providers active=${orderedProviders.size}")
+
                 if (request.providerSelection == ProviderSelection.Choose) {
                     val matches = resolveAll(orderedProviders, request)
                     main {
@@ -87,10 +95,12 @@ object ILauncherDirectPlay {
                 }
 
                 if (!resolveAndExecuteAutomatic(activity, orderedProviders, request)) {
+                    Log.i(TAG, "automatic miss identity=$identity; opening CloudStream search")
                     fallbackToSearch(activity, request.title)
                 }
             } catch (t: Throwable) {
                 logError(t)
+                Log.w(TAG, "bridge failed identity=$identity; opening CloudStream search")
                 fallbackToSearch(activity, request.title)
             }
         }
@@ -219,6 +229,7 @@ object ILauncherDirectPlay {
                 jobs.drop(index + 1).forEach { it.cancel() }
                 openResolvedDetails(activity, match.response)
                 rememberLastProvider(activity, request, match.response.apiName)
+                Log.i(TAG, "open details provider=${match.response.apiName}")
                 return@coroutineScope true
             }
 
@@ -227,8 +238,10 @@ object ILauncherDirectPlay {
                 jobs.drop(index + 1).forEach { it.cancel() }
                 launchPreparedPlayback(activity, prepared)
                 rememberLastProvider(activity, request, prepared.providerName)
+                Log.i(TAG, "play provider=${prepared.providerName}")
                 return@coroutineScope true
             }
+            Log.i(TAG, "no playable links provider=${prepared.providerName}")
         }
         false
     }
@@ -242,7 +255,10 @@ object ILauncherDirectPlay {
     }
 
     private suspend fun resolveProvider(api: MainAPI, request: Request): Match? {
-        if (!supportsRequestedKind(api, request.kind)) return null
+        if (!supportsRequestedKind(api, request.kind)) {
+            Log.i(TAG, "skip provider=${api.name} reason=type")
+            return null
+        }
         val repo = APIRepository(api)
 
         request.imdbId?.let { imdbId ->
@@ -252,6 +268,7 @@ object ILauncherDirectPlay {
                     (repo.load(url) as? Resource.Success)?.value
                 }
                 if (loaded != null && loadedMatches(loaded, request, trustIdentity = true) && supportsExactRequest(loaded, request)) {
+                    Log.i(TAG, "match provider=${api.name} via=imdb")
                     return Match(loaded)
                 }
             }
@@ -269,10 +286,15 @@ object ILauncherDirectPlay {
                     else -> emptyList()
                 }
             }.orEmpty()
-                .filter { candidate -> searchCandidateMatches(candidate, request) }
+                .filter { candidate -> typeMatches(candidate.type, request.kind) }
                 .distinctBy { it.url }
+                .sortedBy { candidate -> searchCandidateRank(candidate.name, request) }
 
-            for (candidate in candidates.take(3)) {
+            // Do not require the provider's SearchResponse display label to exactly equal TMDB's
+            // title. Providers often append a year/language/edition marker there. Load a small,
+            // bounded set of the provider's best results and perform the strict verification on
+            // the real LoadResponse instead.
+            for (candidate in candidates.take(MAX_SEARCH_CANDIDATES_PER_QUERY)) {
                 val loaded = withTimeoutOrNull(8_000) {
                     when (val result = repo.load(candidate.url)) {
                         is Resource.Success -> result.value
@@ -280,10 +302,13 @@ object ILauncherDirectPlay {
                     }
                 } ?: continue
                 if (loadedMatches(loaded, request, trustIdentity = false) && supportsExactRequest(loaded, request)) {
+                    Log.i(TAG, "match provider=${api.name} via=search")
                     return Match(loaded)
                 }
             }
         }
+
+        Log.i(TAG, "miss provider=${api.name}")
         return null
     }
 
@@ -293,23 +318,38 @@ object ILauncherDirectPlay {
         .trim()
         .replace(Regex("\\s+"), " ")
 
+    internal fun normalizeTitleForMatch(value: String, year: Int?): String {
+        val normalized = normalizeTitle(value)
+        val suffix = year?.let { " $it" } ?: return normalized
+        return normalized.removeSuffix(suffix).trim()
+    }
+
+    internal fun searchCandidateRank(candidateName: String, request: Request): Int {
+        val exactCandidate = normalizeTitle(candidateName)
+        val matchCandidate = normalizeTitleForMatch(candidateName, request.year)
+        val exactTitles = listOfNotNull(request.title, request.originalTitle)
+            .map(::normalizeTitle)
+            .filter(String::isNotBlank)
+        val matchTitles = listOfNotNull(request.title, request.originalTitle)
+            .map { normalizeTitleForMatch(it, request.year) }
+            .filter(String::isNotBlank)
+        return when {
+            exactTitles.any { it == exactCandidate } -> 0
+            matchTitles.any { it == matchCandidate } -> 1
+            else -> 2
+        }
+    }
+
     private fun normalizeWhitespace(value: String): String =
         value.trim().replace(Regex("\\s+"), " ")
-
-    private fun searchCandidateMatches(candidate: SearchResponse, request: Request): Boolean {
-        if (!typeMatches(candidate.type, request.kind)) return false
-        val candidateTitle = normalizeTitle(candidate.name)
-        val acceptedTitles = listOfNotNull(request.title, request.originalTitle).map(::normalizeTitle)
-        return candidateTitle.isNotBlank() && acceptedTitles.any { it == candidateTitle }
-    }
 
     private fun loadedMatches(response: LoadResponse, request: Request, trustIdentity: Boolean): Boolean {
         if (!typeMatches(response.type, request.kind)) return false
         if (request.year != null && response.year != null && abs(request.year - response.year!!) > 1) return false
         if (trustIdentity) return true
-        val loadedTitle = normalizeTitle(response.name)
+        val loadedTitle = normalizeTitleForMatch(response.name, request.year)
         return listOfNotNull(request.title, request.originalTitle)
-            .map(::normalizeTitle)
+            .map { normalizeTitleForMatch(it, request.year) }
             .any { it == loadedTitle }
     }
 
@@ -570,6 +610,13 @@ object ILauncherDirectPlay {
 
     private fun fallbackToSearch(activity: FragmentActivity, title: String) {
         main {
+            // SearchViewModel snapshots APIRepository instances. On a cold start the SearchFragment
+            // can have been created before extensions finished loading, leaving that snapshot empty.
+            // Refresh it and start the query explicitly instead of relying only on nextSearchQuery.
+            val searchViewModel = ViewModelProvider(activity)[SearchViewModel::class.java]
+            searchViewModel.reloadRepos()
+            searchViewModel.searchAndCancel(title)
+
             MainActivity.handleAppIntentUrl(
                 activity,
                 "$SCHEME_SEARCH://${java.net.URLEncoder.encode(title, StandardCharsets.UTF_8.name()).replace("+", "%20")}",
@@ -613,9 +660,11 @@ object ILauncherDirectPlay {
     private fun decode(value: String): String =
         URLDecoder.decode(value, StandardCharsets.UTF_8.name())
 
+    private const val TAG = "ILauncherBridge"
     private const val SCHEME_SEARCH = "cloudstreamsearch"
     private const val PREFS_NAME = "i_launcher_direct_play"
     private const val PREF_PROVIDER_ORDER = "provider_order"
     private const val PREF_LAST_PROVIDER_PREFIX = "last_provider_"
     private const val PROVIDER_SEPARATOR = "\u001F"
+    private const val MAX_SEARCH_CANDIDATES_PER_QUERY = 6
 }
