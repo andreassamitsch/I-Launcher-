@@ -42,6 +42,7 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] dauerhafter Development-Signing-Key als geschützte GitHub-Secrets hinterlegt (`updateCompatible=true` verifiziert)
 - [x] Development-Downloadkanal auf den aktiven Entwicklungsbranch umstellbar
 - [x] Publisher-Concurrency verhindert, dass ältere parallele CI-Läufe einen neueren Development-Build überschreiben
+- [x] Update-Metadatenprüfung verwendet Cache-Buster und `Cache-Control: no-cache`, damit neu veröffentlichte Development-Builds nicht durch einen alten Raw-GitHub/CDN-Treffer verdeckt werden
 - [x] realer Update-von-Version-A-auf-Version-B-Gerätetest im Übergang `dev.45` → `dev.47` erfolgreich; Room-Migration und Update-Signatur bestätigt
 
 ## Phase 2 – Watch Next
@@ -172,105 +173,35 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 ## Phase 7 – Live TV
 
 - [x] Media3/ExoPlayer 1.10.1 integrieren
-- [x] OpenWebif-Stream über receiver-eigenes `/web/stream.m3u?ref=…` auflösen; keinen Stream-Port raten oder hardcoden
-- [x] direkte MPEG-TS-Wiedergabe über `ProgressiveMediaSource`
-- [x] HLS über `HlsMediaSource` unterstützen, falls OpenWebif einen HLS-Stream liefert
-- [x] temporäre Streaming-Authentifizierung aus URL-Userinfo entfernen und nur flüchtig als HTTP-Header an Media3 weitergeben
-- [x] Stream-URLs, Session-IDs und Streaming-Zugangsdaten weder persistieren noch loggen
-- [x] Start des internen Players direkt aus `Jetzt im TV`
-- [x] Senderwechsel in unveränderter Gigablue-Bouquet-Reihenfolge
-- [x] Zapping über D-Pad ↑/↓ und CH+/CH− implementieren
-- [x] alten Stream beim Zappen sofort stoppen und Zielstream neu über OpenWebif auflösen
-- [x] Player-UI mit Sender-Picon, Name, aktueller/nächster Sendung, Bouquet-Position und sicherem Fehlerstatus
-- [x] Player-Overlay und Android-`PlayerView` sauber schichten; Media3-Controller deaktivieren, eigene TV-Steuerung verwenden
-- [x] Back beendet Player und stellt Focus auf exakt derselben `Jetzt im TV`-Karte wieder her
-- [x] Unit-Tests für Stream-Playlist, Auth-/Session-Sanitizing und Zapping-Reihenfolge/-Wrap
-- [x] Android CI mit `testDebugUnitTest` und `assembleDebug` erfolgreich
-- [x] signierten Development-Build `0.1.0-dev.68` (`26000068`) erfolgreich veröffentlicht
-- [x] realer TCL + Gigablue-X3-Test von Video und Audio bestanden
-- [x] realer Zapping-Test mit D-Pad/CH-Tasten in Gigablue-Reihenfolge bestanden
-- [x] Back-/Focus-Rückgabe vom Player auf die Home-Karte bestätigt
-- [x] Media3-Wiedergabe auf dem Zielgerät ohne blockierenden Decoder-/Playbackfehler bestätigt
-- [x] realer Phase-7-Gesamttest auf TCL + Gigablue X3 bestanden
-- [x] Infoleisten nach 3 Sekunden ausblenden und mit OK wieder einblenden
-- [x] kompakte `Jetzt im TV`-Reihe im Player
-- [x] bei sichtbarem Overlay D-Pad Hoch/Runter für UI statt Zapping reservieren
-- [x] bei ausgeblendetem Overlay D-Pad Hoch/Runter zum Zappen; CH+/CH− bleiben explizite Senderwechsel
-- [x] langes OK als Direktzugang zum EPG
-- [x] explizite Exit-Bestätigung mit `TV verlassen` als Standardfokus
-- [x] Exit-Bestätigung auf TV-Hardware bestätigt
-- [x] Player-Senderstate auf stabile Enigma2-`serviceReference` umgestellt, damit periodische OpenWebif-/EPG-Refreshes nicht auf den ursprünglich gestarteten Sender zurücksetzen
-- [x] Unit-Tests für Senderidentität bei erneuerter Channel-Metadatenliste und sicheren Fallback bei entferntem Sender ergänzt
-- [x] normales OK öffnet eine angeheftete Senderübersicht; Timeout gilt nur für transiente Infos, Zurück schließt zuerst die Liste und Senderwahl/Umschalten beendet den Listenmodus
-- [x] Live-TV-Overlay optisch mit schwebenden abgerundeten Flächen und kleinerem Kartenfokus weiter an Home/Search angeglichen
-- [ ] neuen Refresh-/Senderlisten-State auf TCL mehrere Refreshintervalle lang prüfen
-- [ ] neuesten D-Pad-Overlay-Fokus nach dem Regression-Pass noch einmal vollständig prüfen
+- [x] OpenWebif-Stream über receiver-eigenes `/web/stream.m3u?ref=…` auflösen; keinen Stream-Port raten oder persistieren
+- [x] internen TV-Player mit D-Pad-bedienbarer Senderliste und Now/Next-Overlay umsetzen
+- [x] laufenden Sender über stabile `serviceReference` halten, sodass periodische Datenrefreshes keinen unerwünschten Kanalwechsel auslösen
+- [x] Senderliste per OK dauerhaft öffnen; Back schließt zuerst die Liste
+- [x] CH+/CH− und Hoch/Runter für Senderwechsel implementieren
+- [x] langes OK öffnet den EPG direkt im Player
+- [x] Player-Rückkehr und Verlassen-Dialog auf TV-Hardware getestet
 
-**Phase 7 bleibt funktional abgeschlossen und hardwarebestätigt; die neue Refresh-stabile Senderidentität und das angeheftete Senderlistenverhalten warten auf den gezielten TCL-Langzeittest.**
+## Phase 8 – Preview Channels / globale Suche
 
-## Preview Channels / globale Suche – aktueller Entwicklungsstand
-
-- [x] Android Preview Channels / Preview Programs über TvProvider lesen
-- [x] systemseitiges Channel-`browsable=0` nicht mehr fälschlich als I-Launcher-Ausblendung behandeln
-- [x] lokale Ein-/Ausblendung pro App-Kanal
-- [x] globale lokale Suche über Apps, Watch Next, Preview Programs und EPG
-- [x] TMDB-Suche ab drei Zeichen
-- [x] lokale Suche ab zwei Zeichen vom UI-Thread entkoppelt
-- [x] rohe Watch-Next-Titel/Episodentitel zusätzlich zur TMDB-angereicherten Medienidentität durchsuchen
-- [x] Preview-Channel-Titel/Quell-App als Suchmetadaten einbeziehen
-- [x] Suchergebnisse in getrennte horizontale TV-Reihen für Weiterschauen, App-Kanäle, TV-Programm, Apps und TMDB gliedern
-- [x] getrennte Suchreihen auf TV-Hardware bestätigt
-- [x] CloudStream-/Kodi-Suchhandoff für TMDB-/EPG-Treffer
-- [x] CloudStream-Development-Paketvarianten dynamisch über den Search-Intent erkennen
-- [x] CloudStream-Handoff auf TV-Hardware bestätigt
-- [x] versioniertes `cloudstreamplay://v1`-Handoff-Protokoll im I Launcher
-- [x] CloudStream-Bridge reproduzierbar auf `a72f9e6` + vorhandenem Watch-Next-Fix aufgebaut
-- [x] IMDb-`getLoadUrl()`-Direktroute vor konservativer Provider-Suche
-- [x] exakte Film- und S/E-Wiedergabe über CloudStreams vorhandenen `RepoLinkGenerator`/Playerpfad
-- [x] reine Serienidentität ohne S/E auf bereits aufgelöste Provider-Detailseite führen statt willkürlich Episode 1 zu starten
-- [x] unsichere/nicht gefundene Matches automatisch auf `cloudstreamsearch://` zurückfallen lassen
-- [x] CloudStream-Bridge-Build inklusive JVM-Tests und `assemblePrereleaseDebug` erfolgreich
-- [ ] CloudStream-Bridge auf realer TCL-Hardware mit installiertem Providerbestand testen
-- [ ] Film: Suche/Ergebnis/Detail überspringen und direkt Player starten bestätigen
-- [ ] konkrete Episode: exaktes S/E direkt im Player bestätigen
-- [ ] Serie ohne S/E: Suche/Ergebnis überspringen und direkt auf Provider-Serie landen bestätigen
-- [ ] Fallback bei unsicherem Match prüfen
-- [ ] Back-Rückkehr in dieselbe I-Launcher-Detailseite/Fokusposition prüfen
-- [x] defekten Kodi-Core-`ACTION_SEARCH`-Pfad verworfen; stattdessen exportierten Suggestions-Provider + von Kodi zurückgegebene `ACTION_GET_CONTENT`-/`videodb://`-Referenz verwenden
-- [x] Kodi-Titelauswahl konservativ normalisieren (`&`/`and`, exakte bzw. starke Präfix-Treffer) und schwache Treffer ablehnen
-- [x] externe Suchbuttons auf Suchsymbol + App-Name reduzieren und erste Detailaktion direkt fokussieren
-- [x] Suchsymbol an TV-Material-`LocalContentColor` koppeln, damit Symbol und Text gemeinsam die Fokusfarbe wechseln
-- [x] Watch-Next-Long-OK erst nach konsumiertem OK-Release in Details navigieren, damit der neue Wiedergabebutton nicht automatisch ausgelöst wird
-- [x] Android-Sprachsuche als kompakte Suchaktion integrieren
-- [x] Touch-Detailseite inklusive langer Texte und Aktionsbuttons auf Smartphone bestätigt
-- [ ] TV-Gerätetest des neuen Kodi-Handoffs, Suchsymbol-Fokus und Watch-Next-Long-OK-Release-Fix
-
-## Home / Navigation – aktueller UI-Polish
-
-- [x] Hero-Bereich folgt dem fokussierten Inhalt
-- [x] Hero außerhalb des vertikalen Reihen-Scrolls halten, damit er beim Navigieren sichtbar bleibt
-- [x] Hero selbst fokussierbar machen; Medien öffnen per OK die Detailansicht
-- [x] Start-Hero nicht mehr mit erstem TV-Sender initialisieren; Local-First Watch Next → Preview Program → neutraler Hero
-- [x] Hero-Artwork rechts mit weichem Verlauf in den linken Textbereich; Backdrops crop, ungeeignete Quellbilder möglichst fit
-- [x] Titellogo nicht zusätzlich als große Titelüberschrift wiederholen; Quell-App-Namen aus dem Medien-Hero entfernen
-- [x] ergänzende Hero-Metadaten statt Kartenwerte zu duplizieren; lange Beschreibung mit längerer Lesepause deutlich langsamer scrollen
-- [x] Hauptnavigation auf `Home · Suche · Apps · Einstellungen` reduzieren
-- [x] aktiven Hauptpunkt nur per Border markieren
-- [x] Launcher-Name aus der Navigationszeile entfernen
-- [x] Navigation erst nach echter vertikaler Scrollbewegung ausblenden; kleine Fokus-/Bring-into-view-Nudges ignorieren
-- [x] Live-TV-/Gigablue-Konfiguration unter Einstellungen verschieben
-- [x] Home-/Search-Layout im zweiten Google-TV-inspirierten Feinschliff visuell vom Benutzer grundsätzlich bestätigt
-- [x] Hauptnavigation optisch kompakter: transparente Ruhefläche, kleine Fokusvergrößerung und helle Fokus-Pill ohne Änderung des Fokuspfads
-- [x] separate `Alle Apps`-Ansicht nutzt adaptives TV-Grid und dauerhaft sichtbare App-Namen; Home-App-Dock bleibt label-reduziert
-- [x] Detailseite mit horizontalem/unterem Artwork-Verlauf, kompakteren Metadaten und reduzierten technischen Quellenzeilen an dieselbe Google-TV-inspirierte Bildsprache angeglichen
-- [ ] TV-Gerätetest für kompakten Nav-Fokus, adaptives Apps-Grid, neuen Detailseiten-Look und jüngste D-Pad-Regressionen durchführen
-
-## Phase 8 – optionale Provider
-
-Nur wenn Android-Standardschnittstellen nicht ausreichen:
-
-- [ ] Kodi-Add-on-spezifische Integrationen (Core-Suche ist nur Bibliothekssuche)
-- [ ] Jellyfin
-- [ ] Plex
-- [x] CloudStream als separaten Provider-/Playback-Backend-Prozess anbinden; Watch Next bleibt Android-TvProvider-basiert
-- [ ] weitere Provider
+- [x] Android Preview Channels/Programs über TvProvider einlesen
+- [x] Preview Channel Reihen auf Home
+- [x] lokale Sichtbarkeit je Kanal
+- [x] Local-First globale Suche
+- [x] TMDB Browse/Discovery
+- [x] TMDB Details / Personen / Related Content
+- [x] Kodi TMDb Helper Handoff
+- [x] CloudStream bleibt separates Provider-/Playback-Backend
+- [x] versionierter `cloudstreamplay://v1`-Handoff mit strukturierter Medienidentität
+- [x] deterministische Auswahl der Bridge-fähigen `prerelease.debug`-Variante vor einer parallel installierten offiziellen CloudStream-App
+- [x] CloudStream Provider-Priorität + letzter tatsächlich abspielbarer Provider je Medienidentität
+- [x] Long-OK Providerwahl und globale Prioritätsreihenfolge
+- [x] Direct-Play für Filme und konkrete Episoden über CloudStreams vorhandenen `RepoLinkGenerator`
+- [x] reine Serie ohne S/E öffnet die bereits aufgelöste Provider-Detailseite statt Episode 1 zu raten
+- [x] Provider-Suchtreffer mit dekorierten sichtbaren Titeln werden nicht mehr vor `load()` verworfen; strenge Identitätsprüfung erfolgt auf der echten `LoadResponse`
+- [x] CloudStream-Suchfallback aktualisiert nach Kaltstart die Provider-Repositories und startet die Suche aktiv statt nur den Suchtext einzutragen
+- [x] reproduzierbarer Bridge-Build auf CloudStream `a72f9e6` inklusive bestehendem Watch-Next-Fix
+- [x] automatisierter Bridge-Build #8 mit JVM-Tests und `assemblePrereleaseDebug` grün
+- [ ] TCL: automatischen Direktstart mit mehreren realen Extensions prüfen
+- [ ] TCL: Fallback-Suche nach Kaltstart muss automatisch Ergebnisse anzeigen
+- [ ] TCL: Provider-Priorität und letzter erfolgreicher Provider prüfen
+- [ ] TCL: Back-/Fokus-Rückkehr nach direktem CloudStream-Player prüfen
