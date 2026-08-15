@@ -63,6 +63,16 @@ def main() -> None:
         """            <!-- I Launcher direct provider/playback handoff. -->\n            <intent-filter>\n                <action android:name=\"android.intent.action.VIEW\" />\n\n                <category android:name=\"android.intent.category.DEFAULT\" />\n                <category android:name=\"android.intent.category.BROWSABLE\" />\n\n                <data android:scheme=\"cloudstreamplay\" android:host=\"v1\" />\n            </intent-filter>\n\n            <!-- Allow searching with intents: cloudstreamsearch://Your%20Name -->\n            <intent-filter>""",
     )
 
+    # 5) The uploaded APK was signed by an ephemeral Android debug key. Its private key is not
+    # recoverable from the APK. For reproducible future bridge updates, make prereleaseDebug use
+    # the explicitly supplied stable development signing config when CI provides one.
+    build_gradle = root / "app/build.gradle.kts"
+    replace_once(
+        build_gradle,
+        """        debug {\n            isDebuggable = true\n            applicationIdSuffix = \".debug\"\n            proguardFiles(""",
+        """        debug {\n            isDebuggable = true\n            applicationIdSuffix = \".debug\"\n            if (signingConfigs.names.contains(\"prerelease\")) {\n                signingConfig = signingConfigs.getByName(\"prerelease\")\n            }\n            proguardFiles(""",
+    )
+
     print(f"Applied I Launcher CloudStream bridge patch on upstream {BASE_COMMIT}")
 
 
