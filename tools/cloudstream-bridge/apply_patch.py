@@ -16,6 +16,12 @@ def replace_once(path: Path, old: str, new: str) -> None:
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
+def require_text(path: Path, needle: str, description: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    if needle not in text:
+        raise RuntimeError(f"Missing required {description} in {path}:\n{needle}")
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit("usage: apply_patch.py <cloudstream-source-root>")
@@ -24,7 +30,15 @@ def main() -> None:
     if not (root / "app" / "src" / "main").exists():
         raise RuntimeError(f"Not a CloudStream checkout: {root}")
 
-    # 1) Reproduce the Watch Next fix from CloudStream-WatchNext-Test-a72f9e6.apk.
+    # 1) Reproduce the complete Watch Next fix from the device-tested
+    # CloudStream-WatchNext-Test-a72f9e6.apk.
+    #
+    # The upstream code builds timeStampHashMap keyed by lastWatched.parentId, therefore it must
+    # also read that map with episodeInfo.parentId. Reading it with episodeInfo.id drops the real
+    # engagement timestamp and causes Android TV's Watch Next row to appear in the wrong order.
+    #
+    # The lookup already uses customId, so the stored internalProviderId must use the exact same
+    # value. Otherwise every refresh misses the existing TvProvider row and republishes it.
     app_context = root / "app/src/main/java/com/lagradost/cloudstream3/utils/AppContextUtils.kt"
     replace_once(
         app_context,
@@ -35,7 +49,20 @@ def main() -> None:
     replace_once(
         app_context,
         """                    val nextProgram = buildWatchNextProgramUri(\n                        context,\n                        episodeInfo,\n                        timeStampHashMap[episodeInfo.id]\n                    )""",
-        """                    val nextProgram = buildWatchNextProgramUri(\n                        context,\n                        episodeInfo,\n                        timeStampHashMap[episodeInfo.id],\n                        customId,\n                    )""",
+        """                    val nextProgram = buildWatchNextProgramUri(\n                        context,\n                        episodeInfo,\n                        timeStampHashMap[episodeInfo.parentId],\n                        customId,\n                    )""",
+    )
+
+    # Guard the exact two device-tested Watch Next invariants. This deliberately fails the bridge
+    # build if a future refactor drops either part of the fix.
+    require_text(
+        app_context,
+        "timeStampHashMap[episodeInfo.parentId]",
+        "Watch Next parentId timestamp lookup",
+    )
+    require_text(
+        app_context,
+        ".setInternalProviderId(customId)",
+        "Watch Next stable internalProviderId",
     )
 
     # 2) Add the I Launcher direct-play resolver and its pure protocol tests to CloudStream.
