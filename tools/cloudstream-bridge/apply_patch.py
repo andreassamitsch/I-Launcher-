@@ -60,6 +60,34 @@ def main() -> None:
         """                Log.i(TAG, \"providers active=${orderedProviders.size}\")\n\n                if (orderedProviders.isEmpty()) {\n                    Log.w(TAG, \"providers active=0 setupRequired=true\")\n                    main { ILauncherBridgeSetup.showNoProvidersDialog(activity) }\n                    return@ioSafe\n                }\n\n                if (request.providerSelection == ProviderSelection.Choose) {""",
     )
 
+    # Provider UI must be immediate. The previous chooser resolved every provider before showing
+    # anything, so long-OK could block for many seconds. Show all active providers immediately and
+    # resolve only the selected provider on demand. The automatic short-OK path remains unchanged.
+    replace_once(
+        bridge_target,
+        """                if (request.providerSelection == ProviderSelection.Choose) {\n                    val matches = resolveAll(orderedProviders, request)\n                    main {\n                        if (matches.isEmpty()) {\n                            showNoDirectMatchDialog(activity, request, providers)\n                        } else {\n                            showProviderChooser(activity, request, providers, matches)\n                        }\n                    }\n                    return@ioSafe\n                }""",
+        """                if (request.providerSelection == ProviderSelection.Choose) {\n                    main { showProviderChooser(activity, request, providers, orderedProviders) }\n                    return@ioSafe\n                }""",
+    )
+    replace_once(
+        bridge_target,
+        """        matches: List<Match>,\n    ) {\n        val labels = matches.map { it.response.apiName }.toTypedArray()""",
+        """        providers: List<MainAPI>,\n    ) {\n        val labels = providers.map { it.name }.toTypedArray()""",
+    )
+    replace_once(
+        bridge_target,
+        """            .setSingleChoiceItems(labels, -1) { openedDialog, which ->\n                val match = matches.getOrNull(which) ?: return@setSingleChoiceItems\n                openedDialog.dismiss()\n                executeSelectedMatch(activity, request, match)\n            }""",
+        """            .setSingleChoiceItems(labels, -1) { openedDialog, which ->\n                val provider = providers.getOrNull(which) ?: return@setSingleChoiceItems\n                openedDialog.dismiss()\n                ioSafe {\n                    val match = resolveProvider(provider, request)\n                    main {\n                        if (match == null) {\n                            showNoDirectMatchDialog(activity, request, allProviders)\n                        } else {\n                            executeSelectedMatch(activity, request, match)\n                        }\n                    }\n                }\n            }""",
+    )
+
+    # AlertDialog does not render a message and a single-choice list together in the same content
+    # area on this CloudStream/AppCompat version. Keeping setMessage() therefore hid the provider
+    # rows completely (only the move buttons were visible). The list is the primary TV UI here.
+    replace_once(
+        bridge_target,
+        """        val dialog = AlertDialog.Builder(activity, R.style.AlertDialogCustom)\n            .setTitle(\"Provider-Priorität\")\n            .setMessage(\"Kurzes OK versucht zuerst den zuletzt wirklich abspielbaren Anbieter für diesen Inhalt, danach diese Reihenfolge. Ist ein Anbieter nicht verfügbar, wird automatisch der nächste versucht.\")\n            .setSingleChoiceItems(adapter, selected) { _, which -> selected = which }""",
+        """        val dialog = AlertDialog.Builder(activity, R.style.AlertDialogCustom)\n            .setTitle(\"Provider-Priorität\")\n            .setSingleChoiceItems(adapter, selected) { _, which -> selected = which }""",
+    )
+
     # 3) Let MainActivity consume cloudstreamplay://v1 before the raw cloudstreamplayer URL path.
     main_activity = root / "app/src/main/java/com/lagradost/cloudstream3/MainActivity.kt"
     replace_once(
