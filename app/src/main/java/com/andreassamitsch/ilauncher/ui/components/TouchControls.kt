@@ -125,15 +125,16 @@ private fun Modifier.touchLongPressObserver(
 ): Modifier {
     if (onLongClick == null) return this
     return pointerInput(enabled, onLongClick) {
-        awaitEachGesture {
-            coroutineScope {
+        coroutineScope {
+            val gestureScope = this
+            awaitEachGesture {
                 val down = awaitFirstDown(
                     requireUnconsumed = false,
                     pass = PointerEventPass.Initial,
                 )
                 var pressed = enabled
                 var handled = false
-                val longPressJob = launch {
+                val longPressJob = gestureScope.launch {
                     delay(ViewConfiguration.getLongPressTimeout().toLong())
                     if (pressed && !handled) {
                         handled = true
