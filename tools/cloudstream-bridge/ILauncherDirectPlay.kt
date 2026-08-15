@@ -11,6 +11,7 @@ import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.syncproviders.SyncIdName
 import com.lagradost.cloudstream3.ui.APIRepository
 import com.lagradost.cloudstream3.ui.player.GeneratorPlayer
+import com.lagradost.cloudstream3.ui.player.LOADTYPE_INAPP
 import com.lagradost.cloudstream3.ui.player.RepoLinkGenerator
 import com.lagradost.cloudstream3.ui.result.buildResultEpisode
 import com.lagradost.cloudstream3.ui.result.getId
@@ -60,6 +61,12 @@ object ILauncherDirectPlay {
     )
 
     private data class Match(val response: LoadResponse)
+    private data class PreparedPlayback(
+        val generator: RepoLinkGenerator,
+        val index: Int,
+        val syncData: HashMap<String, String>,
+        val providerName: String,
+    )
 
     fun handle(activity: FragmentActivity, rawUri: String): Boolean {
         val request = parseRequest(rawUri) ?: return false
@@ -79,12 +86,9 @@ object ILauncherDirectPlay {
                     return@ioSafe
                 }
 
-                val match = resolveFirst(orderedProviders, request)
-                if (match == null) {
+                if (!resolveAndExecuteAutomatic(activity, orderedProviders, request)) {
                     fallbackToSearch(activity, request.title)
-                    return@ioSafe
                 }
-                executeMatch(activity, request, match)
             } catch (t: Throwable) {
                 logError(t)
                 fallbackToSearch(activity, request.title)
@@ -197,20 +201,36 @@ object ILauncherDirectPlay {
         return names.mapNotNull(byName::get)
     }
 
-    private suspend fun resolveFirst(providers: List<MainAPI>, request: Request): Match? = coroutineScope {
-        if (providers.isEmpty()) return@coroutineScope null
+    private suspend fun resolveAndExecuteAutomatic(
+        activity: FragmentActivity,
+        providers: List<MainAPI>,
+        request: Request,
+    ): Boolean = coroutineScope {
+        if (providers.isEmpty()) return@coroutineScope false
         val semaphore = Semaphore(4)
         val jobs = providers.map { api ->
             async { semaphore.withPermit { resolveProvider(api, request) } }
         }
+
         for ((index, job) in jobs.withIndex()) {
-            val match = job.await()
-            if (match != null) {
+            val match = job.await() ?: continue
+
+            if (request.kind == MediaKind.Series && (request.season == null || request.episode == null)) {
                 jobs.drop(index + 1).forEach { it.cancel() }
-                return@coroutineScope match
+                openResolvedDetails(activity, match.response)
+                rememberLastProvider(activity, request, match.response.apiName)
+                return@coroutineScope true
+            }
+
+            val prepared = preparePlayback(match.response, request) ?: continue
+            if (hasPlayableLinks(prepared)) {
+                jobs.drop(index + 1).forEach { it.cancel() }
+                launchPreparedPlayback(activity, prepared)
+                rememberLastProvider(activity, request, prepared.providerName)
+                return@coroutineScope true
             }
         }
-        null
+        false
     }
 
     private suspend fun resolveAll(providers: List<MainAPI>, request: Request): List<Match> = coroutineScope {
@@ -231,7 +251,7 @@ object ILauncherDirectPlay {
                     val url = api.getLoadUrl(SyncIdName.Imdb, imdbId) ?: return@withTimeoutOrNull null
                     (repo.load(url) as? Resource.Success)?.value
                 }
-                if (loaded != null && loadedMatches(loaded, request, trustIdentity = true)) {
+                if (loaded != null && loadedMatches(loaded, request, trustIdentity = true) && supportsExactRequest(loaded, request)) {
                     return Match(loaded)
                 }
             }
@@ -259,7 +279,7 @@ object ILauncherDirectPlay {
                         else -> null
                     }
                 } ?: continue
-                if (loadedMatches(loaded, request, trustIdentity = false)) {
+                if (loadedMatches(loaded, request, trustIdentity = false) && supportsExactRequest(loaded, request)) {
                     return Match(loaded)
                 }
             }
@@ -293,6 +313,13 @@ object ILauncherDirectPlay {
             .any { it == loadedTitle }
     }
 
+    private fun supportsExactRequest(response: LoadResponse, request: Request): Boolean = when {
+        request.kind == MediaKind.Movie -> response is MovieLoadResponse && response.dataUrl.isNotBlank()
+        request.kind == MediaKind.Episode && request.season != null && request.episode != null ->
+            findEpisodeIndex(response, request.season, request.episode) >= 0
+        else -> true
+    }
+
     private fun supportsRequestedKind(api: MainAPI, kind: MediaKind): Boolean = when (kind) {
         MediaKind.Movie -> api.supportedTypes.any { it.isMovieType() }
         MediaKind.Series, MediaKind.Episode -> api.supportedTypes.any { it.isEpisodeBased() }
@@ -305,31 +332,16 @@ object ILauncherDirectPlay {
         MediaKind.Unknown -> true
     }
 
-    private fun executeMatch(activity: FragmentActivity, request: Request, match: Match) {
-        val opened = when {
-            request.kind == MediaKind.Movie || match.response.isMovie() -> {
-                playMovie(activity, match.response).also { played ->
-                    if (!played) openResolvedDetails(activity, match.response)
-                }
-                true
-            }
-            request.kind == MediaKind.Episode && request.season != null && request.episode != null -> {
-                playEpisode(activity, match.response, request.season, request.episode).also { played ->
-                    if (!played) openResolvedDetails(activity, match.response)
-                }
-                true
-            }
-            else -> {
-                openResolvedDetails(activity, match.response)
-                true
-            }
-        }
-        if (opened) rememberLastProvider(activity, request, match.response.apiName)
+    private fun preparePlayback(response: LoadResponse, request: Request): PreparedPlayback? = when {
+        request.kind == MediaKind.Movie || response.isMovie() -> prepareMovie(response)
+        request.kind == MediaKind.Episode && request.season != null && request.episode != null ->
+            prepareEpisode(response, request.season, request.episode)
+        else -> null
     }
 
-    private fun playMovie(activity: FragmentActivity, response: LoadResponse): Boolean {
-        val movie = response as? MovieLoadResponse ?: return false
-        if (movie.dataUrl.isBlank()) return false
+    private fun prepareMovie(response: LoadResponse): PreparedPlayback? {
+        val movie = response as? MovieLoadResponse ?: return null
+        if (movie.dataUrl.isBlank()) return null
         val parentId = response.getId()
         val result = buildResultEpisode(
             headerName = response.name,
@@ -344,29 +356,23 @@ object ILauncherDirectPlay {
             tvType = response.type,
             parentId = parentId,
         )
-        val generator = RepoLinkGenerator(listOf(result), response)
-        main {
-            activity.navigate(
-                R.id.global_to_navigation_player,
-                GeneratorPlayer.newInstance(generator, 0, HashMap(response.syncData)),
-            )
-        }
-        return true
+        return PreparedPlayback(
+            generator = RepoLinkGenerator(listOf(result), response),
+            index = 0,
+            syncData = HashMap(response.syncData),
+            providerName = response.apiName,
+        )
     }
 
-    private fun playEpisode(
-        activity: FragmentActivity,
+    private fun prepareEpisode(
         response: LoadResponse,
         requestedSeason: Int,
         requestedEpisode: Int,
-    ): Boolean {
-        val series = response as? TvSeriesLoadResponse ?: return false
+    ): PreparedPlayback? {
+        val series = response as? TvSeriesLoadResponse ?: return null
+        val selectedIndex = findEpisodeIndex(series, requestedSeason, requestedEpisode)
+        if (selectedIndex < 0) return null
         val displaySeasons = series.seasonNames?.associate { it.season to it.displaySeason }.orEmpty()
-        val selectedIndex = series.episodes.indexOfFirst { ep ->
-            val displaySeason = ep.season?.let { displaySeasons[it] ?: it }
-            displaySeason == requestedSeason && ep.episode == requestedEpisode
-        }
-        if (selectedIndex < 0) return false
         val parentId = response.getId()
         val results = series.episodes.mapIndexed { index, ep ->
             val displaySeason = ep.season?.let { displaySeasons[it] ?: it }
@@ -393,14 +399,65 @@ object ILauncherDirectPlay {
                 seasonData = ep.season?.let { season -> series.seasonNames?.firstOrNull { it.season == season } },
             )
         }
-        val generator = RepoLinkGenerator(results, response)
+        return PreparedPlayback(
+            generator = RepoLinkGenerator(results, response),
+            index = selectedIndex,
+            syncData = HashMap(response.syncData),
+            providerName = response.apiName,
+        )
+    }
+
+    private fun findEpisodeIndex(response: LoadResponse, requestedSeason: Int, requestedEpisode: Int): Int {
+        val series = response as? TvSeriesLoadResponse ?: return -1
+        val displaySeasons = series.seasonNames?.associate { it.season to it.displaySeason }.orEmpty()
+        return series.episodes.indexOfFirst { ep ->
+            val displaySeason = ep.season?.let { displaySeasons[it] ?: it }
+            displaySeason == requestedSeason && ep.episode == requestedEpisode
+        }
+    }
+
+    private suspend fun hasPlayableLinks(prepared: PreparedPlayback): Boolean {
+        var foundPlayableLink = false
+        val completed = withTimeoutOrNull(20_000) {
+            prepared.generator.generateLinks(
+                clearCache = false,
+                sourceTypes = LOADTYPE_INAPP,
+                callback = { (link, uri) ->
+                    if (link != null || uri != null) foundPlayableLink = true
+                },
+                subtitleCallback = {},
+                offset = prepared.index,
+                isCasting = false,
+            )
+        } ?: false
+        return completed && foundPlayableLink
+    }
+
+    private fun launchPreparedPlayback(activity: FragmentActivity, prepared: PreparedPlayback) {
         main {
             activity.navigate(
                 R.id.global_to_navigation_player,
-                GeneratorPlayer.newInstance(generator, selectedIndex, HashMap(response.syncData)),
+                GeneratorPlayer.newInstance(prepared.generator, prepared.index, prepared.syncData),
             )
         }
-        return true
+    }
+
+    private fun executeSelectedMatch(activity: FragmentActivity, request: Request, match: Match) {
+        if (request.kind == MediaKind.Series && (request.season == null || request.episode == null)) {
+            openResolvedDetails(activity, match.response)
+            rememberLastProvider(activity, request, match.response.apiName)
+            return
+        }
+
+        ioSafe {
+            val prepared = preparePlayback(match.response, request)
+            if (prepared != null && hasPlayableLinks(prepared)) {
+                launchPreparedPlayback(activity, prepared)
+                rememberLastProvider(activity, request, prepared.providerName)
+            } else {
+                main { showNoPlayableLinkDialog(activity, request, match.response.apiName) }
+            }
+        }
     }
 
     private fun episodeId(apiName: String, data: String, parentId: Int, index: Int): Int =
@@ -418,7 +475,7 @@ object ILauncherDirectPlay {
             .setSingleChoiceItems(labels, -1) { openedDialog, which ->
                 val match = matches.getOrNull(which) ?: return@setSingleChoiceItems
                 openedDialog.dismiss()
-                executeMatch(activity, request, match)
+                executeSelectedMatch(activity, request, match)
             }
             .setNeutralButton("Priorität") { _, _ ->
                 showProviderPriorityDialog(activity, allProviders)
@@ -443,6 +500,19 @@ object ILauncherDirectPlay {
             .show()
     }
 
+    private fun showNoPlayableLinkDialog(
+        activity: FragmentActivity,
+        request: Request,
+        providerName: String,
+    ) {
+        AlertDialog.Builder(activity, R.style.AlertDialogCustom)
+            .setTitle("Keine Wiedergabequelle")
+            .setMessage("$providerName hat den Inhalt gefunden, aber aktuell keine abspielbare Quelle geliefert. Der Anbieter wird deshalb nicht als erfolgreich gespeichert.")
+            .setPositiveButton("Suche öffnen") { _, _ -> fallbackToSearch(activity, request.title) }
+            .setNegativeButton("Abbrechen", null)
+            .show()
+    }
+
     private fun showProviderPriorityDialog(activity: FragmentActivity, providers: List<MainAPI>) {
         val activeNames = providers.map { it.name }.filter(String::isNotBlank).distinct()
         if (activeNames.isEmpty()) {
@@ -459,7 +529,7 @@ object ILauncherDirectPlay {
         val adapter = ArrayAdapter(activity, android.R.layout.simple_list_item_single_choice, ordered)
         val dialog = AlertDialog.Builder(activity, R.style.AlertDialogCustom)
             .setTitle("Provider-Priorität")
-            .setMessage("Kurzes OK versucht zuerst den zuletzt erfolgreichen Anbieter für diesen Inhalt, danach diese Reihenfolge. Ist ein Anbieter nicht verfügbar, wird automatisch der nächste versucht.")
+            .setMessage("Kurzes OK versucht zuerst den zuletzt wirklich abspielbaren Anbieter für diesen Inhalt, danach diese Reihenfolge. Ist ein Anbieter nicht verfügbar, wird automatisch der nächste versucht.")
             .setSingleChoiceItems(adapter, selected) { _, which -> selected = which }
             .setNeutralButton("Nach oben", null)
             .setNegativeButton("Nach unten", null)
