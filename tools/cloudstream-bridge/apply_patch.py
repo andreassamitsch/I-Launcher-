@@ -42,10 +42,23 @@ def main() -> None:
     bridge_source = Path(__file__).with_name("ILauncherDirectPlay.kt")
     bridge_target = root / "app/src/main/java/com/lagradost/cloudstream3/ILauncherDirectPlay.kt"
     shutil.copyfile(bridge_source, bridge_target)
+    bridge_setup_source = Path(__file__).with_name("ILauncherBridgeSetup.kt")
+    bridge_setup_target = root / "app/src/main/java/com/lagradost/cloudstream3/ILauncherBridgeSetup.kt"
+    shutil.copyfile(bridge_setup_source, bridge_setup_target)
     bridge_test_source = Path(__file__).with_name("ILauncherDirectPlayTest.kt")
     bridge_test_target = root / "app/src/test/java/com/lagradost/cloudstream3/ILauncherDirectPlayTest.kt"
     bridge_test_target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(bridge_test_source, bridge_test_target)
+
+    # A prerelease/debug CloudStream package has its own Android sandbox. If that package has no
+    # extensions configured, silently opening an empty search is misleading: the same extensions
+    # installed in the official CloudStream package are not visible here. Surface that state and
+    # take the user straight to this package's Extensions screen instead.
+    replace_once(
+        bridge_target,
+        """                Log.i(TAG, \"providers active=${orderedProviders.size}\")\n\n                if (request.providerSelection == ProviderSelection.Choose) {""",
+        """                Log.i(TAG, \"providers active=${orderedProviders.size}\")\n\n                if (orderedProviders.isEmpty()) {\n                    Log.w(TAG, \"providers active=0 setupRequired=true\")\n                    main { ILauncherBridgeSetup.showNoProvidersDialog(activity) }\n                    return@ioSafe\n                }\n\n                if (request.providerSelection == ProviderSelection.Choose) {""",
+    )
 
     # 3) Let MainActivity consume cloudstreamplay://v1 before the raw cloudstreamplayer URL path.
     main_activity = root / "app/src/main/java/com/lagradost/cloudstream3/MainActivity.kt"
