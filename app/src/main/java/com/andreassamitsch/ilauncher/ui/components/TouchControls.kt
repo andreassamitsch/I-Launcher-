@@ -35,6 +35,7 @@ import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.CardScale
 import androidx.tv.material3.CardShape
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -125,44 +126,46 @@ private fun Modifier.touchLongPressObserver(
     if (onLongClick == null) return this
     return pointerInput(enabled, onLongClick) {
         awaitEachGesture {
-            val down = awaitFirstDown(
-                requireUnconsumed = false,
-                pass = PointerEventPass.Initial,
-            )
-            var pressed = enabled
-            var handled = false
-            val longPressJob = launch {
-                delay(ViewConfiguration.getLongPressTimeout().toLong())
-                if (pressed && !handled) {
-                    handled = true
-                    onLongClick()
-                }
-            }
-
-            while (true) {
-                val event = awaitPointerEvent(PointerEventPass.Initial)
-                val change = event.changes.firstOrNull { it.id == down.id } ?: run {
-                    pressed = false
-                    longPressJob.cancel()
-                    break
+            coroutineScope {
+                val down = awaitFirstDown(
+                    requireUnconsumed = false,
+                    pass = PointerEventPass.Initial,
+                )
+                var pressed = enabled
+                var handled = false
+                val longPressJob = launch {
+                    delay(ViewConfiguration.getLongPressTimeout().toLong())
+                    if (pressed && !handled) {
+                        handled = true
+                        onLongClick()
+                    }
                 }
 
-                if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
-                    pressed = false
-                    longPressJob.cancel()
-                }
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: run {
+                        pressed = false
+                        longPressJob.cancel()
+                        break
+                    }
 
-                if (!change.pressed) {
-                    pressed = false
-                    longPressJob.cancel()
+                    if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                        pressed = false
+                        longPressJob.cancel()
+                    }
+
+                    if (!change.pressed) {
+                        pressed = false
+                        longPressJob.cancel()
+                        if (handled) change.consume()
+                        break
+                    }
+
+                    // After the long action fires, consume the remaining pointer sequence before the
+                    // TV button's own click recognizer sees it. Short taps are never consumed here and
+                    // therefore have exactly one owner: TvButton.onClick.
                     if (handled) change.consume()
-                    break
                 }
-
-                // After the long action fires, consume the remaining pointer sequence before the
-                // TV button's own click recognizer sees it. Short taps are never consumed here and
-                // therefore have exactly one owner: TvButton.onClick.
-                if (handled) change.consume()
             }
         }
     }
