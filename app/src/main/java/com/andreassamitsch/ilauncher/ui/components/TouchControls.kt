@@ -35,7 +35,6 @@ import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.CardScale
 import androidx.tv.material3.CardShape
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -111,65 +110,14 @@ fun TouchButton(
         enabled = enabled,
         modifier = modifier
             .then(remoteLongPressModifier)
-            .touchLongPressObserver(enabled = enabled, onLongClick = onLongClick),
+            // Compose for TV buttons are optimized for D-pad input. Keep the explicit pointer
+            // fallback that makes short taps and touch long-presses reliable on phones/tablets.
+            .touchTap(onClick = onClick, enabled = enabled, onLongClick = onLongClick),
         scale = scale,
         colors = colors,
         contentPadding = contentPadding,
         content = content,
     )
-}
-
-private fun Modifier.touchLongPressObserver(
-    enabled: Boolean,
-    onLongClick: (() -> Unit)?,
-): Modifier {
-    if (onLongClick == null) return this
-    return pointerInput(enabled, onLongClick) {
-        coroutineScope {
-            val gestureScope = this
-            awaitEachGesture {
-                val down = awaitFirstDown(
-                    requireUnconsumed = false,
-                    pass = PointerEventPass.Initial,
-                )
-                var pressed = enabled
-                var handled = false
-                val longPressJob = gestureScope.launch {
-                    delay(ViewConfiguration.getLongPressTimeout().toLong())
-                    if (pressed && !handled) {
-                        handled = true
-                        onLongClick()
-                    }
-                }
-
-                while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                    val change = event.changes.firstOrNull { it.id == down.id } ?: run {
-                        pressed = false
-                        longPressJob.cancel()
-                        break
-                    }
-
-                    if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
-                        pressed = false
-                        longPressJob.cancel()
-                    }
-
-                    if (!change.pressed) {
-                        pressed = false
-                        longPressJob.cancel()
-                        if (handled) change.consume()
-                        break
-                    }
-
-                    // After the long action fires, consume the remaining pointer sequence before the
-                    // TV button's own click recognizer sees it. Short taps are never consumed here and
-                    // therefore have exactly one owner: TvButton.onClick.
-                    if (handled) change.consume()
-                }
-            }
-        }
-    }
 }
 
 @Composable
