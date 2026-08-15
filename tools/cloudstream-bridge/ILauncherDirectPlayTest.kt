@@ -51,6 +51,31 @@ class ILauncherDirectPlayTest {
     }
 
     @Test
+    fun matchingNormalizationAcceptsProviderYearDecoration() {
+        assertEquals(
+            "dune part two",
+            ILauncherDirectPlay.normalizeTitleForMatch("Dune: Part Two (2024)", 2024),
+        )
+        assertEquals(
+            "dune part two 2023",
+            ILauncherDirectPlay.normalizeTitleForMatch("Dune: Part Two (2023)", 2024),
+        )
+    }
+
+    @Test
+    fun providerCandidateRankingKeepsExactAndMatchingYearAheadOfDecoratedResults() {
+        val request = requireNotNull(
+            ILauncherDirectPlay.parseRequest(
+                "cloudstreamplay://v1?title=Dune%3A%20Part%20Two&type=movie&year=2024",
+            ),
+        )
+
+        assertEquals(0, ILauncherDirectPlay.searchCandidateRank("Dune: Part Two", request))
+        assertEquals(1, ILauncherDirectPlay.searchCandidateRank("Dune: Part Two (2024)", request))
+        assertEquals(2, ILauncherDirectPlay.searchCandidateRank("Dune", request))
+    }
+
+    @Test
     fun providerPreferenceKeepsStoredOrderAndAppendsNewProviders() {
         assertEquals(
             listOf("CineZone", "StreamFlix", "SerienStream", "Neu"),
