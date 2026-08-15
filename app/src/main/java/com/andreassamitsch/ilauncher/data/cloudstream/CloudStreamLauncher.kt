@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.util.Log
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.MediaType
 import java.net.URLEncoder
@@ -49,18 +50,24 @@ class CloudStreamLauncher(private val context: Context) {
         val request = item.toCloudStreamMediaRequest()
         val directPackage = directPackageName()
         val mode: CloudStreamLaunchMode
+        val targetPackage: String
         val intent = if (directPackage != null) {
             mode = CloudStreamLaunchMode.DirectPlay
+            targetPackage = directPackage
             directPlayIntent(request, providerSelection).setPackage(directPackage)
         } else {
             val searchPackage = searchPackageName() ?: return null
             mode = CloudStreamLaunchMode.SearchFallback
+            targetPackage = searchPackage
             searchIntent(request.title).setPackage(searchPackage)
         }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
+        Log.d(TAG, "launch mode=$mode package=$targetPackage")
         return runCatching {
             context.startActivity(intent)
             mode
+        }.onFailure { error ->
+            Log.w(TAG, "launch failed mode=$mode package=$targetPackage", error)
         }.getOrNull()
     }
 
@@ -108,6 +115,7 @@ class CloudStreamLauncher(private val context: Context) {
 
     private companion object {
         const val SEARCH_SCHEME = "cloudstreamsearch"
+        const val TAG = "CLOUDSTREAM_BRIDGE"
     }
 }
 
