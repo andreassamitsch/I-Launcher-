@@ -1,0 +1,90 @@
+name: Build CloudStream I Launcher Bridge
+
+on:
+  push:
+    branches:
+      - agent/cloudstream-direct-play
+    paths:
+      - "tools/cloudstream-bridge/**"
+      - ".github/workflows/cloudstream-bridge.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: cloudstream-i-launcher-bridge-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-cloudstream-bridge:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout I Launcher patch sources
+        uses: actions/checkout@v4
+        with:
+          path: i-launcher
+
+      - name: Checkout exact CloudStream base
+        uses: actions/checkout@v4
+        with:
+          repository: recloudstream/cloudstream
+          ref: a72f9e6c3f2e25eb74ce0e7d6cc56dc33c130288
+          path: cloudstream
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Reproduce Watch Next fix and apply direct-play bridge
+        run: python i-launcher/tools/cloudstream-bridge/apply_patch.py cloudstream
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Configure stable bridge signing
+        env:
+          DEV_KEYSTORE_BASE64: ${{ secrets.IL_DEV_KEYSTORE_BASE64 }}
+          DEV_STORE_PASSWORD: ${{ secrets.IL_DEV_STORE_PASSWORD }}
+          DEV_KEY_ALIAS: ${{ secrets.IL_DEV_KEY_ALIAS }}
+          DEV_KEY_PASSWORD: ${{ secrets.IL_DEV_KEY_PASSWORD }}
+        run: |
+          if [ -z "$DEV_KEYSTORE_BASE64" ] || [ -z "$DEV_STORE_PASSWORD" ] || [ -z "$DEV_KEY_ALIAS" ] || [ -z "$DEV_KEY_PASSWORD" ]; then
+            echo "::error::Stable development signing secrets are required for the CloudStream bridge build."
+            exit 1
+          fi
+          mkdir -p "$HOME/work/_temp/keystore"
+          echo "$DEV_KEYSTORE_BASE64" | base64 --decode > "$HOME/work/_temp/keystore/i-launcher-development.jks"
+          echo "SIGNING_STORE_PASSWORD=$DEV_STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "SIGNING_KEY_ALIAS=$DEV_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "SIGNING_KEY_PASSWORD=$DEV_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Test and build CloudStream prerelease debug APK
+        working-directory: cloudstream
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:testPrereleaseDebugUnitTest :app:assemblePrereleaseDebug --stacktrace
+
+      - name: Verify package and collect APK
+        run: |
+          APK=$(find cloudstream/app/build/outputs/apk/prerelease/debug -name '*.apk' -type f | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "::error::CloudStream prerelease debug APK not found"
+            exit 1
+          fi
+          cp "$APK" CloudStream-I-Launcher-Bridge-a72f9e6.apk
+          sha256sum CloudStream-I-Launcher-Bridge-a72f9e6.apk | tee CloudStream-I-Launcher-Bridge-a72f9e6.sha256
+
+      - name: Upload CloudStream bridge APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CloudStream-I-Launcher-Bridge-a72f9e6
+          path: |
+            CloudStream-I-Launcher-Bridge-a72f9e6.apk
+            CloudStream-I-Launcher-Bridge-a72f9e6.sha256
+          retention-days: 90
