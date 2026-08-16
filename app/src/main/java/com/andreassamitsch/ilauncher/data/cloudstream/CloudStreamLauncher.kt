@@ -198,7 +198,7 @@ internal fun buildCloudStreamPlayUri(
 }
 
 internal fun buildCloudStreamSearchUri(query: String): String =
-    "$SEARCH_SCHEME://${Uri.encode(normalizeCloudStreamTitle(query))}"
+    "$SEARCH_SCHEME://${encodeQueryValue(normalizeCloudStreamTitle(query))}"
 
 internal fun normalizeCloudStreamTitle(value: String): String =
     value.trim().replace(Regex("\\s+"), " ")
