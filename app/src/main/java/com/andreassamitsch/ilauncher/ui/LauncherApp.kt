@@ -739,30 +739,6 @@ fun LauncherApp(
                             ),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        TouchButton(
-                            onClick = {
-                                when (val state = updateState) {
-                                    is UpdateState.Available -> updateManager.startDownload(state.info)
-                                    is UpdateState.ReadyToInstall -> scope.launch {
-                                        if (!updateManager.canRequestPackageInstalls()) updateManager.openUnknownSourcesSettings()
-                                        else updateManager.installDownloadedUpdate()
-                                    }
-                                    else -> scope.launch { updateManager.checkForUpdates() }
-                                }
-                            },
-                            enabled = updateState !is UpdateState.Checking && updateState !is UpdateState.Downloading,
-                        ) {
-                            Text(
-                                when (val state = updateState) {
-                                    is UpdateState.Available -> "Update ${state.info.versionName} herunterladen"
-                                    is UpdateState.ReadyToInstall -> "Update ${state.info.versionName} installieren"
-                                    is UpdateState.Downloading -> "Update wird heruntergeladen …"
-                                    UpdateState.Checking -> "Suche nach Update …"
-                                    else -> "Nach Update suchen"
-                                },
-                            )
-                        }
-                        TouchButton(onClick = { section = LauncherSection.LiveTv }) { Text("Live TV / Gigablue") }
                         SettingsScreen(
                             updateManager = updateManager,
                             watchNextResult = watchNextResult,
@@ -774,6 +750,7 @@ fun LauncherApp(
                             hiddenPreviewChannelIds = hiddenPreviewChannelIds,
                             onSetPreviewChannelVisible = previewChannelPreferences::setVisible,
                             onShowAllPreviewChannels = previewChannelPreferences::showAll,
+                            onOpenLiveTv = { section = LauncherSection.LiveTv },
                             hasTvListingsPermission = hasTvListingsPermission,
                             onRequestTvListingsPermission = requestTvListingsPermission,
                             tmdbConfigured = watchNextEnrichmentRepository.isTmdbConfigured,

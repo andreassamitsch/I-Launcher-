@@ -80,6 +80,11 @@ private enum class SettingsCategory(
         subtitle = "Quellen & Kanäle",
         icon = SettingsIcon.Content,
     ),
+    LiveTv(
+        title = "Live TV",
+        subtitle = "Gigablue & EPG",
+        icon = SettingsIcon.LiveTv,
+    ),
     Diagnostics(
         title = "Diagnose",
         subtitle = "Status & Rohdaten",
@@ -95,6 +100,7 @@ private enum class SettingsCategory(
 private enum class SettingsIcon {
     Setup,
     Content,
+    LiveTv,
     Diagnostics,
     About,
 }
@@ -111,6 +117,7 @@ fun SettingsScreen(
     hiddenPreviewChannelIds: Set<String>,
     onSetPreviewChannelVisible: (String, Boolean) -> Unit,
     onShowAllPreviewChannels: () -> Unit,
+    onOpenLiveTv: () -> Unit,
     hasTvListingsPermission: Boolean,
     onRequestTvListingsPermission: () -> Unit,
     tmdbConfigured: Boolean,
@@ -256,6 +263,10 @@ fun SettingsScreen(
                         onShowAllPreviewChannels = onShowAllPreviewChannels,
                     )
 
+                    SettingsCategory.LiveTv -> SettingsLiveTvPane(
+                        onOpenLiveTv = onOpenLiveTv,
+                    )
+
                     SettingsCategory.Diagnostics -> SettingsDiagnosticsPane(
                         hasTvListingsPermission = hasTvListingsPermission,
                         watchNextResult = watchNextResult,
@@ -340,6 +351,7 @@ private fun SettingsSidebar(
                     else -> null
                 }
                 SettingsCategory.Content -> null
+                SettingsCategory.LiveTv -> null
                 SettingsCategory.Diagnostics -> if (diagnosticsNeedAttention) "!" else null
                 SettingsCategory.About -> when (updateState) {
                     is UpdateState.Available,
@@ -424,6 +436,29 @@ private fun SettingsIconGlyph(icon: SettingsIcon) {
                     close()
                 }
                 drawPath(play, color = color)
+            }
+
+            SettingsIcon.LiveTv -> {
+                drawRect(
+                    color = color,
+                    topLeft = Offset(size.width * 0.12f, size.height * 0.24f),
+                    size = androidx.compose.ui.geometry.Size(size.width * 0.76f, size.height * 0.52f),
+                    style = stroke,
+                )
+                drawLine(
+                    color = color,
+                    start = Offset(size.width * 0.38f, size.height * 0.82f),
+                    end = Offset(size.width * 0.62f, size.height * 0.82f),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = color,
+                    start = Offset(size.width * 0.50f, size.height * 0.76f),
+                    end = Offset(size.width * 0.50f, size.height * 0.82f),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
             }
 
             SettingsIcon.Diagnostics -> {
@@ -638,6 +673,27 @@ private fun SettingsContentPane(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SettingsLiveTvPane(
+    onOpenLiveTv: () -> Unit,
+) {
+    SettingsContentPane(
+        title = "Live TV",
+        subtitle = "Gigablue, Sender und EPG",
+    ) {
+        SettingsSectionHeader("Receiver")
+        SettingsActionRow(
+            title = "Gigablue & OpenWebif",
+            subtitle = "Verbindung, Bouquets, Sender, EPG und Streams verwalten.",
+            value = "Öffnen",
+            onClick = onOpenLiveTv,
+        )
+        SettingsNotice(
+            text = "Live TV bleibt direkt über OpenWebif angebunden. Die bestehende Live-TV-Seite enthält Verbindung, Senderliste und EPG-Konfiguration.",
+        )
     }
 }
 

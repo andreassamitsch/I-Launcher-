@@ -9,7 +9,6 @@ import android.os.Bundle
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -19,14 +18,12 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
-import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.update.UpdateManager
 import com.andreassamitsch.ilauncher.model.AppContentChannel
 import com.andreassamitsch.ilauncher.model.AppContentChannelsLoadResult
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.WatchNextItem
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
-import com.andreassamitsch.ilauncher.ui.components.TouchButton
 import com.andreassamitsch.ilauncher.ui.settings.SettingsScreen
 import com.andreassamitsch.ilauncher.ui.theme.ILauncherTheme
 
@@ -58,12 +55,7 @@ class SettingsPreviewActivity : ComponentActivity() {
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(start = 24.dp, end = 24.dp, top = 66.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        // Keep the two legacy launcher-level shortcuts in this fixture so the
-                        // screenshot represents the actual Settings route, not only SettingsScreen.
-                        TouchButton(onClick = {}) { Text("Nach Update suchen") }
-                        TouchButton(onClick = {}) { Text("Live TV / Gigablue") }
                         SettingsScreen(
                             updateManager = updateManager,
                             watchNextResult = watchNext,
@@ -75,6 +67,7 @@ class SettingsPreviewActivity : ComponentActivity() {
                             hiddenPreviewChannelIds = emptySet(),
                             onSetPreviewChannelVisible = { _, _ -> },
                             onShowAllPreviewChannels = {},
+                            onOpenLiveTv = {},
                             hasTvListingsPermission = true,
                             onRequestTvListingsPermission = {},
                             tmdbConfigured = true,
