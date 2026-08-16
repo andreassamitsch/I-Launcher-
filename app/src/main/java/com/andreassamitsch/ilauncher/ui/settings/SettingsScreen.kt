@@ -1,10 +1,18 @@
 package com.andreassamitsch.ilauncher.ui.settings
 
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -12,13 +20,16 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -43,6 +54,14 @@ import kotlinx.coroutines.launch
 private const val TMDB_APPROVED_LOGO_URL =
     "https://www.themoviedb.org/assets/2/v4/logos/v2/blue_square_2-d537fb228cf3ded904ef09b136fe3fec72548ebc1fea3fbbd1ad9e36364db38b.svg"
 
+private enum class SettingsPage {
+    Overview,
+    Setup,
+    ContentSources,
+    Diagnostics,
+    AboutUpdates,
+}
+
 @Composable
 fun SettingsScreen(
     updateManager: UpdateManager,
@@ -65,9 +84,9 @@ fun SettingsScreen(
     val activity = context as? ComponentActivity
     val scope = rememberCoroutineScope()
     val updateState by updateManager.state.collectAsState()
-    val scrollState = rememberScrollState()
     val installSourceStatus = remember { HomeLauncherManager.installSourceStatus(context) }
 
+    var page by remember { mutableStateOf(SettingsPage.Overview) }
     var isDefaultHome by remember { mutableStateOf(HomeLauncherManager.isDefaultHome(context)) }
     var isHomeRoleAvailable by remember {
         mutableStateOf(HomeLauncherManager.isHomeRoleAvailable(context))
@@ -78,6 +97,8 @@ fun SettingsScreen(
     }
     var updateMessage by remember { mutableStateOf<String?>(null) }
     var showPreviewDiagnosisDetails by remember { mutableStateOf(false) }
+    var showWatchNextDiagnosisDetails by remember { mutableStateOf(false) }
+    var showTmdbDiagnosisDetails by remember { mutableStateOf(false) }
 
     val appLabels = remember(installedApps) {
         installedApps.associate { it.packageName to it.label }
@@ -133,167 +154,232 @@ fun SettingsScreen(
         }
     }
 
-    Column(
-        modifier = modifier
-            .verticalScroll(scrollState)
-            .touchScrollFallback(scrollState, Orientation.Vertical),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+    BackHandler(enabled = page != SettingsPage.Overview) {
+        page = SettingsPage.Overview
+    }
+
+    val launcherReady = isDefaultHome || isHomeRoleHeld || isHomeOverrideEnabled
+    val diagnosticsNeedAttention = !hasTvListingsPermission ||
+        watchNextResult.errorMessage != null ||
+        previewChannelsResult.errorMessage != null
+
+    key(page) {
+        when (page) {
+            SettingsPage.Overview -> SettingsOverviewPage(
+                hasTvListingsPermission = hasTvListingsPermission,
+                launcherReady = launcherReady,
+                visibleWatchNextSources = watchNextSources.count {
+                    it.packageName !in hiddenWatchNextPackages
+                },
+                watchNextSourceCount = watchNextSources.size,
+                visiblePreviewChannels = previewChannelsResult.channels.count {
+                    it.id !in hiddenPreviewChannelIds
+                },
+                previewChannelCount = previewChannelsResult.channels.size,
+                diagnosticsNeedAttention = diagnosticsNeedAttention,
+                tmdbConfigured = tmdbConfigured,
+                updateState = updateState,
+                onOpenSetup = { page = SettingsPage.Setup },
+                onOpenContentSources = { page = SettingsPage.ContentSources },
+                onOpenDiagnostics = { page = SettingsPage.Diagnostics },
+                onOpenAboutUpdates = { page = SettingsPage.AboutUpdates },
+                modifier = modifier,
+            )
+
+            SettingsPage.Setup -> SettingsSetupPage(
+                hasTvListingsPermission = hasTvListingsPermission,
+                onRequestTvListingsPermission = onRequestTvListingsPermission,
+                isDefaultHome = isDefaultHome,
+                isHomeRoleAvailable = isHomeRoleAvailable,
+                isHomeRoleHeld = isHomeRoleHeld,
+                isHomeOverrideEnabled = isHomeOverrideEnabled,
+                installSourceLabel = buildString {
+                    append(installSourceStatus.label)
+                    installSourceStatus.installerPackageName?.let { append(" ($it)") }
+                },
+                restrictedSettingsLikely = installSourceStatus.restrictedSettingsLikely,
+                onOpenTvPermissions = { TvProviderPermissionManager.openAppDetails(context) },
+                onOpenDefaultHome = { HomeLauncherManager.openDefaultHomeSelection(context) },
+                onOpenAppDetails = { HomeLauncherManager.openAppDetails(context) },
+                onOpenAccessibility = { HomeLauncherManager.openAccessibilitySettings(context) },
+                onBack = { page = SettingsPage.Overview },
+                modifier = modifier,
+            )
+
+            SettingsPage.ContentSources -> SettingsContentSourcesPage(
+                hasTvListingsPermission = hasTvListingsPermission,
+                watchNextSources = watchNextSources,
+                hiddenWatchNextPackages = hiddenWatchNextPackages,
+                onSetWatchNextSourceVisible = onSetWatchNextSourceVisible,
+                onShowAllWatchNextSources = onShowAllWatchNextSources,
+                previewChannelsResult = previewChannelsResult,
+                hiddenPreviewChannelIds = hiddenPreviewChannelIds,
+                appLabels = appLabels,
+                onSetPreviewChannelVisible = onSetPreviewChannelVisible,
+                onShowAllPreviewChannels = onShowAllPreviewChannels,
+                onBack = { page = SettingsPage.Overview },
+                modifier = modifier,
+            )
+
+            SettingsPage.Diagnostics -> SettingsDiagnosticsPage(
+                hasTvListingsPermission = hasTvListingsPermission,
+                watchNextResult = watchNextResult,
+                previewChannelsResult = previewChannelsResult,
+                tmdbConfigured = tmdbConfigured,
+                enrichedWatchNextItems = enrichedWatchNextItems,
+                tmdbResolvedItems = tmdbResolvedItems,
+                showPreviewDiagnosisDetails = showPreviewDiagnosisDetails,
+                onTogglePreviewDiagnosisDetails = {
+                    showPreviewDiagnosisDetails = !showPreviewDiagnosisDetails
+                },
+                showWatchNextDiagnosisDetails = showWatchNextDiagnosisDetails,
+                onToggleWatchNextDiagnosisDetails = {
+                    showWatchNextDiagnosisDetails = !showWatchNextDiagnosisDetails
+                },
+                showTmdbDiagnosisDetails = showTmdbDiagnosisDetails,
+                onToggleTmdbDiagnosisDetails = {
+                    showTmdbDiagnosisDetails = !showTmdbDiagnosisDetails
+                },
+                onBack = { page = SettingsPage.Overview },
+                modifier = modifier,
+            )
+
+            SettingsPage.AboutUpdates -> SettingsAboutUpdatesPage(
+                updateManager = updateManager,
+                updateState = updateState,
+                updateMessage = updateMessage,
+                onClearUpdateMessage = { updateMessage = null },
+                onSetUpdateMessage = { updateMessage = it },
+                tmdbConfigured = tmdbConfigured,
+                tmdbResolvedCount = tmdbResolvedItems.size,
+                enrichedItemCount = enrichedWatchNextItems.size,
+                onBack = { page = SettingsPage.Overview },
+                modifier = modifier,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsOverviewPage(
+    hasTvListingsPermission: Boolean,
+    launcherReady: Boolean,
+    visibleWatchNextSources: Int,
+    watchNextSourceCount: Int,
+    visiblePreviewChannels: Int,
+    previewChannelCount: Int,
+    diagnosticsNeedAttention: Boolean,
+    tmdbConfigured: Boolean,
+    updateState: UpdateState,
+    onOpenSetup: () -> Unit,
+    onOpenContentSources: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
+    onOpenAboutUpdates: () -> Unit,
+    modifier: Modifier,
+) {
+    SettingsScrollablePage(
+        title = "Einstellungen",
+        subtitle = "Die wichtigsten Bereiche auf einen Blick. OK öffnet eine Unterseite, Zurück führt wieder hierher.",
+        modifier = modifier,
     ) {
-        Text(
-            text = "Einstellungen",
-            style = MaterialTheme.typography.displaySmall,
+        SettingsNavigationRow(
+            title = "Einrichtung",
+            subtitle = "TV-Berechtigung, Standard-Launcher und Home-Taste",
+            status = when {
+                !hasTvListingsPermission -> "TV-Freigabe fehlt"
+                !launcherReady -> "Launcher prüfen"
+                else -> "Bereit"
+            },
+            attention = !hasTvListingsPermission || !launcherReady,
+            onClick = onOpenSetup,
         )
 
-        Text(
-            text = "Android-Freigaben",
-            style = MaterialTheme.typography.headlineSmall,
+        SettingsNavigationRow(
+            title = "Inhalte & Quellen",
+            subtitle = "Weiterschauen-Apps und Android-TV-Kanäle ein- oder ausblenden",
+            status = "$visibleWatchNextSources/$watchNextSourceCount Quellen · $visiblePreviewChannels/$previewChannelCount Kanäle",
+            onClick = onOpenContentSources,
         )
 
-        Text(
+        SettingsNavigationRow(
+            title = "Diagnose",
+            subtitle = "TvProvider, Watch Next, Preview Channels und TMDB gezielt prüfen",
+            status = if (diagnosticsNeedAttention) "Prüfen" else "Keine Fehler",
+            attention = diagnosticsNeedAttention,
+            onClick = onOpenDiagnostics,
+        )
+
+        SettingsNavigationRow(
+            title = "Über & Updates",
+            subtitle = "Version, Update-Installation, TMDB-Status und Credits",
+            status = updateOverviewLabel(updateState, tmdbConfigured),
+            attention = updateState is UpdateState.Error || updateState is UpdateState.SigningRequired,
+            onClick = onOpenAboutUpdates,
+        )
+    }
+}
+
+@Composable
+private fun SettingsSetupPage(
+    hasTvListingsPermission: Boolean,
+    onRequestTvListingsPermission: () -> Unit,
+    isDefaultHome: Boolean,
+    isHomeRoleAvailable: Boolean,
+    isHomeRoleHeld: Boolean,
+    isHomeOverrideEnabled: Boolean,
+    installSourceLabel: String,
+    restrictedSettingsLikely: Boolean,
+    onOpenTvPermissions: () -> Unit,
+    onOpenDefaultHome: () -> Unit,
+    onOpenAppDetails: () -> Unit,
+    onOpenAccessibility: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier,
+) {
+    SettingsScrollablePage(
+        title = "Einrichtung",
+        subtitle = "Alles, was I Launcher für TV-Inhalte und die Home-Taste benötigt.",
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        SettingsSectionTitle("TV-Inhalte")
+        SettingsStatusText(
             text = if (hasTvListingsPermission) {
-                "TV-Inhalte: freigegeben. I Launcher darf Watch Next und Preview Channels anderer Apps lesen."
+                "Freigegeben · Watch Next und Preview Channels anderer Apps können gelesen werden."
             } else {
-                "TV-Inhalte: Freigabe fehlt. Ohne „TV-Programme/Kanäle lesen“ sieht I Launcher bei TvProvider-Abfragen nur eigene Einträge."
+                "Freigabe fehlt · Android liefert sonst nur eingeschränkte TvProvider-Daten."
             },
-            style = MaterialTheme.typography.titleMedium,
-            color = if (hasTvListingsPermission) {
-                MaterialTheme.colorScheme.onBackground
-            } else {
-                MaterialTheme.colorScheme.error
-            },
+            attention = !hasTvListingsPermission,
         )
-
         if (!hasTvListingsPermission) {
-            TouchButton(onClick = onRequestTvListingsPermission) {
+            TouchButton(
+                onClick = onRequestTvListingsPermission,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text("TV-Inhalte freigeben")
             }
-            TouchButton(onClick = { TvProviderPermissionManager.openAppDetails(context) }) {
+            TouchButton(
+                onClick = onOpenTvPermissions,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text("App-Info / Berechtigungen öffnen")
             }
         }
 
-        TouchButton(
-            onClick = { showPreviewDiagnosisDetails = !showPreviewDiagnosisDetails },
-        ) {
-            Text(
-                text = when {
-                    !hasTvListingsPermission -> "App-Kanäle Diagnose: TV-Freigabe fehlt"
-                    previewChannelsResult.errorMessage != null -> "App-Kanäle Diagnose: Fehler – OK für Details"
-                    else -> "App-Kanäle Diagnose: ${previewChannelsResult.queriedChannelCount} Preview Channels · ${previewChannelsResult.channels.size} sichtbar · ${previewChannelsResult.queriedProgramCount} Programme"
-                },
-            )
-        }
-
-        if (showPreviewDiagnosisDetails) {
-            Text(
-                text = "Dieser Diagnoseblock ist absichtlich direkt an einen fokussierbaren Button gekoppelt, damit er auf TV-Geräten per D-Pad zuverlässig in den sichtbaren Bereich gescrollt wird.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            when {
-                !hasTvListingsPermission -> {
-                    Text(
-                        text = "READ_TV_LISTINGS ist nicht freigegeben. Ohne diese Berechtigung kann I Launcher App-Kanäle anderer Apps nicht auswerten.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-
-                previewChannelsResult.errorMessage != null -> {
-                    Text(
-                        text = previewChannelsResult.errorMessage,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-
-                else -> {
-                    Text(
-                        text = "TvProvider: ${previewChannelsResult.queriedChannelCount} TYPE_PREVIEW-Kanäle gefunden; davon ${previewChannelsResult.channels.size} browsable/sichtbar. Für sichtbare Kanäle wurden ${previewChannelsResult.queriedProgramCount} Preview Programs gelesen.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    if (
-                        previewChannelsResult.queriedChannelCount > 0 &&
-                        previewChannelsResult.channels.isEmpty()
-                    ) {
-                        Text(
-                            text = "Es existieren Preview Channels, Android markiert aber aktuell keinen davon als browsable für den Launcher.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    } else if (previewChannelsResult.queriedChannelCount == 0) {
-                        Text(
-                            text = "Der TvProvider liefert aktuell überhaupt keinen TYPE_PREVIEW-Kanal. Dann liegt das Fehlen der Home-Reihen nicht am I-Launcher-Filter.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-
-                    previewChannelsResult.channels.take(5).forEach { channel ->
-                        Text(
-                            text = buildString {
-                                append(channel.packageName ?: "Paket unbekannt")
-                                append(" | ")
-                                append(channel.title)
-                                append(" | programme=${channel.programs.size}")
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-        }
-
-        Text(
-            text = if (isHomeOverrideEnabled) {
-                "Home-Taste: Accessibility-Fallback ist freigegeben und aktiv."
-            } else {
-                "Home-Taste: Accessibility-Fallback ist nicht aktiv. Diese Sonderfreigabe kann Android nur in den Bedienungshilfen erteilen."
-            },
-            style = MaterialTheme.typography.titleMedium,
-            color = if (isHomeOverrideEnabled || isDefaultHome || isHomeRoleHeld) {
-                MaterialTheme.colorScheme.onBackground
-            } else {
-                MaterialTheme.colorScheme.error
-            },
-        )
-
-        Text(
-            text = buildString {
-                append("Installationsquelle: ${installSourceStatus.label}")
-                installSourceStatus.installerPackageName?.let { append(" ($it)") }
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        if (!isHomeOverrideEnabled && installSourceStatus.restrictedSettingsLikely) {
-            Text(
-                text = "Android stuft diese APK-Installation als seitlich installiert ein. Auf Android 13+ kann deshalb Accessibility sofort wieder ausgeschaltet werden, bis du für I Launcher ausdrücklich „Eingeschränkte Einstellungen zulassen“ freigibst.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
-            )
-        }
-
-        Text(
-            text = "Launcher",
-            style = MaterialTheme.typography.headlineSmall,
-        )
-
-        Text(
+        SettingsSectionTitle("Launcher & Home-Taste")
+        SettingsStatusText(
             text = when {
                 isDefaultHome || isHomeRoleHeld -> "I Launcher ist als Standard-Home-App aktiv."
                 isHomeOverrideEnabled -> "Home-Fallback über Bedienungshilfen ist aktiv."
-                isHomeRoleAvailable -> "Android unterstützt die Home-Rolle. I Launcher kann direkt als Standard-Home-App angefordert werden."
-                else -> "Der TV bietet keine freie Home-Rolle an. Verwende den Bedienungshilfe-Fallback."
+                isHomeRoleAvailable -> "Android unterstützt die Home-Rolle. I Launcher kann als Standard-Home-App gesetzt werden."
+                else -> "Der TV bietet keine freie Home-Rolle an. Der Bedienungshilfe-Fallback ist erforderlich."
             },
-            style = MaterialTheme.typography.titleMedium,
+            attention = !isDefaultHome && !isHomeRoleHeld && !isHomeOverrideEnabled,
         )
 
         TouchButton(
-            onClick = { HomeLauncherManager.openDefaultHomeSelection(context) },
+            onClick = onOpenDefaultHome,
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Als Standard-Launcher festlegen")
         }
@@ -301,120 +387,220 @@ fun SettingsScreen(
         if (!isDefaultHome && !isHomeRoleHeld) {
             if (!isHomeOverrideEnabled) {
                 TouchButton(
-                    onClick = { HomeLauncherManager.openAppDetails(context) },
+                    onClick = onOpenAppDetails,
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("1. App-Info: eingeschränkte Einstellungen erlauben")
+                    Text("Eingeschränkte Einstellungen / App-Info öffnen")
                 }
             }
-
             TouchButton(
-                onClick = { HomeLauncherManager.openAccessibilitySettings(context) },
+                onClick = onOpenAccessibility,
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
                     if (isHomeOverrideEnabled) {
                         "Home-Fallback verwalten"
                     } else {
-                        "2. Home-Fallback in Bedienungshilfen aktivieren"
+                        "Home-Fallback in Bedienungshilfen aktivieren"
                     },
                 )
             }
+        }
 
-            Text(
-                text = "Wenn der Schalter sofort wieder zurückspringt: In der App-Info von I Launcher das Drei-Punkte-Menü öffnen, „Eingeschränkte Einstellungen zulassen“ wählen und danach den Home-Fallback erneut aktivieren. Diese Android-Sicherheitsfreigabe kann I Launcher nicht selbst erteilen.",
-                style = MaterialTheme.typography.bodyMedium,
+        Text(
+            text = "Installationsquelle: $installSourceLabel",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        if (!isHomeOverrideEnabled && restrictedSettingsLikely) {
+            SettingsStatusText(
+                text = "Android stuft diese APK als seitlich installiert ein. Auf Android 13+ muss „Eingeschränkte Einstellungen zulassen“ gegebenenfalls einmalig freigegeben werden.",
+                attention = true,
             )
         }
 
         Text(
-            text = "Der Bedienungshilfe-Fallback reagiert sowohl auf einen gelieferten HOME-Key als auch darauf, wenn der System-Launcher nach einem Home-Druck sichtbar wird.",
+            text = "Der Home-Fallback reagiert auf einen gelieferten HOME-Key und auf das Sichtbarwerden des System-Launchers nach einem Home-Druck.",
             style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
 
-        Text(
-            text = "Weiterschauen – Quellen",
-            style = MaterialTheme.typography.headlineSmall,
-        )
-
-        if (!hasTvListingsPermission) {
-            Text(
-                text = "Quellen werden sichtbar, sobald die TV-Inhalte-Berechtigung erteilt wurde.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
+@Composable
+private fun SettingsContentSourcesPage(
+    hasTvListingsPermission: Boolean,
+    watchNextSources: List<WatchNextSourceRow>,
+    hiddenWatchNextPackages: Set<String>,
+    onSetWatchNextSourceVisible: (String, Boolean) -> Unit,
+    onShowAllWatchNextSources: () -> Unit,
+    previewChannelsResult: AppContentChannelsLoadResult,
+    hiddenPreviewChannelIds: Set<String>,
+    appLabels: Map<String, String>,
+    onSetPreviewChannelVisible: (String, Boolean) -> Unit,
+    onShowAllPreviewChannels: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier,
+) {
+    SettingsScrollablePage(
+        title = "Inhalte & Quellen",
+        subtitle = "Bestimme, welche Quellen auf Home sichtbar sind. Die Reihenfolge der gelieferten Inhalte bleibt unverändert.",
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        SettingsSectionTitle("Weiterschauen")
+        when {
+            !hasTvListingsPermission -> SettingsStatusText(
+                text = "TV-Inhalte müssen zuerst unter Einrichtung freigegeben werden.",
+                attention = true,
             )
-        } else if (watchNextSources.isEmpty()) {
-            Text(
+
+            watchNextSources.isEmpty() -> Text(
                 text = "Noch keine Watch-Next-Quellen gefunden.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        } else {
-            Text(
-                text = "Wähle, von welchen Apps Einträge auf Home erscheinen. Die Rohdaten bleiben in der Diagnose erhalten; die Reihenfolge der sichtbaren Einträge wird nicht verändert.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
 
-            watchNextSources.forEach { source ->
-                val visible = source.packageName !in hiddenWatchNextPackages
-                TouchButton(
-                    onClick = {
-                        onSetWatchNextSourceVisible(source.packageName, !visible)
-                    },
-                ) {
-                    Text(
-                        if (visible) {
-                            "Anzeigen: ${source.label} (${source.count})"
-                        } else {
-                            "Ausgeblendet: ${source.label} (${source.count})"
+            else -> {
+                Text(
+                    text = "OK blendet eine komplette App-Quelle ein oder aus. Rohdaten und Quellreihenfolge werden dadurch nicht verändert.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                watchNextSources.forEach { source ->
+                    val visible = source.packageName !in hiddenWatchNextPackages
+                    SettingsToggleRow(
+                        title = source.label,
+                        subtitle = buildString {
+                            append("${source.count} Einträge")
+                            if (source.label != source.packageName) {
+                                append(" · ${source.packageName}")
+                            }
+                        },
+                        enabled = visible,
+                        onClick = {
+                            onSetWatchNextSourceVisible(source.packageName, !visible)
                         },
                     )
                 }
-                if (source.label != source.packageName) {
-                    Text(
-                        text = source.packageName,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            if (hiddenWatchNextPackages.isNotEmpty()) {
-                TouchButton(onClick = onShowAllWatchNextSources) {
-                    Text("Alle Quellen wieder anzeigen")
+                if (hiddenWatchNextPackages.isNotEmpty()) {
+                    TouchButton(
+                        onClick = onShowAllWatchNextSources,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Alle Weiterschauen-Quellen anzeigen")
+                    }
                 }
             }
         }
 
-        Text(
-            text = "Watch Next Diagnose",
-            style = MaterialTheme.typography.headlineSmall,
+        SettingsSectionTitle("App-Kanäle")
+        when {
+            !hasTvListingsPermission -> SettingsStatusText(
+                text = "TV-Inhalte müssen zuerst unter Einrichtung freigegeben werden.",
+                attention = true,
+            )
+
+            previewChannelsResult.errorMessage != null -> SettingsStatusText(
+                text = previewChannelsResult.errorMessage,
+                attention = true,
+            )
+
+            previewChannelsResult.channels.isEmpty() -> Text(
+                text = "Android TvProvider liefert aktuell keine sichtbaren Preview Channels anderer Apps.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            else -> {
+                Text(
+                    text = "Jeder sichtbare Android-TV-Kanal erscheint als eigene Home-Reihe.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                previewChannelsResult.channels.forEach { channel ->
+                    val visible = channel.id !in hiddenPreviewChannelIds
+                    val sourceLabel = channel.packageName?.let(appLabels::get)
+                    val label = if (!sourceLabel.isNullOrBlank() && sourceLabel != channel.title) {
+                        "${channel.title} · $sourceLabel"
+                    } else {
+                        channel.title
+                    }
+                    SettingsToggleRow(
+                        title = label,
+                        subtitle = "${channel.programs.size} Programme",
+                        enabled = visible,
+                        onClick = { onSetPreviewChannelVisible(channel.id, !visible) },
+                    )
+                }
+                if (hiddenPreviewChannelIds.isNotEmpty()) {
+                    TouchButton(
+                        onClick = onShowAllPreviewChannels,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Alle App-Kanäle anzeigen")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsDiagnosticsPage(
+    hasTvListingsPermission: Boolean,
+    watchNextResult: WatchNextLoadResult,
+    previewChannelsResult: AppContentChannelsLoadResult,
+    tmdbConfigured: Boolean,
+    enrichedWatchNextItems: List<EnrichedWatchNextItem>,
+    tmdbResolvedItems: List<EnrichedWatchNextItem>,
+    showPreviewDiagnosisDetails: Boolean,
+    onTogglePreviewDiagnosisDetails: () -> Unit,
+    showWatchNextDiagnosisDetails: Boolean,
+    onToggleWatchNextDiagnosisDetails: () -> Unit,
+    showTmdbDiagnosisDetails: Boolean,
+    onToggleTmdbDiagnosisDetails: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier,
+) {
+    SettingsScrollablePage(
+        title = "Diagnose",
+        subtitle = "Technische Details sind standardmäßig eingeklappt und nur bei einer Fehlersuche im Bedienweg.",
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        SettingsSectionTitle("Android TvProvider")
+        SettingsStatusText(
+            text = if (hasTvListingsPermission) {
+                "TV-Inhalte freigegeben."
+            } else {
+                "READ_TV_LISTINGS ist nicht freigegeben. Watch Next und App-Kanäle können unvollständig sein."
+            },
+            attention = !hasTvListingsPermission,
         )
 
-        if (!hasTvListingsPermission) {
-            Text(
-                text = "Diagnose pausiert, bis die Android-Berechtigung für TV-Inhalte erteilt wurde.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
-            )
-        } else if (watchNextResult.errorMessage != null) {
-            Text(
-                text = watchNextResult.errorMessage,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
-            )
-        } else {
-            Text(
-                text = "TvProvider liefert ${watchNextResult.items.size} Einträge. Abfrage-Reihenfolge: last_engagement_time_utc_millis absteigend; ausgeblendete Quellen bleiben hier sichtbar.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-
+        SettingsSectionTitle("Watch Next")
+        SettingsStatusText(
+            text = watchNextResult.errorMessage
+                ?: "${watchNextResult.items.size} Einträge · Abfrage nach last_engagement_time_utc_millis absteigend.",
+            attention = watchNextResult.errorMessage != null,
+        )
+        TouchButton(
+            onClick = onToggleWatchNextDiagnosisDetails,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (showWatchNextDiagnosisDetails) "Watch-Next-Rohdaten ausblenden" else "Watch-Next-Rohdaten anzeigen")
+        }
+        if (showWatchNextDiagnosisDetails) {
             watchNextResult.items.take(30).forEach { item ->
                 val progress = if (item.playbackPositionMillis != null && item.durationMillis != null) {
                     "${item.playbackPositionMillis}/${item.durationMillis} ms"
                 } else {
                     "kein Fortschritt"
                 }
-                Text(
-                    text = buildString {
+                DiagnosticLine(
+                    buildString {
                         append("#${item.sourceOrder} | ")
                         append(item.packageName ?: "Paket unbekannt")
                         append(" | ")
@@ -426,261 +612,195 @@ fun SettingsScreen(
                         append(" | intent=${if (item.intentUri.isNullOrBlank()) "nein" else "ja"}")
                         append(" | bild=${if (item.artworkUri.isNullOrBlank()) "nein" else "ja"}")
                     },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-
             if (watchNextResult.items.size > 30) {
-                Text(
-                    text = "+ ${watchNextResult.items.size - 30} weitere Einträge",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                DiagnosticLine("+ ${watchNextResult.items.size - 30} weitere Einträge")
             }
         }
 
-        Text(
-            text = "App-Kanäle – Home",
-            style = MaterialTheme.typography.headlineSmall,
+        SettingsSectionTitle("App-Kanäle")
+        SettingsStatusText(
+            text = when {
+                !hasTvListingsPermission -> "Diagnose eingeschränkt, solange die TV-Freigabe fehlt."
+                previewChannelsResult.errorMessage != null -> previewChannelsResult.errorMessage
+                else -> "${previewChannelsResult.queriedChannelCount} Preview Channels roh · ${previewChannelsResult.channels.size} sichtbar · ${previewChannelsResult.queriedProgramCount} Programme."
+            },
+            attention = !hasTvListingsPermission || previewChannelsResult.errorMessage != null,
         )
-
-        when {
-            !hasTvListingsPermission -> {
-                Text(
-                    text = "App-Kanäle werden sichtbar, sobald die TV-Inhalte-Berechtigung erteilt wurde.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-
-            previewChannelsResult.errorMessage != null -> {
-                Text(
-                    text = previewChannelsResult.errorMessage,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-
-            previewChannelsResult.channels.isEmpty() -> {
-                Text(
-                    text = "Android TvProvider liefert aktuell keine für andere Apps sichtbaren Preview Channels.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            else -> {
-                Text(
-                    text = "Jeder freigegebene Android-TV-Kanal erscheint als eigene Reihe auf Home. Ausblenden ändert weder die App-Daten noch die Reihenfolge der übrigen Kanäle.",
-                    style = MaterialTheme.typography.bodyMedium,
+        TouchButton(
+            onClick = onTogglePreviewDiagnosisDetails,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (showPreviewDiagnosisDetails) "App-Kanal-Details ausblenden" else "App-Kanal-Details anzeigen")
+        }
+        if (showPreviewDiagnosisDetails) {
+            when {
+                !hasTvListingsPermission -> DiagnosticLine(
+                    "READ_TV_LISTINGS fehlt. Andere Apps können deshalb nicht vollständig ausgewertet werden.",
+                    attention = true,
                 )
 
-                previewChannelsResult.channels.forEach { channel ->
-                    val visible = channel.id !in hiddenPreviewChannelIds
-                    val sourceLabel = channel.packageName?.let(appLabels::get)
-                    val label = if (!sourceLabel.isNullOrBlank() && sourceLabel != channel.title) {
-                        "${channel.title} · $sourceLabel"
-                    } else {
-                        channel.title
-                    }
-                    TouchButton(
-                        onClick = { onSetPreviewChannelVisible(channel.id, !visible) },
+                previewChannelsResult.errorMessage != null -> DiagnosticLine(
+                    previewChannelsResult.errorMessage,
+                    attention = true,
+                )
+
+                else -> {
+                    if (
+                        previewChannelsResult.queriedChannelCount > 0 &&
+                        previewChannelsResult.channels.isEmpty()
                     ) {
-                        Text(
-                            if (visible) {
-                                "Anzeigen: $label (${channel.programs.size})"
-                            } else {
-                                "Ausgeblendet: $label (${channel.programs.size})"
+                        DiagnosticLine(
+                            "Preview Channels existieren, Android markiert aktuell aber keinen als browsable.",
+                            attention = true,
+                        )
+                    } else if (previewChannelsResult.queriedChannelCount == 0) {
+                        DiagnosticLine("TvProvider liefert aktuell keinen TYPE_PREVIEW-Kanal.")
+                    }
+                    previewChannelsResult.channels.take(20).forEach { channel ->
+                        DiagnosticLine(
+                            buildString {
+                                append("#${channel.sourceOrder} | ")
+                                append(channel.packageName ?: "Paket unbekannt")
+                                append(" | ")
+                                append(channel.title)
+                                append(" | programme=${channel.programs.size}")
+                                append(" | appLink=${if (channel.appLinkIntentUri.isNullOrBlank()) "nein" else "ja"}")
                             },
                         )
-                    }
-                }
-
-                if (hiddenPreviewChannelIds.isNotEmpty()) {
-                    TouchButton(onClick = onShowAllPreviewChannels) {
-                        Text("Alle App-Kanäle wieder anzeigen")
+                        channel.programs.take(5).forEach { program ->
+                            DiagnosticLine(
+                                buildString {
+                                    append("  P#${program.sourceOrder} | ")
+                                    append(program.media.title)
+                                    program.weight?.let { append(" | weight=$it") }
+                                    append(" | intent=${if (program.media.source.intentUri.isNullOrBlank()) "nein" else "ja"}")
+                                    append(" | bild=${if (program.media.preferredArtworkUri.isNullOrBlank()) "nein" else "ja"}")
+                                },
+                            )
+                        }
+                        if (channel.programs.size > 5) {
+                            DiagnosticLine("  + ${channel.programs.size - 5} weitere Programme")
+                        }
                     }
                 }
             }
         }
 
-        Text(
-            text = "App-Kanäle Diagnose",
-            style = MaterialTheme.typography.headlineSmall,
-        )
-
-        if (hasTvListingsPermission && previewChannelsResult.errorMessage == null) {
-            Text(
-                text = "TvProvider-Abfrage: ${previewChannelsResult.queriedChannelCount} Preview Channels, ${previewChannelsResult.queriedProgramCount} Programme roh; ${previewChannelsResult.channels.size} browsable Kanäle. Programme werden nach dem von Android vorgesehenen Gewicht absteigend angefordert.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-
-            previewChannelsResult.channels.take(20).forEach { channel ->
-                Text(
-                    text = buildString {
-                        append("#${channel.sourceOrder} | ")
-                        append(channel.packageName ?: "Paket unbekannt")
-                        append(" | ")
-                        append(channel.title)
-                        append(" | programme=${channel.programs.size}")
-                        append(" | appLink=${if (channel.appLinkIntentUri.isNullOrBlank()) "nein" else "ja"}")
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                channel.programs.take(5).forEach { program ->
-                    Text(
-                        text = buildString {
-                            append("  P#${program.sourceOrder} | ")
-                            append(program.media.title)
-                            program.weight?.let { append(" | weight=$it") }
-                            append(" | intent=${if (program.media.source.intentUri.isNullOrBlank()) "nein" else "ja"}")
-                            append(" | bild=${if (program.media.preferredArtworkUri.isNullOrBlank()) "nein" else "ja"}")
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (channel.programs.size > 5) {
-                    Text(
-                        text = "  + ${channel.programs.size - 5} weitere Programme",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
-        Text(
-            text = "TMDB",
-            style = MaterialTheme.typography.headlineSmall,
-        )
-
-        Text(
+        SettingsSectionTitle("TMDB")
+        SettingsStatusText(
             text = if (tmdbConfigured) {
-                "TMDB: aktiv. Der Read-Access-Token ist im Build konfiguriert; Quelldaten werden Local First angezeigt und anschließend angereichert."
+                "Aktiv · ${tmdbResolvedItems.size} von ${enrichedWatchNextItems.size} sichtbaren Watch-Next-Einträgen aufgelöst."
             } else {
-                "TMDB: nicht aktiv. Dieser Build enthält keinen Read-Access-Token und verwendet ausschließlich die Android-Quelldaten."
+                "Nicht aktiv · dieser Build enthält keinen TMDB Read-Access-Token."
             },
-            style = MaterialTheme.typography.titleMedium,
-            color = if (tmdbConfigured) {
-                MaterialTheme.colorScheme.onBackground
-            } else {
-                MaterialTheme.colorScheme.error
-            },
+            attention = !tmdbConfigured,
         )
-
-        Text(
-            text = "Aufgelöst: ${tmdbResolvedItems.size} von ${enrichedWatchNextItems.size} aktuell sichtbaren Watch-Next-Einträgen.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-
-        tmdbResolvedItems.take(20).forEach { item ->
-            Text(
-                text = buildString {
-                    append(item.media.title)
-                    append(" | tmdb=")
-                    append(item.media.tmdbId)
-                    append(" | type=")
-                    append(item.media.type.name)
-                    item.media.tmdbEpisodeId?.let { append(" | episode=$it") }
-                    item.media.resolverConfidence?.let {
-                        append(" | confidence=")
-                        append((it * 100).toInt())
-                        append('%')
-                    }
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        TouchButton(
+            onClick = onToggleTmdbDiagnosisDetails,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (showTmdbDiagnosisDetails) "TMDB-Auflösungen ausblenden" else "TMDB-Auflösungen anzeigen")
         }
+        if (showTmdbDiagnosisDetails) {
+            tmdbResolvedItems.take(20).forEach { item ->
+                DiagnosticLine(
+                    buildString {
+                        append(item.media.title)
+                        append(" | tmdb=${item.media.tmdbId}")
+                        append(" | type=${item.media.type.name}")
+                        item.media.tmdbEpisodeId?.let { append(" | episode=$it") }
+                        item.media.resolverConfidence?.let {
+                            append(" | confidence=${(it * 100).toInt()}%")
+                        }
+                    },
+                )
+            }
+            if (tmdbResolvedItems.isEmpty()) {
+                DiagnosticLine("Aktuell keine aufgelösten Watch-Next-Einträge.")
+            }
+        }
+    }
+}
 
-        Text(
-            text = "Über / Credits",
-            style = MaterialTheme.typography.headlineSmall,
-        )
+@Composable
+private fun SettingsAboutUpdatesPage(
+    updateManager: UpdateManager,
+    updateState: UpdateState,
+    updateMessage: String?,
+    onClearUpdateMessage: () -> Unit,
+    onSetUpdateMessage: (String) -> Unit,
+    tmdbConfigured: Boolean,
+    tmdbResolvedCount: Int,
+    enrichedItemCount: Int,
+    onBack: () -> Unit,
+    modifier: Modifier,
+) {
+    val scope = rememberCoroutineScope()
 
-        AsyncImage(
-            model = TMDB_APPROVED_LOGO_URL,
-            contentDescription = "TMDB",
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.size(88.dp),
-        )
-
-        Text(
-            text = "Film-, Serien- und Episodenmetadaten sowie zugehörige Bilder können von TMDB stammen.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-
-        Text(
-            text = "This product uses the TMDB API but is not endorsed or certified by TMDB.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        Text(
-            text = "Updates",
-            style = MaterialTheme.typography.headlineSmall,
-        )
-
+    SettingsScrollablePage(
+        title = "Über & Updates",
+        subtitle = "Versionsstand, sichere In-App-Updates und verwendete Metadatenquellen.",
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        SettingsSectionTitle("Updates")
         Text(
             text = "Installiert: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
             style = MaterialTheme.typography.titleMedium,
         )
-
-        Text(
-            text = when (val state = updateState) {
-                UpdateState.Idle -> "Update-Prüfung noch nicht gestartet."
-                UpdateState.Checking -> "Suche nach einer neuen Version …"
-                is UpdateState.UpToDate -> "I Launcher ist aktuell."
-                is UpdateState.Available -> "Neue Version ${state.info.versionName} (${state.info.versionCode}) verfügbar."
-                is UpdateState.SigningRequired -> "Neue Version ${state.info.versionName} ist vorhanden, aber der Development-Kanal hat noch keinen dauerhaft hinterlegten Signing-Key. Automatische Updates bleiben deshalb sicherheitshalber gesperrt."
-                is UpdateState.Downloading -> state.progressPercent?.let {
-                    "Update ${state.info.versionName} wird heruntergeladen: $it %"
-                } ?: "Update ${state.info.versionName} wird heruntergeladen …"
-                is UpdateState.ReadyToInstall -> "Update ${state.info.versionName} ist bereit zur Installation."
-                is UpdateState.Error -> "Update-Fehler: ${state.message}"
-            },
-            style = MaterialTheme.typography.bodyMedium,
+        SettingsStatusText(
+            text = updateStateText(updateState),
+            attention = updateState is UpdateState.Error || updateState is UpdateState.SigningRequired,
         )
 
         TouchButton(
             onClick = {
-                updateMessage = null
+                onClearUpdateMessage()
                 scope.launch { updateManager.checkForUpdates() }
             },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = updateState !is UpdateState.Checking && updateState !is UpdateState.Downloading,
         ) {
             Text("Jetzt nach Update suchen")
         }
 
-        when (val state = updateState) {
+        when (updateState) {
             is UpdateState.Available -> {
-                TouchButton(onClick = { updateManager.startDownload(state.info) }) {
-                    Text("Update herunterladen")
+                TouchButton(
+                    onClick = { updateManager.startDownload(updateState.info) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Update ${updateState.info.versionName} herunterladen")
                 }
             }
 
             is UpdateState.ReadyToInstall -> {
                 if (!updateManager.canRequestPackageInstalls()) {
-                    TouchButton(onClick = { updateManager.openUnknownSourcesSettings() }) {
+                    TouchButton(
+                        onClick = { updateManager.openUnknownSourcesSettings() },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
                         Text("Installation aus dieser Quelle erlauben")
                     }
                 }
-
                 TouchButton(
                     onClick = {
-                        updateMessage = null
+                        onClearUpdateMessage()
                         scope.launch {
-                            updateMessage = when (val result = updateManager.installDownloadedUpdate()) {
-                                InstallResult.Started -> "Android-Paketinstaller wurde geöffnet."
-                                InstallResult.PermissionRequired -> "Erlaube zuerst die Installation aus dieser Quelle und starte danach die Installation erneut."
-                                is InstallResult.Error -> result.message
-                            }
+                            onSetUpdateMessage(
+                                when (val result = updateManager.installDownloadedUpdate()) {
+                                    InstallResult.Started -> "Android-Paketinstaller wurde geöffnet."
+                                    InstallResult.PermissionRequired -> "Erlaube zuerst die Installation aus dieser Quelle und starte die Installation erneut."
+                                    is InstallResult.Error -> result.message
+                                },
+                            )
                         }
                     },
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Update installieren")
+                    Text("Update ${updateState.info.versionName} installieren")
                 }
             }
 
@@ -695,10 +815,174 @@ fun SettingsScreen(
         }
 
         Text(
-            text = "I Launcher prüft beim Start automatisch auf neue Versionen. Der Download blockiert den Launcher nicht; die eigentliche APK-Installation wird an den Android-Systeminstaller übergeben.",
+            text = "I Launcher prüft beim Start automatisch. Download und Prüfsummenprüfung laufen ohne die TV-Oberfläche zu blockieren; die eigentliche Installation übernimmt Android.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        SettingsSectionTitle("TMDB & Credits")
+        SettingsStatusText(
+            text = if (tmdbConfigured) {
+                "TMDB ist in diesem Build aktiv · $tmdbResolvedCount von $enrichedItemCount sichtbaren Watch-Next-Einträgen aktuell aufgelöst."
+            } else {
+                "TMDB ist in diesem Build nicht konfiguriert."
+            },
+            attention = !tmdbConfigured,
+        )
+        AsyncImage(
+            model = TMDB_APPROVED_LOGO_URL,
+            contentDescription = "TMDB",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.size(88.dp),
+        )
+        Text(
+            text = "Film-, Serien- und Episodenmetadaten sowie zugehörige Bilder können von TMDB stammen.",
             style = MaterialTheme.typography.bodyMedium,
         )
+        Text(
+            text = "This product uses the TMDB API but is not endorsed or certified by TMDB.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
+}
+
+@Composable
+private fun SettingsScrollablePage(
+    title: String,
+    subtitle: String,
+    modifier: Modifier,
+    onBack: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val scrollState = rememberScrollState()
+    Column(
+        modifier = modifier
+            .verticalScroll(scrollState)
+            .touchScrollFallback(scrollState, Orientation.Vertical)
+            .padding(bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (onBack != null) {
+            TouchButton(onClick = onBack) {
+                Text("‹ Zurück")
+            }
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.displaySmall,
+        )
+        Text(
+            text = subtitle,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.size(2.dp))
+        content()
+    }
+}
+
+@Composable
+private fun SettingsNavigationRow(
+    title: String,
+    subtitle: String,
+    status: String,
+    onClick: () -> Unit,
+    attention: Boolean = false,
+) {
+    TouchButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 16.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = status,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (attention) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = "›",
+                style = MaterialTheme.typography.headlineSmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsToggleRow(
+    title: String,
+    subtitle: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    TouchButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 13.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(
+            text = if (enabled) "AN" else "AUS",
+            style = MaterialTheme.typography.labelLarge,
+            color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun SettingsSectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.headlineSmall,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+}
+
+@Composable
+private fun SettingsStatusText(
+    text: String,
+    attention: Boolean = false,
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleMedium,
+        color = if (attention) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onBackground,
+    )
+}
+
+@Composable
+private fun DiagnosticLine(
+    text: String,
+    attention: Boolean = false,
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = if (attention) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 private data class WatchNextSourceRow(
@@ -706,6 +990,30 @@ private data class WatchNextSourceRow(
     val label: String,
     val count: Int,
 )
+
+private fun updateOverviewLabel(state: UpdateState, tmdbConfigured: Boolean): String = when (state) {
+    UpdateState.Idle -> if (tmdbConfigured) "TMDB aktiv" else "TMDB inaktiv"
+    UpdateState.Checking -> "Prüfe Update …"
+    is UpdateState.UpToDate -> "Aktuell"
+    is UpdateState.Available -> "${state.info.versionName} verfügbar"
+    is UpdateState.SigningRequired -> "Update gesperrt"
+    is UpdateState.Downloading -> state.progressPercent?.let { "$it %" } ?: "Download …"
+    is UpdateState.ReadyToInstall -> "Bereit zur Installation"
+    is UpdateState.Error -> "Update-Fehler"
+}
+
+private fun updateStateText(state: UpdateState): String = when (state) {
+    UpdateState.Idle -> "Update-Prüfung noch nicht gestartet."
+    UpdateState.Checking -> "Suche nach einer neuen Version …"
+    is UpdateState.UpToDate -> "I Launcher ist aktuell."
+    is UpdateState.Available -> "Neue Version ${state.info.versionName} (${state.info.versionCode}) verfügbar."
+    is UpdateState.SigningRequired -> "Neue Version ${state.info.versionName} ist vorhanden, aber nicht mit dem stabilen Development-Signing-Key update-kompatibel."
+    is UpdateState.Downloading -> state.progressPercent?.let {
+        "Update ${state.info.versionName} wird heruntergeladen: $it %"
+    } ?: "Update ${state.info.versionName} wird heruntergeladen …"
+    is UpdateState.ReadyToInstall -> "Update ${state.info.versionName} ist bereit zur Installation."
+    is UpdateState.Error -> "Update-Fehler: ${state.message}"
+}
 
 private fun watchNextTypeLabel(type: Int?): String = when (type) {
     0 -> "CONTINUE"
