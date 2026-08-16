@@ -46,12 +46,22 @@ class ContentSearchHandoff(context: Context) {
         ContentSearchTarget.Kodi -> ContentHandoffMode.Search
     }
 
+    fun canSearch(target: ContentSearchTarget): Boolean = when (target) {
+        ContentSearchTarget.CloudStream -> cloudStream.isSearchAvailable()
+        ContentSearchTarget.Kodi -> kodi.isAvailable()
+    }
+
     fun launch(target: ContentSearchTarget, item: MediaItem): Boolean = when (target) {
         ContentSearchTarget.CloudStream -> cloudStream.launch(item) != null
         ContentSearchTarget.Kodi -> {
             val query = normalizeContentSearchQuery(item.title)
             query.isNotBlank() && kodi.launch(query)
         }
+    }
+
+    fun launchSearch(target: ContentSearchTarget, item: MediaItem): Boolean = when (target) {
+        ContentSearchTarget.CloudStream -> cloudStream.launchSearch(item)
+        ContentSearchTarget.Kodi -> launch(target, item)
     }
 
     fun launchProviderChooser(target: ContentSearchTarget, item: MediaItem): Boolean = when (target) {
