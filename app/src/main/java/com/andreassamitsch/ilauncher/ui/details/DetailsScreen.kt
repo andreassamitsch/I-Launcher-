@@ -33,6 +33,9 @@ import com.andreassamitsch.ilauncher.R
 import com.andreassamitsch.ilauncher.data.handoff.ContentHandoffMode
 import com.andreassamitsch.ilauncher.data.handoff.ContentSearchHandoff
 import com.andreassamitsch.ilauncher.data.handoff.ContentSearchTarget
+import com.andreassamitsch.ilauncher.data.tv.SeriesResumePosition
+import com.andreassamitsch.ilauncher.data.tv.SeriesResumeRepository
+import com.andreassamitsch.ilauncher.data.tv.seriesPlaybackTarget
 import com.andreassamitsch.ilauncher.data.youtube.YouTubeEmbedPlayer
 import com.andreassamitsch.ilauncher.model.*
 import com.andreassamitsch.ilauncher.ui.components.TouchButton
@@ -43,6 +46,7 @@ import com.andreassamitsch.ilauncher.ui.discover.LocalTmdbDiscoveryLoader
 import com.andreassamitsch.ilauncher.ui.trailer.TrailerPlayerActivity
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 fun DetailsScreen(
@@ -172,6 +176,7 @@ private fun MediaDetailsContent(
     modifier: Modifier,
 ) {
     val context = LocalContext.current
+    val loader = LocalTmdbDiscoveryLoader.current
     val scrollState = rememberScrollState()
     val firstActionRequester = remember(item.id) { FocusRequester() }
     val internalTrailerId = remember(item.trailer) {
@@ -179,9 +184,65 @@ private fun MediaDetailsContent(
             ?.takeIf { YouTubeEmbedPlayer.html(it) != null }
     }
     val handoff = remember(context) { ContentSearchHandoff(context.applicationContext) }
+    val seriesResumeRepository = remember(context) { SeriesResumeRepository(context.applicationContext) }
+    var seriesResume by remember(item.id) { mutableStateOf<SeriesResumePosition?>(null) }
+    var seasons by remember(item.id) { mutableStateOf<List<SeriesSeason>>(emptyList()) }
+    var selectedSeasonNumber by remember(item.id) { mutableStateOf<Int?>(null) }
+    var selectedSeasonContent by remember(item.id) { mutableStateOf<SeriesSeasonContent?>(null) }
+    var seasonSelectionTouched by remember(item.id) { mutableStateOf(false) }
+    var seasonContentLoading by remember(item.id) { mutableStateOf(false) }
+
+    LaunchedEffect(item.id, item.type, item.title, item.originalTitle) {
+        seriesResume = null
+        if (item.type != MediaType.Series) return@LaunchedEffect
+        seriesResumeRepository.observe(item).collectLatest { resume ->
+            seriesResume = resume
+        }
+    }
+    LaunchedEffect(item.tmdbId, item.type, loader) {
+        seasons = emptyList()
+        selectedSeasonNumber = null
+        selectedSeasonContent = null
+        seasonSelectionTouched = false
+        if (item.type != MediaType.Series || item.tmdbId == null || loader == null) return@LaunchedEffect
+        val loaded = runCatching { loader.loadSeriesSeasons(item) }.getOrDefault(emptyList())
+        seasons = loaded
+        val resumeSeason = seriesResume?.seasonNumber?.takeIf { wanted -> loaded.any { it.seasonNumber == wanted } }
+        selectedSeasonNumber = resumeSeason
+            ?: loaded.firstOrNull { it.seasonNumber > 0 }?.seasonNumber
+            ?: loaded.firstOrNull()?.seasonNumber
+    }
+    LaunchedEffect(seriesResume, seasons, seasonSelectionTouched) {
+        if (seasonSelectionTouched) return@LaunchedEffect
+        val resumeSeason = seriesResume?.seasonNumber ?: return@LaunchedEffect
+        if (seasons.any { it.seasonNumber == resumeSeason }) selectedSeasonNumber = resumeSeason
+    }
+    LaunchedEffect(item.tmdbId, selectedSeasonNumber, loader) {
+        val seasonNumber = selectedSeasonNumber ?: run {
+            selectedSeasonContent = null
+            seasonContentLoading = false
+            return@LaunchedEffect
+        }
+        if (item.type != MediaType.Series || item.tmdbId == null || loader == null) {
+            selectedSeasonContent = null
+            seasonContentLoading = false
+            return@LaunchedEffect
+        }
+        seasonContentLoading = true
+        selectedSeasonContent = runCatching { loader.loadSeriesSeason(item, seasonNumber) }.getOrNull()
+        seasonContentLoading = false
+    }
+
     val externalTargets = remember(item, onPlay, handoff) {
         if ((item.tmdbId != null || item.tmdbEpisodeId != null) && onPlay == null) handoff.availableTargets()
         else emptyList()
+    }
+    val seriesPlaybackItem = remember(item, seriesResume) {
+        if (item.type == MediaType.Series) seriesPlaybackTarget(item, seriesResume) else item
+    }
+    val cloudStreamDirect = remember(externalTargets, seriesPlaybackItem, handoff) {
+        ContentSearchTarget.CloudStream in externalTargets &&
+            handoff.mode(ContentSearchTarget.CloudStream, seriesPlaybackItem) == ContentHandoffMode.DirectPlay
     }
     val hasTrailer = internalTrailerId != null || onTrailer != null || onTrailerSearch != null
     val firstActionKey = when {
@@ -289,12 +350,37 @@ private fun MediaDetailsContent(
                     }
                 }
                 externalTargets.forEach { target ->
+                    val targetItem = if (target == ContentSearchTarget.CloudStream && item.type == MediaType.Series) {
+                        seriesPlaybackItem
+                    } else {
+                        item
+                    }
+                    val mode = handoff.mode(target, targetItem)
                     ProviderHandoffAction(
                         target = target,
                         handoff = handoff,
-                        item = item,
+                        item = targetItem,
+                        playPositionLabel = if (
+                            target == ContentSearchTarget.CloudStream &&
+                            item.type == MediaType.Series &&
+                            mode == ContentHandoffMode.DirectPlay
+                        ) {
+                            "S${targetItem.seasonNumber} E${targetItem.episodeNumber}"
+                        } else null,
                         modifier = Modifier.firstAction("external:${target.name}"),
                     )
+                    if (
+                        target == ContentSearchTarget.CloudStream &&
+                        mode == ContentHandoffMode.DirectPlay &&
+                        handoff.canSearch(target)
+                    ) {
+                        ProviderHandoffAction(
+                            target = target,
+                            handoff = handoff,
+                            item = item,
+                            forceSearch = true,
+                        )
+                    }
                 }
                 when {
                     internalTrailerId != null -> TouchButton(
@@ -306,6 +392,19 @@ private fun MediaDetailsContent(
                 }
             }
 
+            if (item.type == MediaType.Series && cloudStreamDirect) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    if (seriesResume != null) {
+                        "Weiterschauen in CloudStream: ${seriesResume?.label}"
+                    } else {
+                        "CloudStream startet bei S1 E1"
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             item.overview?.takeIf(String::isNotBlank)?.let { overview ->
                 Spacer(Modifier.height(18.dp))
                 Text(
@@ -313,6 +412,26 @@ private fun MediaDetailsContent(
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = .94f),
                     modifier = Modifier.fillMaxWidth(.62f),
+                )
+            }
+
+            if (item.type == MediaType.Series && seasons.isNotEmpty()) {
+                Spacer(Modifier.height(30.dp))
+                SeriesEpisodesSection(
+                    seasons = seasons,
+                    selectedSeasonNumber = selectedSeasonNumber,
+                    seasonContent = selectedSeasonContent,
+                    isLoading = seasonContentLoading,
+                    resume = seriesResume,
+                    onSelectSeason = { seasonNumber ->
+                        seasonSelectionTouched = true
+                        selectedSeasonNumber = seasonNumber
+                    },
+                    onPlayEpisode = { episode ->
+                        if (ContentSearchTarget.CloudStream in externalTargets) {
+                            handoff.launch(ContentSearchTarget.CloudStream, episode)
+                        }
+                    },
                 )
             }
 
@@ -357,14 +476,139 @@ private fun MediaDetailsContent(
 }
 
 @Composable
+private fun SeriesEpisodesSection(
+    seasons: List<SeriesSeason>,
+    selectedSeasonNumber: Int?,
+    seasonContent: SeriesSeasonContent?,
+    isLoading: Boolean,
+    resume: SeriesResumePosition?,
+    onSelectSeason: (Int) -> Unit,
+    onPlayEpisode: (MediaItem) -> Unit,
+) {
+    Text("Staffeln", style = MaterialTheme.typography.titleMedium)
+    val seasonRowState = rememberLazyListState()
+    LazyRow(
+        state = seasonRowState,
+        modifier = Modifier.fillMaxWidth().touchScrollFallback(seasonRowState, Orientation.Horizontal),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 18.dp, end = 30.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(seasons, key = { "season-${it.seasonNumber}" }) { season ->
+            TouchButton(onClick = { onSelectSeason(season.seasonNumber) }) {
+                Text(
+                    buildString {
+                        if (season.seasonNumber == selectedSeasonNumber) append("● ")
+                        append(season.title)
+                        if (season.episodeCount > 0) append(" · ${season.episodeCount}")
+                    },
+                )
+            }
+        }
+    }
+
+    when {
+        isLoading -> Text(
+            "Episoden werden geladen …",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        seasonContent != null -> {
+            Text(
+                "Episoden · ${seasonContent.season.title}",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            val episodeRowState = rememberLazyListState()
+            LazyRow(
+                state = episodeRowState,
+                modifier = Modifier.fillMaxWidth().touchScrollFallback(episodeRowState, Orientation.Horizontal),
+                contentPadding = PaddingValues(top = 16.dp, bottom = 24.dp, end = 30.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                items(
+                    seasonContent.episodes,
+                    key = { "episode-${it.tmdbEpisodeId ?: it.id}" },
+                ) { episode ->
+                    val isResumeEpisode = resume?.seasonNumber == episode.seasonNumber &&
+                        resume.episodeNumber == episode.episodeNumber
+                    EpisodeCard(
+                        episode = episode,
+                        isResumeEpisode = isResumeEpisode,
+                        onClick = { onPlayEpisode(episode) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EpisodeCard(
+    episode: MediaItem,
+    isResumeEpisode: Boolean,
+    onClick: () -> Unit,
+) {
+    TouchCard(onClick = onClick) {
+        Column(Modifier.width(246.dp)) {
+            Box(
+                Modifier.width(246.dp).height(138.dp).clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            ) {
+                val artwork = episode.episodeStillUri ?: episode.backdropUri ?: episode.posterUri
+                artwork?.let {
+                    AsyncImage(
+                        model = it,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                if (isResumeEpisode) {
+                    Text(
+                        "WEITERSCHAUEN",
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.align(Alignment.BottomStart)
+                            .background(MaterialTheme.colorScheme.background.copy(alpha = .82f))
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                buildString {
+                    append("E${episode.episodeNumber ?: 0}")
+                    episode.episodeTitle?.takeIf(String::isNotBlank)?.let { append(" · $it") }
+                },
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            episode.overview?.takeIf(String::isNotBlank)?.let { overview ->
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    overview,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun ProviderHandoffAction(
     target: ContentSearchTarget,
     handoff: ContentSearchHandoff,
     item: MediaItem,
+    forceSearch: Boolean = false,
+    playPositionLabel: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val appIcon = remember(target, handoff) { handoff.appIcon(target) }
-    val mode = remember(target, item, handoff) { handoff.mode(target, item) }
+    val mode = remember(target, item, handoff, forceSearch) {
+        if (forceSearch) ContentHandoffMode.Search else handoff.mode(target, item)
+    }
     val isDirectPlay = mode == ContentHandoffMode.DirectPlay
     val actionDescription = if (isDirectPlay) {
         "Mit ${target.displayName} abspielen"
@@ -372,13 +616,15 @@ private fun ProviderHandoffAction(
         "In ${target.displayName} suchen"
     }
     TouchButton(
-        onClick = { handoff.launch(target, item) },
-        onLongClick = if (target == ContentSearchTarget.CloudStream && isDirectPlay) {
+        onClick = {
+            if (forceSearch) handoff.launchSearch(target, item) else handoff.launch(target, item)
+        },
+        onLongClick = if (target == ContentSearchTarget.CloudStream && isDirectPlay && !forceSearch) {
             { handoff.launchProviderChooser(target, item) }
         } else {
             null
         },
-        modifier = modifier.width(82.dp).height(48.dp),
+        modifier = modifier.width(if (playPositionLabel == null) 82.dp else 142.dp).height(48.dp),
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
     ) {
         if (appIcon != null) {
@@ -402,6 +648,10 @@ private fun ProviderHandoffAction(
             modifier = Modifier.size(17.dp),
             colorFilter = ColorFilter.tint(LocalContentColor.current),
         )
+        playPositionLabel?.let { label ->
+            Spacer(Modifier.width(7.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+        }
     }
 }
 
