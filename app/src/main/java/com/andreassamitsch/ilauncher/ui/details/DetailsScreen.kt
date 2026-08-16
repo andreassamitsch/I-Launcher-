@@ -528,8 +528,9 @@ private fun SeriesEpisodesSection(
                     seasonContent.episodes,
                     key = { "episode-${it.tmdbEpisodeId ?: it.id}" },
                 ) { episode ->
-                    val isResumeEpisode = resume?.seasonNumber == episode.seasonNumber &&
-                        resume.episodeNumber == episode.episodeNumber
+                    val isResumeEpisode = resume?.let {
+                        it.seasonNumber == episode.seasonNumber && it.episodeNumber == episode.episodeNumber
+                    } == true
                     EpisodeCard(
                         episode = episode,
                         isResumeEpisode = isResumeEpisode,
