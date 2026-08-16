@@ -199,6 +199,17 @@ jobs:
             sleep 1
             adb exec-out screencap -p > build/tv-visual/search-results-focus.png
 
+            # Settings visual contract: capture the actual route composition including the two
+            # launcher-level shortcuts, then move focus into the split settings navigation.
+            adb shell am force-stop com.andreassamitsch.ilauncher
+            adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.SettingsPreviewActivity
+            sleep 3
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.SettingsPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
+            adb exec-out screencap -p > build/tv-visual/settings-setup.png
+            adb shell input keyevent 20
+            sleep 1
+            adb exec-out screencap -p > build/tv-visual/settings-focus-next.png
+
       - name: Upload TV visual smoke screenshots
         if: always()
         uses: actions/upload-artifact@v4
