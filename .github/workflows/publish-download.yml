@@ -6,6 +6,7 @@ on:
       - agent/ui-player-polish
       - agent/cloudstream-direct-play
       - agent/series-seasons-resume
+      - agent/settings-ui-overhaul
     paths:
       - "app/**"
       - "build.gradle.kts"
