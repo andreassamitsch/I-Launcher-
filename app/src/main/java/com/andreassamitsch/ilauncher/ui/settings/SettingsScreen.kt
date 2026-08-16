@@ -320,28 +320,16 @@ private fun SettingsSidebar(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.16f),
                 shape = RoundedCornerShape(22.dp),
             )
-            .padding(horizontal = 14.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(
-            text = "I LAUNCHER",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 10.dp),
-        )
         Text(
             text = "Einstellungen",
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
         )
-        Text(
-            text = "Bereiche auswählen",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
-        )
-        Spacer(modifier = Modifier.size(6.dp))
+        Spacer(modifier = Modifier.size(2.dp))
 
         SettingsCategory.entries.forEach { category ->
             val trailing = when (category) {
