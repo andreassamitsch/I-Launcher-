@@ -166,7 +166,7 @@ Damit sollen insbesondere folgende Fälle aktualisiert werden, ohne dass die Clo
 2. CloudStream direkt aus laufendem Player in den Hintergrund schicken bzw. über Home verlassen.
 3. Normale Player-/Fragment-Zerstörung nach Abbruch.
 
-Ein hartes Betriebssystem-`force stop`/Prozess-Kill ohne Lifecycle-Callback kann naturgemäß nicht garantiert synchronisiert werden. Der normale Android-Lifecycle wird dagegen explizit abgedeckt.
+Ein hartes Betriebssystem-`force stop`/Prozess-Kill ohne Lifecycle-Callback kann naturgemäß nicht garantiert synchronisiert werden. Der normale Android-Lifecycle wird dagegen explizit abgedeckt. Weil der TvProvider-Write in einer IO-Coroutine erfolgt, ist auch ein unmittelbar nach `onStop()` vom System getöteter Prozess nicht absolut garantiert; für normale Back/Home/App-Wechsel-Pfade ist der Prozess jedoch weiter aktiv und der Flush kann abgeschlossen werden.
 
 ## Diagnose
 
