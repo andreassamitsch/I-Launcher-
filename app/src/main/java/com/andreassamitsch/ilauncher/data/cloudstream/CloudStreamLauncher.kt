@@ -38,6 +38,8 @@ class CloudStreamLauncher(private val context: Context) {
 
     fun isAvailable(): Boolean = resolvedPackageName() != null
 
+    fun isSearchAvailable(): Boolean = searchPackageName() != null
+
     fun actionMode(item: MediaItem): CloudStreamLaunchMode? {
         if (directPackageName() != null) return CloudStreamLaunchMode.DirectPlay
         return if (searchPackageName() != null) CloudStreamLaunchMode.SearchFallback else null
@@ -69,6 +71,20 @@ class CloudStreamLauncher(private val context: Context) {
         }.onFailure { error ->
             Log.w(TAG, "launch failed mode=$mode package=$targetPackage", error)
         }.getOrNull()
+    }
+
+    fun launchSearch(item: MediaItem): Boolean {
+        val searchPackage = searchPackageName() ?: return false
+        val intent = searchIntent(item.title)
+            .setPackage(searchPackage)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        Log.d(TAG, "launch mode=ExplicitSearch package=$searchPackage")
+        return runCatching {
+            context.startActivity(intent)
+            true
+        }.onFailure { error ->
+            Log.w(TAG, "launch failed mode=ExplicitSearch package=$searchPackage", error)
+        }.getOrDefault(false)
     }
 
     private fun directPackageName(): String? = resolvePackage(
@@ -110,16 +126,16 @@ class CloudStreamLauncher(private val context: Context) {
 
     private fun searchIntent(query: String): Intent = Intent(
         Intent.ACTION_VIEW,
-        Uri.parse("$SEARCH_SCHEME://${Uri.encode(normalizeCloudStreamTitle(query))}"),
+        Uri.parse(buildCloudStreamSearchUri(query)),
     )
 
     private companion object {
-        const val SEARCH_SCHEME = "cloudstreamsearch"
         const val TAG = "CLOUDSTREAM_BRIDGE"
     }
 }
 
 private const val CLOUDSTREAM_BASE_PACKAGE = "com.lagradost.cloudstream3"
+private const val SEARCH_SCHEME = "cloudstreamsearch"
 
 internal val CLOUDSTREAM_PACKAGE_CANDIDATES = listOf(
     "$CLOUDSTREAM_BASE_PACKAGE.prerelease.debug",
@@ -128,11 +144,13 @@ internal val CLOUDSTREAM_PACKAGE_CANDIDATES = listOf(
     CLOUDSTREAM_BASE_PACKAGE,
 )
 
+internal fun isCloudStreamPackageName(packageName: String?): Boolean =
+    packageName != null &&
+        (packageName == CLOUDSTREAM_BASE_PACKAGE || packageName.startsWith("$CLOUDSTREAM_BASE_PACKAGE."))
+
 internal fun selectPreferredCloudStreamPackage(packageNames: Iterable<String>): String? {
     val cloudStreamPackages = packageNames
-        .filter { packageName ->
-            packageName == CLOUDSTREAM_BASE_PACKAGE || packageName.startsWith("$CLOUDSTREAM_BASE_PACKAGE.")
-        }
+        .filter(::isCloudStreamPackageName)
         .distinct()
         .toList()
 
@@ -178,6 +196,9 @@ internal fun buildCloudStreamPlayUri(
         }
     }
 }
+
+internal fun buildCloudStreamSearchUri(query: String): String =
+    "$SEARCH_SCHEME://${Uri.encode(normalizeCloudStreamTitle(query))}"
 
 internal fun normalizeCloudStreamTitle(value: String): String =
     value.trim().replace(Regex("\\s+"), " ")
