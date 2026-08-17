@@ -58,6 +58,14 @@ internal object OpenWebifMapper {
         }
     }
 
+    fun sanitizeChannels(channels: List<LiveTvChannel>): List<LiveTvChannel> = channels.map { channel ->
+        channel.copy(
+            name = channel.name.cleanInline().ifBlank { channel.name },
+            now = channel.now?.sanitizeText(),
+            next = channel.next?.sanitizeText(),
+        )
+    }
+
     private fun OpenWebifEventDto.toProgram(): LiveTvProgram? {
         val start = beginTimestamp ?: return null
         val duration = durationSec ?: return null
@@ -71,6 +79,12 @@ internal object OpenWebifMapper {
             durationMillis = duration.coerceAtLeast(0L) * 1_000L,
         )
     }
+
+    private fun LiveTvProgram.sanitizeText(): LiveTvProgram = copy(
+        title = title.cleanInline().ifBlank { title },
+        shortDescription = shortDescription?.cleanMultiline()?.takeIf { it.isNotBlank() },
+        longDescription = longDescription?.cleanMultiline()?.takeIf { it.isNotBlank() },
+    )
 
     private fun String.cleanInline(): String = decodeEntities(this)
         .replace("\\r\\n", " ")
