@@ -50,6 +50,7 @@ class HomeButtonAccessibilityService : AccessibilityService() {
         lastRedirectAt = now
 
         val launcherIntent = Intent(this, MainActivity::class.java).apply {
+            action = ACTION_RETURN_TO_LAUNCHER_HOME
             addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or

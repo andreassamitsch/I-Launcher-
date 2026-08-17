@@ -278,6 +278,8 @@ Besonders beachten:
 - vorhersehbare Focus-Reihenfolge
 - Focus darf nicht verloren gehen
 - Position beim Zurückkehren erhalten
+- der physische `HOME`-Button führt innerhalb von I Launcher immer zur Home-Ansicht zurück; interne Detail-/Unterseitenzustände werden dabei beendet, ohne den Launcher-Prozess oder die lokalen Home-Listen neu zu starten
+- `Zurück` aus Detail- und internen Unterseiten kehrt in den vorherigen Kontext zurück und stellt den zuletzt gewählten Eintrag über eine stabile Inhalts-/Source-ID wieder her, sofern dieser noch existiert; reine Listenindizes sind dafür nicht ausreichend
 - keine unnötigen Focus-Sprünge
 - horizontale Listen sauber scrollen
 - kein Touch voraussetzen

@@ -126,9 +126,16 @@ fun HomeScreen(
     watchNextFocusRestoreGeneration: Int = 0,
     liveTvFocusRestoreServiceReference: String? = null,
     liveTvFocusRestoreGeneration: Int = 0,
+    homeHeroFocusRestoreGeneration: Int = 0,
+    appsFocusRestoreKey: String? = null,
+    appsFocusRestoreGeneration: Int = 0,
+    liveTvConfigFocusRestoreGeneration: Int = 0,
 ) {
     val watchNextRestoreFocusRequester = remember { FocusRequester() }
     val liveTvRestoreFocusRequester = remember { FocusRequester() }
+    val homeHeroRestoreFocusRequester = remember { FocusRequester() }
+    val appsRestoreFocusRequester = remember { FocusRequester() }
+    val liveTvConfigRestoreFocusRequester = remember { FocusRequester() }
     val contentScrollState = rememberScrollState()
     val appLabels = remember(apps) { apps.associate { it.packageName to it.label } }
     val appsByPackage = remember(apps) { apps.associateBy { it.packageName } }
@@ -202,7 +209,33 @@ fun HomeScreen(
         if (targetIndex < 0) return@LaunchedEffect
         liveTvListState.scrollToItem(targetIndex)
         withFrameNanos { }
-        liveTvRestoreFocusRequester.requestFocus()
+        runCatching { liveTvRestoreFocusRequester.requestFocus() }
+    }
+
+    LaunchedEffect(homeHeroFocusRestoreGeneration) {
+        if (homeHeroFocusRestoreGeneration <= 0) return@LaunchedEffect
+        withFrameNanos { }
+        runCatching { homeHeroRestoreFocusRequester.requestFocus() }
+    }
+
+    LaunchedEffect(apps, appsFocusRestoreKey, appsFocusRestoreGeneration) {
+        val restoreKey = appsFocusRestoreKey ?: return@LaunchedEffect
+        if (appsFocusRestoreGeneration <= 0 || apps.isEmpty()) return@LaunchedEffect
+        val targetIndex = if (restoreKey == "all-apps") {
+            apps.size
+        } else {
+            apps.indexOfFirst { it.packageName == restoreKey }
+        }
+        if (targetIndex < 0) return@LaunchedEffect
+        appsListState.scrollToItem(targetIndex)
+        withFrameNanos { }
+        runCatching { appsRestoreFocusRequester.requestFocus() }
+    }
+
+    LaunchedEffect(liveTvState.channels, liveTvConfigFocusRestoreGeneration) {
+        if (liveTvConfigFocusRestoreGeneration <= 0 || liveTvState.channels.isNotEmpty()) return@LaunchedEffect
+        withFrameNanos { }
+        runCatching { liveTvConfigRestoreFocusRequester.requestFocus() }
     }
 
     Box(
@@ -219,7 +252,8 @@ fun HomeScreen(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .fillMaxWidth()
-                .height(HOME_HERO_HEIGHT),
+                .height(HOME_HERO_HEIGHT)
+                .focusRequester(homeHeroRestoreFocusRequester),
         )
 
         Box(
@@ -265,6 +299,7 @@ fun HomeScreen(
                                         listState = liveTvListState,
                                         restoreServiceReference = liveTvFocusRestoreServiceReference,
                                         restoreRequester = liveTvRestoreFocusRequester,
+                                        configureRestoreRequester = liveTvConfigRestoreFocusRequester,
                                         onConfigure = onOpenLiveTv,
                                         onPlay = onPlayLiveTvChannel,
                                         onChannelFocused = onLiveTvFocused,
@@ -281,6 +316,8 @@ fun HomeScreen(
                                     onMove = onMoveHomeApp,
                                     onOpen = onOpenApp,
                                     onOpenAllApps = onOpenAllApps,
+                                    restoreKey = appsFocusRestoreKey,
+                                    restoreRequester = appsRestoreFocusRequester,
                                     onRowFocused = onRowFocused,
                                     onFocused = { onNavigationVisibilityChange(false) },
                                 )
@@ -397,6 +434,7 @@ private fun LiveTvHomeRow(
     listState: LazyListState,
     restoreServiceReference: String?,
     restoreRequester: FocusRequester,
+    configureRestoreRequester: FocusRequester,
     onConfigure: () -> Unit,
     onPlay: (LiveTvChannel) -> Unit,
     onChannelFocused: (LiveTvChannel) -> Unit,
@@ -438,7 +476,9 @@ private fun LiveTvHomeRow(
         )
         else -> TouchButton(
             onClick = onConfigure,
-            modifier = Modifier.padding(horizontal = 38.dp),
+            modifier = Modifier
+                .padding(horizontal = 38.dp)
+                .focusRequester(configureRestoreRequester),
         ) { Text("Live TV konfigurieren") }
     }
 }
@@ -489,6 +529,8 @@ private fun AppsHomeRow(
     onMove: (String, Int) -> Unit,
     onOpen: (InstalledApp) -> Unit,
     onOpenAllApps: () -> Unit,
+    restoreKey: String?,
+    restoreRequester: FocusRequester,
     onRowFocused: () -> Unit,
     onFocused: () -> Unit,
 ) {
@@ -509,6 +551,9 @@ private fun AppsHomeRow(
                 val moveMode = movingAppPackage == app.packageName
                 AppCard(
                     app = app,
+                    modifier = if (restoreKey == app.packageName) {
+                        Modifier.focusRequester(restoreRequester)
+                    } else Modifier,
                     onClick = {
                         if (moveMode) onMoveMode(null) else onOpen(app)
                     },
@@ -524,6 +569,9 @@ private fun AppsHomeRow(
             item(key = "all-apps") {
                 AllAppsDockCard(
                     onClick = onOpenAllApps,
+                    modifier = if (restoreKey == "all-apps") {
+                        Modifier.focusRequester(restoreRequester)
+                    } else Modifier,
                     onFocused = {
                         onRowFocused()
                         onFocused()
@@ -538,6 +586,7 @@ private fun AppsHomeRow(
 private fun AllAppsDockCard(
     onClick: () -> Unit,
     onFocused: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
     val foreground = MaterialTheme.colorScheme.onSurface
@@ -550,7 +599,7 @@ private fun AllAppsDockCard(
     ) {
         TouchCard(
             onClick = onClick,
-            modifier = Modifier
+            modifier = modifier
                 .size(HOME_APP_DOCK_ICON_SIZE)
                 .onFocusChanged { focusState ->
                     focused = focusState.isFocused

@@ -71,6 +71,7 @@ import com.andreassamitsch.ilauncher.ui.home.HomeSettingsScreen
 import com.andreassamitsch.ilauncher.ui.livetv.LiveTvPlayerScreen
 import com.andreassamitsch.ilauncher.ui.livetv.LiveTvScreen
 import com.andreassamitsch.ilauncher.ui.search.SearchScreen
+import com.andreassamitsch.ilauncher.ui.settings.SettingsCategory
 import com.andreassamitsch.ilauncher.ui.settings.SettingsScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -103,6 +104,7 @@ fun LauncherApp(
     openWebifRepository: OpenWebifRepository,
     epgRepository: EpgRepository,
     updateManager: UpdateManager,
+    homeNavigationRequestGeneration: Int = 0,
 ) {
     val context = LocalContext.current
     val activity = context as? ComponentActivity
@@ -124,6 +126,15 @@ fun LauncherApp(
     var liveTvFocusRestoreGeneration by rememberSaveable { mutableIntStateOf(0) }
     var searchFocusRestoreResultId by rememberSaveable { mutableStateOf<String?>(null) }
     var searchFocusRestoreGeneration by rememberSaveable { mutableIntStateOf(0) }
+    var homeHeroFocusRestoreGeneration by rememberSaveable { mutableIntStateOf(0) }
+    var restoreHomeHeroOnDetailsClose by rememberSaveable { mutableStateOf(false) }
+    var homeAppsFocusRestoreKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var homeAppsFocusRestoreGeneration by rememberSaveable { mutableIntStateOf(0) }
+    var homeLiveTvConfigFocusRestoreGeneration by rememberSaveable { mutableIntStateOf(0) }
+    var liveTvConfigurationReturnSection by rememberSaveable { mutableStateOf(LauncherSection.Settings) }
+    var liveTvPlayerSearchResultId by rememberSaveable { mutableStateOf<String?>(null) }
+    var settingsSelectedCategory by rememberSaveable { mutableStateOf(SettingsCategory.Setup) }
+    var settingsLiveTvActionFocusRestoreGeneration by rememberSaveable { mutableIntStateOf(0) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var localSearchResults by remember { mutableStateOf<List<SearchItem>>(emptyList()) }
     var tmdbSearchResults by remember { mutableStateOf<List<SearchItem>>(emptyList()) }
@@ -385,6 +396,46 @@ fun LauncherApp(
     }
     val selectedDetailsMedia = selectedDetailsItem?.media ?: selectedSearchDetailsMedia ?: selectedHomeDetailsMedia
 
+    LaunchedEffect(homeNavigationRequestGeneration) {
+        if (homeNavigationRequestGeneration <= 0) return@LaunchedEffect
+
+        if (section == LauncherSection.Home) {
+            selectedDetailsSourceId?.let { sourceId ->
+                watchNextFocusRestoreSourceId = sourceId
+                watchNextFocusRestoreGeneration += 1
+            }
+            if (restoreHomeHeroOnDetailsClose && selectedHomeDetailsMedia != null) {
+                homeHeroFocusRestoreGeneration += 1
+            }
+            selectedLiveTvServiceReference?.let { serviceReference ->
+                liveTvFocusRestoreServiceReference = serviceReference
+                liveTvFocusRestoreGeneration += 1
+            }
+        } else if (section == LauncherSection.Apps && homeAppsFocusRestoreKey != null) {
+            homeAppsFocusRestoreGeneration += 1
+        } else if (
+            section == LauncherSection.LiveTv &&
+            liveTvConfigurationReturnSection == LauncherSection.Home &&
+            selectedLiveTvServiceReference == null
+        ) {
+            homeLiveTvConfigFocusRestoreGeneration += 1
+        }
+
+        selectedDetailsSourceId = null
+        selectedSearchDetailsMedia = null
+        selectedSearchDetailsResultId = null
+        selectedHomeDetailsMedia = null
+        selectedHomeDetailsSourceLabel = null
+        restoreHomeHeroOnDetailsClose = false
+        selectedLiveTvServiceReference = null
+        liveTvPlayerSearchResultId = null
+        openPlayerEpgInitially = false
+        initialPlayerEpgProgramStartUtcMillis = null
+        showHomeSettings = false
+        discoverySettingsSection = null
+        section = LauncherSection.Home
+    }
+
     val closeDetails: () -> Unit = {
         when {
             selectedSearchDetailsResultId != null -> {
@@ -404,18 +455,27 @@ fun LauncherApp(
                 selectedDetailsSourceId = null
             }
             else -> {
+                if (restoreHomeHeroOnDetailsClose && section == LauncherSection.Home) {
+                    homeHeroFocusRestoreGeneration += 1
+                }
+                restoreHomeHeroOnDetailsClose = false
                 selectedHomeDetailsMedia = null
                 selectedHomeDetailsSourceLabel = null
             }
         }
     }
     val closeLiveTvPlayer: () -> Unit = {
-        selectedLiveTvServiceReference?.let { serviceReference ->
-            if (section == LauncherSection.Home) {
+        when {
+            liveTvPlayerSearchResultId != null -> {
+                searchFocusRestoreResultId = liveTvPlayerSearchResultId
+                searchFocusRestoreGeneration += 1
+            }
+            section == LauncherSection.Home -> selectedLiveTvServiceReference?.let { serviceReference ->
                 liveTvFocusRestoreServiceReference = serviceReference
                 liveTvFocusRestoreGeneration += 1
             }
         }
+        liveTvPlayerSearchResultId = null
         selectedLiveTvServiceReference = null
         openPlayerEpgInitially = false
         initialPlayerEpgProgramStartUtcMillis = null
@@ -433,10 +493,21 @@ fun LauncherApp(
     }
     BackHandler(
         enabled = !showHomeSettings && discoverySettingsSection == null && selectedDetailsMedia == null && selectedLiveTvServiceReference == null && section == LauncherSection.Apps,
-    ) { section = LauncherSection.Home }
+    ) {
+        if (homeAppsFocusRestoreKey != null) homeAppsFocusRestoreGeneration += 1
+        section = LauncherSection.Home
+    }
     BackHandler(
         enabled = !showHomeSettings && discoverySettingsSection == null && selectedDetailsMedia == null && selectedLiveTvServiceReference == null && section == LauncherSection.LiveTv,
-    ) { section = LauncherSection.Settings }
+    ) {
+        if (liveTvConfigurationReturnSection == LauncherSection.Home) {
+            homeLiveTvConfigFocusRestoreGeneration += 1
+            section = LauncherSection.Home
+        } else {
+            settingsLiveTvActionFocusRestoreGeneration += 1
+            section = LauncherSection.Settings
+        }
+    }
 
     DisposableEffect(activity) {
         if (activity == null) onDispose { } else {
@@ -493,6 +564,8 @@ fun LauncherApp(
                 val serviceReference = result.serviceReference
                 val startUtcMillis = result.programStartUtcMillis
                 if (serviceReference != null && startUtcMillis != null) {
+                    restoreHomeHeroOnDetailsClose = false
+                    liveTvPlayerSearchResultId = result.id
                     selectedLiveTvServiceReference = serviceReference
                     openPlayerEpgInitially = true
                     initialPlayerEpgProgramStartUtcMillis = startUtcMillis
@@ -555,6 +628,7 @@ fun LauncherApp(
                     scope.launch { epgRepository.enrichProgram(serviceReference, startUtcMillis) }
                 },
                 onOpenEpgProgramDetails = { channel, program ->
+                    restoreHomeHeroOnDetailsClose = false
                     selectedDetailsSourceId = null
                     selectedSearchDetailsMedia = null
                     selectedSearchDetailsResultId = null
@@ -628,9 +702,13 @@ fun LauncherApp(
                         },
                         onRequestTvListingsPermission = requestTvListingsPermission,
                         onOpenApp = openApp,
-                        onOpenAllApps = { section = LauncherSection.Apps },
+                        onOpenAllApps = {
+                            homeAppsFocusRestoreKey = "all-apps"
+                            section = LauncherSection.Apps
+                        },
                         onOpenWatchNext = openWatchNext,
                         onOpenWatchNextDetails = { item ->
+                            restoreHomeHeroOnDetailsClose = false
                             liveTvFocusRestoreServiceReference = null
                             selectedSearchDetailsMedia = null
                             selectedSearchDetailsResultId = null
@@ -638,6 +716,7 @@ fun LauncherApp(
                             selectedDetailsSourceId = item.media.source.sourceId
                         },
                         onOpenMediaDetails = { media, label ->
+                            restoreHomeHeroOnDetailsClose = true
                             selectedDetailsSourceId = null
                             selectedSearchDetailsMedia = null
                             selectedSearchDetailsResultId = null
@@ -645,8 +724,12 @@ fun LauncherApp(
                             selectedHomeDetailsSourceLabel = label
                         },
                         onOpenPreviewProgram = { _, program -> previewChannelsRepository.launch(program) },
-                        onOpenLiveTv = { section = LauncherSection.LiveTv },
+                        onOpenLiveTv = {
+                            liveTvConfigurationReturnSection = LauncherSection.Home
+                            section = LauncherSection.LiveTv
+                        },
                         onPlayLiveTvChannel = { channel ->
+                            liveTvPlayerSearchResultId = null
                             watchNextFocusRestoreSourceId = null
                             openPlayerEpgInitially = false
                             initialPlayerEpgProgramStartUtcMillis = null
@@ -670,6 +753,10 @@ fun LauncherApp(
                         watchNextFocusRestoreGeneration = watchNextFocusRestoreGeneration,
                         liveTvFocusRestoreServiceReference = liveTvFocusRestoreServiceReference,
                         liveTvFocusRestoreGeneration = liveTvFocusRestoreGeneration,
+                        homeHeroFocusRestoreGeneration = homeHeroFocusRestoreGeneration,
+                        appsFocusRestoreKey = homeAppsFocusRestoreKey,
+                        appsFocusRestoreGeneration = homeAppsFocusRestoreGeneration,
+                        liveTvConfigFocusRestoreGeneration = homeLiveTvConfigFocusRestoreGeneration,
                     )
 
                     LauncherSection.Movies -> ContentDiscoveryScreen(
@@ -750,7 +837,13 @@ fun LauncherApp(
                             hiddenPreviewChannelIds = hiddenPreviewChannelIds,
                             onSetPreviewChannelVisible = previewChannelPreferences::setVisible,
                             onShowAllPreviewChannels = previewChannelPreferences::showAll,
-                            onOpenLiveTv = { section = LauncherSection.LiveTv },
+                            selectedCategory = settingsSelectedCategory,
+                            onSelectCategory = { settingsSelectedCategory = it },
+                            liveTvActionFocusRestoreGeneration = settingsLiveTvActionFocusRestoreGeneration,
+                            onOpenLiveTv = {
+                                liveTvConfigurationReturnSection = LauncherSection.Settings
+                                section = LauncherSection.LiveTv
+                            },
                             hasTvListingsPermission = hasTvListingsPermission,
                             onRequestTvListingsPermission = requestTvListingsPermission,
                             tmdbConfigured = watchNextEnrichmentRepository.isTmdbConfigured,
