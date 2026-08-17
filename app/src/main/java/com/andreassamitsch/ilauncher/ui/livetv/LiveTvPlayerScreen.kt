@@ -1,5 +1,6 @@
 package com.andreassamitsch.ilauncher.ui.livetv
 
+import android.util.Log
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
@@ -74,10 +75,12 @@ import java.net.UnknownHostException
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 private const val PLAYER_OVERLAY_TIMEOUT_MILLIS = 3_000L
 private const val LONG_OK_THRESHOLD_MILLIS = 650L
+private const val LIVE_TV_PLAYER_TAG = "LIVE_TV_PLAYER"
 private val LIVE_TV_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm")
 
 @OptIn(UnstableApi::class)
@@ -108,6 +111,10 @@ internal fun LiveTvPlayerScreen(
     var confirmOpenedOverview by remember { mutableStateOf(false) }
     var longOkHandled by remember { mutableStateOf(false) }
     var showExitConfirmation by remember { mutableStateOf(false) }
+    var playbackRestartToken by remember { mutableStateOf(0) }
+    var preparedServiceReference by remember { mutableStateOf<String?>(null) }
+    var autoRetryAttempt by remember(currentServiceReference) { mutableStateOf(0) }
+    var retryingPlayback by remember(currentServiceReference) { mutableStateOf(false) }
     var showEpg by remember(initialShowEpg, initialServiceReference) { mutableStateOf(initialShowEpg) }
     var selectedEpgServiceReference by remember(initialServiceReference) { mutableStateOf(initialServiceReference) }
     var selectedEpgProgramStartUtcMillis by remember(initialServiceReference, initialEpgProgramStartUtcMillis) {
@@ -137,6 +144,9 @@ internal fun LiveTvPlayerScreen(
         channelOverviewPinned = false
         overlayVisible = true
         showExitConfirmation = false
+        autoRetryAttempt = 0
+        retryingPlayback = false
+        errorMessage = null
         currentServiceReference = channels[nextIndex].serviceReference
     }
 
@@ -145,6 +155,9 @@ internal fun LiveTvPlayerScreen(
         channelOverviewPinned = false
         overlayVisible = true
         showExitConfirmation = false
+        autoRetryAttempt = 0
+        retryingPlayback = false
+        errorMessage = null
         currentServiceReference = channels[index].serviceReference
     }
 
@@ -195,11 +208,42 @@ internal fun LiveTvPlayerScreen(
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                loading = playbackState == Player.STATE_BUFFERING || playbackState == Player.STATE_IDLE
-                if (playbackState == Player.STATE_READY) errorMessage = null
+                loading = playbackState == Player.STATE_BUFFERING ||
+                    (playbackState == Player.STATE_IDLE && errorMessage == null)
+                if (playbackState == Player.STATE_READY) {
+                    errorMessage = null
+                    retryingPlayback = false
+                    autoRetryAttempt = 0
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                val failedServiceReference = player.currentMediaItem?.mediaId ?: preparedServiceReference
+                if (failedServiceReference != currentServiceReference) {
+                    Log.d(
+                        LIVE_TV_PLAYER_TAG,
+                        "Ignoring playback error from superseded Live-TV item: ${error.errorCodeName}",
+                    )
+                    return
+                }
+
+                if (LiveTvPlaybackRecovery.shouldRetry(error.errorCode, autoRetryAttempt)) {
+                    val nextAttempt = autoRetryAttempt + 1
+                    autoRetryAttempt = nextAttempt
+                    retryingPlayback = true
+                    loading = true
+                    overlayVisible = true
+                    errorMessage = null
+                    playbackRestartToken += 1
+                    Log.w(
+                        LIVE_TV_PLAYER_TAG,
+                        "Retrying transient Live-TV parser error ${error.errorCodeName} " +
+                            "($nextAttempt/${LiveTvPlaybackRecovery.MAX_AUTO_RETRIES})",
+                    )
+                    return
+                }
+
+                retryingPlayback = false
                 loading = false
                 overlayVisible = true
                 errorMessage = "Live-TV-Wiedergabe fehlgeschlagen (${error.errorCodeName})."
@@ -212,17 +256,25 @@ internal fun LiveTvPlayerScreen(
         }
     }
 
-    LaunchedEffect(currentChannel?.serviceReference) {
+    LaunchedEffect(currentChannel?.serviceReference, playbackRestartToken) {
         val channel = currentChannel ?: return@LaunchedEffect
+        val retryAttemptForStart = autoRetryAttempt
         if (!showEpg) {
             selectedEpgServiceReference = channel.serviceReference
             selectedEpgProgramStartUtcMillis = null
         }
         loading = true
+        retryingPlayback = retryAttemptForStart > 0
         errorMessage = null
+        preparedServiceReference = null
         player.stop()
         player.clearMediaItems()
-        runCatching {
+
+        if (retryAttemptForStart > 0) {
+            delay(LiveTvPlaybackRecovery.retryDelayMillis(retryAttemptForStart))
+        }
+
+        try {
             val stream = onResolveStream(channel)
             val dataSourceFactory = DefaultHttpDataSource.Factory()
                 .setConnectTimeoutMs(6_000)
@@ -240,11 +292,16 @@ internal fun LiveTvPlayerScreen(
             } else {
                 ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
             }
+            preparedServiceReference = channel.serviceReference
             player.setMediaSource(mediaSource)
             player.prepare()
             player.playWhenReady = true
-        }.onFailure { throwable ->
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (throwable: Throwable) {
+            preparedServiceReference = null
             loading = false
+            retryingPlayback = false
             overlayVisible = true
             errorMessage = playbackErrorMessage(throwable)
         }
@@ -427,7 +484,7 @@ internal fun LiveTvPlayerScreen(
                         }
                         if (loading && errorMessage == null) {
                             Text(
-                                "Live TV wird geladen …",
+                                if (retryingPlayback) "Stream wird erneut gestartet …" else "Live TV wird geladen …",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
