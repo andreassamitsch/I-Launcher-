@@ -58,7 +58,11 @@ internal class OpenWebifStore(context: Context) {
         val snapshot = runCatching {
             gson.fromJson(json, OpenWebifCachedSnapshot::class.java)
         }.getOrNull() ?: return null
-        return snapshot.takeIf { it.baseUrl == config.baseUrl }
+        return snapshot
+            .takeIf { it.baseUrl == config.baseUrl }
+            ?.let { cached ->
+                cached.copy(channels = OpenWebifMapper.sanitizeChannels(cached.channels))
+            }
     }
 
     companion object {
