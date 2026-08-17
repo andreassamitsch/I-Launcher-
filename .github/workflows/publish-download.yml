@@ -10,6 +10,7 @@ on:
       - agent/settings-ui-overhaul
       - agent/live-tv-epg-fixes
       - agent/related-content-quality
+      - agent/home-navigation-focus-restore
     paths:
       - "app/**"
       - "build.gradle.kts"
