@@ -9,6 +9,7 @@ on:
       - agent/series-seasons-resume
       - agent/settings-ui-overhaul
       - agent/live-tv-epg-fixes
+      - agent/related-content-quality
     paths:
       - "app/**"
       - "build.gradle.kts"
