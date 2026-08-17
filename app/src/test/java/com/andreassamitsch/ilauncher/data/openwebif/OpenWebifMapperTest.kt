@@ -1,5 +1,7 @@
 package com.andreassamitsch.ilauncher.data.openwebif
 
+import com.andreassamitsch.ilauncher.model.LiveTvChannel
+import com.andreassamitsch.ilauncher.model.LiveTvProgram
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test
@@ -95,5 +97,27 @@ class OpenWebifMapperTest {
         assertEquals("You're cordially invited", program.title)
         assertEquals("Zeile 1\nZeile 2 & mehr", program.shortDescription)
         assertEquals("Absatz 1\n\nAbsatz 2 \"Zitat\"", program.longDescription)
+    }
+
+    @Test fun `sanitizes persisted channel snapshot before local first display`() {
+        val cached = LiveTvChannel(
+            serviceReference = "1:0:1:ATV",
+            name = "ATV &amp; HD",
+            now = LiveTvProgram(
+                eventId = 1,
+                title = "You&#x27;re invited",
+                shortDescription = "Text\\nzweite Zeile",
+                longDescription = "Text &amp; mehr",
+                startUtcMillis = 1_000L,
+                durationMillis = 60_000L,
+            ),
+        )
+
+        val sanitized = OpenWebifMapper.sanitizeChannels(listOf(cached)).single()
+
+        assertEquals("ATV & HD", sanitized.name)
+        assertEquals("You're invited", sanitized.now?.title)
+        assertEquals("Text\nzweite Zeile", sanitized.now?.shortDescription)
+        assertEquals("Text & mehr", sanitized.now?.longDescription)
     }
 }
