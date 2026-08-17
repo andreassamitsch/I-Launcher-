@@ -120,14 +120,14 @@ internal interface TmdbApi {
     suspend fun movieRelations(
         @Path("movieId") movieId: Int,
         @Query("language") language: String,
-        @Query("append_to_response") appendToResponse: String = "similar",
+        @Query("append_to_response") appendToResponse: String = "recommendations,similar",
     ): TmdbMediaRelationsDto
 
     @GET("3/tv/{seriesId}")
     suspend fun tvRelations(
         @Path("seriesId") seriesId: Int,
         @Query("language") language: String,
-        @Query("append_to_response") appendToResponse: String = "similar",
+        @Query("append_to_response") appendToResponse: String = "recommendations,similar",
     ): TmdbMediaRelationsDto
 
     @GET("3/collection/{collectionId}")
