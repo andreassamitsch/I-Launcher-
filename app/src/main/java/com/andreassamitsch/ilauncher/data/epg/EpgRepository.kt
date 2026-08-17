@@ -39,6 +39,9 @@ internal fun epgMediaTypeHint(program: LiveTvProgram): MediaType {
     }
 }
 
+internal fun epgTmdbReleaseYearHint(program: LiveTvProgram): Int? =
+    if (epgMediaTypeHint(program) == MediaType.Episode) null else program.releaseYear
+
 class EpgRepository(
     context: Context,
     private val tmdbRepository: TmdbRepository,
@@ -356,7 +359,7 @@ class EpgRepository(
             lookup = MediaLookup(
                 rawTitle = program.title,
                 typeHint = epgMediaTypeHint(program),
-                releaseYear = program.releaseYear,
+                releaseYear = epgTmdbReleaseYearHint(program),
                 seasonNumber = program.seasonNumber,
                 episodeNumber = program.episodeNumber,
             ),
