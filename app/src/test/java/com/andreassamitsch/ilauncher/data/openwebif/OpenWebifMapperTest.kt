@@ -63,4 +63,37 @@ class OpenWebifMapperTest {
         assertNotNull(channel.progressFraction(nowMillis))
         assertEquals(0.5f, channel.progressFraction(nowMillis)!!, 0.001f)
     }
+
+    @Test fun `decodes HTML entities and escaped newlines in EPG text`() {
+        val nowMillis = 1_000_000L
+        val channelRef = "1:0:1:ATV:HD:1:0:0:0:0:"
+        val services = listOf(
+            OpenWebifServiceDto(
+                serviceName = "ATV HD",
+                serviceReference = channelRef,
+            ),
+        )
+        val events = listOf(
+            OpenWebifEventDto(
+                id = 21,
+                beginTimestamp = 950,
+                durationSec = 200,
+                title = "You&amp;#x27;re cordially invited",
+                shortdesc = "Zeile 1\\nZeile 2 &amp; mehr",
+                longdesc = "Absatz 1\\n\\nAbsatz 2 &quot;Zitat&quot;",
+                sref = channelRef,
+            ),
+        )
+
+        val program = OpenWebifMapper.channels(
+            baseUrl = "http://192.168.1.20/",
+            services = services,
+            events = events,
+            nowUtcMillis = nowMillis,
+        ).single().now!!
+
+        assertEquals("You're cordially invited", program.title)
+        assertEquals("Zeile 1\nZeile 2 & mehr", program.shortDescription)
+        assertEquals("Absatz 1\n\nAbsatz 2 \"Zitat\"", program.longDescription)
+    }
 }
