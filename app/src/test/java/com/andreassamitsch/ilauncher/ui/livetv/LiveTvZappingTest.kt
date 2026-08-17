@@ -1,5 +1,7 @@
 package com.andreassamitsch.ilauncher.ui.livetv
 
+import java.time.Instant
+import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -51,6 +53,16 @@ class LiveTvZappingTest {
                 serviceReferences = listOf("first", "second"),
                 currentServiceReference = "removed",
             ),
+        )
+    }
+
+    @Test
+    fun `formats next programme start in TV local time`() {
+        val start = Instant.parse("2026-08-17T20:14:00Z").toEpochMilli()
+
+        assertEquals(
+            "22:14",
+            formatLiveTvStartTime(start, ZoneId.of("Europe/Vienna")),
         )
     }
 }
