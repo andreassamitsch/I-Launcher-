@@ -8,6 +8,7 @@ on:
       - agent/cloudstream-direct-play
       - agent/series-seasons-resume
       - agent/settings-ui-overhaul
+      - agent/live-tv-epg-fixes
     paths:
       - "app/**"
       - "build.gradle.kts"
