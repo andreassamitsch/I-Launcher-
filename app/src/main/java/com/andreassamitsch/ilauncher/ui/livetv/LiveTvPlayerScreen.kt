@@ -71,10 +71,14 @@ import com.andreassamitsch.ilauncher.ui.epg.EpgScreen
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
 
 private const val PLAYER_OVERLAY_TIMEOUT_MILLIS = 3_000L
 private const val LONG_OK_THRESHOLD_MILLIS = 650L
+private val LIVE_TV_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm")
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -129,10 +133,9 @@ internal fun LiveTvPlayerScreen(
 
     fun zap(delta: Int) {
         if (channels.isEmpty()) return
-        val wasPinned = channelOverviewPinned
         val nextIndex = LiveTvZapping.nextIndex(currentIndex, channels.size, delta)
         channelOverviewPinned = false
-        overlayVisible = !wasPinned
+        overlayVisible = true
         showExitConfirmation = false
         currentServiceReference = channels[nextIndex].serviceReference
     }
@@ -140,7 +143,7 @@ internal fun LiveTvPlayerScreen(
     fun selectChannel(index: Int) {
         if (index !in channels.indices) return
         channelOverviewPinned = false
-        overlayVisible = false
+        overlayVisible = true
         showExitConfirmation = false
         currentServiceReference = channels[index].serviceReference
     }
@@ -269,13 +272,20 @@ internal fun LiveTvPlayerScreen(
         }
     }
 
-    LaunchedEffect(overlayVisible, showEpg, showExitConfirmation, currentIndex, selectedEpgProgramStartUtcMillis) {
+    LaunchedEffect(
+        overlayVisible,
+        channelOverviewPinned,
+        showEpg,
+        showExitConfirmation,
+        currentIndex,
+        selectedEpgProgramStartUtcMillis,
+    ) {
         withFrameNanos { }
         when {
             showExitConfirmation -> runCatching { exitConfirmFocusRequester.requestFocus() }
             showEpg && selectedEpgProgramStartUtcMillis == null -> runCatching { epgBackFocusRequester.requestFocus() }
             showEpg -> Unit
-            overlayVisible -> runCatching { overlayFocusRequester.requestFocus() }
+            channelOverviewPinned -> runCatching { overlayFocusRequester.requestFocus() }
             else -> runCatching { rootFocusRequester.requestFocus() }
         }
     }
@@ -337,12 +347,16 @@ internal fun LiveTvPlayerScreen(
                         true
                     }
 
-                    Key.DirectionUp -> if (overlayVisible) false else {
+                    Key.DirectionUp -> if (channelOverviewPinned) {
+                        false
+                    } else {
                         zap(+1)
                         true
                     }
 
-                    Key.DirectionDown -> if (overlayVisible) false else {
+                    Key.DirectionDown -> if (channelOverviewPinned) {
+                        false
+                    } else {
                         zap(-1)
                         true
                     }
@@ -399,7 +413,21 @@ internal fun LiveTvPlayerScreen(
                         channel.now?.let { Text(it.title, style = MaterialTheme.typography.titleMedium) }
                         channel.next?.let {
                             Text(
-                                "Danach: ${it.title}",
+                                "${formatLiveTvStartTime(it.startUtcMillis)} · ${it.title}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        errorMessage?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        if (loading && errorMessage == null) {
+                            Text(
+                                "Live TV wird geladen …",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -408,55 +436,53 @@ internal fun LiveTvPlayerScreen(
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 18.dp)
-                    .background(
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-                        RoundedCornerShape(20.dp),
-                    )
-                    .padding(horizontal = 24.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                if (loading && errorMessage == null) {
-                    Text("Live TV wird geladen …", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Text("Jetzt im TV", style = MaterialTheme.typography.titleMedium)
-                LazyRow(
-                    state = zapListState,
-                    modifier = Modifier.touchScrollFallback(zapListState, Orientation.Horizontal),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    itemsIndexed(channels, key = { _, channel -> channel.serviceReference }) { index, channel ->
-                        CompactLiveTvCard(
-                            channel = channel,
-                            channelNumber = index + 1,
-                            selected = index == currentIndex,
-                            onClick = { selectChannel(index) },
-                            modifier = if (index == currentIndex) {
-                                Modifier.focusRequester(overlayFocusRequester).focusProperties { down = epgButtonFocusRequester }
-                            } else Modifier,
+            if (channelOverviewPinned) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 18.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                            RoundedCornerShape(20.dp),
                         )
-                    }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    TouchButton(onClick = ::openEpg, modifier = Modifier.focusRequester(epgButtonFocusRequester)) {
-                        Text("EPG")
+                    Text("Jetzt im TV", style = MaterialTheme.typography.titleMedium)
+                    LazyRow(
+                        state = zapListState,
+                        modifier = Modifier.touchScrollFallback(zapListState, Orientation.Horizontal),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        itemsIndexed(channels, key = { _, channel -> channel.serviceReference }) { index, channel ->
+                            CompactLiveTvCard(
+                                channel = channel,
+                                channelNumber = index + 1,
+                                selected = index == currentIndex,
+                                onClick = { selectChannel(index) },
+                                modifier = if (index == currentIndex) {
+                                    Modifier.focusRequester(overlayFocusRequester).focusProperties { down = epgButtonFocusRequester }
+                                } else Modifier,
+                            )
+                        }
                     }
-                    TouchButton(onClick = ::requestExit) { Text("TV verlassen") }
-                    currentChannel?.let {
-                        Text(
-                            "${currentIndex + 1}/${channels.size} · ${it.name}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TouchButton(onClick = ::openEpg, modifier = Modifier.focusRequester(epgButtonFocusRequester)) {
+                            Text("EPG")
+                        }
+                        TouchButton(onClick = ::requestExit) { Text("TV verlassen") }
+                        currentChannel?.let {
+                            Text(
+                                "${currentIndex + 1}/${channels.size} · ${it.name}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
@@ -625,6 +651,13 @@ private fun CompactLiveTvCard(
         }
     }
 }
+
+internal fun formatLiveTvStartTime(
+    startUtcMillis: Long,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): String = LIVE_TV_TIME_FORMATTER
+    .withZone(zoneId)
+    .format(Instant.ofEpochMilli(startUtcMillis))
 
 internal object LiveTvZapping {
     fun nextIndex(currentIndex: Int, size: Int, delta: Int): Int {
