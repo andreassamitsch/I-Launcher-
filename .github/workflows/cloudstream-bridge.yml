@@ -47,6 +47,7 @@ jobs:
           python i-launcher/tools/cloudstream-bridge/apply_behavior_fixes.py cloudstream
           python i-launcher/tools/cloudstream-bridge/apply_search_matching_fix.py cloudstream
           python i-launcher/tools/cloudstream-bridge/apply_provider_interop_fix.py cloudstream
+          python i-launcher/tools/cloudstream-bridge/apply_provider_resolution_fix.py cloudstream
           python i-launcher/tools/cloudstream-bridge/apply_legacy_watchnext_fix.py cloudstream
           python i-launcher/tools/cloudstream-bridge/apply_dev_version.py cloudstream
 
