@@ -90,10 +90,11 @@ def main() -> None:
         "val ordered = mergeProviderOrder(activeNames, readProviderOrder(activity)).toMutableList()",
         "val ordered = mergeProviderOrder(\n            activeNames,\n            ILauncherBridgePreferences.readProviderOrder(activity, kind),\n        ).toMutableList()",
     )
-    replace_once(
+    replace_expected(
         bridge,
         ".setTitle(\"Provider-Priorität\")",
         ".setTitle(\"Provider-Priorität · ${ILauncherBridgePreferences.kindLabel(kind)}\")",
+        2,
     )
     replace_once(
         bridge,
