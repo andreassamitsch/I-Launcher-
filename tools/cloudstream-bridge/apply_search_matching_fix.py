@@ -170,8 +170,8 @@ def main() -> None:
     replace_once(
         bridge,
         "    private const val MAX_SEARCH_CANDIDATES_PER_QUERY = 6\n}",
-        r'''    private val TRAILING_DECORATED_YEAR = Regex("\s*[\(\[]((?:19|20|21)\d{2})[\)\]]\s*$")
-    private val YEAR_TOKEN = Regex("(?:19|20|21)\d{2}")
+        r'''    private val TRAILING_DECORATED_YEAR = Regex("""\s*[\(\[]((?:19|20|21)\d{2})[\)\]]\s*$""")
+    private val YEAR_TOKEN = Regex("""(?:19|20|21)\d{2}""")
     private val SEARCH_STOP_WORDS = setOf(
         "der", "die", "das", "den", "dem", "des",
         "ein", "eine", "einer", "eines", "und",
