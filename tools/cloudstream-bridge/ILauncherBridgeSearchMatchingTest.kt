@@ -43,6 +43,29 @@ class ILauncherBridgeSearchMatchingTest {
     }
 
     @Test
+    fun exactMovieSearchHitSurvivesWrongTvSeriesSearchResponseType() {
+        val request = requireNotNull(
+            ILauncherDirectPlay.parseRequest(
+                "cloudstreamplay://v1?title=Matrix%20Revolutions&type=movie&year=2003",
+            ),
+        )
+
+        val exactButMislabeled = ILauncherDirectPlay.searchCandidateSortKey(
+            "Matrix Revolutions",
+            TvType.TvSeries,
+            request,
+        )
+        val weakButCorrectlyTyped = ILauncherDirectPlay.searchCandidateSortKey(
+            "The Matrix",
+            TvType.Movie,
+            request,
+        )
+
+        assertTrue(exactButMislabeled < weakButCorrectlyTyped)
+        assertEquals(0, ILauncherDirectPlay.searchCandidateRank("Matrix Revolutions", request))
+    }
+
+    @Test
     fun explicitProviderYearDecorationMatchesEvenWithoutSourceYear() {
         assertEquals(
             "dune part two",
