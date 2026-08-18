@@ -1,11 +1,18 @@
 package com.lagradost.cloudstream3
 
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ILauncherBridgeSearchMatchingTest {
+    private val api = object : MainAPI() {
+        override var name = "ProviderInteropTest"
+        override var mainUrl = "https://example.invalid"
+    }
+
     @Test
     fun broadOrProviderGetsHighSignalFallbackQuery() {
         val request = requireNotNull(
@@ -63,6 +70,39 @@ class ILauncherBridgeSearchMatchingTest {
 
         assertTrue(exactButMislabeled < weakButCorrectlyTyped)
         assertEquals(0, ILauncherDirectPlay.searchCandidateRank("Matrix Revolutions", request))
+    }
+
+    @Test
+    fun movieTypedTvSeriesLoadResponseUsesFirstEpisodeLikeCloudStream() = runBlocking {
+        val response = api.newTvSeriesLoadResponse(
+            name = "Matrix Revolutions (2003)",
+            url = "https://example.invalid/matrix-revolutions",
+            type = TvType.Movie,
+            episodes = listOf(
+                api.newEpisode("kinoger-first") {
+                    season = 1
+                    episode = 1
+                },
+                api.newEpisode("kinoger-second") {
+                    season = 1
+                    episode = 2
+                },
+            ),
+        )
+
+        assertEquals("kinoger-first", ILauncherDirectPlay.moviePlaybackData(response))
+    }
+
+    @Test
+    fun realSeriesResponseIsNotAcceptedAsMoviePlayback() = runBlocking {
+        val response = api.newTvSeriesLoadResponse(
+            name = "Matrix Series",
+            url = "https://example.invalid/matrix-series",
+            type = TvType.TvSeries,
+            episodes = listOf(api.newEpisode("series-episode")),
+        )
+
+        assertNull(ILauncherDirectPlay.moviePlaybackData(response))
     }
 
     @Test
