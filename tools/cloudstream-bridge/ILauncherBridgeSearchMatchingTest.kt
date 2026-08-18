@@ -74,23 +74,24 @@ class ILauncherBridgeSearchMatchingTest {
 
     @Test
     fun movieTypedTvSeriesLoadResponseUsesFirstEpisodeLikeCloudStream() = runBlocking {
+        val firstPayload = "https://media.invalid/kinoger-first"
         val response = api.newTvSeriesLoadResponse(
             name = "Matrix Revolutions (2003)",
             url = "https://example.invalid/matrix-revolutions",
             type = TvType.Movie,
             episodes = listOf(
-                api.newEpisode("kinoger-first") {
+                api.newEpisode(firstPayload) {
                     season = 1
                     episode = 1
                 },
-                api.newEpisode("kinoger-second") {
+                api.newEpisode("https://media.invalid/kinoger-second") {
                     season = 1
                     episode = 2
                 },
             ),
         )
 
-        assertEquals("kinoger-first", ILauncherDirectPlay.moviePlaybackData(response))
+        assertEquals(firstPayload, ILauncherDirectPlay.moviePlaybackData(response))
     }
 
     @Test
@@ -99,7 +100,7 @@ class ILauncherBridgeSearchMatchingTest {
             name = "Matrix Series",
             url = "https://example.invalid/matrix-series",
             type = TvType.TvSeries,
-            episodes = listOf(api.newEpisode("series-episode")),
+            episodes = listOf(api.newEpisode("https://media.invalid/series-episode")),
         )
 
         assertNull(ILauncherDirectPlay.moviePlaybackData(response))
