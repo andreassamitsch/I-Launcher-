@@ -42,6 +42,26 @@ def main() -> None:
 
     bridge = root / "app/src/main/java/com/lagradost/cloudstream3/ILauncherDirectPlay.kt"
 
+    # CloudStream's normal search probes active providers without treating supportedTypes as an
+    # authoritative search gate. Some extensions also mislabel SearchResponse.type (Moflix, for
+    # example, emits TvSeries search cards even for movies) and only expose the real type from
+    # load(). Mirror that behavior here: provider/search-card type metadata may influence ordering,
+    # but only the strict LoadResponse verification is allowed to reject the media type.
+    replace_once(
+        bridge,
+        '''        if (!supportsRequestedKind(api, request.kind)) {
+            Log.i(TAG, "skip provider=${api.name} reason=type")
+            return null
+        }
+        val repo = APIRepository(api)
+''',
+        '''        if (!supportsRequestedKind(api, request.kind)) {
+            Log.i(TAG, "probe provider=${api.name} despite declared type mismatch")
+        }
+        val repo = APIRepository(api)
+''',
+    )
+
     # Some extensions implement search as a broad OR across all words. Keep the strict
     # LoadResponse identity check, but improve discovery before that check: rank weak hits,
     # inspect more pages only while no exact/decorated candidate is visible, and retry with a
@@ -76,7 +96,6 @@ def main() -> None:
 
             collected += search.items
             val bestRank = collected.asSequence()
-                .filter { candidate -> typeMatches(candidate.type, request.kind) }
                 .map { candidate -> searchCandidateRank(candidate.name, request) }
                 .minOrNull()
             continuePaging = shouldFetchNextSearchPage(search.hasNext, page, bestRank)
@@ -84,9 +103,8 @@ def main() -> None:
         }
 
         return collected
-            .filter { candidate -> typeMatches(candidate.type, request.kind) }
             .distinctBy { it.url }
-            .sortedBy { candidate -> searchCandidateRank(candidate.name, request) }
+            .sortedBy { candidate -> searchCandidateSortKey(candidate.name, candidate.type, request) }
     }
 
     internal fun buildSearchQueries(request: Request): List<String> = buildList {
@@ -153,6 +171,16 @@ def main() -> None:
         }
     }
 
+    internal fun searchCandidateSortKey(
+        candidateName: String,
+        candidateType: TvType?,
+        request: Request,
+    ): Long {
+        val titleRank = searchCandidateRank(candidateName, request).toLong()
+        val typeTieBreak = if (typeMatches(candidateType, request.kind)) 0L else 1L
+        return titleRank * SEARCH_TYPE_TIE_BREAK_SCALE + typeTieBreak
+    }
+
     private fun fuzzyTitleRank(candidate: String, target: String): Int {
         if (candidate.isBlank() || target.isBlank()) return Int.MAX_VALUE
         val candidateSet = candidate.split(' ').filter(String::isNotBlank).toSet()
@@ -181,6 +209,7 @@ def main() -> None:
     private const val SAFE_SEARCH_RANK = 1
     private const val MAX_SEARCH_PAGES = 3
     private const val MAX_SEARCH_CANDIDATES_PER_QUERY = 8
+    private const val SEARCH_TYPE_TIE_BREAK_SCALE = 2L
 }''',
     )
 
@@ -189,8 +218,10 @@ def main() -> None:
     test_target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(test_source, test_target)
 
+    require_text(bridge, "probe provider=${api.name} despite declared type mismatch", "non-authoritative provider type metadata")
     require_text(bridge, "buildSearchQueries(request)", "broad-search query fallback")
     require_text(bridge, "searchCandidates(repo, query, request)", "ranked paged provider search")
+    require_text(bridge, "searchCandidateSortKey(candidate.name, candidate.type, request)", "non-authoritative SearchResponse type ranking")
     require_text(bridge, "TRAILING_DECORATED_YEAR", "provider year-decoration matching")
     require_text(bridge, "MAX_SEARCH_PAGES = 3", "bounded provider pagination")
 
