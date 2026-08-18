@@ -45,6 +45,7 @@ jobs:
         run: |
           python i-launcher/tools/cloudstream-bridge/apply_patch.py cloudstream
           python i-launcher/tools/cloudstream-bridge/apply_behavior_fixes.py cloudstream
+          python i-launcher/tools/cloudstream-bridge/apply_legacy_watchnext_fix.py cloudstream
           python i-launcher/tools/cloudstream-bridge/apply_dev_version.py cloudstream
 
       - name: Set up JDK 17
