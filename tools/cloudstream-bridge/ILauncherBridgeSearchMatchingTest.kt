@@ -1,5 +1,7 @@
 package com.lagradost.cloudstream3
 
+import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -70,6 +72,56 @@ class ILauncherBridgeSearchMatchingTest {
 
         assertTrue(exactButMislabeled < weakButCorrectlyTyped)
         assertEquals(0, ILauncherDirectPlay.searchCandidateRank("Matrix Revolutions", request))
+    }
+
+    @Test
+    fun moflixLikeMovieLoadAcceptsMatchingExternalIdentity() = runBlocking {
+        val request = requireNotNull(
+            ILauncherDirectPlay.parseRequest(
+                "cloudstreamplay://v1?title=Matrix%20Revolutions&type=movie&year=2003&tmdbId=605&imdbId=tt0242653",
+            ),
+        )
+        val response = api.newMovieLoadResponse(
+            name = "Matrix Revolutions - Provider Edition",
+            url = "https://example.invalid/matrix-revolutions",
+            type = TvType.Movie,
+            data = "provider-payload",
+        ) {
+            // Deliberately bad secondary metadata: exact external IDs must be stronger.
+            year = 1999
+            addTMDbId("605")
+            addImdbId("tt0242653")
+        }
+
+        assertEquals(
+            ILauncherDirectPlay.ExternalIdentityMatch.Exact,
+            ILauncherDirectPlay.externalIdentityMatch(response, request),
+        )
+        assertTrue(ILauncherDirectPlay.loadedMatches(response, request, trustIdentity = false))
+    }
+
+    @Test
+    fun conflictingExternalIdentityRejectsEvenExactTitle() = runBlocking {
+        val request = requireNotNull(
+            ILauncherDirectPlay.parseRequest(
+                "cloudstreamplay://v1?title=Matrix%20Revolutions&type=movie&year=2003&tmdbId=605",
+            ),
+        )
+        val response = api.newMovieLoadResponse(
+            name = "Matrix Revolutions",
+            url = "https://example.invalid/wrong-matrix",
+            type = TvType.Movie,
+            data = "provider-payload",
+        ) {
+            year = 2003
+            addTMDbId("603")
+        }
+
+        assertEquals(
+            ILauncherDirectPlay.ExternalIdentityMatch.Conflict,
+            ILauncherDirectPlay.externalIdentityMatch(response, request),
+        )
+        assertFalse(ILauncherDirectPlay.loadedMatches(response, request, trustIdentity = false))
     }
 
     @Test
