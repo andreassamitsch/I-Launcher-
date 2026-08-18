@@ -73,10 +73,12 @@ internal object ILauncherWatchNextIntent {
         val base = cards.firstOrNull { it.parentId == target.seriesKey }
             ?: cards.firstOrNull { it.id == target.seriesKey }
             ?: return null
+        val exactEpisodeId = target.episodeId ?: base.id
         return base.copy(
-            id = target.episodeId ?: base.id,
+            id = exactEpisodeId,
             season = target.season ?: base.season,
             episode = target.episode ?: base.episode,
+            watchPos = exactEpisodeId?.let(DataStoreHelper::getViewPos) ?: base.watchPos,
         )
     }
 }
