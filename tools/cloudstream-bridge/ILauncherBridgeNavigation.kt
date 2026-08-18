@@ -10,10 +10,10 @@ import com.lagradost.cloudstream3.utils.Coroutines.main
 /**
  * Keeps externally requested playback from stacking on top of an old GeneratorPlayer.
  *
- * MainActivity is singleTask, so a launcher handoff can arrive while an old player is still the
- * current destination or deeper in CloudStream's navigation stack. Pop that player inclusively
- * before opening the newly requested episode. The Watch Next sync helper suppresses resume-pointer
- * mutation while the removed player receives its lifecycle callbacks.
+ * MainActivity is singleTask, so a launcher handoff can arrive while one or more old players are
+ * still present in CloudStream's navigation stack. Remove every player destination before opening
+ * the newly requested episode. The Watch Next sync helper suppresses resume-pointer mutation while
+ * removed players receive their lifecycle callbacks.
  */
 internal object ILauncherBridgeNavigation {
     fun replacePlayer(activity: FragmentActivity, args: Bundle) {
@@ -31,11 +31,21 @@ internal object ILauncherBridgeNavigation {
 
     private fun clearExistingPlayer(navController: NavController): Boolean {
         ILauncherWatchNextSync.beginInternalHandoff()
-        val removed = runCatching {
-            navController.popBackStack(R.id.navigation_player, true)
-        }.getOrDefault(false)
-        if (!removed) ILauncherWatchNextSync.cancelInternalHandoff()
-        return removed
+        var removedAny = false
+
+        // popBackStack(destination, inclusive=true) removes only the nearest matching destination.
+        // Repeat until no GeneratorPlayer remains, otherwise a sufficiently deep Back sequence could
+        // still uncover an even older playback session.
+        while (true) {
+            val removed = runCatching {
+                navController.popBackStack(R.id.navigation_player, true)
+            }.getOrDefault(false)
+            if (!removed) break
+            removedAny = true
+        }
+
+        if (!removedAny) ILauncherWatchNextSync.cancelInternalHandoff()
+        return removedAny
     }
 
     private fun navController(activity: FragmentActivity): NavController? =
