@@ -7,10 +7,16 @@ on:
     paths:
       - "tools/cloudstream-bridge/**"
       - ".github/workflows/cloudstream-bridge.yml"
+  pull_request:
+    branches:
+      - agent/ui-player-polish
+    paths:
+      - "tools/cloudstream-bridge/**"
+      - ".github/workflows/cloudstream-bridge.yml"
   workflow_dispatch:
 
 concurrency:
-  group: cloudstream-i-launcher-bridge-${{ github.ref }}
+  group: cloudstream-i-launcher-bridge-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -120,9 +126,10 @@ jobs:
           retention-days: 90
 
       - name: Publish stable CloudStream development download branch
+        if: github.event_name != 'pull_request'
         run: |
           git -C i-launcher config user.name "github-actions[bot]"
-          git -C i-launcher config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C i-launcher config user.email "41898282+andreassamitsch@users.noreply.github.com"
           git -C i-launcher checkout --orphan cloudstream-publish
           git -C i-launcher rm -rf .
 
