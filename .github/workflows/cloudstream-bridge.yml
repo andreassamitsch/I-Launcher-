@@ -46,6 +46,7 @@ jobs:
           python i-launcher/tools/cloudstream-bridge/apply_patch.py cloudstream
           python i-launcher/tools/cloudstream-bridge/apply_behavior_fixes.py cloudstream
           python i-launcher/tools/cloudstream-bridge/apply_search_matching_fix.py cloudstream
+          python i-launcher/tools/cloudstream-bridge/apply_provider_interop_fix.py cloudstream
           python i-launcher/tools/cloudstream-bridge/apply_legacy_watchnext_fix.py cloudstream
           python i-launcher/tools/cloudstream-bridge/apply_dev_version.py cloudstream
 
@@ -89,83 +90,85 @@ jobs:
           ./gradlew :app:testPrereleaseDebugUnitTest :app:assemblePrereleaseDebug --stacktrace
 
       - name: Verify package and prepare development channel
+        id: bridge_artifact
         run: |
-          APK=$(find cloudstream/app/build/outputs/apk/prerelease/debug -name '*.apk' -type f | head -n 1)
-          if [ -z "$APK" ]; then
-            echo "::error::CloudStream prerelease debug APK not found"
+          APK_PATH="$(find cloudstream/app/build/outputs/apk -type f -name '*prerelease*debug*.apk' -print -quit)"
+          if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
+            echo "::error::CloudStream prerelease debug APK not found."
             exit 1
           fi
 
-          cp "$APK" CloudStream-I-Launcher-Bridge.apk
-          SHA256=$(sha256sum CloudStream-I-Launcher-Bridge.apk | awk '{print $1}')
-          printf '%s  %s\n' "$SHA256" "CloudStream-I-Launcher-Bridge.apk" > CloudStream-I-Launcher-Bridge.sha256
+          mkdir -p bridge-output
+          cp "$APK_PATH" bridge-output/CloudStream-I-Launcher-Bridge.apk
+          SHA256="$(sha256sum bridge-output/CloudStream-I-Launcher-Bridge.apk | awk '{print $1}')"
+          echo "$SHA256  CloudStream-I-Launcher-Bridge.apk" > bridge-output/CloudStream-I-Launcher-Bridge.sha256
 
-          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)
-          if [ -z "$AAPT" ]; then
-            echo "::error::aapt not found"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt -print | sort -V | tail -1)"
+          if [ -z "$AAPT" ] || [ ! -x "$AAPT" ]; then
+            echo "::error::aapt not found in Android SDK build-tools."
             exit 1
           fi
-          BADGING=$($AAPT dump badging CloudStream-I-Launcher-Bridge.apk | head -n 1)
-          VERSION_CODE=$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
-          VERSION_NAME=$(printf '%s\n' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
-          if [ -z "$VERSION_CODE" ] || [ -z "$VERSION_NAME" ]; then
-            echo "::error::Unable to read APK version metadata"
+          BADGING="$($AAPT dump badging bridge-output/CloudStream-I-Launcher-Bridge.apk | head -1)"
+          ACTUAL_VERSION_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
+          ACTUAL_VERSION_NAME="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")"
+          if [ "$ACTUAL_VERSION_CODE" != "$BRIDGE_VERSION_CODE" ]; then
+            echo "::error::Bridge APK versionCode $ACTUAL_VERSION_CODE does not match expected $BRIDGE_VERSION_CODE"
             exit 1
           fi
-          if [ "$VERSION_CODE" != "$BRIDGE_VERSION_CODE" ]; then
-            echo "::error::Bridge APK versionCode $VERSION_CODE does not match expected $BRIDGE_VERSION_CODE"
-            exit 1
-          fi
-          if [ "$VERSION_NAME" != "$BRIDGE_VERSION_NAME" ]; then
-            echo "::error::Bridge APK versionName $VERSION_NAME does not match expected $BRIDGE_VERSION_NAME"
+          if [ "$ACTUAL_VERSION_NAME" != "$BRIDGE_VERSION_NAME" ]; then
+            echo "::error::Bridge APK versionName $ACTUAL_VERSION_NAME does not match expected $BRIDGE_VERSION_NAME"
             exit 1
           fi
 
-          cat > update.json <<EOF
+          cat > bridge-output/update.json <<EOF
           {
-            "versionCode": $VERSION_CODE,
-            "versionName": "$VERSION_NAME",
+            "versionCode": $BRIDGE_VERSION_CODE,
+            "versionName": "$BRIDGE_VERSION_NAME",
             "apkUrl": "https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/cloudstream-downloads/CloudStream-I-Launcher-Bridge.apk",
             "sha256": "$SHA256",
             "sourceSha": "$GITHUB_SHA"
           }
           EOF
 
+          echo "apk_path=bridge-output/CloudStream-I-Launcher-Bridge.apk" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
       - name: Upload CloudStream bridge APK
         uses: actions/upload-artifact@v4
         with:
           name: CloudStream-I-Launcher-Bridge
           path: |
-            CloudStream-I-Launcher-Bridge.apk
-            CloudStream-I-Launcher-Bridge.sha256
-            update.json
-          retention-days: 90
+            bridge-output/CloudStream-I-Launcher-Bridge.apk
+            bridge-output/CloudStream-I-Launcher-Bridge.sha256
+            bridge-output/update.json
+          retention-days: 14
 
       - name: Publish stable CloudStream development download branch
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git -C i-launcher config user.name "github-actions[bot]"
-          git -C i-launcher config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git -C i-launcher checkout --orphan cloudstream-publish
-          git -C i-launcher rm -rf .
-
-          cp CloudStream-I-Launcher-Bridge.apk i-launcher/CloudStream-I-Launcher-Bridge.apk
-          cp CloudStream-I-Launcher-Bridge.sha256 i-launcher/CloudStream-I-Launcher-Bridge.sha256
-          cp update.json i-launcher/update.json
-          cat > i-launcher/README.md <<EOF
+          rm -rf cloudstream-publish
+          git clone --no-checkout "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" cloudstream-publish
+          cd cloudstream-publish
+          git checkout --orphan cloudstream-downloads-new
+          git rm -rf . >/dev/null 2>&1 || true
+          cp ../bridge-output/CloudStream-I-Launcher-Bridge.apk .
+          cp ../bridge-output/CloudStream-I-Launcher-Bridge.sha256 .
+          cp ../bridge-output/update.json .
+          touch .nojekyll
+          cat > README.md <<EOF
           # CloudStream I Launcher Bridge
 
           Diese Branch enthält die aktuelle signierte Development-APK der CloudStream-Anpassung für I Launcher.
 
           - APK: https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/cloudstream-downloads/CloudStream-I-Launcher-Bridge.apk
           - Update-Manifest: https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/cloudstream-downloads/update.json
-          - Version: $BRIDGE_VERSION_NAME ($BRIDGE_VERSION_CODE)
-          - Source: $GITHUB_SHA
+          - Version: ${BRIDGE_VERSION_NAME} (${BRIDGE_VERSION_CODE})
+          - Source: ${GITHUB_SHA}
 
           Die APK wird aus dem fixierten CloudStream-Upstream-Commit a72f9e6c3f2e25eb74ce0e7d6cc56dc33c130288 plus den versionierten Bridge-Patches gebaut und mit dem stabilen I-Launcher-Development-Key signiert.
           EOF
-          touch i-launcher/.nojekyll
-
-          git -C i-launcher add CloudStream-I-Launcher-Bridge.apk CloudStream-I-Launcher-Bridge.sha256 update.json README.md .nojekyll
-          git -C i-launcher commit -m "chore: publish CloudStream bridge $BRIDGE_VERSION_NAME"
-          git -C i-launcher push origin HEAD:cloudstream-downloads --force
+          git add CloudStream-I-Launcher-Bridge.apk CloudStream-I-Launcher-Bridge.sha256 update.json README.md .nojekyll
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "Publish CloudStream I Launcher Bridge ${BRIDGE_VERSION_NAME}"
+          git push origin HEAD:cloudstream-downloads --force
