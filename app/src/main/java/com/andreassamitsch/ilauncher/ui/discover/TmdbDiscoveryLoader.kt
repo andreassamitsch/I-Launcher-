@@ -5,6 +5,7 @@ import com.andreassamitsch.ilauncher.data.search.SearchBrowseSection
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbPeopleRepository
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbRelationsRepository
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbSearchRepository
+import com.andreassamitsch.ilauncher.data.tmdb.TmdbSeriesRepository
 import com.andreassamitsch.ilauncher.model.MediaCredits
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.MediaRelatedContent
@@ -12,6 +13,8 @@ import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.model.PersonDetails
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.model.SearchResultKind
+import com.andreassamitsch.ilauncher.model.SeriesSeason
+import com.andreassamitsch.ilauncher.model.SeriesSeasonContent
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -20,7 +23,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
 /**
- * UI-facing adapter for TMDB discovery, relations and people details.
+ * UI-facing adapter for TMDB discovery, relations, series seasons and people details.
  *
  * Optional rows, card-detail prefetch, related content and person navigation stay lazy here while
  * the repositories own network/cache policy. Prefetching is bounded so fast D-Pad movement never
@@ -30,6 +33,7 @@ class TmdbDiscoveryLoader(
     private val repository: TmdbSearchRepository,
     private val peopleRepository: TmdbPeopleRepository,
     private val relationsRepository: TmdbRelationsRepository,
+    private val seriesRepository: TmdbSeriesRepository,
 ) {
     private val prefetchedDetails = ConcurrentHashMap<String, MediaItem>()
     private val prefetching = ConcurrentHashMap.newKeySet<String>()
@@ -78,6 +82,11 @@ class TmdbDiscoveryLoader(
     suspend fun loadCredits(item: MediaItem): MediaCredits = peopleRepository.loadCredits(item)
 
     suspend fun loadPerson(personId: Int): PersonDetails? = peopleRepository.loadPerson(personId)
+
+    suspend fun loadSeriesSeasons(item: MediaItem): List<SeriesSeason> = seriesRepository.loadSeasons(item)
+
+    suspend fun loadSeriesSeason(item: MediaItem, seasonNumber: Int): SeriesSeasonContent? =
+        seriesRepository.loadSeason(item, seasonNumber)
 
     private fun rememberPrefetched(key: String, media: MediaItem) {
         prefetchedDetails[key] = media

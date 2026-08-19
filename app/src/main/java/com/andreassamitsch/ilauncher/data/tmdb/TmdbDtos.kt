@@ -50,10 +50,41 @@ internal data class TmdbMediaDetailsDto(
     @SerializedName("episode_run_time") val episodeRunTime: List<Int>? = null,
     @SerializedName("poster_path") val posterPath: String? = null,
     @SerializedName("backdrop_path") val backdropPath: String? = null,
+    val seasons: List<TmdbSeasonSummaryDto> = emptyList(),
     val images: TmdbImagesDto? = null,
     val videos: TmdbVideoResponseDto? = null,
     @SerializedName("vote_average") val voteAverage: Double? = null,
     @SerializedName("external_ids") val externalIds: TmdbExternalIdsDto? = null,
+)
+
+internal data class TmdbSeasonSummaryDto(
+    val id: Int = 0,
+    val name: String? = null,
+    @SerializedName("season_number") val seasonNumber: Int = 0,
+    @SerializedName("episode_count") val episodeCount: Int = 0,
+    @SerializedName("air_date") val airDate: String? = null,
+    @SerializedName("poster_path") val posterPath: String? = null,
+)
+
+internal data class TmdbSeasonDetailsDto(
+    val id: Int = 0,
+    val name: String? = null,
+    @SerializedName("season_number") val seasonNumber: Int = 0,
+    @SerializedName("air_date") val airDate: String? = null,
+    @SerializedName("poster_path") val posterPath: String? = null,
+    val episodes: List<TmdbSeasonEpisodeDto> = emptyList(),
+)
+
+internal data class TmdbSeasonEpisodeDto(
+    val id: Int = 0,
+    val name: String? = null,
+    val overview: String? = null,
+    @SerializedName("episode_number") val episodeNumber: Int = 0,
+    @SerializedName("season_number") val seasonNumber: Int = 0,
+    @SerializedName("air_date") val airDate: String? = null,
+    @SerializedName("still_path") val stillPath: String? = null,
+    val runtime: Int? = null,
+    @SerializedName("vote_average") val voteAverage: Double? = null,
 )
 
 internal data class TmdbMediaRelationsDto(

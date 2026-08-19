@@ -109,6 +109,13 @@ internal interface TmdbApi {
         @Query("include_video_language") includeVideoLanguage: String = "de,en,null",
     ): TmdbMediaDetailsDto
 
+    @GET("3/tv/{seriesId}/season/{seasonNumber}")
+    suspend fun seasonDetails(
+        @Path("seriesId") seriesId: Int,
+        @Path("seasonNumber") seasonNumber: Int,
+        @Query("language") language: String,
+    ): TmdbSeasonDetailsDto
+
     @GET("3/movie/{movieId}")
     suspend fun movieRelations(
         @Path("movieId") movieId: Int,

@@ -5,6 +5,7 @@ on:
     branches:
       - agent/ui-player-polish
       - agent/cloudstream-direct-play
+      - agent/series-seasons-resume
     paths:
       - "app/**"
       - "build.gradle.kts"

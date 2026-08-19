@@ -12,6 +12,7 @@ import com.andreassamitsch.ilauncher.data.tmdb.TmdbPeopleRepository
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbRelationsRepository
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbRepository
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbSearchRepository
+import com.andreassamitsch.ilauncher.data.tmdb.TmdbSeriesRepository
 import com.andreassamitsch.ilauncher.data.tv.PreviewChannelsRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextEnrichmentRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextRepository
@@ -32,11 +33,13 @@ class MainActivity : ComponentActivity() {
         val tmdbSearchRepository = TmdbSearchRepository(applicationContext)
         val tmdbPeopleRepository = TmdbPeopleRepository(applicationContext)
         val tmdbRelationsRepository = TmdbRelationsRepository(applicationContext)
+        val tmdbSeriesRepository = TmdbSeriesRepository(applicationContext)
         val searchRepository = SearchRepository(tmdbSearchRepository)
         val tmdbDiscoveryLoader = TmdbDiscoveryLoader(
             tmdbSearchRepository,
             tmdbPeopleRepository,
             tmdbRelationsRepository,
+            tmdbSeriesRepository,
         )
         val watchNextEnrichmentRepository = WatchNextEnrichmentRepository(tmdbRepository)
         val openWebifRepository = OpenWebifRepository(applicationContext)
