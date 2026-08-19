@@ -320,6 +320,7 @@ private fun SettingsSidebar(
     updateState: UpdateState,
     modifier: Modifier = Modifier,
 ) {
+    val scrollState = rememberScrollState()
     Column(
         modifier = modifier
             .background(
@@ -327,7 +328,6 @@ private fun SettingsSidebar(
                 shape = RoundedCornerShape(22.dp),
             )
             .padding(horizontal = 14.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
             text = "Einstellungen",
@@ -335,60 +335,70 @@ private fun SettingsSidebar(
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
         )
-        Spacer(modifier = Modifier.size(2.dp))
+        Spacer(modifier = Modifier.size(4.dp))
 
-        SettingsCategory.entries.forEach { category ->
-            val trailing = when (category) {
-                SettingsCategory.Setup -> when {
-                    !hasTvListingsPermission -> "!"
-                    !launcherReady -> "!"
-                    else -> null
-                }
-                SettingsCategory.Content -> null
-                SettingsCategory.LiveTv -> null
-                SettingsCategory.Diagnostics -> if (diagnosticsNeedAttention) "!" else null
-                SettingsCategory.About -> when (updateState) {
-                    is UpdateState.Available,
-                    is UpdateState.ReadyToInstall,
-                    is UpdateState.Error,
-                    is UpdateState.SigningRequired -> "•"
-                    else -> null
-                }
-            }
-            ListItem(
-                selected = selectedCategory == category,
-                onClick = { onSelectCategory(category) },
-                headlineContent = {
-                    Text(
-                        text = category.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = if (selectedCategory == category) FontWeight.SemiBold else null,
-                    )
-                },
-                supportingContent = {
-                    Text(
-                        text = category.subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                },
-                leadingContent = {
-                    SettingsIconGlyph(category.icon)
-                },
-                trailingContent = trailing?.let { marker ->
-                    {
-                        Text(
-                            text = marker,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = if (marker == "!") {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                LocalContentColor.current
-                            },
-                        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scrollState)
+                .touchScrollFallback(scrollState, Orientation.Vertical),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            SettingsCategory.entries.forEach { category ->
+                val trailing = when (category) {
+                    SettingsCategory.Setup -> when {
+                        !hasTvListingsPermission -> "!"
+                        !launcherReady -> "!"
+                        else -> null
                     }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
+                    SettingsCategory.Content -> null
+                    SettingsCategory.LiveTv -> null
+                    SettingsCategory.Diagnostics -> if (diagnosticsNeedAttention) "!" else null
+                    SettingsCategory.About -> when (updateState) {
+                        is UpdateState.Available,
+                        is UpdateState.ReadyToInstall,
+                        is UpdateState.Error,
+                        is UpdateState.SigningRequired -> "•"
+                        else -> null
+                    }
+                }
+                ListItem(
+                    selected = selectedCategory == category,
+                    onClick = { onSelectCategory(category) },
+                    headlineContent = {
+                        Text(
+                            text = category.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = if (selectedCategory == category) FontWeight.SemiBold else null,
+                        )
+                    },
+                    supportingContent = {
+                        Text(
+                            text = category.subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    },
+                    leadingContent = {
+                        SettingsIconGlyph(category.icon)
+                    },
+                    trailingContent = trailing?.let { marker ->
+                        {
+                            Text(
+                                text = marker,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = if (marker == "!") {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    LocalContentColor.current
+                                },
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Spacer(modifier = Modifier.size(2.dp))
         }
     }
 }
@@ -519,6 +529,7 @@ private fun SettingsSetupPane(
                 "Für Weiterschauen und App-Kanäle wird die TV-Freigabe benötigt."
             },
             value = if (hasTvListingsPermission) "Freigegeben" else "Freigabe fehlt",
+            actionLabel = if (hasTvListingsPermission) "Öffnen" else "Freigeben",
             attention = !hasTvListingsPermission,
             onClick = if (hasTvListingsPermission) onOpenTvPermissions else onRequestTvListingsPermission,
         )
@@ -526,24 +537,27 @@ private fun SettingsSetupPane(
             SettingsActionRow(
                 title = "App-Berechtigungen öffnen",
                 subtitle = "Android-App-Info und Berechtigungen anzeigen.",
+                actionLabel = "Öffnen",
                 onClick = onOpenTvPermissions,
             )
         }
 
         SettingsSectionHeader("Home & Start")
+        val launcherActive = isDefaultHome || isHomeRoleHeld
         SettingsActionRow(
             title = "Standard-Launcher",
             subtitle = when {
-                isDefaultHome || isHomeRoleHeld -> "I Launcher ist die aktive Home-App."
+                launcherActive -> "I Launcher ist die aktive Home-App."
                 isHomeRoleAvailable -> "Android unterstützt die Home-Rolle."
                 else -> "Der TV bietet keine frei wählbare Home-Rolle an."
             },
-            value = if (isDefaultHome || isHomeRoleHeld) "Aktiv" else "Einrichten",
-            attention = !isDefaultHome && !isHomeRoleHeld,
+            value = if (launcherActive) "Aktiv" else "Nicht aktiv",
+            actionLabel = if (launcherActive) "Öffnen" else "Einrichten",
+            attention = !launcherActive,
             onClick = onOpenDefaultHome,
         )
 
-        if (!isDefaultHome && !isHomeRoleHeld) {
+        if (!launcherActive) {
             SettingsActionRow(
                 title = "Home-Fallback",
                 subtitle = if (isHomeOverrideEnabled) {
@@ -552,6 +566,7 @@ private fun SettingsSetupPane(
                     "Fallback für TVs ohne frei wählbaren Standard-Launcher."
                 },
                 value = if (isHomeOverrideEnabled) "Aktiv" else "Aus",
+                actionLabel = "Öffnen",
                 attention = !isHomeOverrideEnabled,
                 onClick = onOpenAccessibility,
             )
@@ -560,6 +575,7 @@ private fun SettingsSetupPane(
                 SettingsActionRow(
                     title = "Eingeschränkte Einstellungen",
                     subtitle = "App-Info öffnen, falls Android den Bedienungshilfe-Zugriff blockiert.",
+                    actionLabel = "Öffnen",
                     onClick = onOpenAppDetails,
                 )
             }
@@ -627,6 +643,7 @@ private fun SettingsContentPane(
             if (hiddenWatchNextPackages.isNotEmpty()) {
                 SettingsActionRow(
                     title = "Alle Weiterschauen-Quellen anzeigen",
+                    actionLabel = "Anzeigen",
                     onClick = onShowAllWatchNextSources,
                 )
             }
@@ -662,6 +679,7 @@ private fun SettingsContentPane(
                 if (hiddenPreviewChannelIds.isNotEmpty()) {
                     SettingsActionRow(
                         title = "Alle App-Kanäle anzeigen",
+                        actionLabel = "Anzeigen",
                         onClick = onShowAllPreviewChannels,
                     )
                 }
@@ -689,7 +707,7 @@ private fun SettingsLiveTvPane(
         SettingsActionRow(
             title = "Gigablue & OpenWebif",
             subtitle = "Verbindung, Bouquets, Sender, EPG und Streams verwalten.",
-            value = "Öffnen",
+            actionLabel = "Öffnen",
             onClick = onOpenLiveTv,
             modifier = Modifier.focusRequester(restoreRequester),
         )
@@ -733,7 +751,7 @@ private fun SettingsDiagnosticsPane(
         )
         SettingsActionRow(
             title = if (showWatchNextDiagnosisDetails) "Watch-Next-Rohdaten ausblenden" else "Watch-Next-Rohdaten anzeigen",
-            value = if (showWatchNextDiagnosisDetails) "Offen" else null,
+            actionLabel = if (showWatchNextDiagnosisDetails) "Ausblenden" else "Anzeigen",
             onClick = onToggleWatchNextDiagnosisDetails,
         )
         if (showWatchNextDiagnosisDetails) {
@@ -777,7 +795,7 @@ private fun SettingsDiagnosticsPane(
         )
         SettingsActionRow(
             title = if (showPreviewDiagnosisDetails) "App-Kanal-Details ausblenden" else "App-Kanal-Details anzeigen",
-            value = if (showPreviewDiagnosisDetails) "Offen" else null,
+            actionLabel = if (showPreviewDiagnosisDetails) "Ausblenden" else "Anzeigen",
             onClick = onTogglePreviewDiagnosisDetails,
         )
         if (showPreviewDiagnosisDetails) {
@@ -829,7 +847,7 @@ private fun SettingsDiagnosticsPane(
         )
         SettingsActionRow(
             title = if (showTmdbDiagnosisDetails) "TMDB-Auflösungen ausblenden" else "TMDB-Auflösungen anzeigen",
-            value = if (showTmdbDiagnosisDetails) "Offen" else null,
+            actionLabel = if (showTmdbDiagnosisDetails) "Ausblenden" else "Anzeigen",
             onClick = onToggleTmdbDiagnosisDetails,
         )
         if (showTmdbDiagnosisDetails) {
@@ -867,6 +885,7 @@ private fun SettingsAboutPane(
     enrichedItemCount: Int,
 ) {
     val scope = rememberCoroutineScope()
+    val updateCheckBusy = updateState is UpdateState.Checking || updateState is UpdateState.Downloading
 
     SettingsContentPane(
         title = "Über I Launcher",
@@ -884,17 +903,28 @@ private fun SettingsAboutPane(
         )
         SettingsActionRow(
             title = "Nach Updates suchen",
-            subtitle = "Prüft den signierten Development-Kanal.",
-            onClick = {
-                onClearUpdateMessage()
-                scope.launch { updateManager.checkForUpdates() }
+            subtitle = when (updateState) {
+                UpdateState.Checking -> "Der Development-Kanal wird gerade geprüft."
+                is UpdateState.Downloading -> "Ein Update wird bereits heruntergeladen."
+                else -> "Prüft den signierten Development-Kanal."
             },
-            enabled = updateState !is UpdateState.Checking && updateState !is UpdateState.Downloading,
+            actionLabel = when (updateState) {
+                UpdateState.Checking -> "Prüfung läuft"
+                is UpdateState.Downloading -> "Download läuft"
+                else -> "Prüfen"
+            },
+            onClick = {
+                if (!updateCheckBusy) {
+                    onClearUpdateMessage()
+                    scope.launch { updateManager.checkForUpdates() }
+                }
+            },
         )
 
         when (updateState) {
             is UpdateState.Available -> SettingsActionRow(
                 title = "Update ${updateState.info.versionName} herunterladen",
+                actionLabel = "Herunterladen",
                 onClick = { updateManager.startDownload(updateState.info) },
             )
 
@@ -902,11 +932,13 @@ private fun SettingsAboutPane(
                 if (!updateManager.canRequestPackageInstalls()) {
                     SettingsActionRow(
                         title = "Installation aus dieser Quelle erlauben",
+                        actionLabel = "Öffnen",
                         onClick = { updateManager.openUnknownSourcesSettings() },
                     )
                 }
                 SettingsActionRow(
                     title = "Update ${updateState.info.versionName} installieren",
+                    actionLabel = "Installieren",
                     onClick = {
                         onClearUpdateMessage()
                         scope.launch {
@@ -1026,6 +1058,7 @@ private fun SettingsActionRow(
     title: String,
     subtitle: String? = null,
     value: String? = null,
+    actionLabel: String = "Ausführen",
     attention: Boolean = false,
     enabled: Boolean = true,
     onClick: () -> Unit,
@@ -1052,7 +1085,7 @@ private fun SettingsActionRow(
         trailingContent = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 value?.let {
                     Text(
@@ -1062,8 +1095,10 @@ private fun SettingsActionRow(
                     )
                 }
                 Text(
-                    text = "›",
-                    style = MaterialTheme.typography.headlineSmall,
+                    text = actionLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = LocalContentColor.current,
                 )
             }
         },
