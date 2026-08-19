@@ -66,6 +66,7 @@ import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.HomeLauncherManager
 import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
+import com.andreassamitsch.ilauncher.ui.components.touchTap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -1142,7 +1143,9 @@ private fun SettingsActionRow(
                 )
             }
         },
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .touchTap(onClick = onClick, enabled = enabled),
     )
 }
 
@@ -1174,7 +1177,9 @@ private fun SettingsToggleRow(
                 onCheckedChange = null,
             )
         },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .touchTap(onClick = onClick),
     )
 }
 
