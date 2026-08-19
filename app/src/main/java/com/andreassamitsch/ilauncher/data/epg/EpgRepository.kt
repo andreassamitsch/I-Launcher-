@@ -25,6 +25,20 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.xml.sax.SAXException
 
+internal fun epgMediaTypeHint(program: LiveTvProgram): MediaType {
+    if (program.seasonNumber != null && program.episodeNumber != null) return MediaType.Episode
+    val categories = program.categories.orEmpty()
+        .joinToString(" ")
+        .let(EpgChannelMatcher::normalizeName)
+    return when {
+        listOf("spielfilm", "film", "movie").any(categories::contains) -> MediaType.Movie
+        listOf("serie", "series", "soap", "sitcom").any(categories::contains) -> MediaType.Series
+        // A missing/weak XMLTV category must not suppress lookup completely. The existing TMDB
+        // multi-search + confidence threshold remains the authority for whether a match is safe.
+        else -> MediaType.Unknown
+    }
+}
+
 class EpgRepository(
     context: Context,
     private val tmdbRepository: TmdbRepository,
@@ -337,42 +351,36 @@ class EpgRepository(
         program: LiveTvProgram,
     ): LiveTvProgram? {
         if (program.tmdbId != null) return program
-        val typeHint = mediaTypeHint(program) ?: return null
         val metadata = tmdbRepository.resolve(
             sourceKey = "epg:$serviceReference:${program.startUtcMillis}",
             lookup = MediaLookup(
                 rawTitle = program.title,
-                typeHint = typeHint,
+                typeHint = epgMediaTypeHint(program),
                 releaseYear = program.releaseYear,
                 seasonNumber = program.seasonNumber,
                 episodeNumber = program.episodeNumber,
             ),
         ) ?: return null
         val episode = metadata.episode
+        val tmdbOverview = episode?.overview ?: metadata.overview
+        val tmdbYear = episode?.airYear ?: metadata.releaseYear
         return program.copy(
-            subtitle = program.subtitle ?: episode?.title,
-            longDescription = program.longDescription ?: episode?.overview ?: metadata.overview,
-            shortDescription = program.shortDescription ?: episode?.overview ?: metadata.overview,
+            subtitle = episode?.title ?: program.subtitle,
+            longDescription = tmdbOverview ?: program.longDescription,
+            shortDescription = tmdbOverview ?: program.shortDescription,
+            releaseYear = tmdbYear ?: program.releaseYear,
             tmdbId = metadata.tmdbId,
             tmdbEpisodeId = episode?.tmdbEpisodeId,
             tmdbType = metadata.mediaType,
+            tmdbTitle = metadata.title,
+            tmdbOverview = tmdbOverview,
+            tmdbReleaseYear = tmdbYear,
+            tmdbLogoUri = metadata.logoUri,
             posterUri = metadata.posterUri,
             backdropUri = metadata.backdropUri,
             episodeStillUri = episode?.stillUri,
             voteAverage = episode?.voteAverage ?: metadata.voteAverage,
         )
-    }
-
-    private fun mediaTypeHint(program: LiveTvProgram): MediaType? {
-        if (program.seasonNumber != null && program.episodeNumber != null) return MediaType.Episode
-        val categories = program.categories.orEmpty()
-            .joinToString(" ")
-            .let(EpgChannelMatcher::normalizeName)
-        return when {
-            listOf("spielfilm", "film", "movie").any(categories::contains) -> MediaType.Movie
-            listOf("serie", "series", "soap", "sitcom").any(categories::contains) -> MediaType.Series
-            else -> null
-        }
     }
 
     private fun applyProgramEnrichment(

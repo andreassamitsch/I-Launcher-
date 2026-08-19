@@ -7,9 +7,14 @@
     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
     <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA" />
 
+    <!--
+        TV remains the primary target, but leanback is optional so the same development APK can
+        also be installed on a phone/tablet for touchscreen UI smoke tests. D-Pad/TV hardware
+        validation remains authoritative for launcher behaviour.
+    -->
     <uses-feature
         android:name="android.software.leanback"
-        android:required="true" />
+        android:required="false" />
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
@@ -23,9 +28,17 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="cloudstreamsearch" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
         <package android:name="com.lagradost.cloudstream3" />
         <package android:name="com.lagradost.cloudstream3.prerelease" />
         <package android:name="com.lagradost.cloudstream3.debug" />
+        <package android:name="com.lagradost.cloudstream3.prerelease.debug" />
         <package android:name="org.xbmc.kodi" />
     </queries>
 
@@ -37,6 +50,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ILauncher"
         android:usesCleartextTraffic="true">
+
+        <activity
+            android:name=".ui.trailer.TrailerPlayerActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
 
         <activity
             android:name=".MainActivity"
@@ -75,6 +93,10 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/home_button_accessibility_service" />
         </service>
+
+        <receiver
+            android:name=".data.update.UpdateInstallStatusReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

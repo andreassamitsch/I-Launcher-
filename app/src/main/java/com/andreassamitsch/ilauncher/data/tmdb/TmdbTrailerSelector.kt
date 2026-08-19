@@ -7,9 +7,9 @@ internal object TmdbTrailerSelector {
         .filter { it.key.isNotBlank() }
         .filter { it.type.equals("Trailer", ignoreCase = true) || it.type.equals("Teaser", ignoreCase = true) }
         .sortedWith(
-            compareBy<TmdbVideoDto> { typeRank(it.type) }
+            compareBy<TmdbVideoDto> { languageRank(it.language) }
+                .thenBy { typeRank(it.type) }
                 .thenBy { if (it.official) 0 else 1 }
-                .thenBy { languageRank(it.language) }
                 .thenByDescending { it.publishedAt.orEmpty() },
         )
         .firstOrNull()

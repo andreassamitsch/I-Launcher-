@@ -32,6 +32,9 @@ class WatchNextRepository(context: Context) {
                 trySend(Unit)
             }
         }
+        val unregisterResumeRefresh = registerTvProviderResumeRefresh(appContext) {
+            trySend(Unit)
+        }
 
         runCatching {
             resolver.registerContentObserver(
@@ -48,6 +51,7 @@ class WatchNextRepository(context: Context) {
 
         trySend(Unit)
         awaitClose {
+            unregisterResumeRefresh()
             runCatching { resolver.unregisterContentObserver(observer) }
         }
     }

@@ -1,6 +1,7 @@
 package com.andreassamitsch.ilauncher.ui.settings
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
@@ -21,7 +22,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
@@ -35,6 +35,8 @@ import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.HomeLauncherManager
 import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
+import com.andreassamitsch.ilauncher.ui.components.TouchButton
+import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -132,7 +134,9 @@ fun SettingsScreen(
     }
 
     Column(
-        modifier = modifier.verticalScroll(scrollState),
+        modifier = modifier
+            .verticalScroll(scrollState)
+            .touchScrollFallback(scrollState, Orientation.Vertical),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text(
@@ -160,15 +164,15 @@ fun SettingsScreen(
         )
 
         if (!hasTvListingsPermission) {
-            Button(onClick = onRequestTvListingsPermission) {
+            TouchButton(onClick = onRequestTvListingsPermission) {
                 Text("TV-Inhalte freigeben")
             }
-            Button(onClick = { TvProviderPermissionManager.openAppDetails(context) }) {
+            TouchButton(onClick = { TvProviderPermissionManager.openAppDetails(context) }) {
                 Text("App-Info / Berechtigungen öffnen")
             }
         }
 
-        Button(
+        TouchButton(
             onClick = { showPreviewDiagnosisDetails = !showPreviewDiagnosisDetails },
         ) {
             Text(
@@ -288,7 +292,7 @@ fun SettingsScreen(
             style = MaterialTheme.typography.titleMedium,
         )
 
-        Button(
+        TouchButton(
             onClick = { HomeLauncherManager.openDefaultHomeSelection(context) },
         ) {
             Text("Als Standard-Launcher festlegen")
@@ -296,14 +300,14 @@ fun SettingsScreen(
 
         if (!isDefaultHome && !isHomeRoleHeld) {
             if (!isHomeOverrideEnabled) {
-                Button(
+                TouchButton(
                     onClick = { HomeLauncherManager.openAppDetails(context) },
                 ) {
                     Text("1. App-Info: eingeschränkte Einstellungen erlauben")
                 }
             }
 
-            Button(
+            TouchButton(
                 onClick = { HomeLauncherManager.openAccessibilitySettings(context) },
             ) {
                 Text(
@@ -351,7 +355,7 @@ fun SettingsScreen(
 
             watchNextSources.forEach { source ->
                 val visible = source.packageName !in hiddenWatchNextPackages
-                Button(
+                TouchButton(
                     onClick = {
                         onSetWatchNextSourceVisible(source.packageName, !visible)
                     },
@@ -374,7 +378,7 @@ fun SettingsScreen(
             }
 
             if (hiddenWatchNextPackages.isNotEmpty()) {
-                Button(onClick = onShowAllWatchNextSources) {
+                TouchButton(onClick = onShowAllWatchNextSources) {
                     Text("Alle Quellen wieder anzeigen")
                 }
             }
@@ -480,7 +484,7 @@ fun SettingsScreen(
                     } else {
                         channel.title
                     }
-                    Button(
+                    TouchButton(
                         onClick = { onSetPreviewChannelVisible(channel.id, !visible) },
                     ) {
                         Text(
@@ -494,7 +498,7 @@ fun SettingsScreen(
                 }
 
                 if (hiddenPreviewChannelIds.isNotEmpty()) {
-                    Button(onClick = onShowAllPreviewChannels) {
+                    TouchButton(onClick = onShowAllPreviewChannels) {
                         Text("Alle App-Kanäle wieder anzeigen")
                     }
                 }
@@ -641,7 +645,7 @@ fun SettingsScreen(
             style = MaterialTheme.typography.bodyMedium,
         )
 
-        Button(
+        TouchButton(
             onClick = {
                 updateMessage = null
                 scope.launch { updateManager.checkForUpdates() }
@@ -652,19 +656,19 @@ fun SettingsScreen(
 
         when (val state = updateState) {
             is UpdateState.Available -> {
-                Button(onClick = { updateManager.startDownload(state.info) }) {
+                TouchButton(onClick = { updateManager.startDownload(state.info) }) {
                     Text("Update herunterladen")
                 }
             }
 
             is UpdateState.ReadyToInstall -> {
                 if (!updateManager.canRequestPackageInstalls()) {
-                    Button(onClick = { updateManager.openUnknownSourcesSettings() }) {
+                    TouchButton(onClick = { updateManager.openUnknownSourcesSettings() }) {
                         Text("Installation aus dieser Quelle erlauben")
                     }
                 }
 
-                Button(
+                TouchButton(
                     onClick = {
                         updateMessage = null
                         scope.launch {

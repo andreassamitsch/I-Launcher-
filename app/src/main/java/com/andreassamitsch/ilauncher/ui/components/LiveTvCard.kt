@@ -11,129 +11,146 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Card
+import androidx.compose.ui.zIndex
+import androidx.tv.material3.Border
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
-import java.text.DateFormat
-import java.util.Date
 
 @Composable
 fun LiveTvCard(
     channel: LiveTvChannel,
     onClick: () -> Unit,
+    onFocused: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val artwork = channel.now?.preferredArtworkUri
+    var focused by remember(channel.serviceReference) { mutableStateOf(false) }
+    val breath = rememberFocusedCardBreath(focused)
 
-    Card(
-        onClick = onClick,
-        modifier = modifier.width(300.dp),
-        scale = CardDefaults.scale(focusedScale = 1.05f),
+    Column(
+        modifier = Modifier
+            .width(172.dp)
+            .zIndex(if (focused) 1f else 0f),
     ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(146.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(97.dp),
+        ) {
+            FocusedArtworkGlow(
+                artworkUri = artwork,
+                focused = focused,
+                breath = breath,
+            )
+
+            TouchCard(
+                onClick = onClick,
+                modifier = modifier
+                    .fillMaxSize()
+                    .onFocusChanged { focusState ->
+                        focused = focusState.isFocused
+                        if (focusState.isFocused) onFocused?.invoke()
+                    },
+                scale = CardDefaults.scale(focusedScale = 1.045f),
+                shape = CardDefaults.shape(shape = FocusedMediaCardShape),
+                border = CardDefaults.border(
+                    border = Border.None,
+                    focusedBorder = Border.None,
+                    pressedBorder = Border.None,
+                ),
             ) {
-                if (!artwork.isNullOrBlank()) {
-                    AsyncImage(
-                        model = artwork,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else if (!channel.piconUri.isNullOrBlank()) {
-                    AsyncImage(
-                        model = channel.piconUri,
-                        contentDescription = channel.name,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .padding(14.dp)
-                            .size(width = 180.dp, height = 62.dp),
-                    )
-                } else {
-                    Text(
-                        text = channel.name.take(1).uppercase(),
-                        style = MaterialTheme.typography.displayMedium,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    if (!artwork.isNullOrBlank()) {
+                        AsyncImage(
+                            model = artwork,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else if (!channel.piconUri.isNullOrBlank()) {
+                        AsyncImage(
+                            model = channel.piconUri,
+                            contentDescription = channel.name,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(12.dp)
+                                .size(width = 122.dp, height = 42.dp),
+                        )
+                    } else {
+                        Text(
+                            text = channel.name.take(1).uppercase(),
+                            style = MaterialTheme.typography.displayMedium,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
 
-                if (!artwork.isNullOrBlank() && !channel.piconUri.isNullOrBlank()) {
-                    AsyncImage(
-                        model = channel.piconUri,
-                        contentDescription = channel.name,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(10.dp)
-                            .size(width = 82.dp, height = 38.dp),
-                    )
-                }
+                    if (!artwork.isNullOrBlank() && !channel.piconUri.isNullOrBlank()) {
+                        AsyncImage(
+                            model = channel.piconUri,
+                            contentDescription = channel.name,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(5.dp)
+                                .size(width = 46.dp, height = 20.dp),
+                        )
+                    }
 
-                channel.progressFraction()?.let { progress ->
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .fillMaxWidth()
-                            .height(5.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.88f)),
-                    ) {
+                    channel.progressFraction()?.let { progress ->
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth(progress)
-                                .fillMaxHeight()
-                                .background(MaterialTheme.colorScheme.primary),
-                        )
+                                .align(Alignment.BottomStart)
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.76f)),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(progress)
+                                    .fillMaxHeight()
+                                    .background(MaterialTheme.colorScheme.primary),
+                            )
+                        }
                     }
                 }
             }
 
-            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                Text(
-                    text = channel.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = channel.now?.title ?: "Keine EPG-Daten",
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                channel.now?.let { program ->
-                    Text(
-                        text = "${formatTime(program.startUtcMillis)}–${formatTime(program.endUtcMillis)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                channel.next?.let { next ->
-                    Text(
-                        text = "Danach: ${next.title}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+            FocusedBreathingBorder(
+                focused = focused,
+                breath = breath,
+            )
         }
+
+        Text(
+            text = channel.now?.title ?: channel.name,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp)
+                .padding(top = 5.dp, start = 2.dp, end = 2.dp)
+                .alpha(if (focused) 1f else 0.82f),
+        )
     }
 }
-
-private fun formatTime(utcMillis: Long): String =
-    DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(utcMillis))

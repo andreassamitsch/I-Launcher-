@@ -239,6 +239,26 @@ class UpdateManager(context: Context) {
             return InstallResult.Error("APK-Prüfsumme stimmt nicht.")
         }
 
+        if (UpdateInstallPolicy.shouldUseRestrictedSettingsSafeSession(Build.VERSION.SDK_INT)) {
+            val sessionResult = withContext(Dispatchers.IO) {
+                runCatching { PackageSessionUpdater(appContext).install(apkUri) }
+            }
+            return sessionResult.fold(
+                onSuccess = { InstallResult.Started },
+                onFailure = { throwable ->
+                    val message = throwable.message
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "PackageInstaller-Session konnte nicht gestartet werden."
+                    _state.value = UpdateState.Error(message)
+                    InstallResult.Error(message)
+                },
+            )
+        }
+
+        return installWithLegacyPackageInstaller(apkUri)
+    }
+
+    private fun installWithLegacyPackageInstaller(apkUri: Uri): InstallResult {
         val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
             data = apkUri
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

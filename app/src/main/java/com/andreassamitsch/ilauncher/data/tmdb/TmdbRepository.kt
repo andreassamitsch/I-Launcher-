@@ -8,11 +8,24 @@ import com.andreassamitsch.ilauncher.data.database.TmdbEpisodeEntity
 import com.andreassamitsch.ilauncher.data.database.TmdbMappingEntity
 import com.andreassamitsch.ilauncher.data.database.TmdbMediaEntity
 import com.andreassamitsch.ilauncher.model.MediaType
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAG = "TMDB_RESOLVER"
+
+internal fun TmdbMediaDetailsDto.preferredHeroBackdropPath(): String? {
+    backdropPath?.takeIf { it.isNotBlank() }?.let { return it }
+    val candidates = images?.backdrops.orEmpty().filter { !it.filePath.isNullOrBlank() }
+    return candidates
+        .filter { it.language == null }
+        .maxByOrNull { it.voteAverage }
+        ?.filePath
+        ?: candidates.maxByOrNull { it.voteAverage }?.filePath
+}
+
+internal fun tmdbSearchYearAttempts(releaseYear: Int?): List<Int?> =
+    if (releaseYear == null) listOf(null) else listOf(releaseYear, null)
 
 class TmdbRepository(
     context: Context,
@@ -27,10 +40,7 @@ class TmdbRepository(
     val isConfigured: Boolean
         get() = network.isConfigured
 
-    suspend fun resolve(
-        sourceKey: String,
-        lookup: MediaLookup,
-    ): TmdbMetadata? = withContext(Dispatchers.IO) {
+    suspend fun resolve(sourceKey: String, lookup: MediaLookup): TmdbMetadata? = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         cleanExpiredCacheOnce(now)
         val parsed = MediaTitleParser.parse(lookup)
@@ -42,17 +52,19 @@ class TmdbRepository(
 
         if (cachedMapping != null) {
             if (cachedMapping.tmdbId == null || cachedMapping.mediaType == null) {
-                return@withContext null
+                if (!network.isConfigured || !shouldRetryNegativeMapping(cachedMapping.updatedAtUtcMillis, now)) {
+                    return@withContext null
+                }
+                return@withContext runCatching {
+                    resolveFromNetwork(sourceKey, parsed, now)
+                }.onFailure { throwable ->
+                    Log.w(TAG, "TMDB negative-mapping retry failed (${throwable.javaClass.simpleName})")
+                }.getOrNull()
             }
 
             val cached = cachedMetadata(cachedMapping, parsed, now)
-            if (cached != null && now - cached.second <= REFRESH_AFTER_MILLIS) {
-                return@withContext cached.first
-            }
-            if (!network.isConfigured) {
-                return@withContext cached?.first
-            }
-
+            if (cached != null && now - cached.second <= REFRESH_AFTER_MILLIS) return@withContext cached.first
+            if (!network.isConfigured) return@withContext cached?.first
             val refreshed = runCatching {
                 refreshKnownMapping(cachedMapping, parsed, now)
             }.onFailure { throwable ->
@@ -62,12 +74,9 @@ class TmdbRepository(
         }
 
         if (!network.isConfigured) return@withContext null
-
-        runCatching {
-            resolveFromNetwork(sourceKey, parsed, now)
-        }.onFailure { throwable ->
-            Log.w(TAG, "TMDB lookup failed (${throwable.javaClass.simpleName})")
-        }.getOrNull()
+        runCatching { resolveFromNetwork(sourceKey, parsed, now) }
+            .onFailure { throwable -> Log.w(TAG, "TMDB lookup failed (${throwable.javaClass.simpleName})") }
+            .getOrNull()
     }
 
     private suspend fun resolveFromNetwork(
@@ -75,8 +84,7 @@ class TmdbRepository(
         parsed: ParsedMediaLookup,
         now: Long,
     ): TmdbMetadata? {
-        val candidates = searchCandidates(parsed)
-        val match = TmdbMatcher.bestMatch(parsed, candidates)
+        val match = searchBestMatch(parsed)
         if (match == null) {
             dao.upsertMapping(
                 TmdbMappingEntity(
@@ -107,12 +115,25 @@ class TmdbRepository(
             updatedAtUtcMillis = now,
         )
         dao.upsertMapping(mapping)
-
-        Log.d(
-            TAG,
-            "TMDB match accepted: id=${match.candidate.id}, type=${match.candidate.type}, confidence=${"%.2f".format(match.confidence)}",
-        )
+        Log.d(TAG, "TMDB match accepted: id=${match.candidate.id}, type=${match.candidate.type}, confidence=${"%.2f".format(match.confidence)}")
         return refreshKnownMapping(mapping, parsed, now)
+    }
+
+    private suspend fun searchBestMatch(parsed: ParsedMediaLookup): TmdbMatch? {
+        if (parsed.typeHint == MediaType.Unknown) {
+            return TmdbMatcher.bestMatch(parsed, searchCandidates(parsed, null))
+        }
+
+        // Source years are useful hints but are not always the TMDB premiere year. For example,
+        // providers may label a show with a production year while TMDB stores the first-air year.
+        // Keep the strict year-filtered request first, then retry without the server-side year
+        // filter only when no confident match was found. The original parsed year remains in the
+        // matcher and still contributes to confidence (including the existing +/-1 tolerance).
+        for (searchYear in tmdbSearchYearAttempts(parsed.releaseYear)) {
+            val match = TmdbMatcher.bestMatch(parsed, searchCandidates(parsed, searchYear))
+            if (match != null) return match
+        }
+        return null
     }
 
     private suspend fun refreshKnownMapping(
@@ -123,22 +144,17 @@ class TmdbRepository(
         val tmdbId = mapping.tmdbId ?: return null
         val mediaType = mapping.mediaType.toMediaType()
         if (mediaType == MediaType.Unknown) return null
-
         val details = when (mediaType) {
             MediaType.Movie -> network.api.movieDetails(tmdbId, LANGUAGE)
             MediaType.Series -> network.api.tvDetails(tmdbId, LANGUAGE)
-            MediaType.Episode,
-            MediaType.Unknown,
-            -> return null
+            MediaType.Episode, MediaType.Unknown -> return null
         }
-
         val mediaEntity = details.toEntity(mediaType, now)
         dao.upsertMedia(mediaEntity)
 
         if (
             parsed.typeHint == MediaType.Episode &&
-            parsed.seasonNumber != null &&
-            parsed.episodeNumber != null &&
+            parsed.seasonNumber != null && parsed.episodeNumber != null &&
             mediaType == MediaType.Series
         ) {
             val episodeDto = network.api.episodeDetails(
@@ -148,12 +164,7 @@ class TmdbRepository(
                 language = LANGUAGE,
             )
             dao.upsertEpisode(
-                episodeDto.toEntity(
-                    seriesTmdbId = tmdbId,
-                    seasonNumber = parsed.seasonNumber,
-                    episodeNumber = parsed.episodeNumber,
-                    now = now,
-                ),
+                episodeDto.toEntity(tmdbId, parsed.seasonNumber, parsed.episodeNumber, now),
             )
         }
 
@@ -174,32 +185,23 @@ class TmdbRepository(
         val mediaType = mapping.mediaType.toMediaType()
         val media = dao.media(mediaKey(mediaType, tmdbId)) ?: return null
         if (now - media.updatedAtUtcMillis > CACHE_MAX_AGE_MILLIS) return null
-
         val imageConfiguration = imageConfigurationStore.loadFresh(now)
-        val needsEpisodeDetails =
-            parsed.typeHint == MediaType.Episode &&
-                parsed.seasonNumber != null &&
-                parsed.episodeNumber != null &&
-                mediaType == MediaType.Series
+        val needsEpisodeDetails = parsed.typeHint == MediaType.Episode &&
+            parsed.seasonNumber != null && parsed.episodeNumber != null && mediaType == MediaType.Series
         val episodeEntity = if (needsEpisodeDetails) {
-            dao.episode(
-                episodeKey(
-                    seriesTmdbId = tmdbId,
-                    season = parsed.seasonNumber!!,
-                    episode = parsed.episodeNumber!!,
-                ),
-            )
-        } else {
-            null
-        }
-        val videoLookupComplete = media.videoLookupComplete &&
-            (!needsEpisodeDetails || episodeEntity?.videoLookupComplete == true)
-
+            dao.episode(episodeKey(tmdbId, parsed.seasonNumber!!, parsed.episodeNumber!!))
+        } else null
+        val mediaTrailerPolicyFresh = media.updatedAtUtcMillis >= TRAILER_LANGUAGE_POLICY_CUTOFF_UTC_MILLIS
+        val episodeTrailerPolicyFresh = !needsEpisodeDetails ||
+            (episodeEntity?.updatedAtUtcMillis ?: 0L) >= TRAILER_LANGUAGE_POLICY_CUTOFF_UTC_MILLIS
+        val videoLookupComplete = media.videoLookupComplete && mediaTrailerPolicyFresh &&
+            (!needsEpisodeDetails || episodeEntity?.videoLookupComplete == true) && episodeTrailerPolicyFresh
+        val heroArtworkPolicyFresh = media.updatedAtUtcMillis >= HERO_BACKDROP_POLICY_CUTOFF_UTC_MILLIS
         return media.toMetadata(
             confidence = mapping.confidence ?: 1f,
             episode = episodeEntity?.toMetadata(imageConfiguration),
             imageConfiguration = imageConfiguration,
-        ) to if (videoLookupComplete) media.updatedAtUtcMillis else 0L
+        ) to if (videoLookupComplete && heroArtworkPolicyFresh) media.updatedAtUtcMillis else 0L
     }
 
     private suspend fun loadEpisode(
@@ -209,32 +211,22 @@ class TmdbRepository(
     ): TmdbEpisodeMetadata? {
         val season = parsed.seasonNumber ?: return null
         val episode = parsed.episodeNumber ?: return null
-        return dao.episode(episodeKey(seriesTmdbId, season, episode))
-            ?.toMetadata(imageConfiguration)
+        return dao.episode(episodeKey(seriesTmdbId, season, episode))?.toMetadata(imageConfiguration)
     }
 
-    private suspend fun searchCandidates(parsed: ParsedMediaLookup): List<TmdbCandidate> {
+    private suspend fun searchCandidates(
+        parsed: ParsedMediaLookup,
+        searchYear: Int?,
+    ): List<TmdbCandidate> {
         val response = when (parsed.typeHint) {
-            MediaType.Movie -> network.api.searchMovies(
-                query = parsed.title,
-                language = LANGUAGE,
-                releaseYear = parsed.releaseYear,
+            MediaType.Movie -> network.api.searchMovies(parsed.title, LANGUAGE, releaseYear = searchYear)
+            MediaType.Series, MediaType.Episode -> network.api.searchTv(
+                parsed.title,
+                LANGUAGE,
+                firstAirDateYear = searchYear,
             )
-
-            MediaType.Series,
-            MediaType.Episode,
-            -> network.api.searchTv(
-                query = parsed.title,
-                language = LANGUAGE,
-                firstAirDateYear = parsed.releaseYear,
-            )
-
-            MediaType.Unknown -> network.api.searchMulti(
-                query = parsed.title,
-                language = LANGUAGE,
-            )
+            MediaType.Unknown -> network.api.searchMulti(parsed.title, LANGUAGE)
         }
-
         return response.results.mapNotNull { dto ->
             val type = when {
                 dto.mediaType == "movie" -> MediaType.Movie
@@ -244,22 +236,16 @@ class TmdbRepository(
                 else -> MediaType.Unknown
             }
             if (type == MediaType.Unknown) return@mapNotNull null
-
             val title = when (type) {
                 MediaType.Movie -> dto.title
                 MediaType.Series -> dto.name
                 else -> null
-            }?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-
+            }?.takeIf(String::isNotBlank) ?: return@mapNotNull null
             TmdbCandidate(
                 id = dto.id,
                 type = type,
                 title = title,
-                originalTitle = when (type) {
-                    MediaType.Movie -> dto.originalTitle
-                    MediaType.Series -> dto.originalName
-                    else -> null
-                },
+                originalTitle = if (type == MediaType.Movie) dto.originalTitle else dto.originalName,
                 releaseYear = yearOf(dto.releaseDate ?: dto.firstAirDate),
                 popularity = dto.popularity,
             )
@@ -269,11 +255,9 @@ class TmdbRepository(
     private suspend fun ensureImageConfiguration(now: Long): TmdbImageConfiguration? {
         imageConfigurationStore.loadFresh(now)?.let { return it }
         if (!network.isConfigured) return null
-        return runCatching {
-            imageConfigurationStore.save(network.api.configuration().images, now)
-        }.onFailure { throwable ->
-            Log.w(TAG, "TMDB image configuration failed (${throwable.javaClass.simpleName})")
-        }.getOrNull()
+        return runCatching { imageConfigurationStore.save(network.api.configuration().images, now) }
+            .onFailure { throwable -> Log.w(TAG, "TMDB image configuration failed (${throwable.javaClass.simpleName})") }
+            .getOrNull()
     }
 
     private suspend fun cleanExpiredCacheOnce(now: Long) {
@@ -285,10 +269,8 @@ class TmdbRepository(
     }
 
     private fun TmdbMappingEntity.matches(parsed: ParsedMediaLookup): Boolean =
-        normalizedTitle == parsed.normalizedTitle &&
-            releaseYear == parsed.releaseYear &&
-            seasonNumber == parsed.seasonNumber &&
-            episodeNumber == parsed.episodeNumber
+        normalizedTitle == parsed.normalizedTitle && releaseYear == parsed.releaseYear &&
+            seasonNumber == parsed.seasonNumber && episodeNumber == parsed.episodeNumber
 
     private fun TmdbMediaDetailsDto.toEntity(mediaType: MediaType, now: Long): TmdbMediaEntity {
         val resolvedTitle = when (mediaType) {
@@ -301,15 +283,9 @@ class TmdbRepository(
             MediaType.Series -> originalName
             else -> null
         }
-        val preferredLogo = images?.logos
-            .orEmpty()
-            .sortedWith(
-                compareBy<TmdbImageDto> { languageRank(it.language) }
-                    .thenByDescending { it.voteAverage },
-            )
-            .firstOrNull()
-            ?.filePath
-
+        val preferredLogo = images?.logos.orEmpty()
+            .sortedWith(compareBy<TmdbImageDto> { languageRank(it.language) }.thenByDescending { it.voteAverage })
+            .firstOrNull()?.filePath
         return TmdbMediaEntity(
             mediaKey = mediaKey(mediaType, id),
             tmdbId = id,
@@ -320,7 +296,7 @@ class TmdbRepository(
             releaseYear = yearOf(releaseDate ?: firstAirDate),
             runtimeMinutes = runtime ?: episodeRunTime?.firstOrNull(),
             posterPath = posterPath,
-            backdropPath = backdropPath,
+            backdropPath = preferredHeroBackdropPath(),
             logoPath = preferredLogo,
             voteAverage = voteAverage,
             imdbId = externalIds?.imdbId,
@@ -378,9 +354,7 @@ class TmdbRepository(
         confidence = confidence,
     )
 
-    private fun TmdbEpisodeEntity.toMetadata(
-        imageConfiguration: TmdbImageConfiguration?,
-    ) = TmdbEpisodeMetadata(
+    private fun TmdbEpisodeEntity.toMetadata(imageConfiguration: TmdbImageConfiguration?) = TmdbEpisodeMetadata(
         tmdbEpisodeId = tmdbEpisodeId,
         seasonNumber = seasonNumber,
         episodeNumber = episodeNumber,
@@ -401,22 +375,24 @@ class TmdbRepository(
     }
 
     private fun String?.toMediaType(): MediaType =
-        runCatching { this?.let(MediaType::valueOf) ?: MediaType.Unknown }
-            .getOrDefault(MediaType.Unknown)
+        runCatching { this?.let(MediaType::valueOf) ?: MediaType.Unknown }.getOrDefault(MediaType.Unknown)
 
     companion object {
         private const val LANGUAGE = "de-DE"
         private const val REFRESH_AFTER_MILLIS = 30L * 24L * 60L * 60L * 1_000L
         private const val MAPPING_MAX_AGE_MILLIS = 30L * 24L * 60L * 60L * 1_000L
         private const val CACHE_MAX_AGE_MILLIS = 180L * 24L * 60L * 60L * 1_000L
+        private const val TRAILER_LANGUAGE_POLICY_CUTOFF_UTC_MILLIS = 1_786_233_600_000L
+        private const val HERO_BACKDROP_POLICY_CUTOFF_UTC_MILLIS = 1_786_467_600_000L
+        internal const val RESOLVER_POLICY_CUTOFF_UTC_MILLIS = 1_786_476_000_000L
+        internal const val NEGATIVE_MAPPING_RETRY_MILLIS = 6L * 60L * 60L * 1_000L
+
+        internal fun shouldRetryNegativeMapping(updatedAtUtcMillis: Long, nowUtcMillis: Long): Boolean =
+            updatedAtUtcMillis < RESOLVER_POLICY_CUTOFF_UTC_MILLIS ||
+                nowUtcMillis - updatedAtUtcMillis >= NEGATIVE_MAPPING_RETRY_MILLIS
 
         internal fun mediaKey(type: MediaType, tmdbId: Int): String = "${type.name}:$tmdbId"
-
-        internal fun episodeKey(seriesTmdbId: Int, season: Int, episode: Int): String =
-            "$seriesTmdbId:$season:$episode"
-
-        internal fun yearOf(date: String?): Int? = date
-            ?.take(4)
-            ?.toIntOrNull()
+        internal fun episodeKey(seriesTmdbId: Int, season: Int, episode: Int): String = "$seriesTmdbId:$season:$episode"
+        internal fun yearOf(date: String?): Int? = date?.take(4)?.toIntOrNull()
     }
 }

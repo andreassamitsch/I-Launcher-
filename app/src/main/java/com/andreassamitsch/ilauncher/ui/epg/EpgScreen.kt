@@ -1,37 +1,51 @@
 package com.andreassamitsch.ilauncher.ui.epg
 
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.data.epg.EpgState
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
-import kotlinx.coroutines.delay
+import com.andreassamitsch.ilauncher.ui.components.TouchButton
+import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun EpgScreen(
@@ -41,6 +55,7 @@ fun EpgScreen(
     selectedProgram: LiveTvProgram?,
     onSelectChannel: (String) -> Unit,
     onSelectProgram: (serviceReference: String, program: LiveTvProgram) -> Unit,
+    onOpenProgramDetails: ((serviceReference: String, program: LiveTvProgram) -> Unit)? = null,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
     channelListState: LazyListState = rememberLazyListState(),
@@ -50,9 +65,11 @@ fun EpgScreen(
         ?: channels.firstOrNull()
     val guide = state.guide(selectedChannel?.serviceReference)
     val nowUtcMillis = System.currentTimeMillis()
-    val selectedProgramStart = selectedProgram
-        ?.takeIf { it in guide }
-        ?.startUtcMillis
+    val requestedProgramStart = selectedProgram?.startUtcMillis
+    val selectedGuideProgram = requestedProgramStart?.let { start ->
+        guide.firstOrNull { it.startUtcMillis == start }
+    }
+    val selectedProgramStart = selectedGuideProgram?.startUtcMillis
     val selectedProgramFocusRequester = remember(selectedProgramStart) { FocusRequester() }
 
     LaunchedEffect(
@@ -66,17 +83,18 @@ fun EpgScreen(
             nowUtcMillis = System.currentTimeMillis(),
             selectedProgramStartUtcMillis = selectedProgramStart,
         )
-        if (targetIndex >= 0) {
-            programListState.scrollToItem(targetIndex)
-        }
+        if (targetIndex >= 0) programListState.scrollToItem(targetIndex)
 
         if (selectedProgramStart != null && targetIndex >= 0) {
+            val channel = selectedChannel
+            val program = guide.getOrNull(targetIndex)
+            if (channel != null && program != null && program.startUtcMillis == selectedProgramStart) {
+                onSelectProgram(channel.serviceReference, program)
+            }
             val channelIndex = channels.indexOfFirst {
                 it.serviceReference == selectedChannel?.serviceReference
             }
-            if (channelIndex >= 0) {
-                channelListState.scrollToItem(channelIndex)
-            }
+            if (channelIndex >= 0) channelListState.scrollToItem(channelIndex)
             delay(50)
             runCatching { selectedProgramFocusRequester.requestFocus() }
         }
@@ -84,7 +102,7 @@ fun EpgScreen(
 
     Column(
         modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -99,14 +117,12 @@ fun EpgScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Button(onClick = onRefresh, enabled = !state.isRefreshing && channels.isNotEmpty()) {
+            TouchButton(onClick = onRefresh, enabled = !state.isRefreshing && channels.isNotEmpty()) {
                 Text(if (state.isRefreshing) "Aktualisiere …" else "EPG aktualisieren")
             }
         }
 
-        state.errorMessage?.let { error ->
-            Text(error, color = MaterialTheme.colorScheme.error)
-        }
+        state.errorMessage?.let { error -> Text(error, color = MaterialTheme.colorScheme.error) }
 
         if (channels.isEmpty()) {
             Text(
@@ -118,30 +134,29 @@ fun EpgScreen(
 
         Row(
             modifier = Modifier.fillMaxSize(),
-            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             Column(
                 modifier = Modifier
-                    .width(280.dp)
+                    .width(260.dp)
                     .fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text("Sender", style = MaterialTheme.typography.headlineSmall)
                 LazyColumn(
                     state = channelListState,
+                    modifier = Modifier.touchScrollFallback(channelListState, Orientation.Vertical),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(channels, key = LiveTvChannel::serviceReference) { channel ->
-                        Button(
+                        TouchButton(
                             onClick = { onSelectChannel(channel.serviceReference) },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(
                                 text = if (channel.serviceReference == selectedChannel?.serviceReference) {
                                     "✓ ${channel.name}"
-                                } else {
-                                    channel.name
-                                },
+                                } else channel.name,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -154,27 +169,33 @@ fun EpgScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(9.dp),
             ) {
-                Text(
-                    selectedChannel?.name ?: "Programm",
-                    style = MaterialTheme.typography.headlineSmall,
-                )
+                Text(selectedChannel?.name ?: "Programm", style = MaterialTheme.typography.headlineSmall)
 
-                selectedProgram?.takeIf {
-                    selectedChannel != null && it in guide
-                }?.let { program ->
-                    ProgramDetails(program)
+                selectedGuideProgram?.let { program ->
+                    val channel = selectedChannel
+                    ProgramDetails(
+                        program = program,
+                        onOpenDetails = if (
+                            channel != null &&
+                            onOpenProgramDetails != null &&
+                            (program.tmdbId != null || program.tmdbEpisodeId != null)
+                        ) {
+                            { onOpenProgramDetails(channel.serviceReference, program) }
+                        } else null,
+                    )
                 }
 
                 if (guide.isEmpty()) {
                     Text(
-                        "Für diesen Sender sind noch keine zugeordneten XMLTV-Programmdaten vorhanden. Die Senderzuordnung kann unter Live TV geprüft werden.",
+                        "Für diesen Sender sind noch keine zugeordneten XMLTV-Programmdaten vorhanden.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
                     LazyColumn(
                         state = programListState,
+                        modifier = Modifier.touchScrollFallback(programListState, Orientation.Vertical),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(
@@ -184,7 +205,7 @@ fun EpgScreen(
                             val isCurrent = nowUtcMillis >= program.startUtcMillis &&
                                 nowUtcMillis < program.endUtcMillis
                             val isSelected = program.startUtcMillis == selectedProgramStart
-                            Button(
+                            TouchButton(
                                 onClick = {
                                     selectedChannel?.let { channel ->
                                         onSelectProgram(channel.serviceReference, program)
@@ -193,11 +214,8 @@ fun EpgScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .then(
-                                        if (isSelected) {
-                                            Modifier.focusRequester(selectedProgramFocusRequester)
-                                        } else {
-                                            Modifier
-                                        },
+                                        if (isSelected) Modifier.focusRequester(selectedProgramFocusRequester)
+                                        else Modifier,
                                     ),
                             ) {
                                 Column(
@@ -259,13 +277,15 @@ internal fun initialProgramIndex(
         nowUtcMillis >= programme.startUtcMillis && nowUtcMillis < programme.endUtcMillis
     }
     if (currentIndex >= 0) return currentIndex
-
     val nextIndex = programmes.indexOfFirst { it.startUtcMillis >= nowUtcMillis }
     return if (nextIndex >= 0) nextIndex else programmes.lastIndex
 }
 
 @Composable
-private fun ProgramDetails(program: LiveTvProgram) {
+private fun ProgramDetails(
+    program: LiveTvProgram,
+    onOpenDetails: (() -> Unit)?,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -276,8 +296,8 @@ private fun ProgramDetails(program: LiveTvProgram) {
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .width(260.dp)
-                    .height(146.dp),
+                    .width(248.dp)
+                    .height(140.dp),
             )
         }
         Column(
@@ -287,8 +307,7 @@ private fun ProgramDetails(program: LiveTvProgram) {
             Text(program.title, style = MaterialTheme.typography.titleLarge)
             program.subtitle?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
             Text(
-                "${formatTime(program.startUtcMillis)}–${formatTime(program.endUtcMillis)}" +
-                    episodeLabel(program),
+                "${formatTime(program.startUtcMillis)}–${formatTime(program.endUtcMillis)}" + episodeLabel(program),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -299,16 +318,48 @@ private fun ProgramDetails(program: LiveTvProgram) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            val description = program.longDescription ?: program.shortDescription
-            description?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            onOpenDetails?.let { openDetails ->
+                TouchButton(onClick = openDetails) { Text("Details") }
             }
+            val description = program.longDescription ?: program.shortDescription
+            description?.let { ScrollableDescription(it) }
         }
+    }
+}
+
+@Composable
+private fun ScrollableDescription(text: String) {
+    val scrollState = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 104.dp)
+            .verticalScroll(scrollState)
+            .touchScrollFallback(scrollState, Orientation.Vertical)
+            .focusable()
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (event.key) {
+                    Key.DirectionDown -> {
+                        if (!scrollState.canScrollForward) return@onPreviewKeyEvent false
+                        scope.launch {
+                            scrollState.animateScrollTo((scrollState.value + 80).coerceAtMost(scrollState.maxValue))
+                        }
+                        true
+                    }
+                    Key.DirectionUp -> {
+                        if (!scrollState.canScrollBackward) return@onPreviewKeyEvent false
+                        scope.launch {
+                            scrollState.animateScrollTo((scrollState.value - 80).coerceAtLeast(0))
+                        }
+                        true
+                    }
+                    else -> false
+                }
+            },
+    ) {
+        Text(text = text, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

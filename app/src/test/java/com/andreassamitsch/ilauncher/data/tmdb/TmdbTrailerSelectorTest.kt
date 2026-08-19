@@ -19,11 +19,23 @@ class TmdbTrailerSelectorTest {
     }
 
     @Test
-    fun `trailer beats teaser even when teaser is official`() {
+    fun `prefers German teaser over English trailer when German audio metadata exists`() {
+        val selected = TmdbTrailerSelector.preferredYouTubeId(
+            listOf(
+                video(key = "germanTeaser", type = "Teaser", official = true, language = "de"),
+                video(key = "englishTrailer", type = "Trailer", official = true, language = "en"),
+            ),
+        )
+
+        assertEquals("germanTeaser", selected)
+    }
+
+    @Test
+    fun `within same language trailer beats teaser`() {
         val selected = TmdbTrailerSelector.preferredYouTubeId(
             listOf(
                 video(key = "teaser", type = "Teaser", official = true, language = "de"),
-                video(key = "trailer", type = "Trailer", official = false, language = "en"),
+                video(key = "trailer", type = "Trailer", official = false, language = "de"),
             ),
         )
 

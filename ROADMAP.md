@@ -110,8 +110,9 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Unit-Tests für Trailer-Auswahl und Episode-vor-Serie-Priorität
 - [x] signierten Development-Build `0.1.0-dev.47` erfolgreich mit Unit-Tests und `assembleDebug` veröffentlicht
 - [x] realer TCL-Gerätetest von Datenbankmigration, Trailerstart, Such-Fallback und Rückkehrverhalten bestanden
+- [x] direkte TMDB-YouTube-Trailer intern in eigener Launcher-Activity mit Bild und Ton auf TV-Hardware bestätigt
 
-**Phase 4 ist funktional abgeschlossen und auf realer TCL-Hardware bestätigt.**
+**Phase 4 ist funktional abgeschlossen; interne Trailerwiedergabe ist auf TV-Hardware bestätigt.**
 
 ## Phase 5 – Gigablue / OpenWebif
 
@@ -157,11 +158,16 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] aktuelle Programme progressiv, weitere Guide-Einträge bei Auswahl mit TMDB anreichern
 - [x] Unit-Tests für M3U-Parsing, Sender-Mapping, XMLTV-Zeit/Episoden-Parsing, OpenWebif/XMLTV-Merge und EPG-Startposition hinzufügen
 - [x] signierten Phase-6-Development-Build mit `testDebugUnitTest` und `assembleDebug` erfolgreich veröffentlichen
-- [x] reale `riedl-dach.at` M3U/XMLTV-Quelle auf TCL gegen Gigablue-Sender getestet
+- [x] reale XMLTV-Quelle auf TCL gegen Gigablue-Sender getestet
 - [x] D-Pad-/Focus-Test auf Home sowie im vollständigen EPG bestanden
 - [x] Offline-/Cache-Test und Update/Migration vom bestehenden Build bestanden
+- [x] EPG aus der Hauptnavigation entfernt und als Guide direkt im laufenden Live-TV-Player geöffnet
+- [x] langes OK als EPG-Direktzugang auf TV-Hardware bestätigt
+- [x] EPG-Programme ohne eindeutige XMLTV-Kategorie nicht mehr vor TMDB verwerfen; `Unknown` nutzt Multi-Search mit unveränderter Confidence-Schwelle
+- [x] beim Öffnen des Guides das bereits ausgewählte aktuelle/angesprungene Programm sofort zur TMDB-Anreicherung anstoßen
+- [ ] EPG→TMDB-Details mit bekannten Serien wie CSI / Two and a Half Men auf TV-Hardware erneut prüfen
 
-**Phase 6 ist funktional abgeschlossen und auf realer TCL-/Gigablue-/XMLTV-Hardware bestätigt.**
+**Phase 6 ist funktional abgeschlossen und auf realer TCL-/Gigablue-/XMLTV-Hardware bestätigt. Der korrigierte EPG→TMDB-Detailpfad wartet auf den nächsten TV-Test.**
 
 ## Phase 7 – Live TV
 
@@ -175,8 +181,9 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Senderwechsel in unveränderter Gigablue-Bouquet-Reihenfolge
 - [x] Zapping über D-Pad ↑/↓ und CH+/CH− implementieren
 - [x] alten Stream beim Zappen sofort stoppen und Zielstream neu über OpenWebif auflösen
-- [x] Player-UI mit Sender-Picon, Sendername, Jetzt/Danach, Bouquet-Position, Ladezustand und sicheren Fehlern
-- [x] exakte Focus-Rückgabe auf die zuvor gestartete `Jetzt im TV`-Karte implementieren
+- [x] Player-UI mit Sender-Picon, Name, aktueller/nächster Sendung, Bouquet-Position und sicherem Fehlerstatus
+- [x] Player-Overlay und Android-`PlayerView` sauber schichten; Media3-Controller deaktivieren, eigene TV-Steuerung verwenden
+- [x] Back beendet Player und stellt Focus auf exakt derselben `Jetzt im TV`-Karte wieder her
 - [x] Unit-Tests für Stream-Playlist, Auth-/Session-Sanitizing und Zapping-Reihenfolge/-Wrap
 - [x] Android CI mit `testDebugUnitTest` und `assembleDebug` erfolgreich
 - [x] signierten Development-Build `0.1.0-dev.68` (`26000068`) erfolgreich veröffentlicht
@@ -185,15 +192,73 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Back-/Focus-Rückgabe vom Player auf die Home-Karte bestätigt
 - [x] Media3-Wiedergabe auf dem Zielgerät ohne blockierenden Decoder-/Playbackfehler bestätigt
 - [x] realer Phase-7-Gesamttest auf TCL + Gigablue X3 bestanden
+- [x] Infoleisten nach 3 Sekunden ausblenden und mit OK wieder einblenden
+- [x] kompakte `Jetzt im TV`-Reihe im Player
+- [x] bei sichtbarem Overlay D-Pad Hoch/Runter für UI statt Zapping reservieren
+- [x] bei ausgeblendetem Overlay D-Pad Hoch/Runter zum Zappen; CH+/CH− bleiben explizite Senderwechsel
+- [x] langes OK als Direktzugang zum EPG
+- [x] explizite Exit-Bestätigung mit `TV verlassen` als Standardfokus
+- [x] Exit-Bestätigung auf TV-Hardware bestätigt
+- [x] Player-Senderstate auf stabile Enigma2-`serviceReference` umgestellt, damit periodische OpenWebif-/EPG-Refreshes nicht auf den ursprünglich gestarteten Sender zurücksetzen
+- [x] Unit-Tests für Senderidentität bei erneuerter Channel-Metadatenliste und sicheren Fallback bei entferntem Sender ergänzt
+- [x] normales OK öffnet eine angeheftete Senderübersicht; Timeout gilt nur für transiente Infos, Zurück schließt zuerst die Liste und Senderwahl/Umschalten beendet den Listenmodus
+- [x] Live-TV-Overlay optisch mit schwebenden abgerundeten Flächen und kleinerem Kartenfokus weiter an Home/Search angeglichen
+- [ ] neuen Refresh-/Senderlisten-State auf TCL mehrere Refreshintervalle lang prüfen
+- [ ] neuesten D-Pad-Overlay-Fokus nach dem Regression-Pass noch einmal vollständig prüfen
 
-**Phase 7 ist funktional abgeschlossen, automatisiert getestet und auf realer TCL-/Gigablue-Hardware bestätigt.**
+**Phase 7 bleibt funktional abgeschlossen und hardwarebestätigt; die neue Refresh-stabile Senderidentität und das angeheftete Senderlistenverhalten warten auf den gezielten TCL-Langzeittest.**
+
+## Preview Channels / globale Suche – aktueller Entwicklungsstand
+
+- [x] Android Preview Channels / Preview Programs über TvProvider lesen
+- [x] systemseitiges Channel-`browsable=0` nicht mehr fälschlich als I-Launcher-Ausblendung behandeln
+- [x] lokale Ein-/Ausblendung pro App-Kanal
+- [x] globale lokale Suche über Apps, Watch Next, Preview Programs und EPG
+- [x] TMDB-Suche ab drei Zeichen
+- [x] lokale Suche ab zwei Zeichen vom UI-Thread entkoppelt
+- [x] rohe Watch-Next-Titel/Episodentitel zusätzlich zur TMDB-angereicherten Medienidentität durchsuchen
+- [x] Preview-Channel-Titel/Quell-App als Suchmetadaten einbeziehen
+- [x] Suchergebnisse in getrennte horizontale TV-Reihen für Weiterschauen, App-Kanäle, TV-Programm, Apps und TMDB gliedern
+- [x] getrennte Suchreihen auf TV-Hardware bestätigt
+- [x] CloudStream-/Kodi-Suchhandoff für TMDB-/EPG-Treffer
+- [x] CloudStream-Development-Paketvarianten dynamisch über den Search-Intent erkennen
+- [x] CloudStream-Handoff auf TV-Hardware bestätigt
+- [x] defekten Kodi-Core-`ACTION_SEARCH`-Pfad verworfen; stattdessen exportierten Suggestions-Provider + von Kodi zurückgegebene `ACTION_GET_CONTENT`-/`videodb://`-Referenz verwenden
+- [x] Kodi-Titelauswahl konservativ normalisieren (`&`/`and`, exakte bzw. starke Präfix-Treffer) und schwache Treffer ablehnen
+- [x] externe Suchbuttons auf Suchsymbol + App-Name reduzieren und erste Detailaktion direkt fokussieren
+- [x] Suchsymbol an TV-Material-`LocalContentColor` koppeln, damit Symbol und Text gemeinsam die Fokusfarbe wechseln
+- [x] Watch-Next-Long-OK erst nach konsumiertem OK-Release in Details navigieren, damit der neue Wiedergabebutton nicht automatisch ausgelöst wird
+- [x] Android-Sprachsuche als kompakte Suchaktion integrieren
+- [x] Touch-Detailseite inklusive langer Texte und Aktionsbuttons auf Smartphone bestätigt
+- [ ] TV-Gerätetest des neuen Kodi-Handoffs, Suchsymbol-Fokus und Watch-Next-Long-OK-Release-Fix
+- [ ] CloudStream-Tastatur nur upstream lösbar, solange CloudStream seine Search-Activity selbst mit sichtbarer Soft-Tastatur öffnet
+
+## Home / Navigation – aktueller UI-Polish
+
+- [x] Hero-Bereich folgt dem fokussierten Inhalt
+- [x] Hero außerhalb des vertikalen Reihen-Scrolls halten, damit er beim Navigieren sichtbar bleibt
+- [x] Hero selbst fokussierbar machen; Medien öffnen per OK die Detailansicht
+- [x] Start-Hero nicht mehr mit erstem TV-Sender initialisieren; Local-First Watch Next → Preview Program → neutraler Hero
+- [x] Hero-Artwork rechts mit weichem Verlauf in den linken Textbereich; Backdrops crop, ungeeignete Quellbilder möglichst fit
+- [x] Titellogo nicht zusätzlich als große Titelüberschrift wiederholen; Quell-App-Namen aus dem Medien-Hero entfernen
+- [x] ergänzende Hero-Metadaten statt Kartenwerte zu duplizieren; lange Beschreibung mit längerer Lesepause deutlich langsamer scrollen
+- [x] Hauptnavigation auf `Home · Suche · Apps · Einstellungen` reduzieren
+- [x] aktiven Hauptpunkt nur per Border markieren
+- [x] Launcher-Name aus der Navigationszeile entfernen
+- [x] Navigation erst nach echter vertikaler Scrollbewegung ausblenden; kleine Fokus-/Bring-into-view-Nudges ignorieren
+- [x] Live-TV-/Gigablue-Konfiguration unter Einstellungen verschieben
+- [x] Home-/Search-Layout im zweiten Google-TV-inspirierten Feinschliff visuell vom Benutzer grundsätzlich bestätigt
+- [x] Hauptnavigation optisch kompakter: transparente Ruhefläche, kleine Fokusvergrößerung und helle Fokus-Pill ohne Änderung des Fokuspfads
+- [x] separate `Alle Apps`-Ansicht nutzt adaptives TV-Grid und dauerhaft sichtbare App-Namen; Home-App-Dock bleibt label-reduziert
+- [x] Detailseite mit horizontalem/unterem Artwork-Verlauf, kompakteren Metadaten und reduzierten technischen Quellenzeilen an dieselbe Google-TV-inspirierte Bildsprache angeglichen
+- [ ] TV-Gerätetest für kompakten Nav-Fokus, adaptives Apps-Grid, neuen Detailseiten-Look und jüngste D-Pad-Regressionen durchführen
 
 ## Phase 8 – optionale Provider
 
 Nur wenn Android-Standardschnittstellen nicht ausreichen:
 
-- [ ] Kodi
+- [ ] Kodi-Add-on-spezifische Integrationen (Core-Suche ist nur Bibliothekssuche)
 - [ ] Jellyfin
 - [ ] Plex
-- [ ] CloudStream
+- [ ] CloudStream-Providerintegration nur wenn TvProvider/Deep-Link nicht ausreichen
 - [ ] weitere Provider

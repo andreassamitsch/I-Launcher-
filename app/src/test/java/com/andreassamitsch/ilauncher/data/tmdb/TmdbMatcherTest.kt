@@ -43,6 +43,18 @@ class TmdbMatcherTest {
     }
 
     @Test
+    fun `episode remains confident when source year is one year early`() {
+        val lookup = parsed("ZeroZeroZero", MediaType.Episode, 2019)
+        val match = TmdbMatcher.bestMatch(
+            lookup,
+            listOf(candidate(25, "ZeroZeroZero", MediaType.Series, 2020)),
+        )
+
+        assertNotNull(match)
+        assertEquals(25, match?.candidate?.id)
+    }
+
+    @Test
     fun `large year mismatch prevents otherwise exact movie match`() {
         val lookup = parsed("Gladiator", MediaType.Movie, 2024)
         val match = TmdbMatcher.bestMatch(

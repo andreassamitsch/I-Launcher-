@@ -36,6 +36,7 @@ internal class TmdbImageConfigurationStore(context: Context) {
     )
 
     fun loadFresh(nowUtcMillis: Long): TmdbImageConfiguration? {
+        if (preferences.getInt(KEY_POLICY_VERSION, 0) != IMAGE_POLICY_VERSION) return null
         val updatedAt = preferences.getLong(KEY_UPDATED_AT, 0L)
         if (updatedAt <= 0L || nowUtcMillis - updatedAt > MAX_AGE_MILLIS) return null
 
@@ -56,10 +57,10 @@ internal class TmdbImageConfigurationStore(context: Context) {
     ): TmdbImageConfiguration {
         val configuration = TmdbImageConfiguration(
             secureBaseUrl = dto.secureBaseUrl,
-            posterSize = chooseSize(dto.posterSizes, preferredWidth = 500),
-            backdropSize = chooseSize(dto.backdropSizes, preferredWidth = 780),
-            logoSize = chooseSize(dto.logoSizes, preferredWidth = 500),
-            stillSize = chooseSize(dto.stillSizes, preferredWidth = 300),
+            posterSize = chooseTmdbImageSize(dto.posterSizes, preferredWidth = 780),
+            backdropSize = chooseTmdbImageSize(dto.backdropSizes, preferredWidth = 1280),
+            logoSize = chooseTmdbImageSize(dto.logoSizes, preferredWidth = 500),
+            stillSize = chooseTmdbImageSize(dto.stillSizes, preferredWidth = 780),
             updatedAtUtcMillis = nowUtcMillis,
         )
 
@@ -70,25 +71,14 @@ internal class TmdbImageConfigurationStore(context: Context) {
             .putString(KEY_LOGO_SIZE, configuration.logoSize)
             .putString(KEY_STILL_SIZE, configuration.stillSize)
             .putLong(KEY_UPDATED_AT, configuration.updatedAtUtcMillis)
+            .putInt(KEY_POLICY_VERSION, IMAGE_POLICY_VERSION)
             .apply()
 
         return configuration
     }
 
-    private fun chooseSize(sizes: List<String>, preferredWidth: Int): String {
-        val numeric = sizes.mapNotNull { size ->
-            size.removePrefix("w").toIntOrNull()?.let { width -> width to size }
-        }
-        return numeric
-            .filter { (width, _) -> width >= preferredWidth }
-            .minByOrNull { (width, _) -> width }
-            ?.second
-            ?: numeric.maxByOrNull { (width, _) -> width }?.second
-            ?: sizes.firstOrNull { it == "original" }
-            ?: "original"
-    }
-
     companion object {
+        private const val IMAGE_POLICY_VERSION = 2
         private const val MAX_AGE_MILLIS = 30L * 24L * 60L * 60L * 1_000L
         private const val KEY_BASE_URL = "secure_base_url"
         private const val KEY_POSTER_SIZE = "poster_size"
@@ -96,5 +86,24 @@ internal class TmdbImageConfigurationStore(context: Context) {
         private const val KEY_LOGO_SIZE = "logo_size"
         private const val KEY_STILL_SIZE = "still_size"
         private const val KEY_UPDATED_AT = "updated_at_utc_millis"
+        private const val KEY_POLICY_VERSION = "policy_version"
     }
+}
+
+/**
+ * Select the smallest configured image width that still satisfies the target. If TMDB offers no
+ * adequate resized variant (episode stills commonly top out far below a TV hero), prefer `original`
+ * rather than upscaling a small image across a 1080p television.
+ */
+internal fun chooseTmdbImageSize(sizes: List<String>, preferredWidth: Int): String {
+    val numeric = sizes.mapNotNull { size ->
+        size.removePrefix("w").toIntOrNull()?.let { width -> width to size }
+    }
+    return numeric
+        .filter { (width, _) -> width >= preferredWidth }
+        .minByOrNull { (width, _) -> width }
+        ?.second
+        ?: sizes.firstOrNull { it == "original" }
+        ?: numeric.maxByOrNull { (width, _) -> width }?.second
+        ?: "original"
 }

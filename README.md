@@ -17,81 +17,17 @@ I Launcher ist ein werbefreier, content-zentrierter Android-TV-Launcher in Kotli
 
 ## Status
 
-**Phasen 1 bis 7 sind funktional abgeschlossen und auf dem Zielgerät bestätigt.**
+Der aktuelle Entwicklungsstand enthält den Google-TV-inspirierten Home-/Search-/Player-UX-Pass inklusive edge-to-edge Hero, Hero/Rail-Überlagerung, Top-Crop, stabiler Row-Keyline, dynamischem artwork-farbigem Karten-Glow, Breath-Fokusrahmen und Google-TV-artiger Overlay-Navigation. Auf Home blendet die Top-Navigation beim Wechsel in die Content-Rails ohne Layout-Reflow zu einem kleinen Chevron aus. Der Rückweg aus der obersten Rail zur Navigation ist explizit verdrahtet, damit die großflächige Hero-Fokusfläche die D-Pad-Navigation auf realer TV-Hardware nicht abfangen kann. Der Hero bleibt außerdem auch im Fokuszustand unter den überlappenden Rails. Dazu kommen konfigurierbare Watch-Next-Bildwahl, Preview-Channel-TMDB-Opt-in, Live-TV-Focus-Enrichment, robuster TMDB-Jahres-/Typ-Fallback und direkte Kodi-TMDb-Helper-Suche.
 
-Der bestätigte Unterbau umfasst:
+Der aktuelle Anwendungsstand `c8f93774d8e6ddd706fb01553d7376dc6bbb6256` wurde mit Android CI **#562** und TV Visual Smoke **#171** inklusive der Sequenz `Nav → DOWN erste Rail → UP Nav → DOWN erste Rail`, deterministischen 1920×1080-Screenshots, Deep-Scroll, Foreground-/Crash-Prüfungen und D-Pad-Navigationsvideo validiert. Signierter Testbuild ist **`0.1.0-dev.311` (`26000311`)** mit `updateCompatible=true` und `tmdbConfigured=true`. Die nachfolgenden Branch-Commits dokumentieren diesen Stand und ändern keinen Anwendungscode. Reale D-Pad-/Hero-Layering-Wirkung bleibt auf TCL-Hardware erneut zu bestätigen.
 
-- Android-TV-Launcher/Home-App mit D-Pad-Focus
-- Android Watch Next über TvProvider einschließlich CloudStream
-- gemeinsames provider-neutrales `MediaItem`-/`MediaSource`-Modell
-- konservative TMDB-Auflösung mit Room-Cache
-- Film-/Serien-/Episodendaten und Artwork
-- provider-neutrale Detailseite mit Focus-Rückgabe
-- TMDB-/YouTube-Trailer mit Such-Fallback
-- direkte Gigablue-/OpenWebif-Verbindung
-- Bouquets und Sender in Receiver-Reihenfolge
-- Picons und OpenWebif Now/Next
-- `Jetzt im TV` auf Home
-- M3U/XMLTV-Senderzuordnung einschließlich Enigma2-Service-Reference und manueller Zuordnung
-- vollständiger XMLTV-EPG mit Local-First-Room-Cache
-- XMLTV/OpenWebif-Merge und konservative TMDB-Anreicherung für TV-Programme
-- interner Media3-Live-TV-Player mit OpenWebif-Streamauflösung und Zapping
-- D-Pad-Navigation und Focus-Rückgabe auf Home, EPG und Live TV
+Die aus der Google-TV-Launcher-Analyse abgeleiteten Home-/Keyline-/Navigation-/Glow-Prinzipien sind dauerhaft in [`docs/reference/GOOGLE_TV_HOME_CONCEPT.md`](docs/reference/GOOGLE_TV_HOME_CONCEPT.md) dokumentiert.
 
-Phase 5 und Phase 6 wurden gemeinsam auf realer TCL-/Gigablue-X3-Hardware gegen die reale `riedl-dach.at` M3U/XMLTV-Quelle verifiziert. Dazu gehören Receiver-Verbindung, Bouquet-/Senderreihenfolge, Picons, Now/Next, XMLTV-Mapping, vollständiger EPG, TMDB-Artwork, D-Pad/Focus, Update/Migration und Offline-/Cache-Verhalten.
-
-## Phase 7 – Live TV
-
-Phase 7 ergänzt:
-
-- Media3/ExoPlayer als internen Player
-- Streamauflösung über OpenWebifs eigenes `web/stream.m3u?ref=…`, damit der Receiver selbst den tatsächlichen Stream-Port bzw. direkten Stream bestimmt
-- keine Persistierung oder Protokollierung von Stream-URLs, Session-IDs oder Stream-Zugangsdaten
-- MPEG-TS-Wiedergabe über Media3 Progressive Media Source
-- HLS-Wiedergabe, falls OpenWebif einen HLS-Stream zurückliefert
-- temporäre Streaming-Authentifizierung wird aus URL-Userinfo entfernt und nur flüchtig als HTTP-Header an Media3 weitergegeben
-- Start des internen Players direkt aus `Jetzt im TV`
-- Zapping in unveränderter Gigablue-Senderreihenfolge
-- D-Pad ↑/↓ sowie CH+/CH− für Senderwechsel
-- alter Stream wird beim Zappen sofort gestoppt, bevor der Zielstream neu aufgelöst wird
-- TV-Overlay mit Picon, aktueller/nächster Sendung, Bouquet-Position, Lade- und Fehlerstatus
-- exakte Focus-Rückgabe auf die zuvor gestartete `Jetzt im TV`-Karte
-- Unit-Tests für Stream-Parsing, Auth-/Session-Sanitizing und Zapping
-
-Android CI und der signierte Development-Publisher laufen für diesen Stand erfolgreich durch. Hardware-Testbuild **`0.1.0-dev.68` (`26000068`)** wurde auf TCL + Gigablue X3 erfolgreich getestet: interner Streamstart, Video/Audio, Zapping, Overlay und Rückkehrverhalten funktionieren auf dem Zielgerät.
-
-## Datenschutz / Sicherheit
-
-OpenWebif-Zugangsdaten werden nur lokal gespeichert, nicht geloggt und durch `allowBackup=false` nicht über Android Auto Backup ausgelagert. Externe EPG-Quellen erhalten keine Receiver-Zugangsdaten. Phase 7 behandelt vom Receiver gelieferte Stream-Adressen und temporäre Streaming-Authentifizierung ausschließlich flüchtig im Arbeitsspeicher.
-
-Watch Next liefert CloudStream-Einträge über die reguläre Android-TvProvider-Schnittstelle. Eine CloudStream-spezifische Integration bleibt deshalb bewusst außen vor.
-
-Das TCL-/Google-TV-Thema rund um Android 13+ `Covered Applications` / `Restricted Settings` bei lokal installierten APKs bleibt als separates Distributionsthema offen und blockiert die Content-Phasen nicht.
-
-Siehe:
-
-- [`AGENTS.md`](AGENTS.md) – verbindliche Entwicklungsrichtlinien
-- [`ROADMAP.md`](ROADMAP.md) – Entwicklungsphasen
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) – Architektur
+Ausführliche Regeln und Architektur: [`AGENTS.md`](AGENTS.md), [`ROADMAP.md`](ROADMAP.md), [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Stack
 
 Kotlin · Jetpack Compose · Compose for TV · AndroidX · Coroutines/Flow · Room · Hilt · Retrofit/OkHttp · Coil · Media3
-
-## Build-Basis
-
-- Android Gradle Plugin 9.3.1
-- Gradle 9.5.0 (CI)
-- compileSdk 36
-- targetSdk 36
-- minSdk 26
-- Compose BOM 2026.06.00
-- Compose for TV 1.1.0
-- Media3 1.10.1
-- Coil 3.5.0
-- Room 2.8.4
-- Retrofit 3.0.0
-- OkHttp 5.3.0
 
 ## Lizenz
 

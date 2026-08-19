@@ -33,6 +33,9 @@ class PreviewChannelsRepository(context: Context) {
                 trySend(Unit)
             }
         }
+        val unregisterResumeRefresh = registerTvProviderResumeRefresh(appContext) {
+            trySend(Unit)
+        }
 
         val observedUris = listOf(
             TvContract.Channels.CONTENT_URI,
@@ -51,6 +54,7 @@ class PreviewChannelsRepository(context: Context) {
 
         trySend(Unit)
         awaitClose {
+            unregisterResumeRefresh()
             runCatching { resolver.unregisterContentObserver(observer) }
         }
     }

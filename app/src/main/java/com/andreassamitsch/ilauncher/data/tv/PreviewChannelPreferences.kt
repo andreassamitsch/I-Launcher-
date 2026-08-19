@@ -11,8 +11,12 @@ class PreviewChannelPreferences(context: Context) {
         Context.MODE_PRIVATE,
     )
 
-    private val _hiddenChannelIds = MutableStateFlow(loadHiddenChannelIds())
+    private val _hiddenChannelIds = MutableStateFlow(loadSet(KEY_HIDDEN_CHANNEL_IDS))
     val hiddenChannelIds: StateFlow<Set<String>> = _hiddenChannelIds.asStateFlow()
+
+    // Opt-in by design. App channels remain provider-original unless the user explicitly enables TMDB.
+    private val _tmdbEnrichedChannelIds = MutableStateFlow(loadSet(KEY_TMDB_ENRICHED_CHANNEL_IDS))
+    val tmdbEnrichedChannelIds: StateFlow<Set<String>> = _tmdbEnrichedChannelIds.asStateFlow()
 
     fun setVisible(channelId: String, visible: Boolean) {
         val updated = _hiddenChannelIds.value.toMutableSet()
@@ -21,7 +25,7 @@ class PreviewChannelPreferences(context: Context) {
         } else {
             updated.add(channelId)
         }
-        preferences.edit().putStringSet(KEY_HIDDEN_CHANNEL_IDS, updated).apply()
+        saveSet(KEY_HIDDEN_CHANNEL_IDS, updated)
         _hiddenChannelIds.value = updated.toSet()
     }
 
@@ -30,11 +34,27 @@ class PreviewChannelPreferences(context: Context) {
         _hiddenChannelIds.value = emptySet()
     }
 
-    private fun loadHiddenChannelIds(): Set<String> =
-        preferences.getStringSet(KEY_HIDDEN_CHANNEL_IDS, emptySet())?.toSet().orEmpty()
+    fun setTmdbEnrichmentEnabled(channelId: String, enabled: Boolean) {
+        val updated = _tmdbEnrichedChannelIds.value.toMutableSet()
+        if (enabled) {
+            updated.add(channelId)
+        } else {
+            updated.remove(channelId)
+        }
+        saveSet(KEY_TMDB_ENRICHED_CHANNEL_IDS, updated)
+        _tmdbEnrichedChannelIds.value = updated.toSet()
+    }
+
+    private fun saveSet(key: String, values: Set<String>) {
+        preferences.edit().putStringSet(key, values.toSet()).apply()
+    }
+
+    private fun loadSet(key: String): Set<String> =
+        preferences.getStringSet(key, emptySet())?.toSet().orEmpty()
 
     private companion object {
         const val PREFS_NAME = "preview_channels"
         const val KEY_HIDDEN_CHANNEL_IDS = "hidden_channel_ids"
+        const val KEY_TMDB_ENRICHED_CHANNEL_IDS = "tmdb_enriched_channel_ids"
     }
 }
