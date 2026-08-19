@@ -56,6 +56,7 @@ jobs:
             # Reproduce the user's landscape-phone viewport instead of validating only TV.
             adb shell settings put system accelerometer_rotation 0
             adb shell settings put system user_rotation 1
+            adb shell settings put secure immersive_mode_confirmations confirmed
             adb shell wm size 2340x1080
             adb shell wm density 420
             adb shell am force-stop com.andreassamitsch.ilauncher
@@ -72,11 +73,8 @@ jobs:
             adb exec-out screencap -p > build/settings-touch/sidebar-after.png
 
             # A stationary sidebar produces byte-identical deterministic screenshots here.
-            # Fail the smoke test if the swipe did not move the settings navigation at all.
-            if cmp -s build/settings-touch/sidebar-before.png build/settings-touch/sidebar-after.png; then
-              echo "::error::Landscape phone swipe did not move the settings sidebar."
-              exit 1
-            fi
+            # reactivecircus executes script lines individually, so keep the assertion on one line.
+            ! cmp -s build/settings-touch/sidebar-before.png build/settings-touch/sidebar-after.png || (echo "::error::Landscape phone swipe did not move the settings sidebar."; exit 1)
 
             adb shell input swipe 320 850 320 300 600
             sleep 1
