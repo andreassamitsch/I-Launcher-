@@ -194,6 +194,11 @@ fun Modifier.touchTap(
 /**
  * Adds pointer dragging to a Compose scroll state without changing TV focus relocation.
  *
+ * Compose for TV click targets can consume pointer movement before a surrounding `verticalScroll`
+ * sees it on touch devices. The normal scrollable remains authoritative whenever it reports an
+ * active scroll. Only when no native scroll started after touch slop does this fallback take over
+ * the drag, including movement already consumed by a child TV row.
+ *
  * Normal vertically scrollable pages must keep Compose's automatic bring-into-view propagation so
  * DPAD focus can move the viewport to controls below the fold. Home's exceptional row-keyline
  * boundary therefore lives in AnchoredHomeRow instead of this generic input helper.
@@ -208,6 +213,9 @@ fun Modifier.touchScrollFallback(
             pass = PointerEventPass.Final,
         )
         var lastPosition: Offset = down.position
+        var accumulatedDrag = 0f
+        var fallbackDragging = false
+        val touchSlop = viewConfiguration.touchSlop
 
         while (true) {
             val event = awaitPointerEvent(PointerEventPass.Final)
@@ -220,10 +228,21 @@ fun Modifier.touchScrollFallback(
                 Orientation.Horizontal -> currentPosition.x - lastPosition.x
             }
             lastPosition = currentPosition
+            if (dragDelta == 0f) continue
 
-            if (!change.isConsumed && dragDelta != 0f) {
-                state.dispatchRawDelta(-dragDelta)
+            if (!fallbackDragging) {
+                accumulatedDrag += dragDelta
+                if (kotlin.math.abs(accumulatedDrag) <= touchSlop) continue
+
+                // If Compose's own scrollable accepted the gesture, do not duplicate its delta.
+                // If a child TV ListItem consumed it instead, the state remains idle and this
+                // fallback deliberately takes ownership so phone/tablet dragging still works.
+                if (state.isScrollInProgress) continue
+                fallbackDragging = true
             }
+
+            state.dispatchRawDelta(-dragDelta)
+            change.consume()
         }
     }
 }
