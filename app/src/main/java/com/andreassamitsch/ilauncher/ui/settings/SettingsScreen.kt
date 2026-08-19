@@ -3,6 +3,7 @@ package com.andreassamitsch.ilauncher.ui.settings
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -34,11 +36,13 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -61,7 +65,6 @@ import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.HomeLauncherManager
 import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
-import com.andreassamitsch.ilauncher.ui.components.touchClickFallback
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -364,45 +367,78 @@ private fun SettingsSidebar(
                         else -> null
                     }
                 }
-                val onCategoryClick = { onSelectCategory(category) }
-                ListItem(
+                SettingsCategoryRow(
+                    category = category,
                     selected = selectedCategory == category,
-                    onClick = onCategoryClick,
-                    headlineContent = {
-                        Text(
-                            text = category.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = if (selectedCategory == category) FontWeight.SemiBold else null,
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            text = category.subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    },
-                    leadingContent = {
-                        SettingsIconGlyph(category.icon)
-                    },
-                    trailingContent = trailing?.let { marker ->
-                        {
-                            Text(
-                                text = marker,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = if (marker == "!") {
-                                    MaterialTheme.colorScheme.error
-                                } else {
-                                    LocalContentColor.current
-                                },
-                            )
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .touchClickFallback(onClick = onCategoryClick),
+                    trailing = trailing,
+                    onClick = { onSelectCategory(category) },
                 )
             }
             Spacer(modifier = Modifier.size(2.dp))
+        }
+    }
+}
+
+@Composable
+private fun SettingsCategoryRow(
+    category: SettingsCategory,
+    selected: Boolean,
+    trailing: String?,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val containerColor = when {
+        focused -> MaterialTheme.colorScheme.primary
+        selected -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f)
+        else -> Color.Transparent
+    }
+    val contentColor = if (focused) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+
+    CompositionLocalProvider(LocalContentColor provides contentColor) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .onFocusChanged { focused = it.isFocused }
+                .clickable(onClick = onClick)
+                .background(
+                    color = containerColor,
+                    shape = RoundedCornerShape(14.dp),
+                )
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            SettingsIconGlyph(category.icon)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = category.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = if (selected) FontWeight.SemiBold else null,
+                )
+                Text(
+                    text = category.subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LocalContentColor.current.copy(alpha = 0.76f),
+                )
+            }
+            trailing?.let { marker ->
+                Text(
+                    text = marker,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (marker == "!") {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        LocalContentColor.current
+                    },
+                )
+            }
         }
     }
 }
