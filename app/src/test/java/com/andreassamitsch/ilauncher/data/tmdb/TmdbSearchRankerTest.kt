@@ -49,6 +49,65 @@ class TmdbSearchRankerTest {
         assertEquals(listOf(2, 1), ranked.map { it.id })
     }
 
+    @Test
+    fun `popular franchise result can beat obscure exact collision for partial query`() {
+        val results = listOf(
+            result(id = 1, title = "Expend", voteCount = 12, popularity = 2.0),
+            result(id = 2, title = "The Expendables 4", voteCount = 2_000, popularity = 35.0),
+            result(id = 3, title = "Expendable Assets", voteCount = 80, popularity = 4.0),
+        )
+
+        val ranked = TmdbSearchRanker.rank("expend", results)
+
+        assertEquals(2, ranked.first().id)
+    }
+
+    @Test
+    fun `word prefix after leading article is treated as strong title match`() {
+        val item = result(
+            id = 1,
+            title = "The Expendables 4",
+            voteCount = 0,
+            popularity = 0.0,
+        )
+
+        assertEquals(900, TmdbSearchRanker.titleMatchScore("expend", item))
+    }
+
+    @Test
+    fun `known Matrix movie wins among same-name results`() {
+        val results = listOf(
+            result(id = 1, title = "Matrix", voteCount = 27_000, popularity = 85.0),
+            result(id = 2, title = "Matrix", voteCount = 18, popularity = 2.0),
+            result(id = 3, title = "Matrix", voteCount = 7, popularity = 1.2),
+            result(id = 4, title = "Matrix", voteCount = 3, popularity = 0.8),
+        )
+
+        val ranked = TmdbSearchRanker.rank("matrix", results)
+
+        assertEquals(1, ranked.first().id)
+    }
+
+    @Test
+    fun `known Avatar movie can beat obscure exact-title collisions`() {
+        val results = listOf(
+            result(
+                id = 1,
+                title = "Avatar - Aufbruch nach Pandora",
+                originalTitle = "Avatar",
+                voteCount = 32_000,
+                popularity = 95.0,
+            ),
+            result(id = 2, title = "Avatar", voteCount = 22, popularity = 2.5),
+            result(id = 3, title = "Avatar", voteCount = 6, popularity = 1.0),
+            result(id = 4, title = "Avatar", voteCount = 4, popularity = 0.7),
+        )
+
+        val ranked = TmdbSearchRanker.rank("avatar", results)
+
+        assertEquals(1, ranked.first().id)
+    }
+
     private fun result(
         id: Int,
         title: String,

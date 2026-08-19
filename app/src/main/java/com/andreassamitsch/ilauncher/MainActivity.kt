@@ -1,9 +1,11 @@
 package com.andreassamitsch.ilauncher
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableIntStateOf
 import com.andreassamitsch.ilauncher.data.apps.InstalledAppsRepository
 import com.andreassamitsch.ilauncher.data.epg.EpgRepository
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifRepository
@@ -17,12 +19,15 @@ import com.andreassamitsch.ilauncher.data.tv.PreviewChannelsRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextEnrichmentRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextRepository
 import com.andreassamitsch.ilauncher.data.update.UpdateManager
+import com.andreassamitsch.ilauncher.system.isLauncherHomeRequest
 import com.andreassamitsch.ilauncher.ui.LauncherApp
 import com.andreassamitsch.ilauncher.ui.discover.LocalTmdbDiscoveryLoader
 import com.andreassamitsch.ilauncher.ui.discover.TmdbDiscoveryLoader
 import com.andreassamitsch.ilauncher.ui.theme.ILauncherTheme
 
 class MainActivity : ComponentActivity() {
+    private val homeNavigationRequestGeneration = mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -58,9 +63,18 @@ class MainActivity : ComponentActivity() {
                         openWebifRepository = openWebifRepository,
                         epgRepository = epgRepository,
                         updateManager = updateManager,
+                        homeNavigationRequestGeneration = homeNavigationRequestGeneration.intValue,
                     )
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (isLauncherHomeRequest(intent.action, intent.categories.orEmpty())) {
+            homeNavigationRequestGeneration.intValue += 1
         }
     }
 }

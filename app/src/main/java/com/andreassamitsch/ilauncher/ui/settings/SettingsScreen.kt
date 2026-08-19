@@ -30,12 +30,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -65,7 +68,7 @@ import kotlinx.coroutines.launch
 private const val TMDB_APPROVED_LOGO_URL =
     "https://www.themoviedb.org/assets/2/v4/logos/v2/blue_square_2-d537fb228cf3ded904ef09b136fe3fec72548ebc1fea3fbbd1ad9e36364db38b.svg"
 
-private enum class SettingsCategory(
+internal enum class SettingsCategory(
     val title: String,
     val subtitle: String,
     val icon: SettingsIcon,
@@ -97,7 +100,7 @@ private enum class SettingsCategory(
     ),
 }
 
-private enum class SettingsIcon {
+internal enum class SettingsIcon {
     Setup,
     Content,
     LiveTv,
@@ -106,7 +109,7 @@ private enum class SettingsIcon {
 }
 
 @Composable
-fun SettingsScreen(
+internal fun SettingsScreen(
     updateManager: UpdateManager,
     watchNextResult: WatchNextLoadResult,
     previewChannelsResult: AppContentChannelsLoadResult,
@@ -117,6 +120,9 @@ fun SettingsScreen(
     hiddenPreviewChannelIds: Set<String>,
     onSetPreviewChannelVisible: (String, Boolean) -> Unit,
     onShowAllPreviewChannels: () -> Unit,
+    selectedCategory: SettingsCategory = SettingsCategory.Setup,
+    onSelectCategory: (SettingsCategory) -> Unit = {},
+    liveTvActionFocusRestoreGeneration: Int = 0,
     onOpenLiveTv: () -> Unit,
     hasTvListingsPermission: Boolean,
     onRequestTvListingsPermission: () -> Unit,
@@ -129,7 +135,6 @@ fun SettingsScreen(
     val updateState by updateManager.state.collectAsState()
     val installSourceStatus = remember { HomeLauncherManager.installSourceStatus(context) }
 
-    var selectedCategory by remember { mutableStateOf(SettingsCategory.Setup) }
     var isDefaultHome by remember { mutableStateOf(HomeLauncherManager.isDefaultHome(context)) }
     var isHomeRoleAvailable by remember {
         mutableStateOf(HomeLauncherManager.isHomeRoleAvailable(context))
@@ -208,7 +213,7 @@ fun SettingsScreen(
     ) {
         SettingsSidebar(
             selectedCategory = selectedCategory,
-            onSelectCategory = { selectedCategory = it },
+            onSelectCategory = onSelectCategory,
             hasTvListingsPermission = hasTvListingsPermission,
             launcherReady = launcherReady,
             diagnosticsNeedAttention = diagnosticsNeedAttention,
@@ -265,6 +270,7 @@ fun SettingsScreen(
 
                     SettingsCategory.LiveTv -> SettingsLiveTvPane(
                         onOpenLiveTv = onOpenLiveTv,
+                        focusRestoreGeneration = liveTvActionFocusRestoreGeneration,
                     )
 
                     SettingsCategory.Diagnostics -> SettingsDiagnosticsPane(
@@ -667,7 +673,14 @@ private fun SettingsContentPane(
 @Composable
 private fun SettingsLiveTvPane(
     onOpenLiveTv: () -> Unit,
+    focusRestoreGeneration: Int,
 ) {
+    val restoreRequester = remember { FocusRequester() }
+    LaunchedEffect(focusRestoreGeneration) {
+        if (focusRestoreGeneration <= 0) return@LaunchedEffect
+        withFrameNanos { }
+        runCatching { restoreRequester.requestFocus() }
+    }
     SettingsContentPane(
         title = "Live TV",
         subtitle = "Gigablue, Sender und EPG",
@@ -678,6 +691,7 @@ private fun SettingsLiveTvPane(
             subtitle = "Verbindung, Bouquets, Sender, EPG und Streams verwalten.",
             value = "Öffnen",
             onClick = onOpenLiveTv,
+            modifier = Modifier.focusRequester(restoreRequester),
         )
         SettingsNotice(
             text = "Live TV bleibt direkt über OpenWebif angebunden. Die bestehende Live-TV-Seite enthält Verbindung, Senderliste und EPG-Konfiguration.",
@@ -1015,6 +1029,7 @@ private fun SettingsActionRow(
     attention: Boolean = false,
     enabled: Boolean = true,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     ListItem(
         selected = false,
@@ -1052,7 +1067,7 @@ private fun SettingsActionRow(
                 )
             }
         },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
     )
 }
 

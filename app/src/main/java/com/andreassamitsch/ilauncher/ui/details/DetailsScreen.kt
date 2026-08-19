@@ -48,6 +48,16 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collectLatest
 
+private const val DETAILS_ROW_SIMILAR = "similar"
+private const val DETAILS_ROW_COLLECTION = "collection"
+private const val DETAILS_ROW_CAST = "cast"
+private const val DETAILS_ROW_DIRECTORS = "directors"
+
+private data class DetailsFocusTarget(val rowKey: String, val itemKey: String)
+
+internal fun detailMediaFocusKey(media: MediaItem): String =
+    "${media.type}:${media.tmdbId ?: media.id}"
+
 @Composable
 fun DetailsScreen(
     item: MediaItem,
@@ -66,6 +76,10 @@ fun DetailsScreen(
     var selectedPerson by remember(item.id) { mutableStateOf<PersonDetails?>(null) }
     var personLoading by remember(item.id) { mutableStateOf(false) }
     var relatedMedia by remember(item.id) { mutableStateOf<MediaItem?>(null) }
+    var detailsFocusTarget by remember(item.id) { mutableStateOf<DetailsFocusTarget?>(null) }
+    var detailsFocusRestoreGeneration by remember(item.id) { mutableIntStateOf(0) }
+    var personWorkFocusRestoreKey by remember(item.id) { mutableStateOf<String?>(null) }
+    var personWorkFocusRestoreGeneration by remember(item.id) { mutableIntStateOf(0) }
 
     LaunchedEffect(item.id, loader) {
         displayItem = item
@@ -112,14 +126,25 @@ fun DetailsScreen(
         personLoading = false
     }
 
+    val closeRelatedMedia: () -> Unit = {
+        relatedMedia = null
+        if (selectedPersonId != null) {
+            personWorkFocusRestoreGeneration += 1
+        } else {
+            detailsFocusRestoreGeneration += 1
+        }
+    }
+    val closePerson: () -> Unit = {
+        selectedPersonId = null
+        selectedPerson = null
+        personLoading = false
+        detailsFocusRestoreGeneration += 1
+    }
+
     BackHandler {
         when {
-            relatedMedia != null -> relatedMedia = null
-            selectedPersonId != null -> {
-                selectedPersonId = null
-                selectedPerson = null
-                personLoading = false
-            }
+            relatedMedia != null -> closeRelatedMedia()
+            selectedPersonId != null -> closePerson()
             else -> onBack()
         }
     }
@@ -129,7 +154,7 @@ fun DetailsScreen(
             item = related,
             sourceLabel = "TMDB",
             onPlay = null,
-            onBack = { relatedMedia = null },
+            onBack = closeRelatedMedia,
             modifier = modifier,
         )
         return
@@ -138,11 +163,13 @@ fun DetailsScreen(
         PersonDetailsScreen(
             person = selectedPerson,
             isLoading = personLoading,
-            onBack = {
-                selectedPersonId = null
-                selectedPerson = null
+            onBack = closePerson,
+            onOpenMedia = { media ->
+                personWorkFocusRestoreKey = detailMediaFocusKey(media)
+                relatedMedia = media
             },
-            onOpenMedia = { relatedMedia = it },
+            focusRestoreMediaKey = personWorkFocusRestoreKey,
+            focusRestoreGeneration = personWorkFocusRestoreGeneration,
             modifier = modifier,
         )
         return
@@ -153,8 +180,16 @@ fun DetailsScreen(
         sourceLabel = sourceLabel,
         relatedContent = relatedContent,
         credits = credits,
-        onOpenMedia = { relatedMedia = it },
-        onOpenPerson = { selectedPersonId = it.tmdbId },
+        onOpenMedia = { rowKey, media ->
+            detailsFocusTarget = DetailsFocusTarget(rowKey, detailMediaFocusKey(media))
+            relatedMedia = media
+        },
+        onOpenPerson = { rowKey, selectedPerson ->
+            detailsFocusTarget = DetailsFocusTarget(rowKey, selectedPerson.tmdbId.toString())
+            selectedPersonId = selectedPerson.tmdbId
+        },
+        focusRestoreTarget = detailsFocusTarget,
+        focusRestoreGeneration = detailsFocusRestoreGeneration,
         onPlay = onPlay,
         onTrailer = onTrailer,
         onTrailerSearch = onTrailerSearch,
@@ -168,8 +203,10 @@ private fun MediaDetailsContent(
     sourceLabel: String?,
     relatedContent: MediaRelatedContent,
     credits: MediaCredits,
-    onOpenMedia: (MediaItem) -> Unit,
-    onOpenPerson: (MediaPerson) -> Unit,
+    onOpenMedia: (String, MediaItem) -> Unit,
+    onOpenPerson: (String, MediaPerson) -> Unit,
+    focusRestoreTarget: DetailsFocusTarget?,
+    focusRestoreGeneration: Int,
     onPlay: (() -> Unit)?,
     onTrailer: (() -> Unit)?,
     onTrailerSearch: (() -> Unit)?,
@@ -254,7 +291,8 @@ private fun MediaDetailsContent(
     val artwork = item.heroBackdropUri ?: item.backdropUri ?: item.episodeStillUri
         ?: item.sourceArtworkUri ?: item.posterUri ?: item.preferredArtworkUri
 
-    LaunchedEffect(item.id, firstActionKey) {
+    LaunchedEffect(item.id, firstActionKey, focusRestoreTarget, focusRestoreGeneration) {
+        if (focusRestoreTarget != null && focusRestoreGeneration > 0) return@LaunchedEffect
         if (firstActionKey == null) return@LaunchedEffect
         withFrameNanos { }
         runCatching { firstActionRequester.requestFocus() }
@@ -446,21 +484,34 @@ private fun MediaDetailsContent(
                         MediaType.Movie -> "Ähnliche Filme"
                         else -> "Ähnliche Serien"
                     },
+                    rowKey = DETAILS_ROW_SIMILAR,
                     items = relatedContent.similar,
                     onOpen = onOpenMedia,
+                    focusRestoreTarget = focusRestoreTarget,
+                    focusRestoreGeneration = focusRestoreGeneration,
                 )
             }
             collection?.let { mediaCollection ->
                 Spacer(Modifier.height(if (hasSimilar) 22.dp else 30.dp))
                 MediaRow(
                     title = "Filmreihe · ${mediaCollection.title}",
+                    rowKey = DETAILS_ROW_COLLECTION,
                     items = mediaCollection.items,
                     onOpen = onOpenMedia,
+                    focusRestoreTarget = focusRestoreTarget,
+                    focusRestoreGeneration = focusRestoreGeneration,
                 )
             }
             if (credits.cast.isNotEmpty()) {
                 Spacer(Modifier.height(if (hasSimilar || hasCollection) 22.dp else 30.dp))
-                PersonRow("Schauspieler", credits.cast, onOpenPerson)
+                PersonRow(
+                    title = "Schauspieler",
+                    rowKey = DETAILS_ROW_CAST,
+                    people = credits.cast,
+                    onOpen = onOpenPerson,
+                    focusRestoreTarget = focusRestoreTarget,
+                    focusRestoreGeneration = focusRestoreGeneration,
+                )
             }
             if (credits.directors.isNotEmpty()) {
                 Spacer(
@@ -468,7 +519,14 @@ private fun MediaDetailsContent(
                         if (hasSimilar || hasCollection || credits.cast.isNotEmpty()) 22.dp else 30.dp,
                     ),
                 )
-                PersonRow("Regie", credits.directors, onOpenPerson)
+                PersonRow(
+                    title = "Regie",
+                    rowKey = DETAILS_ROW_DIRECTORS,
+                    people = credits.directors,
+                    onOpen = onOpenPerson,
+                    focusRestoreTarget = focusRestoreTarget,
+                    focusRestoreGeneration = focusRestoreGeneration,
+                )
             }
             Spacer(Modifier.height(70.dp))
         }
@@ -659,11 +717,24 @@ private fun ProviderHandoffAction(
 @Composable
 private fun MediaRow(
     title: String,
+    rowKey: String,
     items: List<MediaItem>,
-    onOpen: (MediaItem) -> Unit,
+    onOpen: (String, MediaItem) -> Unit,
+    focusRestoreTarget: DetailsFocusTarget?,
+    focusRestoreGeneration: Int,
 ) {
     Text(title, style = MaterialTheme.typography.titleMedium)
     val rowState = rememberLazyListState()
+    val restoreRequester = remember(rowKey) { FocusRequester() }
+    val restoreItemKey = focusRestoreTarget?.takeIf { it.rowKey == rowKey }?.itemKey
+    LaunchedEffect(items, restoreItemKey, focusRestoreGeneration) {
+        if (restoreItemKey == null || focusRestoreGeneration <= 0) return@LaunchedEffect
+        val targetIndex = items.indexOfFirst { detailMediaFocusKey(it) == restoreItemKey }
+        if (targetIndex < 0) return@LaunchedEffect
+        rowState.scrollToItem(targetIndex)
+        withFrameNanos { }
+        runCatching { restoreRequester.requestFocus() }
+    }
     LazyRow(
         state = rowState,
         modifier = Modifier.fillMaxWidth().touchScrollFallback(rowState, Orientation.Horizontal),
@@ -671,7 +742,14 @@ private fun MediaRow(
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         items(items, key = { "detail-related-${it.type}-${it.tmdbId}" }) { media ->
-            WatchNextCard(item = media, onClick = { onOpen(media) })
+            val cardModifier = if (detailMediaFocusKey(media) == restoreItemKey) {
+                Modifier.focusRequester(restoreRequester)
+            } else Modifier
+            WatchNextCard(
+                item = media,
+                onClick = { onOpen(rowKey, media) },
+                modifier = cardModifier,
+            )
         }
     }
 }
@@ -679,11 +757,24 @@ private fun MediaRow(
 @Composable
 private fun PersonRow(
     title: String,
+    rowKey: String,
     people: List<MediaPerson>,
-    onOpen: (MediaPerson) -> Unit,
+    onOpen: (String, MediaPerson) -> Unit,
+    focusRestoreTarget: DetailsFocusTarget?,
+    focusRestoreGeneration: Int,
 ) {
     Text(title, style = MaterialTheme.typography.titleMedium)
     val rowState = rememberLazyListState()
+    val restoreRequester = remember(rowKey) { FocusRequester() }
+    val restoreItemKey = focusRestoreTarget?.takeIf { it.rowKey == rowKey }?.itemKey
+    LaunchedEffect(people, restoreItemKey, focusRestoreGeneration) {
+        if (restoreItemKey == null || focusRestoreGeneration <= 0) return@LaunchedEffect
+        val targetIndex = people.indexOfFirst { it.tmdbId.toString() == restoreItemKey }
+        if (targetIndex < 0) return@LaunchedEffect
+        rowState.scrollToItem(targetIndex)
+        withFrameNanos { }
+        runCatching { restoreRequester.requestFocus() }
+    }
     LazyRow(
         state = rowState,
         modifier = Modifier.fillMaxWidth().touchScrollFallback(rowState, Orientation.Horizontal),
@@ -691,7 +782,10 @@ private fun PersonRow(
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         items(people, key = { "person-${it.tmdbId}" }) { person ->
-            TouchCard(onClick = { onOpen(person) }) {
+            val cardModifier = if (person.tmdbId.toString() == restoreItemKey) {
+                Modifier.focusRequester(restoreRequester)
+            } else Modifier
+            TouchCard(onClick = { onOpen(rowKey, person) }, modifier = cardModifier) {
                 Column(Modifier.width(116.dp)) {
                     Box(
                         Modifier.width(116.dp).height(154.dp).clip(RoundedCornerShape(12.dp))

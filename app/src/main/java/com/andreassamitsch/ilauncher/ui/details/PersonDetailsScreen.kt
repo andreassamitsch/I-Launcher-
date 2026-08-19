@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -30,11 +31,15 @@ internal fun PersonDetailsScreen(
     isLoading: Boolean,
     onBack: () -> Unit,
     onOpenMedia: (MediaItem) -> Unit,
+    focusRestoreMediaKey: String? = null,
+    focusRestoreGeneration: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     val scroll = rememberScrollState()
     val backRequester = remember(person?.tmdbId) { FocusRequester() }
-    LaunchedEffect(person?.tmdbId, isLoading) {
+    LaunchedEffect(person?.tmdbId, isLoading, focusRestoreMediaKey, focusRestoreGeneration) {
+        if (focusRestoreMediaKey != null && focusRestoreGeneration > 0) return@LaunchedEffect
+        withFrameNanos { }
         runCatching { backRequester.requestFocus() }
     }
     Column(
@@ -83,6 +88,16 @@ internal fun PersonDetailsScreen(
             Text("Keine Filmografie verfügbar.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             val rowState = rememberLazyListState()
+            val workRestoreRequester = remember(person.tmdbId) { FocusRequester() }
+            LaunchedEffect(person.works, focusRestoreMediaKey, focusRestoreGeneration) {
+                val restoreKey = focusRestoreMediaKey ?: return@LaunchedEffect
+                if (focusRestoreGeneration <= 0) return@LaunchedEffect
+                val targetIndex = person.works.indexOfFirst { detailMediaFocusKey(it) == restoreKey }
+                if (targetIndex < 0) return@LaunchedEffect
+                rowState.scrollToItem(targetIndex)
+                withFrameNanos { }
+                runCatching { workRestoreRequester.requestFocus() }
+            }
             LazyRow(
                 state = rowState,
                 modifier = Modifier.fillMaxWidth().touchScrollFallback(rowState, Orientation.Horizontal),
@@ -90,7 +105,14 @@ internal fun PersonDetailsScreen(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 items(person.works, key = { "person-work-${it.type}-${it.tmdbId}" }) { media ->
-                    WatchNextCard(item = media, onClick = { onOpenMedia(media) })
+                    val cardModifier = if (detailMediaFocusKey(media) == focusRestoreMediaKey) {
+                        Modifier.focusRequester(workRestoreRequester)
+                    } else Modifier
+                    WatchNextCard(
+                        item = media,
+                        onClick = { onOpenMedia(media) },
+                        modifier = cardModifier,
+                    )
                 }
             }
         }
