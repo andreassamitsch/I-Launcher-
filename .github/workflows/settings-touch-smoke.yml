@@ -73,7 +73,7 @@ jobs:
             adb exec-out screencap -p > build/settings-touch/sidebar-before.png
             adb shell uiautomator dump /sdcard/sidebar-before.xml >/dev/null
             adb pull /sdcard/sidebar-before.xml build/settings-touch/sidebar-before.xml >/dev/null
-            python3 -c 'import xml.etree.ElementTree as E; r=E.parse("build/settings-touch/sidebar-before.xml").getroot(); assert not any("isn&apos;t responding" in x.attrib.get("text","") for x in r.iter("node")), "system ANR dialog overlays touch fixture"'
+            python3 -c 'import xml.etree.ElementTree as E; r=E.parse("build/settings-touch/sidebar-before.xml").getroot(); assert not any("isn\u0027t responding" in x.attrib.get("text","") for x in r.iter("node")), "system ANR dialog overlays touch fixture"'
 
             # Tap Inhalte by its actual semantics bounds instead of a hard-coded pixel coordinate.
             # A working touch click must switch the right pane from Einrichtung to Inhalte.
@@ -85,15 +85,16 @@ jobs:
             adb exec-out screencap -p > build/settings-touch/sidebar-tap.png
 
             # Right pane regression: tap a Compose-for-TV toggle row by locating its visible label.
-            # The debug fixture is stateful, so exactly one checked Switch must turn off. This also
-            # catches accidental double dispatch between the TV ListItem and the touch fallback.
+            # The debug fixture exposes the hidden-package set through semantics. Exactly one tap must
+            # leave fixture.cloud hidden; a missed tap stays empty and a double dispatch returns empty.
             adb shell uiautomator dump /sdcard/content-before.xml >/dev/null
             adb pull /sdcard/content-before.xml build/settings-touch/content-before.xml >/dev/null
+            python3 -c 'import xml.etree.ElementTree as E; r=E.parse("build/settings-touch/content-before.xml").getroot(); assert any(x.attrib.get("content-desc")=="settings-touch-hidden-watch-next=" for x in r.iter("node")), "touch state marker missing before right toggle tap"'
             python3 -c 'import re,subprocess,xml.etree.ElementTree as E; r=E.parse("build/settings-touch/content-before.xml").getroot(); n=next(x for x in r.iter("node") if x.attrib.get("text")=="CloudStream"); a=list(map(int,re.findall(r"\d+",n.attrib["bounds"]))); subprocess.run(["adb","shell","input","tap",str((a[0]+a[2])//2),str((a[1]+a[3])//2)],check=True)'
             sleep 1
             adb shell uiautomator dump /sdcard/content-after.xml >/dev/null
             adb pull /sdcard/content-after.xml build/settings-touch/content-after.xml >/dev/null
-            python3 -c 'import xml.etree.ElementTree as E; b=E.parse("build/settings-touch/content-before.xml").getroot(); a=E.parse("build/settings-touch/content-after.xml").getroot(); cb=sum(x.attrib.get("checked")=="true" for x in b.iter("node")); ca=sum(x.attrib.get("checked")=="true" for x in a.iter("node")); assert ca==cb-1, f"right toggle tap failed or double-dispatched: checked {cb} -> {ca}"'
+            python3 -c 'import xml.etree.ElementTree as E; r=E.parse("build/settings-touch/content-after.xml").getroot(); assert any(x.attrib.get("content-desc")=="settings-touch-hidden-watch-next=fixture.cloud" for x in r.iter("node")), "right toggle tap failed or double-dispatched"'
             adb exec-out screencap -p > build/settings-touch/right-toggle-after.png
 
             # Drag directly over the touch-native category rows in the left settings pane.
