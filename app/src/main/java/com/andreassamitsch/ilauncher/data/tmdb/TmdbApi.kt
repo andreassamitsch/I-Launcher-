@@ -78,6 +78,9 @@ internal interface TmdbApi {
         @Query("sort_by") sortBy: String = "vote_average.desc",
         @Query("with_genres") withGenres: String? = null,
         @Query("vote_count.gte") voteCountGte: Int = 300,
+        @Query("vote_average.gte") voteAverageGte: Double? = null,
+        @Query("primary_release_date.gte") primaryReleaseDateGte: String? = null,
+        @Query("primary_release_date.lte") primaryReleaseDateLte: String? = null,
         @Query("page") page: Int = 1,
     ): TmdbSearchResponseDto
 
@@ -88,6 +91,9 @@ internal interface TmdbApi {
         @Query("sort_by") sortBy: String = "vote_average.desc",
         @Query("with_genres") withGenres: String? = null,
         @Query("vote_count.gte") voteCountGte: Int = 200,
+        @Query("vote_average.gte") voteAverageGte: Double? = null,
+        @Query("first_air_date.gte") firstAirDateGte: String? = null,
+        @Query("first_air_date.lte") firstAirDateLte: String? = null,
         @Query("page") page: Int = 1,
     ): TmdbSearchResponseDto
 
@@ -112,7 +118,6 @@ internal interface TmdbApi {
     @GET("3/tv/{seriesId}/season/{seasonNumber}")
     suspend fun seasonDetails(
         @Path("seriesId") seriesId: Int,
-        @Path("seasonNumber") seasonNumber: Int,
         @Query("language") language: String,
     ): TmdbSeasonDetailsDto
 
