@@ -17,6 +17,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
@@ -67,6 +69,11 @@ class SettingsPreviewActivity : ComponentActivity() {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
+                            .semantics {
+                                contentDescription =
+                                    "settings-touch-hidden-watch-next=" +
+                                        hiddenWatchNextPackages.sorted().joinToString(",")
+                            }
                             .padding(start = 24.dp, end = 24.dp, top = 66.dp),
                     ) {
                         SettingsScreen(
