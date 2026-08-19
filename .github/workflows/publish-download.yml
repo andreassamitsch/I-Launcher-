@@ -11,6 +11,7 @@ on:
       - agent/live-tv-epg-fixes
       - agent/related-content-quality
       - agent/home-navigation-focus-restore
+      - agent/search-ranking-quality
     paths:
       - "app/**"
       - "build.gradle.kts"
