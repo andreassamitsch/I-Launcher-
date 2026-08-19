@@ -118,6 +118,7 @@ internal interface TmdbApi {
     @GET("3/tv/{seriesId}/season/{seasonNumber}")
     suspend fun seasonDetails(
         @Path("seriesId") seriesId: Int,
+        @Path("seasonNumber") seasonNumber: Int,
         @Query("language") language: String,
     ): TmdbSeasonDetailsDto
 
