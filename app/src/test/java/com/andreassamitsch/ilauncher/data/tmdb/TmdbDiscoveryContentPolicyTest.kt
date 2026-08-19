@@ -110,6 +110,15 @@ class TmdbDiscoveryContentPolicyTest {
     }
 
     @Test
+    fun kidsModeUsesGermanMovieCertificationUpToFskSix() {
+        val settings = TmdbDiscoveryFilterSettings(kidsMode = true)
+
+        assertEquals("DE", TmdbDiscoveryContentPolicy.movieRegion(settings))
+        assertEquals("DE", TmdbDiscoveryContentPolicy.movieCertificationCountry(settings))
+        assertEquals("6", TmdbDiscoveryContentPolicy.movieCertificationLte(settings))
+    }
+
+    @Test
     fun kidsModeRejectsGeneralSeriesButKeepsFamilySeries() {
         val general = TmdbSearchResultDto(id = 20, name = "General", genreIds = listOf(18))
         val family = TmdbSearchResultDto(id = 21, name = "Family", genreIds = listOf(10751, 35))
