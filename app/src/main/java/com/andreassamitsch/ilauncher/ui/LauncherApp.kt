@@ -36,12 +36,15 @@ import com.andreassamitsch.ilauncher.data.apps.InstalledAppsRepository
 import com.andreassamitsch.ilauncher.data.epg.EpgRepository
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifRepository
 import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
+import com.andreassamitsch.ilauncher.data.tv.PreviewChannelPreferences
+import com.andreassamitsch.ilauncher.data.tv.PreviewChannelsRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextEnrichmentRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextRepository
 import com.andreassamitsch.ilauncher.data.tv.WatchNextSourcePreferences
 import com.andreassamitsch.ilauncher.data.update.UpdateManager
 import com.andreassamitsch.ilauncher.data.update.UpdateState
 import com.andreassamitsch.ilauncher.data.youtube.YouTubeLauncher
+import com.andreassamitsch.ilauncher.model.AppContentChannelsLoadResult
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
@@ -73,6 +76,7 @@ private const val OPENWEBIF_REFRESH_INTERVAL_MILLIS = 5L * 60L * 1_000L
 fun LauncherApp(
     installedAppsRepository: InstalledAppsRepository,
     watchNextRepository: WatchNextRepository,
+    previewChannelsRepository: PreviewChannelsRepository,
     watchNextEnrichmentRepository: WatchNextEnrichmentRepository,
     openWebifRepository: OpenWebifRepository,
     epgRepository: EpgRepository,
@@ -104,6 +108,8 @@ fun LauncherApp(
     var tvProviderRefreshGeneration by remember { mutableIntStateOf(0) }
     val watchNextSourcePreferences = remember(context) { WatchNextSourcePreferences(context) }
     val hiddenWatchNextPackages by watchNextSourcePreferences.hiddenPackages.collectAsState()
+    val previewChannelPreferences = remember(context) { PreviewChannelPreferences(context) }
+    val hiddenPreviewChannelIds by previewChannelPreferences.hiddenChannelIds.collectAsState()
 
     val tvListingsPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -133,6 +139,21 @@ fun LauncherApp(
             packageName == null || packageName !in hiddenWatchNextPackages
         }
     }
+
+    val previewChannelsFlow = remember(
+        previewChannelsRepository,
+        hasTvListingsPermission,
+        tvProviderRefreshGeneration,
+    ) {
+        previewChannelsRepository.observe()
+    }
+    val previewChannelsResult by previewChannelsFlow.collectAsState(
+        initial = AppContentChannelsLoadResult(channels = emptyList()),
+    )
+    val visiblePreviewChannels = remember(previewChannelsResult.channels, hiddenPreviewChannelIds) {
+        previewChannelsResult.channels.filter { it.id !in hiddenPreviewChannelIds }
+    }
+
     var homeWatchNextItems by remember {
         mutableStateOf<List<EnrichedWatchNextItem>>(emptyList())
     }
@@ -343,6 +364,8 @@ fun LauncherApp(
                             apps = apps,
                             watchNextItems = homeWatchNextItems,
                             watchNextError = watchNextResult.errorMessage,
+                            previewChannels = visiblePreviewChannels,
+                            previewChannelsError = previewChannelsResult.errorMessage,
                             hasTvListingsPermission = hasTvListingsPermission,
                             liveTvState = displayLiveTvState,
                             onRequestTvListingsPermission = requestTvListingsPermission,
@@ -351,6 +374,9 @@ fun LauncherApp(
                             onOpenWatchNextDetails = { item ->
                                 liveTvFocusRestoreServiceReference = null
                                 selectedDetailsSourceId = item.media.source.sourceId
+                            },
+                            onOpenPreviewProgram = { _, program ->
+                                previewChannelsRepository.launch(program)
                             },
                             onOpenLiveTv = { section = LauncherSection.LiveTv },
                             onPlayLiveTvChannel = { channel ->
@@ -455,10 +481,14 @@ fun LauncherApp(
                         LauncherSection.Settings -> SettingsScreen(
                             updateManager = updateManager,
                             watchNextResult = watchNextResult,
+                            previewChannelsResult = previewChannelsResult,
                             installedApps = apps,
                             hiddenWatchNextPackages = hiddenWatchNextPackages,
                             onSetWatchNextSourceVisible = watchNextSourcePreferences::setVisible,
                             onShowAllWatchNextSources = watchNextSourcePreferences::showAll,
+                            hiddenPreviewChannelIds = hiddenPreviewChannelIds,
+                            onSetPreviewChannelVisible = previewChannelPreferences::setVisible,
+                            onShowAllPreviewChannels = previewChannelPreferences::showAll,
                             hasTvListingsPermission = hasTvListingsPermission,
                             onRequestTvListingsPermission = requestTvListingsPermission,
                             tmdbConfigured = watchNextEnrichmentRepository.isTmdbConfigured,

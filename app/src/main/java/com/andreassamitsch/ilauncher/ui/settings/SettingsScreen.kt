@@ -30,6 +30,7 @@ import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.data.update.InstallResult
 import com.andreassamitsch.ilauncher.data.update.UpdateManager
 import com.andreassamitsch.ilauncher.data.update.UpdateState
+import com.andreassamitsch.ilauncher.model.AppContentChannelsLoadResult
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.HomeLauncherManager
@@ -44,10 +45,14 @@ private const val TMDB_APPROVED_LOGO_URL =
 fun SettingsScreen(
     updateManager: UpdateManager,
     watchNextResult: WatchNextLoadResult,
+    previewChannelsResult: AppContentChannelsLoadResult,
     installedApps: List<InstalledApp>,
     hiddenWatchNextPackages: Set<String>,
     onSetWatchNextSourceVisible: (String, Boolean) -> Unit,
     onShowAllWatchNextSources: () -> Unit,
+    hiddenPreviewChannelIds: Set<String>,
+    onSetPreviewChannelVisible: (String, Boolean) -> Unit,
+    onShowAllPreviewChannels: () -> Unit,
     hasTvListingsPermission: Boolean,
     onRequestTvListingsPermission: () -> Unit,
     tmdbConfigured: Boolean,
@@ -70,6 +75,7 @@ fun SettingsScreen(
         mutableStateOf(HomeLauncherManager.isHomeButtonOverrideEnabled(context))
     }
     var updateMessage by remember { mutableStateOf<String?>(null) }
+    var showPreviewDiagnosisDetails by remember { mutableStateOf(false) }
 
     val appLabels = remember(installedApps) {
         installedApps.associate { it.packageName to it.label }
@@ -159,6 +165,80 @@ fun SettingsScreen(
             }
             Button(onClick = { TvProviderPermissionManager.openAppDetails(context) }) {
                 Text("App-Info / Berechtigungen öffnen")
+            }
+        }
+
+        Button(
+            onClick = { showPreviewDiagnosisDetails = !showPreviewDiagnosisDetails },
+        ) {
+            Text(
+                text = when {
+                    !hasTvListingsPermission -> "App-Kanäle Diagnose: TV-Freigabe fehlt"
+                    previewChannelsResult.errorMessage != null -> "App-Kanäle Diagnose: Fehler – OK für Details"
+                    else -> "App-Kanäle Diagnose: ${previewChannelsResult.queriedChannelCount} Preview Channels · ${previewChannelsResult.channels.size} sichtbar · ${previewChannelsResult.queriedProgramCount} Programme"
+                },
+            )
+        }
+
+        if (showPreviewDiagnosisDetails) {
+            Text(
+                text = "Dieser Diagnoseblock ist absichtlich direkt an einen fokussierbaren Button gekoppelt, damit er auf TV-Geräten per D-Pad zuverlässig in den sichtbaren Bereich gescrollt wird.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            when {
+                !hasTvListingsPermission -> {
+                    Text(
+                        text = "READ_TV_LISTINGS ist nicht freigegeben. Ohne diese Berechtigung kann I Launcher App-Kanäle anderer Apps nicht auswerten.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+
+                previewChannelsResult.errorMessage != null -> {
+                    Text(
+                        text = previewChannelsResult.errorMessage,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+
+                else -> {
+                    Text(
+                        text = "TvProvider: ${previewChannelsResult.queriedChannelCount} TYPE_PREVIEW-Kanäle gefunden; davon ${previewChannelsResult.channels.size} browsable/sichtbar. Für sichtbare Kanäle wurden ${previewChannelsResult.queriedProgramCount} Preview Programs gelesen.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    if (
+                        previewChannelsResult.queriedChannelCount > 0 &&
+                        previewChannelsResult.channels.isEmpty()
+                    ) {
+                        Text(
+                            text = "Es existieren Preview Channels, Android markiert aber aktuell keinen davon als browsable für den Launcher.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    } else if (previewChannelsResult.queriedChannelCount == 0) {
+                        Text(
+                            text = "Der TvProvider liefert aktuell überhaupt keinen TYPE_PREVIEW-Kanal. Dann liegt das Fehlen der Home-Reihen nicht am I-Launcher-Filter.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    previewChannelsResult.channels.take(5).forEach { channel ->
+                        Text(
+                            text = buildString {
+                                append(channel.packageName ?: "Paket unbekannt")
+                                append(" | ")
+                                append(channel.title)
+                                append(" | programme=${channel.programs.size}")
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
 
@@ -353,6 +433,118 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+        }
+
+        Text(
+            text = "App-Kanäle – Home",
+            style = MaterialTheme.typography.headlineSmall,
+        )
+
+        when {
+            !hasTvListingsPermission -> {
+                Text(
+                    text = "App-Kanäle werden sichtbar, sobald die TV-Inhalte-Berechtigung erteilt wurde.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+
+            previewChannelsResult.errorMessage != null -> {
+                Text(
+                    text = previewChannelsResult.errorMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+
+            previewChannelsResult.channels.isEmpty() -> {
+                Text(
+                    text = "Android TvProvider liefert aktuell keine für andere Apps sichtbaren Preview Channels.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            else -> {
+                Text(
+                    text = "Jeder freigegebene Android-TV-Kanal erscheint als eigene Reihe auf Home. Ausblenden ändert weder die App-Daten noch die Reihenfolge der übrigen Kanäle.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+
+                previewChannelsResult.channels.forEach { channel ->
+                    val visible = channel.id !in hiddenPreviewChannelIds
+                    val sourceLabel = channel.packageName?.let(appLabels::get)
+                    val label = if (!sourceLabel.isNullOrBlank() && sourceLabel != channel.title) {
+                        "${channel.title} · $sourceLabel"
+                    } else {
+                        channel.title
+                    }
+                    Button(
+                        onClick = { onSetPreviewChannelVisible(channel.id, !visible) },
+                    ) {
+                        Text(
+                            if (visible) {
+                                "Anzeigen: $label (${channel.programs.size})"
+                            } else {
+                                "Ausgeblendet: $label (${channel.programs.size})"
+                            },
+                        )
+                    }
+                }
+
+                if (hiddenPreviewChannelIds.isNotEmpty()) {
+                    Button(onClick = onShowAllPreviewChannels) {
+                        Text("Alle App-Kanäle wieder anzeigen")
+                    }
+                }
+            }
+        }
+
+        Text(
+            text = "App-Kanäle Diagnose",
+            style = MaterialTheme.typography.headlineSmall,
+        )
+
+        if (hasTvListingsPermission && previewChannelsResult.errorMessage == null) {
+            Text(
+                text = "TvProvider-Abfrage: ${previewChannelsResult.queriedChannelCount} Preview Channels, ${previewChannelsResult.queriedProgramCount} Programme roh; ${previewChannelsResult.channels.size} browsable Kanäle. Programme werden nach dem von Android vorgesehenen Gewicht absteigend angefordert.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
+            previewChannelsResult.channels.take(20).forEach { channel ->
+                Text(
+                    text = buildString {
+                        append("#${channel.sourceOrder} | ")
+                        append(channel.packageName ?: "Paket unbekannt")
+                        append(" | ")
+                        append(channel.title)
+                        append(" | programme=${channel.programs.size}")
+                        append(" | appLink=${if (channel.appLinkIntentUri.isNullOrBlank()) "nein" else "ja"}")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                channel.programs.take(5).forEach { program ->
+                    Text(
+                        text = buildString {
+                            append("  P#${program.sourceOrder} | ")
+                            append(program.media.title)
+                            program.weight?.let { append(" | weight=$it") }
+                            append(" | intent=${if (program.media.source.intentUri.isNullOrBlank()) "nein" else "ja"}")
+                            append(" | bild=${if (program.media.preferredArtworkUri.isNullOrBlank()) "nein" else "ja"}")
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (channel.programs.size > 5) {
+                    Text(
+                        text = "  + ${channel.programs.size - 5} weitere Programme",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
 
