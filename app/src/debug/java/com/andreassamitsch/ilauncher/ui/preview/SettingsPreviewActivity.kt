@@ -31,7 +31,7 @@ import com.andreassamitsch.ilauncher.ui.settings.SettingsCategory
 import com.andreassamitsch.ilauncher.ui.settings.SettingsScreen
 import com.andreassamitsch.ilauncher.ui.theme.ILauncherTheme
 
-/** Deterministic debug-only fixture for 1080p settings screenshots. */
+/** Deterministic debug-only fixture for settings layout and action-affordance screenshots. */
 class SettingsPreviewActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
