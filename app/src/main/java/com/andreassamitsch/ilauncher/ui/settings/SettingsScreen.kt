@@ -61,8 +61,8 @@ import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.HomeLauncherManager
 import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
+import com.andreassamitsch.ilauncher.ui.components.touchClickFallback
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
-import com.andreassamitsch.ilauncher.ui.components.touchTap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -399,7 +399,7 @@ private fun SettingsSidebar(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .touchTap(onClick = onCategoryClick),
+                        .touchClickFallback(onClick = onCategoryClick),
                 )
             }
             Spacer(modifier = Modifier.size(2.dp))
