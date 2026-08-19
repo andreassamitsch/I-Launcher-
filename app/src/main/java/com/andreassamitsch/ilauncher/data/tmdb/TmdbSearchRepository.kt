@@ -45,7 +45,8 @@ class TmdbSearchRepository(
     private val appContext = context.applicationContext
     private val network = TmdbNetworkClient(readAccessToken)
     private val imageConfigurationStore = TmdbImageConfigurationStore(appContext)
-    private val queryCache = LinkedHashMap<String, CachedSearch>()
+    private val discoveryPreferences = TmdbDiscoveryPreferences(appContext)
+    private val queryCache = LinkedHashMap<SearchCacheKey, CachedSearch>()
     private val detailsCache = LinkedHashMap<String, CachedDetails>()
     private val browseCache = LinkedHashMap<BrowseCacheKey, CachedBrowse>()
     private val categoryBrowseCache = LinkedHashMap<CategoryBrowseCacheKey, CachedBrowse>()
@@ -56,8 +57,10 @@ class TmdbSearchRepository(
     suspend fun search(query: String): List<MediaItem> = withContext(Dispatchers.IO) {
         val normalized = query.trim().lowercase()
         if (!network.isConfigured || normalized.length < 3) return@withContext emptyList()
+        val filterSettings = discoveryPreferences.filterSettings()
+        val cacheKey = SearchCacheKey(normalized, filterSettings)
         val now = System.currentTimeMillis()
-        queryCache[normalized]
+        queryCache[cacheKey]
             ?.takeIf { now - it.updatedAtUtcMillis <= SEARCH_CACHE_MILLIS }
             ?.let { return@withContext it.items }
 
@@ -69,13 +72,17 @@ class TmdbSearchRepository(
                 includeAdult = false,
                 page = 1,
             )
-            TmdbSearchRanker.rank(query.trim(), response.results)
+            val filtered = TmdbDiscoveryContentPolicy.prepareSearchResults(
+                response.results,
+                filterSettings,
+            )
+            TmdbSearchRanker.rank(query.trim(), filtered)
                 .mapNotNull { dto -> dto.toSearchMedia(images) }
         }.onFailure { throwable ->
             Log.w(SEARCH_TAG, "TMDB global search failed (${throwable.javaClass.simpleName})")
         }.getOrDefault(emptyList())
 
-        queryCache[normalized] = CachedSearch(items, now)
+        queryCache[cacheKey] = CachedSearch(items, now)
         trimCache(queryCache, MAX_QUERY_CACHE_ENTRIES)
         items
     }
@@ -87,13 +94,19 @@ class TmdbSearchRepository(
         if (!network.isConfigured || type !in setOf(MediaType.Movie, MediaType.Series)) {
             return@withContext emptyList()
         }
-        val requestedRows = TmdbDiscoveryCatalog.selectedRows(type, rowKeys)
+        val filterSettings = discoveryPreferences.filterSettings()
+        val selected = TmdbDiscoveryCatalog.selectedRows(type, rowKeys)
             .ifEmpty {
                 TmdbDiscoveryCatalog.selectedRows(type, TmdbDiscoveryCatalog.defaultRowKeys(type))
             }
+        val requestedRows = TmdbDiscoveryContentPolicy.effectiveRows(type, selected, filterSettings)
         if (requestedRows.isEmpty()) return@withContext emptyList()
 
-        val cacheKey = BrowseCacheKey(type, requestedRows.map(TmdbDiscoveryRowDefinition::key))
+        val cacheKey = BrowseCacheKey(
+            type = type,
+            rowKeys = requestedRows.map(TmdbDiscoveryRowDefinition::key),
+            filterSettings = filterSettings,
+        )
         val now = System.currentTimeMillis()
         browseCache[cacheKey]
             ?.takeIf { now - it.updatedAtUtcMillis <= BROWSE_CACHE_MILLIS }
@@ -104,7 +117,9 @@ class TmdbSearchRepository(
             coroutineScope {
                 requestedRows
                     .map { definition ->
-                        definition to async { loadDiscoveryRow(type, definition, imageConfig) }
+                        definition to async {
+                            loadDiscoveryRow(type, definition, imageConfig, filterSettings)
+                        }
                     }
                     .mapNotNull { (definition, deferred) ->
                         val rowItems = deferred.await().take(BROWSE_ROW_LIMIT)
@@ -131,13 +146,26 @@ class TmdbSearchRepository(
         if (!network.isConfigured || type !in setOf(MediaType.Movie, MediaType.Series)) {
             return@withContext emptyList()
         }
+        val filterSettings = discoveryPreferences.filterSettings()
         val sourceDefinition = TmdbDiscoveryCatalog.rows(type)
             .firstOrNull { it.key == sourceRowKey }
             ?: return@withContext emptyList()
+        if (filterSettings.kidsMode) {
+            val safeRows = TmdbDiscoveryContentPolicy.effectiveRows(
+                type = type,
+                requested = TmdbDiscoveryCatalog.rows(type),
+                settings = filterSettings,
+            )
+            if (safeRows.none { it.key == sourceRowKey }) return@withContext emptyList()
+        }
         val requestedRows = TmdbDiscoveryCategoryCatalog.rows(type, sourceDefinition)
+            .filter { definition ->
+                !filterSettings.kidsMode ||
+                    TmdbDiscoveryContentPolicy.allowCategoryKindInKidsMode(definition.kind)
+            }
         if (requestedRows.isEmpty()) return@withContext emptyList()
 
-        val cacheKey = CategoryBrowseCacheKey(type, sourceRowKey)
+        val cacheKey = CategoryBrowseCacheKey(type, sourceRowKey, filterSettings)
         val now = System.currentTimeMillis()
         categoryBrowseCache[cacheKey]
             ?.takeIf { now - it.updatedAtUtcMillis <= BROWSE_CACHE_MILLIS }
@@ -146,7 +174,7 @@ class TmdbSearchRepository(
         val sections = runCatching {
             val imageConfig = ensureImageConfiguration(now)
             val todayUtc = LocalDate.now(ZoneOffset.UTC)
-            coroutineScope {
+            val loaded = coroutineScope {
                 requestedRows
                     .map { definition ->
                         definition to async {
@@ -156,6 +184,7 @@ class TmdbSearchRepository(
                                 definition = definition,
                                 imageConfig = imageConfig,
                                 todayUtc = todayUtc,
+                                filterSettings = filterSettings,
                             )
                         }
                     }
@@ -170,6 +199,7 @@ class TmdbSearchRepository(
                         )
                     }
             }
+            TmdbDiscoveryContentPolicy.diversifyCategorySections(loaded)
         }.onFailure { throwable ->
             Log.w(
                 SEARCH_TAG,
@@ -220,34 +250,57 @@ class TmdbSearchRepository(
         type: MediaType,
         definition: TmdbDiscoveryRowDefinition,
         imageConfig: TmdbImageConfiguration?,
+        filterSettings: TmdbDiscoveryFilterSettings,
     ): List<MediaItem> = when (definition.kind) {
-        TmdbDiscoveryRowKind.Trending -> loadTrending(type, imageConfig, definition.trendWindow.apiValue)
-        TmdbDiscoveryRowKind.Popular -> loadDiscover(type, imageConfig, SORT_POPULARITY, null, 0)
+        TmdbDiscoveryRowKind.Trending -> loadTrending(
+            type = type,
+            imageConfig = imageConfig,
+            timeWindow = definition.trendWindow.apiValue,
+            filterSettings = filterSettings,
+        )
+        TmdbDiscoveryRowKind.Popular -> loadDiscover(
+            type = type,
+            imageConfig = imageConfig,
+            sortBy = SORT_POPULARITY,
+            genreId = null,
+            voteCountGte = 0,
+            filterSettings = filterSettings,
+        )
         TmdbDiscoveryRowKind.TopRated -> loadDiscover(
-            type,
-            imageConfig,
-            SORT_RATING,
-            null,
-            if (type == MediaType.Movie) 300 else 200,
+            type = type,
+            imageConfig = imageConfig,
+            sortBy = SORT_RATING,
+            genreId = null,
+            voteCountGte = if (type == MediaType.Movie) 300 else 200,
+            filterSettings = filterSettings,
         )
         TmdbDiscoveryRowKind.NowPlaying -> if (type == MediaType.Movie) {
-            network.api.nowPlayingMovies(language = LANGUAGE).results.toMediaItems(imageConfig, type)
+            val raw = network.api.nowPlayingMovies(language = LANGUAGE).results
+            TmdbDiscoveryContentPolicy.prepareFeedResults(type, raw, filterSettings)
+                .toMediaItems(imageConfig, type)
         } else emptyList()
         TmdbDiscoveryRowKind.Upcoming -> if (type == MediaType.Movie) {
-            network.api.upcomingMovies(language = LANGUAGE).results.toMediaItems(imageConfig, type)
+            val raw = network.api.upcomingMovies(language = LANGUAGE).results
+            TmdbDiscoveryContentPolicy.prepareFeedResults(type, raw, filterSettings)
+                .toMediaItems(imageConfig, type)
         } else emptyList()
         TmdbDiscoveryRowKind.AiringToday -> if (type == MediaType.Series) {
-            network.api.airingTodayTv(language = LANGUAGE).results.toMediaItems(imageConfig, type)
+            val raw = network.api.airingTodayTv(language = LANGUAGE).results
+            TmdbDiscoveryContentPolicy.prepareFeedResults(type, raw, filterSettings)
+                .toMediaItems(imageConfig, type)
         } else emptyList()
         TmdbDiscoveryRowKind.OnTheAir -> if (type == MediaType.Series) {
-            network.api.onTheAirTv(language = LANGUAGE).results.toMediaItems(imageConfig, type)
+            val raw = network.api.onTheAirTv(language = LANGUAGE).results
+            TmdbDiscoveryContentPolicy.prepareFeedResults(type, raw, filterSettings)
+                .toMediaItems(imageConfig, type)
         } else emptyList()
         TmdbDiscoveryRowKind.Genre -> loadDiscover(
-            type,
-            imageConfig,
-            SORT_POPULARITY,
-            definition.genreId,
-            CATEGORY_MIN_VOTE_COUNT,
+            type = type,
+            imageConfig = imageConfig,
+            sortBy = SORT_POPULARITY,
+            genreId = definition.genreId,
+            voteCountGte = CATEGORY_MIN_VOTE_COUNT,
+            filterSettings = filterSettings,
         )
     }
 
@@ -257,6 +310,7 @@ class TmdbSearchRepository(
         definition: TmdbDiscoveryCategoryRowDefinition,
         imageConfig: TmdbImageConfiguration?,
         todayUtc: LocalDate,
+        filterSettings: TmdbDiscoveryFilterSettings,
     ): List<MediaItem> {
         val genreId = sourceDefinition.genreId
         val hasGenreScope = genreId != null
@@ -283,17 +337,18 @@ class TmdbSearchRepository(
 
         return when (definition.kind) {
             TmdbDiscoveryCategoryRowKind.TrendingDay ->
-                loadTrending(type, imageConfig, TmdbTrendWindow.Day.apiValue)
+                loadTrending(type, imageConfig, TmdbTrendWindow.Day.apiValue, filterSettings)
 
             TmdbDiscoveryCategoryRowKind.TrendingWeek ->
-                loadTrending(type, imageConfig, TmdbTrendWindow.Week.apiValue)
+                loadTrending(type, imageConfig, TmdbTrendWindow.Week.apiValue, filterSettings)
 
             TmdbDiscoveryCategoryRowKind.Popular -> loadDiscover(
                 type = type,
                 imageConfig = imageConfig,
-                sortBy = SORT_POPULARITY,
+                sortBy = SORT_VOTE_COUNT,
                 genreId = genreId,
                 voteCountGte = if (hasGenreScope) CATEGORY_MIN_VOTE_COUNT else 0,
+                filterSettings = filterSettings,
             )
 
             TmdbDiscoveryCategoryRowKind.TopRated -> loadDiscover(
@@ -302,6 +357,7 @@ class TmdbSearchRepository(
                 sortBy = SORT_RATING,
                 genreId = genreId,
                 voteCountGte = standardTopRatedVotes,
+                filterSettings = filterSettings,
             )
 
             TmdbDiscoveryCategoryRowKind.RecentPopular -> loadDiscover(
@@ -312,6 +368,7 @@ class TmdbSearchRepository(
                 voteCountGte = recentVotes,
                 releaseDateGte = todayUtc.minusYears(2).toString(),
                 releaseDateLte = todayUtc.toString(),
+                filterSettings = filterSettings,
             )
 
             TmdbDiscoveryCategoryRowKind.RecentTopRated -> loadDiscover(
@@ -323,16 +380,18 @@ class TmdbSearchRepository(
                 voteAverageGte = RECENT_QUALITY_MIN_RATING,
                 releaseDateGte = todayUtc.minusYears(5).toString(),
                 releaseDateLte = todayUtc.toString(),
+                filterSettings = filterSettings,
             )
 
             TmdbDiscoveryCategoryRowKind.AllTimeTopRated -> loadDiscover(
                 type = type,
                 imageConfig = imageConfig,
-                sortBy = SORT_RATING,
+                sortBy = SORT_VOTE_COUNT,
                 genreId = genreId,
                 voteCountGte = allTimeVotes,
                 voteAverageGte = ALL_TIME_MIN_RATING,
-                releaseDateLte = todayUtc.toString(),
+                releaseDateLte = todayUtc.minusYears(3).toString(),
+                filterSettings = filterSettings,
             )
 
             TmdbDiscoveryCategoryRowKind.Classics -> loadDiscover(
@@ -343,22 +402,31 @@ class TmdbSearchRepository(
                 voteCountGte = classicVotes,
                 voteAverageGte = CLASSIC_MIN_RATING,
                 releaseDateLte = todayUtc.minusYears(10).toString(),
+                filterSettings = filterSettings,
             )
 
             TmdbDiscoveryCategoryRowKind.NowPlaying -> if (type == MediaType.Movie) {
-                network.api.nowPlayingMovies(language = LANGUAGE).results.toMediaItems(imageConfig, type)
+                val raw = network.api.nowPlayingMovies(language = LANGUAGE).results
+                TmdbDiscoveryContentPolicy.prepareFeedResults(type, raw, filterSettings)
+                    .toMediaItems(imageConfig, type)
             } else emptyList()
 
             TmdbDiscoveryCategoryRowKind.Upcoming -> if (type == MediaType.Movie) {
-                network.api.upcomingMovies(language = LANGUAGE).results.toMediaItems(imageConfig, type)
+                val raw = network.api.upcomingMovies(language = LANGUAGE).results
+                TmdbDiscoveryContentPolicy.prepareFeedResults(type, raw, filterSettings)
+                    .toMediaItems(imageConfig, type)
             } else emptyList()
 
             TmdbDiscoveryCategoryRowKind.AiringToday -> if (type == MediaType.Series) {
-                network.api.airingTodayTv(language = LANGUAGE).results.toMediaItems(imageConfig, type)
+                val raw = network.api.airingTodayTv(language = LANGUAGE).results
+                TmdbDiscoveryContentPolicy.prepareFeedResults(type, raw, filterSettings)
+                    .toMediaItems(imageConfig, type)
             } else emptyList()
 
             TmdbDiscoveryCategoryRowKind.OnTheAir -> if (type == MediaType.Series) {
-                network.api.onTheAirTv(language = LANGUAGE).results.toMediaItems(imageConfig, type)
+                val raw = network.api.onTheAirTv(language = LANGUAGE).results
+                TmdbDiscoveryContentPolicy.prepareFeedResults(type, raw, filterSettings)
+                    .toMediaItems(imageConfig, type)
             } else emptyList()
         }
     }
@@ -367,13 +435,15 @@ class TmdbSearchRepository(
         type: MediaType,
         imageConfig: TmdbImageConfiguration?,
         timeWindow: String,
+        filterSettings: TmdbDiscoveryFilterSettings,
     ): List<MediaItem> {
         val results = when (type) {
             MediaType.Movie -> network.api.trendingMovies(timeWindow = timeWindow, language = LANGUAGE).results
             MediaType.Series -> network.api.trendingTv(timeWindow = timeWindow, language = LANGUAGE).results
             else -> emptyList()
         }
-        return results.toMediaItems(imageConfig, type)
+        return TmdbDiscoveryContentPolicy.prepareFeedResults(type, results, filterSettings)
+            .toMediaItems(imageConfig, type)
     }
 
     private suspend fun loadDiscover(
@@ -382,24 +452,31 @@ class TmdbSearchRepository(
         sortBy: String,
         genreId: String?,
         voteCountGte: Int,
+        filterSettings: TmdbDiscoveryFilterSettings,
         voteAverageGte: Double? = null,
         releaseDateGte: String? = null,
         releaseDateLte: String? = null,
     ): List<MediaItem> {
+        val movieCertificationApplied = filterSettings.kidsMode && type == MediaType.Movie
         val results = when (type) {
             MediaType.Movie -> network.api.discoverMovies(
                 language = LANGUAGE,
                 sortBy = sortBy,
                 withGenres = genreId,
+                withoutKeywords = TmdbDiscoveryContentPolicy.withoutKeywords(filterSettings, genreId),
                 voteCountGte = voteCountGte,
                 voteAverageGte = voteAverageGte,
                 primaryReleaseDateGte = releaseDateGte,
                 primaryReleaseDateLte = releaseDateLte,
+                region = TmdbDiscoveryContentPolicy.movieRegion(filterSettings),
+                certificationCountry = TmdbDiscoveryContentPolicy.movieCertificationCountry(filterSettings),
+                certificationLte = TmdbDiscoveryContentPolicy.movieCertificationLte(filterSettings),
             ).results
             MediaType.Series -> network.api.discoverTv(
                 language = LANGUAGE,
                 sortBy = sortBy,
                 withGenres = genreId,
+                withoutKeywords = TmdbDiscoveryContentPolicy.withoutKeywords(filterSettings, genreId),
                 voteCountGte = voteCountGte,
                 voteAverageGte = voteAverageGte,
                 firstAirDateGte = releaseDateGte,
@@ -407,7 +484,13 @@ class TmdbSearchRepository(
             ).results
             else -> emptyList()
         }
-        return results.toMediaItems(imageConfig, type)
+        return TmdbDiscoveryContentPolicy.prepareDiscoverResults(
+            type = type,
+            results = results,
+            settings = filterSettings,
+            genreId = genreId,
+            movieCertificationApplied = movieCertificationApplied,
+        ).toMediaItems(imageConfig, type)
     }
 
     private fun List<TmdbSearchResultDto>.toMediaItems(
@@ -533,14 +616,21 @@ class TmdbSearchRepository(
         }
     }
 
+    private data class SearchCacheKey(
+        val query: String,
+        val filterSettings: TmdbDiscoveryFilterSettings,
+    )
+
     private data class BrowseCacheKey(
         val type: MediaType,
         val rowKeys: List<String>,
+        val filterSettings: TmdbDiscoveryFilterSettings,
     )
 
     private data class CategoryBrowseCacheKey(
         val type: MediaType,
         val sourceRowKey: String,
+        val filterSettings: TmdbDiscoveryFilterSettings,
     )
 
     private data class CachedSearch(
@@ -564,6 +654,7 @@ class TmdbSearchRepository(
         const val CATEGORY_MIN_VOTE_COUNT = 50
         const val SORT_POPULARITY = "popularity.desc"
         const val SORT_RATING = "vote_average.desc"
+        const val SORT_VOTE_COUNT = "vote_count.desc"
         const val RECENT_QUALITY_MIN_RATING = 6.5
         const val ALL_TIME_MIN_RATING = 7.0
         const val CLASSIC_MIN_RATING = 7.0
