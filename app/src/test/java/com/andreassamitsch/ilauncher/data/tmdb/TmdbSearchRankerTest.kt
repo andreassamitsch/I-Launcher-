@@ -74,6 +74,40 @@ class TmdbSearchRankerTest {
         assertEquals(900, TmdbSearchRanker.titleMatchScore("expend", item))
     }
 
+    @Test
+    fun `known Matrix movie wins among same-name results`() {
+        val results = listOf(
+            result(id = 1, title = "Matrix", voteCount = 27_000, popularity = 85.0),
+            result(id = 2, title = "Matrix", voteCount = 18, popularity = 2.0),
+            result(id = 3, title = "Matrix", voteCount = 7, popularity = 1.2),
+            result(id = 4, title = "Matrix", voteCount = 3, popularity = 0.8),
+        )
+
+        val ranked = TmdbSearchRanker.rank("matrix", results)
+
+        assertEquals(1, ranked.first().id)
+    }
+
+    @Test
+    fun `known Avatar movie can beat obscure exact-title collisions`() {
+        val results = listOf(
+            result(
+                id = 1,
+                title = "Avatar - Aufbruch nach Pandora",
+                originalTitle = "Avatar",
+                voteCount = 32_000,
+                popularity = 95.0,
+            ),
+            result(id = 2, title = "Avatar", voteCount = 22, popularity = 2.5),
+            result(id = 3, title = "Avatar", voteCount = 6, popularity = 1.0),
+            result(id = 4, title = "Avatar", voteCount = 4, popularity = 0.7),
+        )
+
+        val ranked = TmdbSearchRanker.rank("avatar", results)
+
+        assertEquals(1, ranked.first().id)
+    }
+
     private fun result(
         id: Int,
         title: String,
