@@ -195,9 +195,9 @@ fun Modifier.touchTap(
  * Adds pointer dragging to a Compose scroll state without changing TV focus relocation.
  *
  * Compose for TV click targets can consume pointer movement before a surrounding `verticalScroll`
- * sees it on touch devices. The normal scrollable remains authoritative whenever it reports an
- * active scroll. Only when no native scroll started after touch slop does this fallback take over
- * the drag, including movement already consumed by a child TV row.
+ * sees it on touch devices. Observe the gesture in the Initial pass so a plain tap reaches the TV
+ * row unchanged. Only after touch slop is exceeded does this fallback consume movement and scroll;
+ * that cleanly turns the gesture into a drag before the child can also interpret it as a click.
  *
  * Normal vertically scrollable pages must keep Compose's automatic bring-into-view propagation so
  * DPAD focus can move the viewport to controls below the fold. Home's exceptional row-keyline
@@ -210,7 +210,7 @@ fun Modifier.touchScrollFallback(
     awaitEachGesture {
         val down = awaitFirstDown(
             requireUnconsumed = false,
-            pass = PointerEventPass.Final,
+            pass = PointerEventPass.Initial,
         )
         var lastPosition: Offset = down.position
         var accumulatedDrag = 0f
@@ -218,7 +218,7 @@ fun Modifier.touchScrollFallback(
         val touchSlop = viewConfiguration.touchSlop
 
         while (true) {
-            val event = awaitPointerEvent(PointerEventPass.Final)
+            val event = awaitPointerEvent(PointerEventPass.Initial)
             val change = event.changes.firstOrNull { it.id == down.id } ?: break
             if (!change.pressed) break
 
@@ -234,9 +234,9 @@ fun Modifier.touchScrollFallback(
                 accumulatedDrag += dragDelta
                 if (kotlin.math.abs(accumulatedDrag) <= touchSlop) continue
 
-                // If Compose's own scrollable accepted the gesture, do not duplicate its delta.
-                // If a child TV ListItem consumed it instead, the state remains idle and this
-                // fallback deliberately takes ownership so phone/tablet dragging still works.
+                // If Compose's own scrollable already accepted the gesture, do not duplicate it.
+                // Otherwise take ownership here, before a child TV row can consume the drag as a
+                // click gesture. Plain taps never cross this threshold and remain untouched.
                 if (state.isScrollInProgress) continue
                 fallbackDragging = true
             }
