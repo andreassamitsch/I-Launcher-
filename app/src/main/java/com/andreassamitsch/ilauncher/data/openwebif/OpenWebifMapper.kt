@@ -4,9 +4,14 @@ import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
 
 internal object OpenWebifMapper {
+    private val numericEntity = Regex("&#(x[0-9A-Fa-f]+|[0-9]+);")
+    private val namedEntity = Regex("&(amp|quot|apos|lt|gt|nbsp);", RegexOption.IGNORE_CASE)
+    private val inlineWhitespace = Regex("\\s+")
+    private val repeatedBlankLines = Regex("\\n{3,}")
+
     fun bouquets(services: List<OpenWebifServiceDto>): List<OpenWebifBouquet> =
         services.mapNotNull { service ->
-            val name = service.serviceName?.trim()?.takeIf { it.isNotBlank() }
+            val name = service.serviceName?.cleanInline()?.takeIf { it.isNotBlank() }
                 ?: return@mapNotNull null
             val reference = service.serviceReference?.trim()?.takeIf { it.isNotBlank() }
                 ?: return@mapNotNull null
@@ -24,7 +29,7 @@ internal object OpenWebifMapper {
             if (service.pos == 0) return@mapNotNull null
             val reference = service.serviceReference?.trim()?.takeIf { it.isNotBlank() }
                 ?: return@mapNotNull null
-            val name = service.serviceName?.trim()?.takeIf { it.isNotBlank() }
+            val name = service.serviceName?.cleanInline()?.takeIf { it.isNotBlank() }
                 ?: return@mapNotNull null
             val matchingEvents = events
                 .filter { event -> referencesMatch(reference, event.sref) }
@@ -53,18 +58,80 @@ internal object OpenWebifMapper {
         }
     }
 
+    fun sanitizeChannels(channels: List<LiveTvChannel>): List<LiveTvChannel> = channels.map { channel ->
+        channel.copy(
+            name = channel.name.cleanInline().ifBlank { channel.name },
+            now = channel.now?.sanitizeText(),
+            next = channel.next?.sanitizeText(),
+        )
+    }
+
     private fun OpenWebifEventDto.toProgram(): LiveTvProgram? {
         val start = beginTimestamp ?: return null
         val duration = durationSec ?: return null
-        val programTitle = title?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val programTitle = title?.cleanInline()?.takeIf { it.isNotBlank() } ?: return null
         return LiveTvProgram(
             eventId = id,
             title = programTitle,
-            shortDescription = shortdesc?.trim()?.takeIf { it.isNotBlank() },
-            longDescription = longdesc?.trim()?.takeIf { it.isNotBlank() },
+            shortDescription = shortdesc?.cleanMultiline()?.takeIf { it.isNotBlank() },
+            longDescription = longdesc?.cleanMultiline()?.takeIf { it.isNotBlank() },
             startUtcMillis = start * 1_000L,
             durationMillis = duration.coerceAtLeast(0L) * 1_000L,
         )
+    }
+
+    private fun LiveTvProgram.sanitizeText(): LiveTvProgram = copy(
+        title = title.cleanInline().ifBlank { title },
+        shortDescription = shortDescription?.cleanMultiline()?.takeIf { it.isNotBlank() },
+        longDescription = longDescription?.cleanMultiline()?.takeIf { it.isNotBlank() },
+    )
+
+    private fun String.cleanInline(): String = decodeEntities(this)
+        .replace("\\r\\n", " ")
+        .replace("\\n", " ")
+        .replace("\\r", " ")
+        .replace(inlineWhitespace, " ")
+        .trim()
+
+    private fun String.cleanMultiline(): String = decodeEntities(this)
+        .replace("\\r\\n", "\n")
+        .replace("\\n", "\n")
+        .replace("\\r", "\n")
+        .lines()
+        .joinToString("\n") { line -> line.replace(Regex("[\\t ]+"), " ").trim() }
+        .replace(repeatedBlankLines, "\n\n")
+        .trim()
+
+    private fun decodeEntities(raw: String): String {
+        var decoded = raw
+        repeat(MAX_ENTITY_DECODE_PASSES) {
+            val before = decoded
+            decoded = numericEntity.replace(decoded) { match ->
+                val token = match.groupValues[1]
+                val codePoint = if (token.startsWith("x", ignoreCase = true)) {
+                    token.drop(1).toIntOrNull(16)
+                } else {
+                    token.toIntOrNull()
+                }
+                codePoint
+                    ?.takeIf(Character::isValidCodePoint)
+                    ?.let { runCatching { String(Character.toChars(it)) }.getOrNull() }
+                    ?: match.value
+            }
+            decoded = namedEntity.replace(decoded) { match ->
+                when (match.groupValues[1].lowercase()) {
+                    "amp" -> "&"
+                    "quot" -> "\""
+                    "apos" -> "'"
+                    "lt" -> "<"
+                    "gt" -> ">"
+                    "nbsp" -> " "
+                    else -> match.value
+                }
+            }
+            if (decoded == before) return decoded
+        }
+        return decoded
     }
 
     private fun referencesMatch(serviceReference: String, eventReference: String?): Boolean {
@@ -73,4 +140,6 @@ internal object OpenWebifMapper {
     }
 
     private fun normalizeReference(value: String): String = value.trim().trimEnd(':')
+
+    private const val MAX_ENTITY_DECODE_PASSES = 3
 }

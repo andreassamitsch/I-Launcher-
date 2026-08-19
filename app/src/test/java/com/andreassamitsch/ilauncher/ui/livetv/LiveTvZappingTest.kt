@@ -1,6 +1,11 @@
 package com.andreassamitsch.ilauncher.ui.livetv
 
+import androidx.media3.common.PlaybackException
+import java.time.Instant
+import java.time.ZoneId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LiveTvZappingTest {
@@ -52,5 +57,57 @@ class LiveTvZappingTest {
                 currentServiceReference = "removed",
             ),
         )
+    }
+
+    @Test
+    fun `formats next programme start in TV local time`() {
+        val start = Instant.parse("2026-08-17T20:14:00Z").toEpochMilli()
+
+        assertEquals(
+            "22:14",
+            formatLiveTvStartTime(start, ZoneId.of("Europe/Vienna")),
+        )
+    }
+
+    @Test
+    fun `retries transient MPEG TS parser failures`() {
+        assertTrue(
+            LiveTvPlaybackRecovery.shouldRetry(
+                PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+                completedRetries = 0,
+            ),
+        )
+        assertTrue(
+            LiveTvPlaybackRecovery.shouldRetry(
+                PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+                completedRetries = 1,
+            ),
+        )
+    }
+
+    @Test
+    fun `stops automatic recovery after bounded retry count`() {
+        assertFalse(
+            LiveTvPlaybackRecovery.shouldRetry(
+                PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+                completedRetries = LiveTvPlaybackRecovery.MAX_AUTO_RETRIES,
+            ),
+        )
+    }
+
+    @Test
+    fun `does not hide unrelated permanent playback failures behind parser recovery`() {
+        assertFalse(
+            LiveTvPlaybackRecovery.shouldRetry(
+                PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+                completedRetries = 0,
+            ),
+        )
+    }
+
+    @Test
+    fun `backs off the second full stream restart`() {
+        assertEquals(350L, LiveTvPlaybackRecovery.retryDelayMillis(1))
+        assertEquals(900L, LiveTvPlaybackRecovery.retryDelayMillis(2))
     }
 }

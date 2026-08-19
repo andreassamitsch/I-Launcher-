@@ -3,6 +3,7 @@ package com.andreassamitsch.ilauncher.data.epg
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
 import com.andreassamitsch.ilauncher.model.MediaType
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class EpgTmdbHintTest {
@@ -29,10 +30,34 @@ class EpgTmdbHintTest {
         )
     }
 
+    @Test
+    fun `episode air year is not used as parent series TMDB year`() {
+        val theRookie = program(
+            categories = listOf("Crime", "Drama", "Action"),
+            season = 5,
+            episode = 6,
+            releaseYear = 2022,
+        )
+
+        assertEquals(MediaType.Episode, epgMediaTypeHint(theRookie))
+        assertNull(epgTmdbReleaseYearHint(theRookie))
+    }
+
+    @Test
+    fun `series year remains a TMDB hint when no episode is identified`() {
+        assertEquals(
+            2018,
+            epgTmdbReleaseYearHint(
+                program(categories = listOf("Serie"), releaseYear = 2018),
+            ),
+        )
+    }
+
     private fun program(
         categories: List<String>? = null,
         season: Int? = null,
         episode: Int? = null,
+        releaseYear: Int? = null,
     ) = LiveTvProgram(
         eventId = null,
         title = "Test",
@@ -41,5 +66,6 @@ class EpgTmdbHintTest {
         categories = categories,
         seasonNumber = season,
         episodeNumber = episode,
+        releaseYear = releaseYear,
     )
 }
