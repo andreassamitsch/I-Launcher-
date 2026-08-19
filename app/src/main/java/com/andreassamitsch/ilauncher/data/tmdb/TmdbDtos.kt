@@ -21,6 +21,7 @@ internal data class TmdbSearchResultDto(
     @SerializedName("vote_count") val voteCount: Int = 0,
     @SerializedName("poster_path") val posterPath: String? = null,
     @SerializedName("backdrop_path") val backdropPath: String? = null,
+    @SerializedName("genre_ids") val genreIds: List<Int> = emptyList(),
     val adult: Boolean = false,
 )
 
@@ -89,7 +90,14 @@ internal data class TmdbSeasonEpisodeDto(
 
 internal data class TmdbMediaRelationsDto(
     @SerializedName("belongs_to_collection") val belongsToCollection: TmdbCollectionRefDto? = null,
+    val genres: List<TmdbGenreDto> = emptyList(),
+    val recommendations: TmdbSearchResponseDto? = null,
     val similar: TmdbSearchResponseDto? = null,
+)
+
+internal data class TmdbGenreDto(
+    val id: Int = 0,
+    val name: String? = null,
 )
 
 internal data class TmdbCollectionRefDto(

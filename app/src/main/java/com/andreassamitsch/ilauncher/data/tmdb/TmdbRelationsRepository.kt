@@ -46,8 +46,14 @@ class TmdbRelationsRepository(
                 MediaType.Series -> network.api.tvRelations(tmdbId, LANGUAGE)
                 else -> return@runCatching MediaRelatedContent.Empty
             }
+            val relatedCandidates = selectTmdbRelatedCandidates(
+                recommendations = relations.recommendations?.results.orEmpty(),
+                similar = relations.similar?.results.orEmpty(),
+                sourceGenreIds = relations.genres.map(TmdbGenreDto::id),
+                currentTmdbId = tmdbId,
+            )
             val similar = mapTmdbRelationItems(
-                results = relations.similar?.results.orEmpty(),
+                results = relatedCandidates,
                 type = relationType,
                 currentTmdbId = tmdbId,
                 imageConfiguration = images,
@@ -120,6 +126,59 @@ class TmdbRelationsRepository(
         const val MAX_CACHE_ENTRIES = 36
     }
 }
+
+/**
+ * Produces a quality-first related-content list from TMDB's recommendation and similar feeds.
+ *
+ * TMDB's movie similar endpoint is genre/keyword based, but very new titles can still return
+ * broad one-genre matches. Recommendations are therefore included as an additional candidate
+ * source and candidates are required to share a meaningful part of the source genre identity.
+ * With three or more source genres we require at least two shared genres; one- and two-genre
+ * titles require one. If TMDB does not provide source genres, the API order remains the fallback.
+ */
+internal fun selectTmdbRelatedCandidates(
+    recommendations: List<TmdbSearchResultDto>,
+    similar: List<TmdbSearchResultDto>,
+    sourceGenreIds: List<Int>,
+    currentTmdbId: Int,
+): List<TmdbSearchResultDto> {
+    val candidates = (recommendations + similar)
+        .asSequence()
+        .filter { result -> result.id > 0 && result.id != currentTmdbId && !result.adult }
+        .distinctBy(TmdbSearchResultDto::id)
+        .toList()
+
+    val sourceGenres = sourceGenreIds.asSequence().filter { it > 0 }.toSet()
+    if (sourceGenres.isEmpty()) return candidates
+
+    val minimumSharedGenres = if (sourceGenres.size >= 3) 2 else 1
+    return candidates
+        .mapIndexedNotNull { index, result ->
+            val candidateGenres = result.genreIds.asSequence().filter { it > 0 }.toSet()
+            if (candidateGenres.isEmpty()) return@mapIndexedNotNull null
+            val sharedGenres = candidateGenres.count(sourceGenres::contains)
+            if (sharedGenres < minimumSharedGenres) return@mapIndexedNotNull null
+            RankedRelatedCandidate(
+                result = result,
+                sharedGenres = sharedGenres,
+                sourceCoverage = sharedGenres.toDouble() / sourceGenres.size.toDouble(),
+                originalIndex = index,
+            )
+        }
+        .sortedWith(
+            compareByDescending<RankedRelatedCandidate> { it.sharedGenres }
+                .thenByDescending { it.sourceCoverage }
+                .thenBy { it.originalIndex },
+        )
+        .map(RankedRelatedCandidate::result)
+}
+
+private data class RankedRelatedCandidate(
+    val result: TmdbSearchResultDto,
+    val sharedGenres: Int,
+    val sourceCoverage: Double,
+    val originalIndex: Int,
+)
 
 internal fun mapTmdbRelationItems(
     results: List<TmdbSearchResultDto>,
