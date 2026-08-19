@@ -1,0 +1,91 @@
+name: Settings Touch Smoke
+
+on:
+  pull_request:
+    paths:
+      - "app/src/main/java/com/andreassamitsch/ilauncher/ui/settings/**"
+      - "app/src/main/java/com/andreassamitsch/ilauncher/ui/components/TouchControls.kt"
+      - "app/src/debug/**"
+      - ".github/workflows/settings-touch-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  landscape-phone:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Verify settings sidebar touch scrolling in phone landscape
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: >-
+            -no-snapshot-save -no-window -gpu swiftshader_indirect
+            -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            gradle :app:assembleDebug --stacktrace
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            mkdir -p build/settings-touch
+
+            # Reproduce the user's landscape-phone viewport instead of validating only TV.
+            adb shell settings put system accelerometer_rotation 0
+            adb shell settings put system user_rotation 1
+            adb shell wm size 2340x1080
+            adb shell wm density 420
+            adb shell am force-stop com.andreassamitsch.ilauncher
+            adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.SettingsPreviewActivity
+            sleep 3
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.SettingsPreviewActivity'
+
+            adb exec-out screencap -p > build/settings-touch/sidebar-before.png
+
+            # Drag directly over the Compose-for-TV ListItems in the left settings pane.
+            # This is the interaction that failed on the real phone recording.
+            adb shell input swipe 320 900 320 270 700
+            sleep 2
+            adb exec-out screencap -p > build/settings-touch/sidebar-after.png
+
+            # A stationary sidebar produces byte-identical deterministic screenshots here.
+            # Fail the smoke test if the swipe did not move the settings navigation at all.
+            if cmp -s build/settings-touch/sidebar-before.png build/settings-touch/sidebar-after.png; then
+              echo "::error::Landscape phone swipe did not move the settings sidebar."
+              exit 1
+            fi
+
+            adb shell input swipe 320 850 320 300 600
+            sleep 1
+            adb exec-out screencap -p > build/settings-touch/sidebar-bottom.png
+
+      - name: Upload phone settings screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: settings-touch-smoke
+          path: build/settings-touch/
+          if-no-files-found: warn
