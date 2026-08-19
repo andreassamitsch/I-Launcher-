@@ -54,9 +54,15 @@ jobs:
             mkdir -p build/settings-touch
 
             # Reproduce the user's landscape-phone viewport instead of validating only TV.
+            # Suppress unrelated system-launcher ANR/crash dialogs: forcing a phone emulator from
+            # portrait to this wide test viewport can otherwise leave a Pixel Launcher dialog above
+            # the preview activity and intercept every ADB touch before I Launcher sees it.
+            adb shell settings put global hide_error_dialogs 1
+            adb shell settings put global show_first_crash_dialog 0
             adb shell settings put system accelerometer_rotation 0
             adb shell settings put system user_rotation 1
             adb shell settings put secure immersive_mode_confirmations confirmed
+            adb shell am force-stop com.google.android.apps.nexuslauncher || true
             adb shell wm size 2340x1080
             adb shell wm density 420
             adb shell am force-stop com.andreassamitsch.ilauncher
@@ -65,13 +71,17 @@ jobs:
             adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.SettingsPreviewActivity'
 
             adb exec-out screencap -p > build/settings-touch/sidebar-before.png
+            adb shell uiautomator dump /sdcard/sidebar-before.xml >/dev/null
+            adb pull /sdcard/sidebar-before.xml build/settings-touch/sidebar-before.xml >/dev/null
+            python3 -c 'import xml.etree.ElementTree as E; r=E.parse("build/settings-touch/sidebar-before.xml").getroot(); assert not any("isn&apos;t responding" in x.attrib.get("text","") for x in r.iter("node")), "system ANR dialog overlays touch fixture"'
 
-            # Tap the second category directly. A working touch click must switch the right pane
-            # from Einrichtung to Inhalte; the subtitle below exists only in the Inhalte pane.
-            adb shell input tap 320 500
+            # Tap Inhalte by its actual semantics bounds instead of a hard-coded pixel coordinate.
+            # A working touch click must switch the right pane from Einrichtung to Inhalte.
+            python3 -c 'import re,subprocess,xml.etree.ElementTree as E; r=E.parse("build/settings-touch/sidebar-before.xml").getroot(); n=next(x for x in r.iter("node") if x.attrib.get("text")=="Inhalte"); a=list(map(int,re.findall(r"\d+",n.attrib["bounds"]))); subprocess.run(["adb","shell","input","tap",str((a[0]+a[2])//2),str((a[1]+a[3])//2)],check=True)'
             sleep 1
             adb shell uiautomator dump /sdcard/settings-window.xml >/dev/null
-            adb shell cat /sdcard/settings-window.xml | grep -q 'Quellen auf Home verwalten'
+            adb pull /sdcard/settings-window.xml build/settings-touch/settings-window.xml >/dev/null
+            grep -q 'Quellen auf Home verwalten' build/settings-touch/settings-window.xml
             adb exec-out screencap -p > build/settings-touch/sidebar-tap.png
 
             # Right pane regression: tap a Compose-for-TV toggle row by locating its visible label.
