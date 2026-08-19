@@ -1,4 +1,5 @@
 name: Publish TV Downloader APK
+# Publication touch: Google-TV-style settings UI validated at 1080p.
 
 on:
   push:
@@ -6,6 +7,7 @@ on:
       - agent/ui-player-polish
       - agent/cloudstream-direct-play
       - agent/series-seasons-resume
+      - agent/settings-ui-overhaul
     paths:
       - "app/**"
       - "build.gradle.kts"
