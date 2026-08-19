@@ -67,6 +67,8 @@ fun ContentDiscoveryScreen(
     val prefs = remember(context) { TmdbDiscoveryPreferences(context) }
     val movieKeys by prefs.movieRowKeys.collectAsState()
     val seriesKeys by prefs.seriesRowKeys.collectAsState()
+    val hideAnime by prefs.hideAnime.collectAsState()
+    val kidsMode by prefs.kidsMode.collectAsState()
     val mediaType = remember(sections) {
         sections.asSequence().flatMap { it.items.asSequence() }.mapNotNull { it.media?.type }
             .firstOrNull { it == MediaType.Movie || it == MediaType.Series }
@@ -87,14 +89,18 @@ fun ContentDiscoveryScreen(
         else -> null
     }
     var selectedSections by remember(mediaType) { mutableStateOf<List<SearchBrowseSection>?>(null) }
+    var isPolicyReloading by remember(mediaType) { mutableStateOf(false) }
 
-    LaunchedEffect(mediaType, selectedKeys, sections, loader) {
+    LaunchedEffect(mediaType, selectedKeys, sections, loader, hideAnime, kidsMode) {
         val type = mediaType
-        if (type == null || loader == null || selectedKeys.isEmpty() || sections.map { it.key } == selectedKeys) {
+        if (type == null || loader == null || selectedKeys.isEmpty()) {
             selectedSections = null
+            isPolicyReloading = false
         } else {
+            isPolicyReloading = true
             selectedSections = runCatching { loader.browse(type, selectedKeys) }
                 .getOrDefault(emptyList()).takeIf { it.isNotEmpty() }
+            isPolicyReloading = false
         }
     }
 
@@ -124,7 +130,7 @@ fun ContentDiscoveryScreen(
         }
     }
 
-    LaunchedEffect(selectedCategoryKey, mediaType, loader) {
+    LaunchedEffect(selectedCategoryKey, mediaType, loader, hideAnime, kidsMode) {
         val type = mediaType
         val key = selectedCategoryKey
         categoryRows = emptyList()
@@ -154,10 +160,18 @@ fun ContentDiscoveryScreen(
     val rows = if (showingCategory) categoryRows else mainRows
     val activeListState = if (showingCategory) categoryListState else listState
     val pageTitle = selectedCategoryDefinition?.title ?: title
-    val pageSubtitle = selectedCategoryDefinition?.let { definition ->
-        "Mehr Auswahl zu „${definition.title}“ – beliebt, top bewertet, neu & sehenswert und zeitlose Favoriten."
+    val basePageSubtitle = selectedCategoryDefinition?.let { definition ->
+        "Mehr Auswahl zu „${definition.title}“ – Publikumslieblinge, Top-Bewertungen, neue Empfehlungen und zeitlose Favoriten."
     } ?: subtitle
-    val pageLoading = if (showingCategory) isCategoryLoading else isLoading
+    val pageSubtitle = buildString {
+        append(basePageSubtitle)
+        if (kidsMode) {
+            append(" Kindermodus aktiv: Filme werden konservativ bis FSK 6 gefiltert; Serien auf Kinder-/Familiengenres begrenzt.")
+        } else if (hideAnime) {
+            append(" Anime ist außerhalb der Kategorie Animation ausgeblendet.")
+        }
+    }
+    val pageLoading = if (showingCategory) isCategoryLoading else isLoading || isPolicyReloading
 
     val restoreRequester = remember(focusRestoreResultId) { FocusRequester() }
     val firstResult = remember(rows) {
