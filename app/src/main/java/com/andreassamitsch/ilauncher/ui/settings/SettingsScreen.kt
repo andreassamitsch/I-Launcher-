@@ -62,6 +62,7 @@ import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.HomeLauncherManager
 import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
+import com.andreassamitsch.ilauncher.ui.components.touchTap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -363,9 +364,10 @@ private fun SettingsSidebar(
                         else -> null
                     }
                 }
+                val onCategoryClick = { onSelectCategory(category) }
                 ListItem(
                     selected = selectedCategory == category,
-                    onClick = { onSelectCategory(category) },
+                    onClick = onCategoryClick,
                     headlineContent = {
                         Text(
                             text = category.title,
@@ -395,7 +397,9 @@ private fun SettingsSidebar(
                             )
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .touchTap(onClick = onCategoryClick),
                 )
             }
             Spacer(modifier = Modifier.size(2.dp))
