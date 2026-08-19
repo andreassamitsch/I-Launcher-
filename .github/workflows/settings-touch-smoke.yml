@@ -37,7 +37,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Verify settings sidebar touch interactions in phone landscape
+      - name: Verify settings touch interactions in phone landscape
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -74,18 +74,44 @@ jobs:
             adb shell cat /sdcard/settings-window.xml | grep -q 'Quellen auf Home verwalten'
             adb exec-out screencap -p > build/settings-touch/sidebar-tap.png
 
-            # Drag directly over the Compose-for-TV ListItems in the left settings pane.
+            # Right pane regression: tap a Compose-for-TV toggle row by locating its visible label.
+            # The debug fixture is stateful, so exactly one checked Switch must turn off. This also
+            # catches accidental double dispatch between the TV ListItem and the touch fallback.
+            adb shell uiautomator dump /sdcard/content-before.xml >/dev/null
+            adb pull /sdcard/content-before.xml build/settings-touch/content-before.xml >/dev/null
+            python3 -c 'import re,subprocess,xml.etree.ElementTree as E; r=E.parse("build/settings-touch/content-before.xml").getroot(); n=next(x for x in r.iter("node") if x.attrib.get("text")=="CloudStream"); a=list(map(int,re.findall(r"\d+",n.attrib["bounds"]))); subprocess.run(["adb","shell","input","tap",str((a[0]+a[2])//2),str((a[1]+a[3])//2)],check=True)'
+            sleep 1
+            adb shell uiautomator dump /sdcard/content-after.xml >/dev/null
+            adb pull /sdcard/content-after.xml build/settings-touch/content-after.xml >/dev/null
+            python3 -c 'import xml.etree.ElementTree as E; b=E.parse("build/settings-touch/content-before.xml").getroot(); a=E.parse("build/settings-touch/content-after.xml").getroot(); cb=sum(x.attrib.get("checked")=="true" for x in b.iter("node")); ca=sum(x.attrib.get("checked")=="true" for x in a.iter("node")); assert ca==cb-1, f"right toggle tap failed or double-dispatched: checked {cb} -> {ca}"'
+            adb exec-out screencap -p > build/settings-touch/right-toggle-after.png
+
+            # Drag directly over the touch-native category rows in the left settings pane.
             adb shell input swipe 320 900 320 270 700
             sleep 2
             adb exec-out screencap -p > build/settings-touch/sidebar-after.png
 
             # A stationary sidebar produces byte-identical deterministic screenshots here.
             # reactivecircus executes script lines individually, so keep the assertion on one line.
-            ! cmp -s build/settings-touch/sidebar-tap.png build/settings-touch/sidebar-after.png || (echo "::error::Landscape phone swipe did not move the settings sidebar."; exit 1)
+            ! cmp -s build/settings-touch/right-toggle-after.png build/settings-touch/sidebar-after.png || (echo "::error::Landscape phone swipe did not move the settings sidebar."; exit 1)
 
             adb shell input swipe 320 850 320 300 600
             sleep 1
             adb exec-out screencap -p > build/settings-touch/sidebar-bottom.png
+
+            # Right action-row regression: open the deterministic Diagnostics fixture and tap the
+            # Watch Next action by its visible label. The row must switch from Anzeigen to Ausblenden.
+            adb shell am force-stop com.andreassamitsch.ilauncher
+            adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.SettingsPreviewActivity --es screen diagnostics
+            sleep 2
+            adb shell uiautomator dump /sdcard/diagnostics-before.xml >/dev/null
+            adb pull /sdcard/diagnostics-before.xml build/settings-touch/diagnostics-before.xml >/dev/null
+            python3 -c 'import re,subprocess,xml.etree.ElementTree as E; r=E.parse("build/settings-touch/diagnostics-before.xml").getroot(); n=next(x for x in r.iter("node") if x.attrib.get("text")=="Watch-Next-Rohdaten anzeigen"); a=list(map(int,re.findall(r"\d+",n.attrib["bounds"]))); subprocess.run(["adb","shell","input","tap",str((a[0]+a[2])//2),str((a[1]+a[3])//2)],check=True)'
+            sleep 1
+            adb shell uiautomator dump /sdcard/diagnostics-after.xml >/dev/null
+            adb pull /sdcard/diagnostics-after.xml build/settings-touch/diagnostics-after.xml >/dev/null
+            python3 -c 'import xml.etree.ElementTree as E; r=E.parse("build/settings-touch/diagnostics-after.xml").getroot(); assert any(x.attrib.get("text")=="Watch-Next-Rohdaten ausblenden" for x in r.iter("node")), "right action-row tap did not execute"'
+            adb exec-out screencap -p > build/settings-touch/right-action-after.png
 
       - name: Upload phone settings screenshots
         if: always()
