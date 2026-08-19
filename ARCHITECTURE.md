@@ -12,6 +12,8 @@ Live TV kommt direkt von Gigablue/OpenWebif. XMLTV wird zusätzlich eingelesen, 
 
 TMDB ist die Metadaten- und Discovery-Quelle für Filme, Serien und Episoden. Die normale Suche bleibt Local First: Apps, Watch Next, Preview Channels und EPG werden zuerst lokal gesucht; TMDB ergänzt die Ergebnisse. Bei leerer Suche darf TMDB gecachte Browse-/Trend-/Genre-Reihen liefern. Auf Home wird daraus bewusst kein automatisch rotierendes Netzwerk-Karussell.
 
+CloudStream bleibt für direkte Provider-/Playback-Auflösung ein **separater Prozess**. I Launcher lädt keine CloudStream-Extensions oder Extractors, sondern übergibt einem kompatiblen eigenen CloudStream-Fork ausschließlich eine versionierte Medienidentität über `cloudstreamplay://v1`. Der Fork führt Provider-Suche bzw. Sync-ID-Auflösung, `load()`, Episodenauswahl und Playback mit seiner eigenen Runtime aus. Unterstützt der installierte Build diese Capability nicht, verwendet I Launcher weiter `cloudstreamsearch://`. CloudStreams Watch-Next-Daten bleiben davon unabhängig und werden ausschließlich über Android TvProvider gelesen.
+
 Der TMDB-Resolver behandelt ein vom Provider geliefertes Erscheinungsjahr als starken Hinweis, aber nicht als unfehlbare Serverfilter-Bedingung. Bei typisierten Film-/Serien-/Episodensuchen wird zuerst mit dem Quelljahr gesucht. Ergibt das keinen sicheren Match, folgt genau ein Suchlauf ohne serverseitigen Jahresfilter; das Quelljahr bleibt anschließend Bestandteil der Confidence-Berechnung. Dadurch kann z. B. ein exakt passender Serientitel mit um ein Jahr abweichendem Providerjahr weiterhin sicher aufgelöst werden, ohne die bestehende Match-Schwelle zu lockern.
 
 ## Home und Navigation
@@ -54,7 +56,7 @@ Kurzes OK auf Watch Next startet den vorhandenen Source-/Playback-Intent. `INFO`
 
 Detailseiten folgen derselben Google-TV-inspirierten Bildhierarchie wie Home: das Artwork bleibt großflächig sichtbar, ein starker horizontaler Verlauf sichert links die Lesbarkeit und ein unterer Verlauf verbindet die Fläche mit dem Hintergrund. Reine technische Quellenbezeichnungen wie `TMDB` oder App-Namen werden nicht als zusätzliche Informationszeile wiederholt; bei EPG-Inhalten kann der Sendername als echter Kontext erhalten bleiben. Die vorhandene Aktionsreihenfolge und der direkte Fokus auf die erste sinnvolle Aktion bleiben unverändert.
 
-TMDB-/EPG-Details bieten verfügbare Zielaktionen in sinnvoller Reihenfolge. CloudStream wird über den offiziellen `cloudstreamsearch://`-Intent aufgelöst. CloudStreams eigene Suchoberfläche erzwingt derzeit selbst die Soft-Tastatur; I Launcher sendet keinen timing-basierten Back-Key-Workaround.
+TMDB-/EPG-Details bieten verfügbare Zielaktionen in sinnvoller Reihenfolge. Für CloudStream prüft I Launcher am tatsächlich installierten Zielpaket zuerst die versionierte Direct-Play-Capability `cloudstreamplay://v1`. Ist sie vorhanden, werden Titel/Originaltitel, Typ, Jahr, Staffel/Folge sowie vorhandene TMDB-/IMDb-IDs übergeben und die Aktion wird als Play dargestellt. Fehlt die Capability, bleibt `cloudstreamsearch://` unverändert der Fallback. Die Provider-/Extractor-Auflösung erfolgt nie im I-Launcher-Prozess. Das vollständige Protokoll steht in `docs/CLOUDSTREAM_DIRECT_PLAY_PROTOCOL.md`.
 
 `In Kodi suchen` zielt auf das installierte **TMDb Helper**-Add-on und übergibt den normalisierten Titel direkt an dessen aktuelle Suchroute `info=search&tmdb_type=both&query=…`. Stock-Kodi bietet auf Android keinen passenden öffentlichen Intent zum direkten Öffnen einer beliebigen Plugin-Directory. Deshalb startet I Launcher Kodi normal und verwendet anschließend Kodis lokale JSON-RPC-Schnittstelle `GUI.ActivateWindow` für den konkreten `plugin://plugin.video.themoviedb.helper/…`-Pfad. Dafür muss in Kodi die Fernsteuerung durch Programme auf demselben System aktiviert sein; ist der lokale JSON-RPC-Dienst nicht erreichbar, wird genau diese notwendige Kodi-Einstellung angezeigt statt ein timing-basierter Key-Workaround ausgeführt.
 
@@ -74,7 +76,7 @@ Beim Verlassen erscheint ein Bestätigungsdialog. EPG-Programme werden über `se
 
 ## Cache und Local First
 
-Room enthält den TMDB-Cache sowie EPG-Sender-Mappings und EPG-Programme. XMLTV und Metadaten werden lokal gecacht. Netzwerk-Browse-Ergebnisse werden nicht bei jeder Fokusbewegung neu geladen. Streaming-Adressen werden nicht dauerhaft gespeichert.
+Room enthält den TMDB-Cache sowie EPG-Sender-Mappings und EPG-Programme. XMLTV und Metadaten werden lokal gecacht. Netzwerk-Browse-Ergebnisse werden nicht bei jeder Fokusbewegung neu geladen. Streaming-Adressen werden nicht dauerhaft gespeichert. CloudStream-Direct-Play übergibt nur Medienidentität; vom Fork später extrahierte Stream-URLs werden nicht in Room übernommen.
 
 ## Touch-Smoke-Tests
 
@@ -82,7 +84,7 @@ TV/D-Pad bleibt die Produktquelle der Wahrheit. Derselbe Development-Build kann 
 
 ## Development-Publishing
 
-Vor einer Test-APK laufen `testDebugUnitTest` und `assembleDebug`. Signierte Development-Builds werden über den `downloads`-Kanal veröffentlicht. Kompilierung ersetzt keinen Hardwaretest; D-Pad, Fokus, Hero-Proportionen, Bildausschnitt, Glow-/Breath-Wirkung, Kodi-TMDb-Helper-Handoff und Player-Navigation bleiben bis zur TV-Bestätigung offen.
+Vor einer Test-APK laufen `testDebugUnitTest` und `assembleDebug`. Signierte Development-Builds werden über den `downloads`-Kanal veröffentlicht. Kompilierung ersetzt keinen Hardwaretest; D-Pad, Fokus, Hero-Proportionen, Bildausschnitt, Glow-/Breath-Wirkung, Kodi-TMDb-Helper-Handoff, CloudStream-Direct-Play und Player-Navigation bleiben bis zur TV-Bestätigung offen.
 
 ## Home-Tasten-Fallback
 

@@ -127,7 +127,7 @@ Watch Next ist eine zentrale Datenquelle.
 
 Auf dem Zielgerät funktioniert Watch Next bereits mit Arc Launcher und liefert unter anderem Einträge von CloudStream. Deshalb zuerst die reguläre Android-TV/TvProvider-Schnittstelle verwenden.
 
-Keine app-spezifische CloudStream-Integration entwickeln, solange Android bereits die benötigten Daten zuverlässig liefert.
+Für **Watch Next** keine app-spezifische CloudStream-Datenintegration entwickeln, solange Android bereits die benötigten Daten zuverlässig liefert. Eine separate CloudStream-Bridge für direkten Inhalts-/Playback-Handoff ändert diesen Grundsatz nicht.
 
 Die Reihenfolge der Watch-Next-Einträge nicht ohne nachvollziehbaren Grund verändern oder umkehren. Zunächst die von Android bzw. der Quell-App vorgesehene Reihenfolge übernehmen.
 
@@ -323,7 +323,13 @@ Langfristig globale Suche über installierte Apps, Watch Next, TMDB, Gigablue-EP
 
 Suchresultate auf gemeinsame Modelle normalisieren.
 
-CloudStream-Suche weiterhin über die vorhandene explizite Suchschnittstelle des Zielclients öffnen; keine CloudStream-Providerlogik nachbauen.
+CloudStream darf über unseren separat installierten CloudStream-Fork als **Provider-/Playback-Backend** integriert werden. I Launcher übergibt nur eine strukturierte, versionierte Medienidentität; CloudStream-Extensions, deren `MainAPI`-Implementierungen, Extractors und Laufzeit bleiben vollständig im separaten CloudStream-Prozess und werden nicht in den Launcher kopiert oder dort dynamisch geladen.
+
+Der bevorzugte Direktpfad ist die versionierte externe Schnittstelle `cloudstreamplay://v1`. Übergeben werden nur für die Auflösung notwendige Identitätsdaten wie Titel/Originaltitel, Typ, Jahr, Staffel/Folge sowie vorhandene TMDB-/IMDb-IDs. Der CloudStream-Fork löst daraus Provider, Detailseite, Episode und Wiedergabe intern auf. I Launcher persistiert oder loggt dabei keine aufgelösten Stream-URLs.
+
+Unterstützt der installierte CloudStream-Build die vereinbarte Direct-Play-Schnittstelle nicht, muss I Launcher automatisch auf den bestehenden `cloudstreamsearch://`-Handoff zurückfallen. Ein inkompatibler oder fehlgeschlagener Direct-Play-Pfad darf den bisherigen Suchhandoff nicht entfernen.
+
+Watch Next von CloudStream bleibt unabhängig davon Android-TvProvider-basiert. Keine zweite CloudStream-eigene Watch-Next-Datenhaltung im Launcher einführen.
 
 `In Kodi suchen` soll direkt die Suchroute des installierten **TMDb Helper**-Add-ons mit dem übergebenen Titel öffnen. Vor Implementierung nicht raten: aktuelle TMDb-Helper-Route und Kodi-Steuerung im Quellcode prüfen. Stock-Kodi besitzt keinen geeigneten öffentlichen Android-Intent für beliebige Plugin-Directories; deshalb darf nach normalem Kodi-Start die lokale Kodi-JSON-RPC-Methode `GUI.ActivateWindow` mit dem konkreten `plugin://plugin.video.themoviedb.helper/...`-Pfad verwendet werden. Dafür erforderliche Kodi-Remote-Control-Einstellungen offen benennen. Keine timing-basierten Back-/Key-Workarounds.
 
@@ -345,10 +351,11 @@ Diagnosekategorien z. B.:
 - OPENWEBIF
 - EPG
 - PLAYER
+- CLOUDSTREAM_BRIDGE
 - FOCUS
 - APP_LAUNCH
 
-Keine Tokens, Passwörter oder vollständigen privaten URLs loggen.
+Keine Tokens, Passwörter oder vollständigen privaten URLs loggen. CloudStream-Bridge-Diagnose darf Protokollversion, Zielpaket und Matchstatus zeigen, aber keine extrahierten Stream-URLs, Provider-Credentials oder Session-Tokens.
 
 ## 23. Datenschutz und Sicherheit
 
@@ -411,6 +418,7 @@ Mindestens relevant:
 - TMDB-Matching
 - Datenbankmigrationen
 - persistierte Home-Bild-/Kanalpräferenzen, soweit als reine Logik testbar
+- CloudStream-Direct-Play-Protokollaufbau inklusive Film/Serie/Episode und Fallback-Erkennung
 - Kodi-/TMDb-Helper-Pfaderzeugung ohne UI-Timingannahmen
 
 Bei UI zusätzlich reale D-Pad-Navigation, Back-Navigation, TV-Auflösung, Focus-Verhalten sowie Glow/Breath und Hero-/Rail-Überlagerung prüfen.
@@ -427,94 +435,3 @@ Bei Funktionen, die nur auf realer TV-Hardware geprüft werden können:
 - Testergebnis anschließend auswerten und nachbessern
 
 Keine APK als getestet bezeichnen, wenn lediglich kompiliert wurde. Ein statischer Emulator-Screenshot bestätigt keine zeitliche Breath-Animation und kein echtes Kodi-Handoff; diese Punkte müssen am TV geprüft werden.
-
-## 28. Entwicklungsphasen
-
-Phase 1 – Launcher MVP:
-- Kotlin/Compose-TV-Projekt
-- Launcher Activity / Home-App
-- installierte Apps
-- Basisnavigation
-- TV-Focus
-- Home-Layout
-
-Phase 2 – Watch Next:
-- Android TvProvider
-- Watch Next einlesen
-- Reihenfolge bewahren
-- Fortschritt
-- Deep Links
-
-Phase 3 – TMDB:
-- API / Resolver / Cache
-- Poster / Backdrops / Serien-/Episodendaten
-- Detailseite
-
-Phase 4 – Trailer:
-- TMDB Video
-- YouTube
-- Trailerwiedergabe
-
-Phase 5 – Gigablue:
-- OpenWebif-Verbindung
-- Bouquets / Sender
-- EPG Now/Next
-- Startseitenreihe
-
-Phase 6 – EPG:
-- vollständiger Guide
-- TMDB-Anreicherung
-- Bilder / Details
-
-Phase 7 – Live-TV:
-- Media3
-- Gigablue Stream
-- Zapping
-- Player UI
-
-Phase 8 – weitere Integrationen nur bei Bedarf:
-- Kodi
-- Jellyfin
-- Plex
-- CloudStream
-- weitere Provider
-
-Vor einer Sonderintegration immer zuerst prüfen, ob Android Watch Next oder Preview Channels bereits genügend Daten liefern.
-
-## 29. Prioritäten
-
-1. zuverlässige Android-TV-Funktion
-2. hervorragende D-Pad-/Fernbedienungsbedienung
-3. Performance
-4. Wartbarkeit
-5. saubere Architektur
-6. Local First / Datenschutz
-7. möglichst geringe Drittanbieterabhängigkeit
-8. Optik
-
-## 30. Definition of Done
-
-Eine Funktion ist erst abgeschlossen, wenn:
-
-- sie implementiert ist
-- Projekt erfolgreich kompiliert
-- relevante Tests erfolgreich sind
-- keine offensichtlichen Regressionen vorhanden sind
-- TV-Fernbedienungsbedienung soweit möglich geprüft wurde
-- Fehlerfälle berücksichtigt wurden
-- Code nachvollziehbar strukturiert ist
-- GitHub-Änderung dokumentiert ist
-
-## 31. Entscheidungsregel
-
-Bei jeder neuen Anforderung prüfen:
-
-1. Passt sie zum Produktziel?
-2. Gibt es bereits eine Android-Standardschnittstelle?
-3. Gibt es bereits eine Provider-Schicht, die erweitert werden kann?
-4. Muss das gemeinsame Medienmodell erweitert werden?
-5. Welche Auswirkungen gibt es auf UI, Cache und Datenbank?
-6. Wie lässt sich die Änderung testen?
-7. Entsteht unnötige technische Schuld?
-
-Ziel ist kein schneller Wegwerf-Prototyp, sondern ein Launcher, der langfristig täglich als primäre Android-TV-Oberfläche verwendet werden kann.

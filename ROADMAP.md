@@ -21,7 +21,7 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Accessibility-Fallback erkennt HOME-Key und System-Launcher-Fenster
 - [x] `BIND_ACCESSIBILITY_SERVICE` und `canRequestFilterKeyEvents=true` korrekt konfiguriert
 - [x] TCL/Google-TV-Gerätetest bei ADB-Installation: Accessibility-Fallback lässt sich aktivieren und HOME öffnet I Launcher
-- [x] Android-13+-Restricted-Settings bei lokaler/heruntergeladener APK als Ursache für zurückspringenden Accessibility-Schalter berücksichtigt
+- [x] Android-13+-Restricted-Settings bei lokal installierten APKs als Ursache für zurückspringenden Accessibility-Schalter berücksichtigt
 - [x] Installationsquellen-Diagnose und Einrichtungsführung vorhanden
 - [x] Standard-`MAIN`/`LAUNCHER`-Entry zusätzlich zu HOME/LEANBACK für reguläre Front-Door-/Installer-Öffnen-Funktion
 - [ ] TCL-spezifisches Covered-Applications-/Restricted-Settings-Verhalten bei normaler APK-Installation später separat verbessern; blockiert die Content-Phasen nicht
@@ -223,6 +223,19 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] CloudStream-/Kodi-Suchhandoff für TMDB-/EPG-Treffer
 - [x] CloudStream-Development-Paketvarianten dynamisch über den Search-Intent erkennen
 - [x] CloudStream-Handoff auf TV-Hardware bestätigt
+- [x] versioniertes `cloudstreamplay://v1`-Handoff-Protokoll im I Launcher
+- [x] CloudStream-Bridge reproduzierbar auf `a72f9e6` + vorhandenem Watch-Next-Fix aufgebaut
+- [x] IMDb-`getLoadUrl()`-Direktroute vor konservativer Provider-Suche
+- [x] exakte Film- und S/E-Wiedergabe über CloudStreams vorhandenen `RepoLinkGenerator`/Playerpfad
+- [x] reine Serienidentität ohne S/E auf bereits aufgelöste Provider-Detailseite führen statt willkürlich Episode 1 zu starten
+- [x] unsichere/nicht gefundene Matches automatisch auf `cloudstreamsearch://` zurückfallen lassen
+- [x] CloudStream-Bridge-Build inklusive JVM-Tests und `assemblePrereleaseDebug` erfolgreich
+- [ ] CloudStream-Bridge auf realer TCL-Hardware mit installiertem Providerbestand testen
+- [ ] Film: Suche/Ergebnis/Detail überspringen und direkt Player starten bestätigen
+- [ ] konkrete Episode: exaktes S/E direkt im Player bestätigen
+- [ ] Serie ohne S/E: Suche/Ergebnis überspringen und direkt auf Provider-Serie landen bestätigen
+- [ ] Fallback bei unsicherem Match prüfen
+- [ ] Back-Rückkehr in dieselbe I-Launcher-Detailseite/Fokusposition prüfen
 - [x] defekten Kodi-Core-`ACTION_SEARCH`-Pfad verworfen; stattdessen exportierten Suggestions-Provider + von Kodi zurückgegebene `ACTION_GET_CONTENT`-/`videodb://`-Referenz verwenden
 - [x] Kodi-Titelauswahl konservativ normalisieren (`&`/`and`, exakte bzw. starke Präfix-Treffer) und schwache Treffer ablehnen
 - [x] externe Suchbuttons auf Suchsymbol + App-Name reduzieren und erste Detailaktion direkt fokussieren
@@ -231,7 +244,6 @@ Ziel: Eine installierbare Android-TV-Home-App mit sauberer D-Pad-Bedienung und A
 - [x] Android-Sprachsuche als kompakte Suchaktion integrieren
 - [x] Touch-Detailseite inklusive langer Texte und Aktionsbuttons auf Smartphone bestätigt
 - [ ] TV-Gerätetest des neuen Kodi-Handoffs, Suchsymbol-Fokus und Watch-Next-Long-OK-Release-Fix
-- [ ] CloudStream-Tastatur nur upstream lösbar, solange CloudStream seine Search-Activity selbst mit sichtbarer Soft-Tastatur öffnet
 
 ## Home / Navigation – aktueller UI-Polish
 
@@ -260,5 +272,5 @@ Nur wenn Android-Standardschnittstellen nicht ausreichen:
 - [ ] Kodi-Add-on-spezifische Integrationen (Core-Suche ist nur Bibliothekssuche)
 - [ ] Jellyfin
 - [ ] Plex
-- [ ] CloudStream-Providerintegration nur wenn TvProvider/Deep-Link nicht ausreichen
+- [x] CloudStream als separaten Provider-/Playback-Backend-Prozess anbinden; Watch Next bleibt Android-TvProvider-basiert
 - [ ] weitere Provider

@@ -1,0 +1,175 @@
+name: Build CloudStream I Launcher Bridge
+
+on:
+  push:
+    branches:
+      - agent/cloudstream-direct-play
+    paths:
+      - "tools/cloudstream-bridge/**"
+      - ".github/workflows/cloudstream-bridge.yml"
+  pull_request:
+    branches:
+      - agent/ui-player-polish
+    paths:
+      - "tools/cloudstream-bridge/**"
+      - ".github/workflows/cloudstream-bridge.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: cloudstream-i-launcher-bridge-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-cloudstream-bridge:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout I Launcher patch sources
+        uses: actions/checkout@v4
+        with:
+          path: i-launcher
+
+      - name: Checkout exact CloudStream base
+        uses: actions/checkout@v4
+        with:
+          repository: recloudstream/cloudstream
+          ref: a72f9e6c3f2e25eb74ce0e7d6cc56dc33c130288
+          path: cloudstream
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Reproduce Watch Next fix and apply I Launcher bridge
+        run: |
+          python i-launcher/tools/cloudstream-bridge/apply_patch.py cloudstream
+          python i-launcher/tools/cloudstream-bridge/apply_behavior_fixes.py cloudstream
+          python i-launcher/tools/cloudstream-bridge/apply_search_matching_fix.py cloudstream
+          python i-launcher/tools/cloudstream-bridge/apply_provider_interop_fix.py cloudstream
+          python i-launcher/tools/cloudstream-bridge/apply_provider_resolution_fix.py cloudstream
+          python i-launcher/tools/cloudstream-bridge/apply_legacy_watchnext_fix.py cloudstream
+          python i-launcher/tools/cloudstream-bridge/apply_dev_version.py cloudstream
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Configure stable bridge signing and version
+        env:
+          DEV_KEYSTORE_BASE64: ${{ secrets.IL_DEV_KEYSTORE_BASE64 }}
+          DEV_STORE_PASSWORD: ${{ secrets.IL_DEV_STORE_PASSWORD }}
+          DEV_KEY_ALIAS: ${{ secrets.IL_DEV_KEY_ALIAS }}
+          DEV_KEY_PASSWORD: ${{ secrets.IL_DEV_KEY_PASSWORD }}
+        run: |
+          if [ -z "$DEV_KEYSTORE_BASE64" ] || [ -z "$DEV_STORE_PASSWORD" ] || [ -z "$DEV_KEY_ALIAS" ] || [ -z "$DEV_KEY_PASSWORD" ]; then
+            echo "::error::Stable development signing secrets are required for the CloudStream bridge build."
+            exit 1
+          fi
+          mkdir -p "$HOME/work/_temp/keystore"
+          echo "$DEV_KEYSTORE_BASE64" | base64 --decode > "$HOME/work/_temp/keystore/i-launcher-development.jks"
+          echo "SIGNING_STORE_PASSWORD=$DEV_STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "SIGNING_KEY_ALIAS=$DEV_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "SIGNING_KEY_PASSWORD=$DEV_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+          BRIDGE_VERSION_CODE=$((30000000 + GITHUB_RUN_NUMBER))
+          BRIDGE_VERSION_NAME="4.8.0-PRE-I-Launcher.${GITHUB_RUN_NUMBER}"
+          echo "IL_BRIDGE_VERSION_CODE=$BRIDGE_VERSION_CODE" >> "$GITHUB_ENV"
+          echo "IL_BRIDGE_VERSION_NAME=$BRIDGE_VERSION_NAME" >> "$GITHUB_ENV"
+          echo "BRIDGE_VERSION_CODE=$BRIDGE_VERSION_CODE" >> "$GITHUB_ENV"
+          echo "BRIDGE_VERSION_NAME=$BRIDGE_VERSION_NAME" >> "$GITHUB_ENV"
+
+      - name: Test and build CloudStream prerelease debug APK
+        working-directory: cloudstream
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:testPrereleaseDebugUnitTest :app:assemblePrereleaseDebug --stacktrace
+
+      - name: Verify package and prepare development channel
+        id: bridge_artifact
+        run: |
+          APK_PATH="$(find cloudstream/app/build/outputs/apk -type f -name '*prerelease*debug*.apk' -print -quit)"
+          if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
+            echo "::error::CloudStream prerelease debug APK not found."
+            exit 1
+          fi
+
+          mkdir -p bridge-output
+          cp "$APK_PATH" bridge-output/CloudStream-I-Launcher-Bridge.apk
+          SHA256="$(sha256sum bridge-output/CloudStream-I-Launcher-Bridge.apk | awk '{print $1}')"
+          echo "$SHA256  CloudStream-I-Launcher-Bridge.apk" > bridge-output/CloudStream-I-Launcher-Bridge.sha256
+
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt -print | sort -V | tail -1)"
+          if [ -z "$AAPT" ] || [ ! -x "$AAPT" ]; then
+            echo "::error::aapt not found in Android SDK build-tools."
+            exit 1
+          fi
+          BADGING="$($AAPT dump badging bridge-output/CloudStream-I-Launcher-Bridge.apk | head -1)"
+          ACTUAL_VERSION_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
+          ACTUAL_VERSION_NAME="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")"
+          if [ "$ACTUAL_VERSION_CODE" != "$BRIDGE_VERSION_CODE" ]; then
+            echo "::error::Bridge APK versionCode $ACTUAL_VERSION_CODE does not match expected $BRIDGE_VERSION_CODE"
+            exit 1
+          fi
+          if [ "$ACTUAL_VERSION_NAME" != "$BRIDGE_VERSION_NAME" ]; then
+            echo "::error::Bridge APK versionName $ACTUAL_VERSION_NAME does not match expected $BRIDGE_VERSION_NAME"
+            exit 1
+          fi
+
+          cat > bridge-output/update.json <<EOF
+          {
+            "versionCode": $BRIDGE_VERSION_CODE,
+            "versionName": "$BRIDGE_VERSION_NAME",
+            "apkUrl": "https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/cloudstream-downloads/CloudStream-I-Launcher-Bridge.apk",
+            "sha256": "$SHA256",
+            "sourceSha": "$GITHUB_SHA"
+          }
+          EOF
+
+          echo "apk_path=bridge-output/CloudStream-I-Launcher-Bridge.apk" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
+      - name: Upload CloudStream bridge APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CloudStream-I-Launcher-Bridge
+          path: |
+            bridge-output/CloudStream-I-Launcher-Bridge.apk
+            bridge-output/CloudStream-I-Launcher-Bridge.sha256
+            bridge-output/update.json
+          retention-days: 14
+
+      - name: Publish stable CloudStream development download branch
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf cloudstream-publish
+          git clone --no-checkout "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" cloudstream-publish
+          cd cloudstream-publish
+          git checkout --orphan cloudstream-downloads-new
+          git rm -rf . >/dev/null 2>&1 || true
+          cp ../bridge-output/CloudStream-I-Launcher-Bridge.apk .
+          cp ../bridge-output/CloudStream-I-Launcher-Bridge.sha256 .
+          cp ../bridge-output/update.json .
+          touch .nojekyll
+          cat > README.md <<EOF
+          # CloudStream I Launcher Bridge
+
+          Diese Branch enthält die aktuelle signierte Development-APK der CloudStream-Anpassung für I Launcher.
+
+          - APK: https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/cloudstream-downloads/CloudStream-I-Launcher-Bridge.apk
+          - Update-Manifest: https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/cloudstream-downloads/update.json
+          - Version: ${BRIDGE_VERSION_NAME} (${BRIDGE_VERSION_CODE})
+          - Source: ${GITHUB_SHA}
+
+          Die APK wird aus dem fixierten CloudStream-Upstream-Commit a72f9e6c3f2e25eb74ce0e7d6cc56dc33c130288 plus den versionierten Bridge-Patches gebaut und mit dem stabilen I-Launcher-Development-Key signiert.
+          EOF
+          git add CloudStream-I-Launcher-Bridge.apk CloudStream-I-Launcher-Bridge.sha256 update.json README.md .nojekyll
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "Publish CloudStream I Launcher Bridge ${BRIDGE_VERSION_NAME}"
+          git push origin HEAD:cloudstream-downloads --force

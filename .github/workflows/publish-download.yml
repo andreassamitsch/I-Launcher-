@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/ui-player-polish
+      - agent/cloudstream-direct-play
     paths:
       - "app/**"
       - "build.gradle.kts"
