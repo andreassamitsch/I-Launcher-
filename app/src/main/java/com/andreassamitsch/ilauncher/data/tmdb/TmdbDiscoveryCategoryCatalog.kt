@@ -93,7 +93,7 @@ object TmdbDiscoveryCategoryCatalog {
     private fun TmdbDiscoveryCategoryRowKind.title(type: MediaType): String = when (this) {
         TmdbDiscoveryCategoryRowKind.TrendingDay -> "Heute im Trend"
         TmdbDiscoveryCategoryRowKind.TrendingWeek -> "Diese Woche im Trend"
-        TmdbDiscoveryCategoryRowKind.Popular -> "Am beliebtesten"
+        TmdbDiscoveryCategoryRowKind.Popular -> "Publikumslieblinge"
         TmdbDiscoveryCategoryRowKind.TopRated -> "Top bewertet"
         TmdbDiscoveryCategoryRowKind.RecentPopular -> "Neu & gefragt"
         TmdbDiscoveryCategoryRowKind.RecentTopRated -> "Neu & sehenswert"
