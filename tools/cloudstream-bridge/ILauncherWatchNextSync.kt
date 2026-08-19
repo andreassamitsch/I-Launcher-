@@ -9,6 +9,7 @@ import com.lagradost.cloudstream3.isLiveStream
 import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.ui.home.HomeViewModel
 import com.lagradost.cloudstream3.ui.result.ResultEpisode
+import com.lagradost.cloudstream3.ui.result.VideoWatchState
 import com.lagradost.cloudstream3.ui.settings.Globals.TV
 import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
 import com.lagradost.cloudstream3.utils.AppContextUtils.addProgramsToContinueWatching
@@ -17,18 +18,24 @@ import com.lagradost.cloudstream3.utils.DataStoreHelper
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Flushes the current player position to CloudStream's local resume state and then republishes the
- * Android TV Watch Next rows when the player is left/backgrounded.
- *
- * Upstream a72f9e6 normally republishes Watch Next from HomeViewModel.loadResumeWatching(), which
- * means leaving the player on a result/detail page can leave Android's TvProvider stale until the
- * CloudStream home screen is visited. This helper closes that lifecycle gap without moving Watch
- * Next ownership into I Launcher.
+ * Persists final playback state and republishes Android TV Watch Next without abusing
+ * DataStoreHelper.setViewPosAndResume(). That upstream helper intentionally clears a Watched flag
+ * when playback is persisted; an exit-sync must never do that.
  */
 internal object ILauncherWatchNextSync {
     private const val TAG = "ILauncherWatchNext"
     private const val DUPLICATE_GUARD_MS = 750L
+    private const val INTERNAL_HANDOFF_SUPPRESSION_MS = 2_500L
     private val lastFlushAt = AtomicLong(0L)
+    private val suppressResumeMutationUntil = AtomicLong(0L)
+
+    fun beginInternalHandoff() {
+        suppressResumeMutationUntil.set(System.currentTimeMillis() + INTERNAL_HANDOFF_SUPPRESSION_MS)
+    }
+
+    fun cancelInternalHandoff() {
+        suppressResumeMutationUntil.set(0L)
+    }
 
     fun flush(
         context: Context?,
@@ -48,30 +55,120 @@ internal object ILauncherWatchNextSync {
         val shouldPersistPosition =
             episode?.tvType?.isLiveStream() != true &&
                 episode?.tvType != TvType.NSFW &&
-                duration != null && duration > 0L && position != null
+                duration != null && duration > 0L &&
+                position != null && position >= 0L
 
         if (shouldPersistPosition) {
-            DataStoreHelper.setViewPosAndResume(
-                stateId,
-                position!!,
-                duration!!,
-                currentMeta,
-                nextMeta,
+            // Persist only the episode-local position. Do not call setViewPosAndResume(): it clears
+            // VideoWatchState.Watched by design and can also move the series resume pointer.
+            DataStoreHelper.setViewPos(stateId, position!!, duration!!)
+        }
+
+        if (now <= suppressResumeMutationUntil.get()) {
+            Log.i(TAG, "flush reason=$reason resumeMutation=suppressed")
+            return
+        }
+
+        if (shouldPersistPosition && episode != null) {
+            updateResumePointer(
+                episode = episode,
+                nextEpisode = nextMeta as? ResultEpisode,
+                position = position!!,
+                duration = duration!!,
             )
         }
 
-        if (!isLayout(TV) || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val appContext = context?.applicationContext ?: CloudStreamApp.context ?: return
+        publish(context, reason)
+    }
 
+    /** Called after CloudStream's episode menu marks the current resume episode as watched. */
+    fun onMarkedWatched(
+        context: Context?,
+        episode: ResultEpisode,
+        nextEpisode: ResultEpisode?,
+    ) {
         ioSafe {
             try {
-                val resumeWatching = HomeViewModel.getResumeWatching() ?: return@ioSafe
-                appContext.addProgramsToContinueWatching(resumeWatching)
-                Log.i(TAG, "flush reason=$reason count=${resumeWatching.size}")
+                val lastWatched = DataStoreHelper.getLastWatched(episode.parentId)
+                val isCurrentResume = lastWatched?.episodeId == episode.id ||
+                    (lastWatched?.season == episode.season && lastWatched?.episode == episode.episode)
+
+                if (isCurrentResume) {
+                    val next = nextEpisode?.takeIf {
+                        it.parentId == episode.parentId && isLaterEpisode(it, episode)
+                    }
+                    if (next != null) {
+                        DataStoreHelper.setLastWatched(
+                            next.parentId,
+                            next.id,
+                            next.episode,
+                            next.season,
+                            isFromDownload = false,
+                        )
+                    } else {
+                        DataStoreHelper.removeLastWatched(episode.parentId)
+                    }
+                }
+
+                publishNow(context, "markedWatched")
+            } catch (t: Throwable) {
+                logError(t)
+                Log.w(TAG, "watch-state sync failed")
+            }
+        }
+    }
+
+    private fun updateResumePointer(
+        episode: ResultEpisode,
+        nextEpisode: ResultEpisode?,
+        position: Long,
+        duration: Long,
+    ) {
+        val watched = DataStoreHelper.getVideoWatchState(episode.id) == VideoWatchState.Watched
+        val percentage = if (duration > 0L) position * 100L / duration else 0L
+        val shouldAdvance = watched || percentage >= NEXT_WATCH_EPISODE_PERCENTAGE
+        val next = nextEpisode?.takeIf {
+            it.parentId == episode.parentId && isLaterEpisode(it, episode)
+        }
+        val resume = if (shouldAdvance) next else episode
+
+        if (resume != null) {
+            DataStoreHelper.setLastWatched(
+                resume.parentId,
+                resume.id,
+                resume.episode,
+                resume.season,
+                isFromDownload = false,
+            )
+        } else if (shouldAdvance) {
+            DataStoreHelper.removeLastWatched(episode.parentId)
+        }
+    }
+
+    private fun isLaterEpisode(candidate: ResultEpisode, current: ResultEpisode): Boolean {
+        val candidateSeason = candidate.season ?: candidate.seasonIndex ?: 0
+        val currentSeason = current.season ?: current.seasonIndex ?: 0
+        return candidateSeason > currentSeason ||
+            (candidateSeason == currentSeason && candidate.episode > current.episode)
+    }
+
+    private fun publish(context: Context?, reason: String) {
+        if (!isLayout(TV) || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        ioSafe {
+            try {
+                publishNow(context, reason)
             } catch (t: Throwable) {
                 logError(t)
                 Log.w(TAG, "flush failed reason=$reason")
             }
         }
+    }
+
+    private suspend fun publishNow(context: Context?, reason: String) {
+        if (!isLayout(TV) || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val appContext = context?.applicationContext ?: CloudStreamApp.context ?: return
+        val resumeWatching = HomeViewModel.getResumeWatching().orEmpty()
+        appContext.addProgramsToContinueWatching(resumeWatching)
+        Log.i(TAG, "flush reason=$reason count=${resumeWatching.size}")
     }
 }
