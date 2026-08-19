@@ -3,7 +3,7 @@ name: Publish TV Downloader APK
 on:
   push:
     branches:
-      - agent/preview-channels
+      - agent/global-search
     paths:
       - "app/**"
       - "build.gradle.kts"
@@ -82,7 +82,7 @@ jobs:
             exit 1
           fi
           echo "TMDB_CONFIGURED=true" >> "$GITHUB_ENV"
-          echo "TMDB enrichment, trailer metadata, EPG enrichment, Live TV and Android Preview Channels are enabled in this signed Development build."
+          echo "TMDB enrichment, trailer metadata, EPG enrichment, Live TV, Android Preview Channels and Global Search are enabled in this signed Development build."
 
       - name: Test and build debug APK
         env:

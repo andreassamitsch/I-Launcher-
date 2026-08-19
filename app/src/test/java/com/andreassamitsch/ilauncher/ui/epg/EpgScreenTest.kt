@@ -38,6 +38,41 @@ class EpgScreenTest {
         assertEquals(-1, initialProgramIndex(emptyList(), nowUtcMillis = 5_000L))
     }
 
+    @Test
+    fun `selected search programme overrides current programme position`() {
+        val programmes = listOf(
+            program(start = 1_000L, duration = 1_000L),
+            program(start = 2_000L, duration = 1_000L),
+            program(start = 3_000L, duration = 1_000L),
+        )
+
+        assertEquals(
+            2,
+            targetProgramIndex(
+                programmes = programmes,
+                nowUtcMillis = 1_500L,
+                selectedProgramStartUtcMillis = 3_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun `missing selected programme falls back to normal guide position`() {
+        val programmes = listOf(
+            program(start = 1_000L, duration = 1_000L),
+            program(start = 2_000L, duration = 1_000L),
+        )
+
+        assertEquals(
+            1,
+            targetProgramIndex(
+                programmes = programmes,
+                nowUtcMillis = 2_500L,
+                selectedProgramStartUtcMillis = 99_000L,
+            ),
+        )
+    }
+
     private fun program(start: Long, duration: Long): LiveTvProgram = LiveTvProgram(
         eventId = null,
         title = "Test",

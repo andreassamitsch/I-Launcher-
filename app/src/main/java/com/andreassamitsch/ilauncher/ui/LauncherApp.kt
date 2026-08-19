@@ -35,6 +35,7 @@ import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.apps.InstalledAppsRepository
 import com.andreassamitsch.ilauncher.data.epg.EpgRepository
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifRepository
+import com.andreassamitsch.ilauncher.data.search.SearchRepository
 import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.data.tv.PreviewChannelPreferences
 import com.andreassamitsch.ilauncher.data.tv.PreviewChannelsRepository
@@ -46,6 +47,9 @@ import com.andreassamitsch.ilauncher.data.update.UpdateState
 import com.andreassamitsch.ilauncher.data.youtube.YouTubeLauncher
 import com.andreassamitsch.ilauncher.model.AppContentChannelsLoadResult
 import com.andreassamitsch.ilauncher.model.InstalledApp
+import com.andreassamitsch.ilauncher.model.MediaItem
+import com.andreassamitsch.ilauncher.model.SearchItem
+import com.andreassamitsch.ilauncher.model.SearchResultKind
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
 import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import com.andreassamitsch.ilauncher.ui.apps.AppsScreen
@@ -54,6 +58,7 @@ import com.andreassamitsch.ilauncher.ui.epg.EpgScreen
 import com.andreassamitsch.ilauncher.ui.home.HomeScreen
 import com.andreassamitsch.ilauncher.ui.livetv.LiveTvPlayerScreen
 import com.andreassamitsch.ilauncher.ui.livetv.LiveTvScreen
+import com.andreassamitsch.ilauncher.ui.search.SearchScreen
 import com.andreassamitsch.ilauncher.ui.settings.SettingsScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -64,12 +69,15 @@ enum class LauncherSection(val label: String) {
     Home("Home"),
     LiveTv("Live TV"),
     Epg("EPG"),
+    Search("Suche"),
     Apps("Apps"),
     Settings("Einstellungen"),
 }
 
 private const val TMDB_ENRICHMENT_BATCH_SIZE = 4
 private const val TMDB_ENRICHMENT_RETRY_DELAY_MILLIS = 1_500L
+private const val LOCAL_SEARCH_DEBOUNCE_MILLIS = 120L
+private const val TMDB_SEARCH_DEBOUNCE_MILLIS = 450L
 private const val OPENWEBIF_REFRESH_INTERVAL_MILLIS = 5L * 60L * 1_000L
 
 @Composable
@@ -78,6 +86,7 @@ fun LauncherApp(
     watchNextRepository: WatchNextRepository,
     previewChannelsRepository: PreviewChannelsRepository,
     watchNextEnrichmentRepository: WatchNextEnrichmentRepository,
+    searchRepository: SearchRepository,
     openWebifRepository: OpenWebifRepository,
     epgRepository: EpgRepository,
     updateManager: UpdateManager,
@@ -87,18 +96,27 @@ fun LauncherApp(
     val scope = rememberCoroutineScope()
     var section by rememberSaveable { mutableStateOf(LauncherSection.Home) }
     var selectedDetailsSourceId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedSearchDetailsMedia by remember { mutableStateOf<MediaItem?>(null) }
+    var selectedSearchDetailsResultId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedLiveTvServiceReference by rememberSaveable { mutableStateOf<String?>(null) }
     var watchNextFocusRestoreSourceId by rememberSaveable { mutableStateOf<String?>(null) }
     var watchNextFocusRestoreGeneration by rememberSaveable { mutableIntStateOf(0) }
     var liveTvFocusRestoreServiceReference by rememberSaveable { mutableStateOf<String?>(null) }
     var liveTvFocusRestoreGeneration by rememberSaveable { mutableIntStateOf(0) }
+    var searchFocusRestoreResultId by rememberSaveable { mutableStateOf<String?>(null) }
+    var searchFocusRestoreGeneration by rememberSaveable { mutableIntStateOf(0) }
     var selectedEpgServiceReference by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedEpgProgramStartUtcMillis by rememberSaveable { mutableStateOf<Long?>(null) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var localSearchResults by remember { mutableStateOf<List<SearchItem>>(emptyList()) }
+    var tmdbSearchResults by remember { mutableStateOf<List<SearchItem>>(emptyList()) }
+    var isTmdbSearchLoading by remember { mutableStateOf(false) }
     val watchNextListState = rememberLazyListState()
     val appsListState = rememberLazyListState()
     val liveTvListState = rememberLazyListState()
     val epgChannelListState = rememberLazyListState()
     val epgProgramListState = rememberLazyListState()
+    val searchListState = rememberLazyListState()
     val updateState by updateManager.state.collectAsState()
     val openWebifState by openWebifRepository.state.collectAsState()
     val epgState by epgRepository.state.collectAsState()
@@ -214,6 +232,53 @@ fun LauncherApp(
         openWebifState.copy(channels = displayLiveTvChannels)
     }
 
+    LaunchedEffect(
+        searchQuery,
+        apps,
+        homeWatchNextItems,
+        visiblePreviewChannels,
+        displayLiveTvChannels,
+        epgState,
+        searchRepository,
+    ) {
+        val requestedQuery = searchQuery
+        if (requestedQuery.trim().length < 2) {
+            localSearchResults = emptyList()
+            return@LaunchedEffect
+        }
+
+        delay(LOCAL_SEARCH_DEBOUNCE_MILLIS)
+        val results = withContext(Dispatchers.Default) {
+            searchRepository.searchLocal(
+                query = requestedQuery,
+                apps = apps,
+                watchNextItems = homeWatchNextItems,
+                previewChannels = visiblePreviewChannels,
+                liveTvChannels = displayLiveTvChannels,
+                epgState = epgState,
+            )
+        }
+        if (searchQuery == requestedQuery) {
+            localSearchResults = results
+        }
+    }
+
+    LaunchedEffect(searchQuery, searchRepository) {
+        val requestedQuery = searchQuery.trim()
+        if (requestedQuery.length < 3 || !searchRepository.isTmdbConfigured) {
+            tmdbSearchResults = emptyList()
+            isTmdbSearchLoading = false
+            return@LaunchedEffect
+        }
+        delay(TMDB_SEARCH_DEBOUNCE_MILLIS)
+        isTmdbSearchLoading = true
+        val results = searchRepository.searchTmdb(requestedQuery)
+        if (searchQuery.trim() == requestedQuery) {
+            tmdbSearchResults = results
+            isTmdbSearchLoading = false
+        }
+    }
+
     LaunchedEffect(displayLiveTvChannels) {
         if (
             selectedEpgServiceReference == null ||
@@ -238,12 +303,22 @@ fun LauncherApp(
     val selectedDetailsItem = selectedDetailsSourceId?.let { selectedSourceId ->
         homeWatchNextItems.firstOrNull { it.media.source.sourceId == selectedSourceId }
     }
+    val selectedDetailsMedia = selectedDetailsItem?.media ?: selectedSearchDetailsMedia
     val closeDetails: () -> Unit = {
-        selectedDetailsSourceId?.let { sourceId ->
-            watchNextFocusRestoreSourceId = sourceId
-            watchNextFocusRestoreGeneration += 1
+        if (selectedDetailsItem != null) {
+            selectedDetailsSourceId?.let { sourceId ->
+                watchNextFocusRestoreSourceId = sourceId
+                watchNextFocusRestoreGeneration += 1
+            }
+            selectedDetailsSourceId = null
+        } else {
+            selectedSearchDetailsResultId?.let { resultId ->
+                searchFocusRestoreResultId = resultId
+                searchFocusRestoreGeneration += 1
+            }
+            selectedSearchDetailsResultId = null
+            selectedSearchDetailsMedia = null
         }
-        selectedDetailsSourceId = null
     }
     val closeLiveTvPlayer: () -> Unit = {
         selectedLiveTvServiceReference?.let { serviceReference ->
@@ -252,7 +327,7 @@ fun LauncherApp(
         }
         selectedLiveTvServiceReference = null
     }
-    BackHandler(enabled = selectedDetailsItem != null, onBack = closeDetails)
+    BackHandler(enabled = selectedDetailsMedia != null, onBack = closeDetails)
 
     DisposableEffect(activity) {
         if (activity == null) {
@@ -287,6 +362,56 @@ fun LauncherApp(
     val openWatchNext: (EnrichedWatchNextItem) -> Unit = { item ->
         watchNextRepository.launch(item.sourceItem)
     }
+    val openSearchResult: (SearchItem) -> Unit = { result ->
+        when (result.kind) {
+            SearchResultKind.App -> {
+                result.packageName
+                    ?.let { packageName -> apps.firstOrNull { it.packageName == packageName } }
+                    ?.let(openApp)
+            }
+
+            SearchResultKind.WatchNext -> {
+                val sourceId = result.media?.source?.sourceId
+                sourceId
+                    ?.let { id -> homeWatchNextItems.firstOrNull { it.media.source.sourceId == id } }
+                    ?.let(openWatchNext)
+            }
+
+            SearchResultKind.PreviewProgram -> {
+                val sourceId = result.media?.source?.sourceId
+                val channel = visiblePreviewChannels.firstOrNull { it.id == result.previewChannelId }
+                val program = channel?.programs?.firstOrNull { it.media.source.sourceId == sourceId }
+                if (program != null) previewChannelsRepository.launch(program)
+            }
+
+            SearchResultKind.EpgProgram -> {
+                val serviceReference = result.serviceReference
+                val startUtcMillis = result.programStartUtcMillis
+                if (serviceReference != null && startUtcMillis != null) {
+                    selectedEpgServiceReference = serviceReference
+                    selectedEpgProgramStartUtcMillis = startUtcMillis
+                    section = LauncherSection.Epg
+                    scope.launch {
+                        epgRepository.enrichProgram(serviceReference, startUtcMillis)
+                    }
+                }
+            }
+
+            SearchResultKind.Tmdb -> {
+                result.media?.let { media ->
+                    selectedDetailsSourceId = null
+                    selectedSearchDetailsResultId = result.id
+                    selectedSearchDetailsMedia = media
+                    scope.launch {
+                        val detailed = searchRepository.loadTmdbDetails(media)
+                        if (selectedSearchDetailsResultId == result.id) {
+                            selectedSearchDetailsMedia = detailed
+                        }
+                    }
+                }
+            }
+        }
+    }
     val updateAttentionLabel = when (updateState) {
         is UpdateState.Available,
         is UpdateState.ReadyToInstall,
@@ -313,15 +438,18 @@ fun LauncherApp(
                 )
             }
 
-            selectedDetailsItem != null -> {
-                val detailsMedia = selectedDetailsItem.media
+            selectedDetailsMedia != null -> {
+                val detailsMedia = selectedDetailsMedia
                 val packageName = detailsMedia.source.packageName
-                val sourceLabel = apps.firstOrNull { it.packageName == packageName }?.label
-                    ?: packageName
+                val sourceLabel = if (selectedDetailsItem != null) {
+                    apps.firstOrNull { it.packageName == packageName }?.label ?: packageName
+                } else {
+                    "TMDB"
+                }
                 DetailsScreen(
                     item = detailsMedia,
                     sourceLabel = sourceLabel,
-                    onPlay = { openWatchNext(selectedDetailsItem) },
+                    onPlay = selectedDetailsItem?.let { item -> { openWatchNext(item) } },
                     onBack = closeDetails,
                     onTrailer = detailsMedia.trailer?.let {
                         {
@@ -373,6 +501,8 @@ fun LauncherApp(
                             onOpenWatchNext = openWatchNext,
                             onOpenWatchNextDetails = { item ->
                                 liveTvFocusRestoreServiceReference = null
+                                selectedSearchDetailsMedia = null
+                                selectedSearchDetailsResultId = null
                                 selectedDetailsSourceId = item.media.source.sourceId
                             },
                             onOpenPreviewProgram = { _, program ->
@@ -471,6 +601,20 @@ fun LauncherApp(
                             },
                             channelListState = epgChannelListState,
                             programListState = epgProgramListState,
+                        )
+
+                        LauncherSection.Search -> SearchScreen(
+                            query = searchQuery,
+                            onQueryChange = { searchQuery = it },
+                            localResults = localSearchResults,
+                            tmdbResults = tmdbSearchResults,
+                            isTmdbLoading = isTmdbSearchLoading,
+                            tmdbConfigured = searchRepository.isTmdbConfigured,
+                            apps = apps,
+                            onOpenResult = openSearchResult,
+                            listState = searchListState,
+                            focusRestoreResultId = searchFocusRestoreResultId,
+                            focusRestoreGeneration = searchFocusRestoreGeneration,
                         )
 
                         LauncherSection.Apps -> AppsScreen(
