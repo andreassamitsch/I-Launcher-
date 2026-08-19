@@ -27,6 +27,7 @@ class TmdbDiscoveryCategoryCatalogTest {
             ),
             rows.map { it.kind },
         )
+        assertEquals("Publikumslieblinge", rows.first().title)
         assertTrue(rows.all { it.key.startsWith("movie-genre-28:more:") })
     }
 
