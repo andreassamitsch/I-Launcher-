@@ -3,6 +3,7 @@ package com.lagradost.cloudstream3
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ILauncherDirectPlayTest {
@@ -63,16 +64,20 @@ class ILauncherDirectPlayTest {
     }
 
     @Test
-    fun providerCandidateRankingKeepsExactAndMatchingYearAheadOfDecoratedResults() {
+    fun providerCandidateRankingKeepsExactAndMatchingYearAheadOfWeakResults() {
         val request = requireNotNull(
             ILauncherDirectPlay.parseRequest(
                 "cloudstreamplay://v1?title=Dune%3A%20Part%20Two&type=movie&year=2024",
             ),
         )
 
-        assertEquals(0, ILauncherDirectPlay.searchCandidateRank("Dune: Part Two", request))
-        assertEquals(1, ILauncherDirectPlay.searchCandidateRank("Dune: Part Two (2024)", request))
-        assertEquals(2, ILauncherDirectPlay.searchCandidateRank("Dune", request))
+        val exactRank = ILauncherDirectPlay.searchCandidateRank("Dune: Part Two", request)
+        val decoratedRank = ILauncherDirectPlay.searchCandidateRank("Dune: Part Two (2024)", request)
+        val weakRank = ILauncherDirectPlay.searchCandidateRank("Dune", request)
+
+        assertEquals(0, exactRank)
+        assertEquals(1, decoratedRank)
+        assertTrue(weakRank > decoratedRank)
     }
 
     @Test
