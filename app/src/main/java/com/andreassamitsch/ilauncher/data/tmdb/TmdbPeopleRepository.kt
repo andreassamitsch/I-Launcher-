@@ -89,14 +89,38 @@ internal fun TmdbPersonCreditDto.isDisplayablePersonWork(): Boolean {
 }
 
 internal fun TmdbPersonCreditDto.personWorkRecognitionScore(): Double {
-    // vote_count is the more durable signal for how established a title is, while TMDB
-    // popularity adds current/lifetime discovery relevance. Log scaling prevents a single
-    // viral spike from pushing a lightly-voted title ahead of broadly known work.
+    // Title recognition remains useful, but it must not let a one-episode appearance in a giant
+    // series outrank a person's defining work. TMDB combined credits also exposes movie billing
+    // order and TV episode count; use those bounded person-specific signals alongside title fame.
     val voteSignal = ln(voteCount.coerceAtLeast(0).toDouble() + 1.0) * 9.0
     val popularitySignal = ln(popularity.coerceAtLeast(0.0) + 1.0) * 7.0
     val ratingSignal = voteAverage.coerceIn(0.0, 10.0) * 0.35
     val artworkSignal = if (!posterPath.isNullOrBlank() || !backdropPath.isNullOrBlank()) 0.5 else 0.0
-    return voteSignal + popularitySignal + ratingSignal + artworkSignal
+    return voteSignal + popularitySignal + ratingSignal + artworkSignal + personRoleProminenceScore()
+}
+
+private fun TmdbPersonCreditDto.personRoleProminenceScore(): Double = when (mediaType) {
+    "movie" -> when (val billingOrder = order) {
+        null -> 0.0
+        0 -> 36.0
+        1 -> 30.0
+        in 2..3 -> 24.0
+        in 4..5 -> 16.0
+        in 6..9 -> 8.0
+        in 10..19 -> -4.0
+        else -> -12.0
+    }
+    "tv" -> when (val episodes = episodeCount) {
+        null -> 0.0
+        in 24..Int.MAX_VALUE -> 32.0
+        in 12..23 -> 26.0
+        in 6..11 -> 20.0
+        in 3..5 -> 12.0
+        2 -> 6.0
+        1 -> -24.0
+        else -> -8.0
+    }
+    else -> 0.0
 }
 
 private fun TmdbPersonCreditDto.isDirectorCredit(): Boolean =

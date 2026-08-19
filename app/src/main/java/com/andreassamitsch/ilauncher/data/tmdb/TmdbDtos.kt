@@ -217,4 +217,6 @@ internal data class TmdbPersonCreditDto(
     val adult: Boolean = false,
     val character: String? = null,
     val job: String? = null,
+    val order: Int? = null,
+    @SerializedName("episode_count") val episodeCount: Int? = null,
 )

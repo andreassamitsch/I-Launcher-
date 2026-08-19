@@ -137,6 +137,128 @@ class TmdbPersonWorksPolicyTest {
     }
 
     @Test
+    fun signatureMovieRanksAheadOfSingleEpisodeHitShows() {
+        val credits = TmdbCombinedCreditsDto(
+            cast = listOf(
+                TmdbPersonCreditDto(
+                    id = 50,
+                    mediaType = "tv",
+                    name = "The Simpsons",
+                    genreIds = listOf(16, 35),
+                    character = "Guest Character",
+                    episodeCount = 1,
+                    popularity = 500.0,
+                    voteAverage = 8.0,
+                    voteCount = 10_000,
+                ),
+                TmdbPersonCreditDto(
+                    id = 60,
+                    mediaType = "tv",
+                    name = "Friends",
+                    genreIds = listOf(35),
+                    character = "Guest Character",
+                    episodeCount = 1,
+                    popularity = 300.0,
+                    voteAverage = 8.4,
+                    voteCount = 9_000,
+                ),
+                TmdbPersonCreditDto(
+                    id = 70,
+                    mediaType = "tv",
+                    name = "Law & Order",
+                    genreIds = listOf(18, 80),
+                    character = "Guest Character",
+                    episodeCount = 1,
+                    popularity = 180.0,
+                    voteAverage = 7.8,
+                    voteCount = 4_500,
+                ),
+                TmdbPersonCreditDto(
+                    id = 80,
+                    mediaType = "movie",
+                    title = "Good Will Hunting",
+                    character = "Sean Maguire",
+                    order = 1,
+                    popularity = 45.0,
+                    voteAverage = 8.1,
+                    voteCount = 13_000,
+                ),
+            ),
+        )
+
+        val result = credits.rankedRelevantPersonCredits("Acting")
+
+        assertEquals(80, result.first().id)
+        assertEquals(listOf(80, 50, 60, 70), result.map { it.id })
+    }
+
+    @Test
+    fun recurringTvRoleRanksAheadOfSingleEpisodeGuestInBiggerShow() {
+        val credits = TmdbCombinedCreditsDto(
+            cast = listOf(
+                TmdbPersonCreditDto(
+                    id = 90,
+                    mediaType = "tv",
+                    name = "Recurring Series",
+                    genreIds = listOf(18),
+                    character = "Lead",
+                    episodeCount = 42,
+                    popularity = 15.0,
+                    voteAverage = 7.8,
+                    voteCount = 500,
+                ),
+                TmdbPersonCreditDto(
+                    id = 100,
+                    mediaType = "tv",
+                    name = "Massive Hit Show",
+                    genreIds = listOf(18),
+                    character = "Guest Character",
+                    episodeCount = 1,
+                    popularity = 500.0,
+                    voteAverage = 8.5,
+                    voteCount = 10_000,
+                ),
+            ),
+        )
+
+        val result = credits.rankedRelevantPersonCredits("Acting")
+
+        assertEquals(listOf(90, 100), result.map { it.id })
+    }
+
+    @Test
+    fun leadingMovieBillingRanksAheadOfMinorMovieCredit() {
+        val credits = TmdbCombinedCreditsDto(
+            cast = listOf(
+                TmdbPersonCreditDto(
+                    id = 110,
+                    mediaType = "movie",
+                    title = "Lead Role",
+                    character = "Lead",
+                    order = 0,
+                    popularity = 20.0,
+                    voteAverage = 7.5,
+                    voteCount = 1_000,
+                ),
+                TmdbPersonCreditDto(
+                    id = 120,
+                    mediaType = "movie",
+                    title = "Minor Role",
+                    character = "Minor",
+                    order = 15,
+                    popularity = 20.0,
+                    voteAverage = 7.5,
+                    voteCount = 1_000,
+                ),
+            ),
+        )
+
+        val result = credits.rankedRelevantPersonCredits("Acting")
+
+        assertEquals(listOf(110, 120), result.map { it.id })
+    }
+
+    @Test
     fun knownDepartmentKeepsActingAndDirectingFilmographiesRelevant() {
         val credits = TmdbCombinedCreditsDto(
             cast = listOf(
