@@ -37,7 +37,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Verify settings sidebar touch scrolling in phone landscape
+      - name: Verify settings sidebar touch interactions in phone landscape
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -66,15 +66,22 @@ jobs:
 
             adb exec-out screencap -p > build/settings-touch/sidebar-before.png
 
+            # Tap the second category directly. A working touch click must switch the right pane
+            # from Einrichtung to Inhalte; the subtitle below exists only in the Inhalte pane.
+            adb shell input tap 320 500
+            sleep 1
+            adb shell uiautomator dump /sdcard/settings-window.xml >/dev/null
+            adb shell cat /sdcard/settings-window.xml | grep -q 'Quellen auf Home verwalten'
+            adb exec-out screencap -p > build/settings-touch/sidebar-tap.png
+
             # Drag directly over the Compose-for-TV ListItems in the left settings pane.
-            # This is the interaction that failed on the real phone recording.
             adb shell input swipe 320 900 320 270 700
             sleep 2
             adb exec-out screencap -p > build/settings-touch/sidebar-after.png
 
             # A stationary sidebar produces byte-identical deterministic screenshots here.
             # reactivecircus executes script lines individually, so keep the assertion on one line.
-            ! cmp -s build/settings-touch/sidebar-before.png build/settings-touch/sidebar-after.png || (echo "::error::Landscape phone swipe did not move the settings sidebar."; exit 1)
+            ! cmp -s build/settings-touch/sidebar-tap.png build/settings-touch/sidebar-after.png || (echo "::error::Landscape phone swipe did not move the settings sidebar."; exit 1)
 
             adb shell input swipe 320 850 320 300 600
             sleep 1
