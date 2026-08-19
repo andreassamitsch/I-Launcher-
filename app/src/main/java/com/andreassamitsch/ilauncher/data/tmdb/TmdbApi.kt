@@ -77,10 +77,14 @@ internal interface TmdbApi {
         @Query("include_video") includeVideo: Boolean = false,
         @Query("sort_by") sortBy: String = "vote_average.desc",
         @Query("with_genres") withGenres: String? = null,
+        @Query("without_keywords") withoutKeywords: String? = null,
         @Query("vote_count.gte") voteCountGte: Int = 300,
         @Query("vote_average.gte") voteAverageGte: Double? = null,
         @Query("primary_release_date.gte") primaryReleaseDateGte: String? = null,
         @Query("primary_release_date.lte") primaryReleaseDateLte: String? = null,
+        @Query("region") region: String? = null,
+        @Query("certification_country") certificationCountry: String? = null,
+        @Query("certification.lte") certificationLte: String? = null,
         @Query("page") page: Int = 1,
     ): TmdbSearchResponseDto
 
@@ -90,6 +94,7 @@ internal interface TmdbApi {
         @Query("include_adult") includeAdult: Boolean = false,
         @Query("sort_by") sortBy: String = "vote_average.desc",
         @Query("with_genres") withGenres: String? = null,
+        @Query("without_keywords") withoutKeywords: String? = null,
         @Query("vote_count.gte") voteCountGte: Int = 200,
         @Query("vote_average.gte") voteAverageGte: Double? = null,
         @Query("first_air_date.gte") firstAirDateGte: String? = null,
