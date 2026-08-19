@@ -49,6 +49,31 @@ class TmdbSearchRankerTest {
         assertEquals(listOf(2, 1), ranked.map { it.id })
     }
 
+    @Test
+    fun `popular franchise result can beat obscure exact collision for partial query`() {
+        val results = listOf(
+            result(id = 1, title = "Expend", voteCount = 12, popularity = 2.0),
+            result(id = 2, title = "The Expendables 4", voteCount = 2_000, popularity = 35.0),
+            result(id = 3, title = "Expendable Assets", voteCount = 80, popularity = 4.0),
+        )
+
+        val ranked = TmdbSearchRanker.rank("expend", results)
+
+        assertEquals(2, ranked.first().id)
+    }
+
+    @Test
+    fun `word prefix after leading article is treated as strong title match`() {
+        val item = result(
+            id = 1,
+            title = "The Expendables 4",
+            voteCount = 0,
+            popularity = 0.0,
+        )
+
+        assertEquals(900, TmdbSearchRanker.titleMatchScore("expend", item))
+    }
+
     private fun result(
         id: Int,
         title: String,
