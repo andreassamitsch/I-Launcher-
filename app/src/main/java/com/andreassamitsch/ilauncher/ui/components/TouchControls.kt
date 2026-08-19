@@ -194,6 +194,11 @@ fun Modifier.touchTap(
 /**
  * Adds pointer dragging to a Compose scroll state without changing TV focus relocation.
  *
+ * Compose for TV controls may consume pointer movement before a surrounding `verticalScroll`
+ * sees it on touch devices. After touch slop, this fallback takes over only while the normal
+ * scroll state is still idle. Plain taps remain untouched so child controls keep their click
+ * behavior.
+ *
  * Normal vertically scrollable pages must keep Compose's automatic bring-into-view propagation so
  * DPAD focus can move the viewport to controls below the fold. Home's exceptional row-keyline
  * boundary therefore lives in AnchoredHomeRow instead of this generic input helper.
@@ -208,6 +213,9 @@ fun Modifier.touchScrollFallback(
             pass = PointerEventPass.Final,
         )
         var lastPosition: Offset = down.position
+        var accumulatedDrag = 0f
+        var fallbackDragging = false
+        val touchSlop = viewConfiguration.touchSlop
 
         while (true) {
             val event = awaitPointerEvent(PointerEventPass.Final)
@@ -220,10 +228,19 @@ fun Modifier.touchScrollFallback(
                 Orientation.Horizontal -> currentPosition.x - lastPosition.x
             }
             lastPosition = currentPosition
+            if (dragDelta == 0f) continue
 
-            if (!change.isConsumed && dragDelta != 0f) {
-                state.dispatchRawDelta(-dragDelta)
+            if (!fallbackDragging) {
+                accumulatedDrag += dragDelta
+                if (kotlin.math.abs(accumulatedDrag) <= touchSlop) continue
+
+                // Compose's own scrollable already accepted the gesture: do not duplicate it.
+                if (state.isScrollInProgress) continue
+                fallbackDragging = true
             }
+
+            state.dispatchRawDelta(-dragDelta)
+            change.consume()
         }
     }
 }

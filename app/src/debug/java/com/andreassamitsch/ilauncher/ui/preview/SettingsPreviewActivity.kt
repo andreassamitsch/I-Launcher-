@@ -12,8 +12,13 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
@@ -24,10 +29,11 @@ import com.andreassamitsch.ilauncher.model.AppContentChannelsLoadResult
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.WatchNextItem
 import com.andreassamitsch.ilauncher.model.WatchNextLoadResult
+import com.andreassamitsch.ilauncher.ui.settings.SettingsCategory
 import com.andreassamitsch.ilauncher.ui.settings.SettingsScreen
 import com.andreassamitsch.ilauncher.ui.theme.ILauncherTheme
 
-/** Deterministic debug-only fixture for 1080p settings screenshots. */
+/** Deterministic debug-only fixture for settings layout and touch-interaction smoke tests. */
 class SettingsPreviewActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,6 +46,12 @@ class SettingsPreviewActivity : ComponentActivity() {
         val apps = fixtureApps()
         val watchNext = fixtureWatchNext()
         val previewChannels = fixturePreviewChannels()
+        val initialCategory = when (intent.getStringExtra("screen")) {
+            "content" -> SettingsCategory.Content
+            "about" -> SettingsCategory.About
+            "diagnostics" -> SettingsCategory.Diagnostics
+            else -> SettingsCategory.Setup
+        }
 
         setContent {
             ILauncherTheme {
@@ -51,9 +63,17 @@ class SettingsPreviewActivity : ComponentActivity() {
                     ),
                 ) {
                     val updateManager = remember { UpdateManager(this@SettingsPreviewActivity) }
+                    var selectedCategory by remember { mutableStateOf(initialCategory) }
+                    var hiddenWatchNextPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
+                    var hiddenPreviewChannelIds by remember { mutableStateOf<Set<String>>(emptySet()) }
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
+                            .semantics {
+                                contentDescription =
+                                    "settings-touch-hidden-watch-next=" +
+                                        hiddenWatchNextPackages.sorted().joinToString(",")
+                            }
                             .padding(start = 24.dp, end = 24.dp, top = 66.dp),
                     ) {
                         SettingsScreen(
@@ -61,12 +81,26 @@ class SettingsPreviewActivity : ComponentActivity() {
                             watchNextResult = watchNext,
                             previewChannelsResult = previewChannels,
                             installedApps = apps,
-                            hiddenWatchNextPackages = emptySet(),
-                            onSetWatchNextSourceVisible = { _, _ -> },
-                            onShowAllWatchNextSources = {},
-                            hiddenPreviewChannelIds = emptySet(),
-                            onSetPreviewChannelVisible = { _, _ -> },
-                            onShowAllPreviewChannels = {},
+                            hiddenWatchNextPackages = hiddenWatchNextPackages,
+                            onSetWatchNextSourceVisible = { packageName, visible ->
+                                hiddenWatchNextPackages = if (visible) {
+                                    hiddenWatchNextPackages - packageName
+                                } else {
+                                    hiddenWatchNextPackages + packageName
+                                }
+                            },
+                            onShowAllWatchNextSources = { hiddenWatchNextPackages = emptySet() },
+                            hiddenPreviewChannelIds = hiddenPreviewChannelIds,
+                            onSetPreviewChannelVisible = { channelId, visible ->
+                                hiddenPreviewChannelIds = if (visible) {
+                                    hiddenPreviewChannelIds - channelId
+                                } else {
+                                    hiddenPreviewChannelIds + channelId
+                                }
+                            },
+                            onShowAllPreviewChannels = { hiddenPreviewChannelIds = emptySet() },
+                            selectedCategory = selectedCategory,
+                            onSelectCategory = { selectedCategory = it },
                             onOpenLiveTv = {},
                             hasTvListingsPermission = true,
                             onRequestTvListingsPermission = {},

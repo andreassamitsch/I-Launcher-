@@ -12,6 +12,7 @@ on:
       - agent/related-content-quality
       - agent/home-navigation-focus-restore
       - agent/search-ranking-quality
+      - agent/settings-ui-focus-polish
     paths:
       - "app/**"
       - "build.gradle.kts"

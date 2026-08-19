@@ -1,0 +1,133 @@
+name: Settings Touch Smoke
+
+on:
+  pull_request:
+    paths:
+      - "app/src/main/java/com/andreassamitsch/ilauncher/ui/settings/**"
+      - "app/src/main/java/com/andreassamitsch/ilauncher/ui/components/TouchControls.kt"
+      - "app/src/debug/**"
+      - ".github/workflows/settings-touch-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  landscape-phone:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Verify settings touch interactions in phone landscape
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: >-
+            -no-snapshot-save -no-window -gpu swiftshader_indirect
+            -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            gradle :app:assembleDebug --stacktrace
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            mkdir -p build/settings-touch
+
+            # Reproduce the user's landscape-phone viewport instead of validating only TV.
+            # Suppress unrelated system-launcher ANR/crash dialogs: forcing a phone emulator from
+            # portrait to this wide test viewport can otherwise leave a Pixel Launcher dialog above
+            # the preview activity and intercept every ADB touch before I Launcher sees it.
+            adb shell settings put global hide_error_dialogs 1
+            adb shell settings put global show_first_crash_dialog 0
+            adb shell settings put system accelerometer_rotation 0
+            adb shell settings put system user_rotation 1
+            adb shell settings put secure immersive_mode_confirmations confirmed
+            adb shell am force-stop com.google.android.apps.nexuslauncher || true
+            adb shell wm size 2340x1080
+            adb shell wm density 420
+            adb shell am force-stop com.andreassamitsch.ilauncher
+            adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.SettingsPreviewActivity
+            sleep 3
+            adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.SettingsPreviewActivity'
+
+            adb exec-out screencap -p > build/settings-touch/sidebar-before.png
+            adb shell uiautomator dump /sdcard/sidebar-before.xml >/dev/null
+            adb pull /sdcard/sidebar-before.xml build/settings-touch/sidebar-before.xml >/dev/null
+            python3 -c 'import xml.etree.ElementTree as E; r=E.parse("build/settings-touch/sidebar-before.xml").getroot(); assert not any("isn\u0027t responding" in x.attrib.get("text","") for x in r.iter("node")), "system ANR dialog overlays touch fixture"'
+
+            # Tap Inhalte by its actual semantics bounds instead of a hard-coded pixel coordinate.
+            # A working touch click must switch the right pane from Einrichtung to Inhalte.
+            python3 -c 'import re,subprocess,xml.etree.ElementTree as E; r=E.parse("build/settings-touch/sidebar-before.xml").getroot(); n=next(x for x in r.iter("node") if x.attrib.get("text")=="Inhalte"); a=list(map(int,re.findall(r"\d+",n.attrib["bounds"]))); subprocess.run(["adb","shell","input","tap",str((a[0]+a[2])//2),str((a[1]+a[3])//2)],check=True)'
+            sleep 1
+            adb shell uiautomator dump /sdcard/settings-window.xml >/dev/null
+            adb pull /sdcard/settings-window.xml build/settings-touch/settings-window.xml >/dev/null
+            grep -q 'Quellen auf Home verwalten' build/settings-touch/settings-window.xml
+            adb exec-out screencap -p > build/settings-touch/sidebar-tap.png
+
+            # Right pane regression: tap a Compose-for-TV toggle row by locating its visible label.
+            # The debug fixture exposes the hidden-package set through semantics. Exactly one tap must
+            # leave fixture.cloud hidden; a missed tap stays empty and a double dispatch returns empty.
+            adb shell uiautomator dump /sdcard/content-before.xml >/dev/null
+            adb pull /sdcard/content-before.xml build/settings-touch/content-before.xml >/dev/null
+            python3 -c 'import xml.etree.ElementTree as E; r=E.parse("build/settings-touch/content-before.xml").getroot(); assert any(x.attrib.get("content-desc")=="settings-touch-hidden-watch-next=" for x in r.iter("node")), "touch state marker missing before right toggle tap"'
+            python3 -c 'import re,subprocess,xml.etree.ElementTree as E; r=E.parse("build/settings-touch/content-before.xml").getroot(); n=next(x for x in r.iter("node") if x.attrib.get("text")=="CloudStream"); a=list(map(int,re.findall(r"\d+",n.attrib["bounds"]))); subprocess.run(["adb","shell","input","tap",str((a[0]+a[2])//2),str((a[1]+a[3])//2)],check=True)'
+            sleep 1
+            adb shell uiautomator dump /sdcard/content-after.xml >/dev/null
+            adb pull /sdcard/content-after.xml build/settings-touch/content-after.xml >/dev/null
+            python3 -c 'import xml.etree.ElementTree as E; r=E.parse("build/settings-touch/content-after.xml").getroot(); assert any(x.attrib.get("content-desc")=="settings-touch-hidden-watch-next=fixture.cloud" for x in r.iter("node")), "right toggle tap failed or double-dispatched"'
+            adb exec-out screencap -p > build/settings-touch/right-toggle-after.png
+
+            # Drag directly over the touch-native category rows in the left settings pane.
+            adb shell input swipe 320 900 320 270 700
+            sleep 2
+            adb exec-out screencap -p > build/settings-touch/sidebar-after.png
+
+            # A stationary sidebar produces byte-identical deterministic screenshots here.
+            # reactivecircus executes script lines individually, so keep the assertion on one line.
+            ! cmp -s build/settings-touch/right-toggle-after.png build/settings-touch/sidebar-after.png || (echo "::error::Landscape phone swipe did not move the settings sidebar."; exit 1)
+
+            adb shell input swipe 320 850 320 300 600
+            sleep 1
+            adb exec-out screencap -p > build/settings-touch/sidebar-bottom.png
+
+            # Right action-row regression: open the deterministic Diagnostics fixture and tap the
+            # Watch Next action by its visible label. The row must switch from Anzeigen to Ausblenden.
+            adb shell am force-stop com.andreassamitsch.ilauncher
+            adb shell am start -W -n com.andreassamitsch.ilauncher/.ui.preview.SettingsPreviewActivity --es screen diagnostics
+            sleep 2
+            adb shell uiautomator dump /sdcard/diagnostics-before.xml >/dev/null
+            adb pull /sdcard/diagnostics-before.xml build/settings-touch/diagnostics-before.xml >/dev/null
+            python3 -c 'import re,subprocess,xml.etree.ElementTree as E; r=E.parse("build/settings-touch/diagnostics-before.xml").getroot(); n=next(x for x in r.iter("node") if x.attrib.get("text")=="Watch-Next-Rohdaten anzeigen"); a=list(map(int,re.findall(r"\d+",n.attrib["bounds"]))); subprocess.run(["adb","shell","input","tap",str((a[0]+a[2])//2),str((a[1]+a[3])//2)],check=True)'
+            sleep 1
+            adb shell uiautomator dump /sdcard/diagnostics-after.xml >/dev/null
+            adb pull /sdcard/diagnostics-after.xml build/settings-touch/diagnostics-after.xml >/dev/null
+            python3 -c 'import xml.etree.ElementTree as E; r=E.parse("build/settings-touch/diagnostics-after.xml").getroot(); assert any(x.attrib.get("text")=="Watch-Next-Rohdaten ausblenden" for x in r.iter("node")), "right action-row tap did not execute"'
+            adb exec-out screencap -p > build/settings-touch/right-action-after.png
+
+      - name: Upload phone settings screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: settings-touch-smoke
+          path: build/settings-touch/
+          if-no-files-found: warn
