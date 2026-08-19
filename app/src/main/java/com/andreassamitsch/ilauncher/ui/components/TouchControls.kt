@@ -192,42 +192,6 @@ fun Modifier.touchTap(
 }
 
 /**
- * Touch-only click fallback for TV components that consume the pointer stream internally.
- *
- * This observer runs in the Initial pass and never consumes events. It therefore sees a short tap
- * even when a Compose-for-TV child later consumes it, while a movement beyond touch slop is treated
- * as a drag and left to the surrounding scroll container. Use only for idempotent selection rows;
- * actions/toggles keep the regular touch path to avoid accidental double execution.
- */
-fun Modifier.touchClickFallback(
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-): Modifier = pointerInput(enabled, onClick) {
-    awaitEachGesture {
-        val down = awaitFirstDown(
-            requireUnconsumed = false,
-            pass = PointerEventPass.Initial,
-        )
-        val startPosition = down.position
-        val touchSlop = viewConfiguration.touchSlop
-        var movedBeyondSlop = false
-
-        while (true) {
-            val event = awaitPointerEvent(PointerEventPass.Initial)
-            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-            if (!change.pressed) {
-                if (enabled && !movedBeyondSlop) onClick()
-                break
-            }
-
-            if (!movedBeyondSlop && (change.position - startPosition).getDistance() > touchSlop) {
-                movedBeyondSlop = true
-            }
-        }
-    }
-}
-
-/**
  * Adds pointer dragging to a Compose scroll state without changing TV focus relocation.
  *
  * Compose for TV controls may consume pointer movement before a surrounding `verticalScroll`
