@@ -315,7 +315,7 @@ class TmdbSearchRepository(
         val genreId = sourceDefinition.genreId
         val hasGenreScope = genreId != null
         val standardTopRatedVotes = when (type) {
-            MediaType.Movie -> if (hasGenreScope) 150 else 300
+            MediaType.Movie -> if (hasGenreScope) 500 else 300
             MediaType.Series -> if (hasGenreScope) 80 else 200
             else -> 0
         }
@@ -579,7 +579,7 @@ class TmdbSearchRepository(
             releaseYear = TmdbRepository.yearOf(releaseDate ?: firstAirDate),
             tmdbId = id,
             posterUri = imageConfig?.url(TmdbImageKind.Poster, posterPath),
-            backdropUri = imageConfig?.url(TmdbImageKind.Backdrop, backdropPath),
+            backdropUri = imageConfig?.url(TmdbImageKind.Backdrop, heroBackdropPath),
             heroBackdropUri = imageConfig?.url(TmdbImageKind.Backdrop, heroBackdropPath),
             logoUri = imageConfig?.url(TmdbImageKind.Logo, logoPath),
             durationMillis = (runtime ?: episodeRunTime?.firstOrNull())?.times(60_000L),
