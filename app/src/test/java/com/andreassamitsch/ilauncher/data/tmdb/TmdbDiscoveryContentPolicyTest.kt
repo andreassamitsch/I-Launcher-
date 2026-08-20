@@ -71,40 +71,74 @@ class TmdbDiscoveryContentPolicyTest {
     }
 
     @Test
-    fun movieDiscoveryRequiresGermanLocalizedMetadataForForeignOriginals() {
-        val untranslatedSpanish = TmdbSearchResultDto(
+    fun ambiguousForeignTitleRequiresExactGermanTranslationLookup() {
+        val spanishUnchanged = TmdbSearchResultDto(
             id = 30,
             title = "Socias por accidente",
             originalTitle = "Socias por accidente",
-            overview = null,
             originalLanguage = "es",
-            genreIds = listOf(35, 10751, 10749),
         )
-        val localizedSpanish = TmdbSearchResultDto(
+        val spanishLocalized = TmdbSearchResultDto(
             id = 31,
-            title = "Deutscher Titel",
-            originalTitle = "Película",
-            overview = "Deutsche Inhaltsbeschreibung.",
+            title = "Partnerinnen aus Versehen",
+            originalTitle = "Socias por accidente",
             originalLanguage = "es",
-            genreIds = listOf(35),
+        )
+        val englishUnchanged = TmdbSearchResultDto(
+            id = 32,
+            title = "Avatar",
+            originalTitle = "Avatar",
+            originalLanguage = "en",
         )
         val germanOriginal = TmdbSearchResultDto(
-            id = 32,
-            title = "Deutscher Film",
-            overview = null,
+            id = 33,
+            title = "Das Leben der Anderen",
+            originalTitle = "Das Leben der Anderen",
             originalLanguage = "de",
-            genreIds = listOf(35),
         )
 
-        val filtered = TmdbDiscoveryContentPolicy.prepareDiscoverResults(
-            type = MediaType.Movie,
-            results = listOf(untranslatedSpanish, localizedSpanish, germanOriginal),
-            settings = TmdbDiscoveryFilterSettings(hideAnime = false),
-            genreId = "35",
-            movieCertificationApplied = false,
+        assertTrue(TmdbDiscoveryContentPolicy.requiresGermanMovieTranslationLookup(spanishUnchanged))
+        assertFalse(TmdbDiscoveryContentPolicy.requiresGermanMovieTranslationLookup(spanishLocalized))
+        assertFalse(TmdbDiscoveryContentPolicy.requiresGermanMovieTranslationLookup(englishUnchanged))
+        assertFalse(TmdbDiscoveryContentPolicy.requiresGermanMovieTranslationLookup(germanOriginal))
+    }
+
+    @Test
+    fun exactTranslationResponseRequiresGermanMovieTitle() {
+        val german = TmdbMovieTranslationsDto(
+            id = 1,
+            translations = listOf(
+                TmdbMovieTranslationDto(
+                    countryCode = "DE",
+                    languageCode = "de",
+                    data = TmdbMovieTranslationDataDto(title = "Deutscher Titel"),
+                ),
+            ),
+        )
+        val englishOnly = TmdbMovieTranslationsDto(
+            id = 2,
+            translations = listOf(
+                TmdbMovieTranslationDto(
+                    countryCode = "US",
+                    languageCode = "en",
+                    data = TmdbMovieTranslationDataDto(title = "English title"),
+                ),
+            ),
+        )
+        val emptyGerman = TmdbMovieTranslationsDto(
+            id = 3,
+            translations = listOf(
+                TmdbMovieTranslationDto(
+                    countryCode = "DE",
+                    languageCode = "de",
+                    data = TmdbMovieTranslationDataDto(title = ""),
+                ),
+            ),
         )
 
-        assertEquals(setOf(31, 32), filtered.map(TmdbSearchResultDto::id).toSet())
+        assertTrue(TmdbDiscoveryContentPolicy.hasGermanMovieTranslation(german))
+        assertFalse(TmdbDiscoveryContentPolicy.hasGermanMovieTranslation(englishOnly))
+        assertFalse(TmdbDiscoveryContentPolicy.hasGermanMovieTranslation(emptyGerman))
     }
 
     @Test
