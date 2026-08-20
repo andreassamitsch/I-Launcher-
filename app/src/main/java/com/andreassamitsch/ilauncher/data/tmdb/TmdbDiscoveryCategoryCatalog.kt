@@ -56,7 +56,7 @@ object TmdbDiscoveryCategoryCatalog {
             .map { kind ->
                 TmdbDiscoveryCategoryRowDefinition(
                     key = "${parent.key}:more:${kind.keyPart}",
-                    title = kind.title(type),
+                    title = "${parent.title} · ${kind.title(type)}",
                     kind = kind,
                 )
             }
