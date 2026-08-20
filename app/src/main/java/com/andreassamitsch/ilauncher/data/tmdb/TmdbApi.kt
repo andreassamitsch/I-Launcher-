@@ -49,12 +49,14 @@ internal interface TmdbApi {
     @GET("3/movie/now_playing")
     suspend fun nowPlayingMovies(
         @Query("language") language: String,
+        @Query("region") region: String = "DE",
         @Query("page") page: Int = 1,
     ): TmdbSearchResponseDto
 
     @GET("3/movie/upcoming")
     suspend fun upcomingMovies(
         @Query("language") language: String,
+        @Query("region") region: String = "DE",
         @Query("page") page: Int = 1,
     ): TmdbSearchResponseDto
 
