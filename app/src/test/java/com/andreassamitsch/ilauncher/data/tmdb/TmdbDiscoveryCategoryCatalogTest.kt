@@ -27,7 +27,8 @@ class TmdbDiscoveryCategoryCatalogTest {
             ),
             rows.map { it.kind },
         )
-        assertEquals("Publikumslieblinge", rows.first().title)
+        assertEquals("Action · Publikumslieblinge", rows.first().title)
+        assertTrue(rows.all { it.title.startsWith("Action · ") })
         assertTrue(rows.all { it.key.startsWith("movie-genre-28:more:") })
     }
 
@@ -42,6 +43,7 @@ class TmdbDiscoveryCategoryCatalogTest {
         assertTrue(rows.any { it.kind == TmdbDiscoveryCategoryRowKind.Upcoming })
         assertFalse(rows.any { it.kind == TmdbDiscoveryCategoryRowKind.AiringToday })
         assertFalse(rows.any { it.kind == TmdbDiscoveryCategoryRowKind.OnTheAir })
+        assertTrue(rows.all { it.title.startsWith("Jetzt im Kino · ") })
     }
 
     @Test
@@ -55,6 +57,7 @@ class TmdbDiscoveryCategoryCatalogTest {
         assertTrue(rows.any { it.kind == TmdbDiscoveryCategoryRowKind.AiringToday })
         assertFalse(rows.any { it.kind == TmdbDiscoveryCategoryRowKind.NowPlaying })
         assertFalse(rows.any { it.kind == TmdbDiscoveryCategoryRowKind.Upcoming })
+        assertTrue(rows.all { it.title.startsWith("Aktuell im TV · ") })
     }
 
     @Test
@@ -67,5 +70,6 @@ class TmdbDiscoveryCategoryCatalogTest {
         assertEquals(TmdbDiscoveryCategoryRowKind.TopRated, rows.first().kind)
         assertEquals(TmdbDiscoveryCategoryRowKind.RecentTopRated, rows[1].kind)
         assertEquals(TmdbDiscoveryCategoryRowKind.AllTimeTopRated, rows[2].kind)
+        assertTrue(rows.all { it.title.startsWith("Top bewertete Serien · ") })
     }
 }
