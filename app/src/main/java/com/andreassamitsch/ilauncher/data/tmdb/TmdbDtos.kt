@@ -27,6 +27,26 @@ internal data class TmdbSearchResultDto(
     val adult: Boolean = false,
 )
 
+internal data class TmdbMovieTranslationsDto(
+    val id: Int = 0,
+    val translations: List<TmdbMovieTranslationDto> = emptyList(),
+)
+
+internal data class TmdbMovieTranslationDto(
+    @SerializedName("iso_3166_1") val countryCode: String? = null,
+    @SerializedName("iso_639_1") val languageCode: String? = null,
+    val name: String? = null,
+    @SerializedName("english_name") val englishName: String? = null,
+    val data: TmdbMovieTranslationDataDto = TmdbMovieTranslationDataDto(),
+)
+
+internal data class TmdbMovieTranslationDataDto(
+    val title: String? = null,
+    val overview: String? = null,
+    val homepage: String? = null,
+    val runtime: Int? = null,
+)
+
 internal data class TmdbConfigurationDto(
     val images: TmdbImageConfigurationDto = TmdbImageConfigurationDto(),
 )
