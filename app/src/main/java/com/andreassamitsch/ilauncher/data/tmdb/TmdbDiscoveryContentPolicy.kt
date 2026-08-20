@@ -12,10 +12,10 @@ data class TmdbDiscoveryFilterSettings(
  * Launcher-owned policy for discovery relevance and safety filtering.
  *
  * TMDB's `with_genres` means that a title has the requested genre, not that the genre is its
- * primary identity. We therefore keep TMDB's candidate set but softly re-rank ambiguous genres so
- * secondary Comedy/Family tags do not dominate more representative titles. Anime filtering uses
- * TMDB's anime keyword at the API level where possible and a conservative Japanese-animation
- * heuristic for feeds that do not support keyword exclusion.
+ * primary identity. We therefore reject a few clearly conflicting genre mixes and softly re-rank
+ * the remaining candidates so secondary Comedy/Family tags do not dominate more representative
+ * titles. Anime filtering uses TMDB's anime keyword at the API level where possible and a
+ * conservative Japanese-animation heuristic for feeds that do not support keyword exclusion.
  */
 internal object TmdbDiscoveryContentPolicy {
     const val ANIME_KEYWORD_ID = "210024"
@@ -27,6 +27,7 @@ internal object TmdbDiscoveryContentPolicy {
     private const val ACTION_GENRE_ID = 28
     private const val ADVENTURE_GENRE_ID = 12
     private const val FANTASY_GENRE_ID = 14
+    private const val SCIENCE_FICTION_GENRE_ID = 878
     private const val DRAMA_GENRE_ID = 18
     private const val HORROR_GENRE_ID = 27
     private const val CRIME_GENRE_ID = 80
@@ -84,8 +85,14 @@ internal object TmdbDiscoveryContentPolicy {
     fun movieCertificationLte(settings: TmdbDiscoveryFilterSettings): String? =
         "6".takeIf { settings.kidsMode }
 
-    fun movieRegion(settings: TmdbDiscoveryFilterSettings): String? =
-        "DE".takeIf { settings.kidsMode }
+    /**
+     * Keep movie discovery tied to the German market even outside Kids Mode.
+     *
+     * TMDB's `language=de-DE` localizes metadata but does not filter availability. `region=DE`
+     * instead requires a matching German release for discover results, which is a better proxy for
+     * a German-language launcher than restricting `original_language` to German productions only.
+     */
+    fun movieRegion(settings: TmdbDiscoveryFilterSettings): String? = "DE"
 
     fun allowCategoryKindInKidsMode(kind: TmdbDiscoveryCategoryRowKind): Boolean = when (kind) {
         TmdbDiscoveryCategoryRowKind.TrendingDay,
@@ -110,7 +117,8 @@ internal object TmdbDiscoveryContentPolicy {
             result.id > 0 &&
                 !result.adult &&
                 animeAllowed(result, settings, genreId) &&
-                kidsAllowed(type, result, settings, movieCertificationApplied)
+                kidsAllowed(type, result, settings, movieCertificationApplied) &&
+                genreScopeAllows(result, genreId)
         }
         return rankForGenre(filtered, genreId)
     }
@@ -237,6 +245,25 @@ internal object TmdbDiscoveryContentPolicy {
             MediaType.Series -> FAMILY_GENRE_ID in result.genreIds || KIDS_TV_GENRE_ID in result.genreIds
             else -> false
         }
+    }
+
+    private fun genreScopeAllows(
+        result: TmdbSearchResultDto,
+        genreId: String?,
+    ): Boolean {
+        if (genreId?.toIntOrNull() != COMEDY_GENRE_ID) return true
+        val genres = result.genreIds.toSet()
+
+        // TMDB can tag superhero/action-adventure titles as Comedy even when humour is secondary.
+        val actionAdventureBlockbuster = ACTION_GENRE_ID in genres &&
+            (ADVENTURE_GENRE_ID in genres ||
+                FANTASY_GENRE_ID in genres ||
+                SCIENCE_FICTION_GENRE_ID in genres)
+
+        // Likewise, Crime + Thriller + Comedy commonly describes a crime/thriller with comic tones.
+        val crimeThriller = CRIME_GENRE_ID in genres && THRILLER_GENRE_ID in genres
+
+        return !actionAdventureBlockbuster && !crimeThriller
     }
 
     private fun TmdbSearchResultDto.isLikelyAnime(): Boolean =
