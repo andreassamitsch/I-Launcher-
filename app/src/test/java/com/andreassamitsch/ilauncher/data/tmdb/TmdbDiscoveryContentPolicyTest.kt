@@ -53,16 +53,58 @@ class TmdbDiscoveryContentPolicyTest {
             title = "Comedy",
             genreIds = listOf(35),
         )
+        val adventureComedy = TmdbSearchResultDto(
+            id = 5,
+            title = "Adventure comedy",
+            genreIds = listOf(35, 12),
+        )
 
         val filtered = TmdbDiscoveryContentPolicy.prepareDiscoverResults(
             type = MediaType.Movie,
-            results = listOf(thorLike, pulpLike, backToFutureLike, directComedy),
+            results = listOf(thorLike, pulpLike, backToFutureLike, directComedy, adventureComedy),
             settings = TmdbDiscoveryFilterSettings(hideAnime = false),
             genreId = "35",
             movieCertificationApplied = false,
         )
 
-        assertEquals(setOf(3, 4), filtered.map(TmdbSearchResultDto::id).toSet())
+        assertEquals(setOf(4, 5), filtered.map(TmdbSearchResultDto::id).toSet())
+    }
+
+    @Test
+    fun movieDiscoveryRequiresGermanLocalizedMetadataForForeignOriginals() {
+        val untranslatedSpanish = TmdbSearchResultDto(
+            id = 30,
+            title = "Socias por accidente",
+            originalTitle = "Socias por accidente",
+            overview = null,
+            originalLanguage = "es",
+            genreIds = listOf(35, 10751, 10749),
+        )
+        val localizedSpanish = TmdbSearchResultDto(
+            id = 31,
+            title = "Deutscher Titel",
+            originalTitle = "Película",
+            overview = "Deutsche Inhaltsbeschreibung.",
+            originalLanguage = "es",
+            genreIds = listOf(35),
+        )
+        val germanOriginal = TmdbSearchResultDto(
+            id = 32,
+            title = "Deutscher Film",
+            overview = null,
+            originalLanguage = "de",
+            genreIds = listOf(35),
+        )
+
+        val filtered = TmdbDiscoveryContentPolicy.prepareDiscoverResults(
+            type = MediaType.Movie,
+            results = listOf(untranslatedSpanish, localizedSpanish, germanOriginal),
+            settings = TmdbDiscoveryFilterSettings(hideAnime = false),
+            genreId = "35",
+            movieCertificationApplied = false,
+        )
+
+        assertEquals(setOf(31, 32), filtered.map(TmdbSearchResultDto::id).toSet())
     }
 
     @Test
