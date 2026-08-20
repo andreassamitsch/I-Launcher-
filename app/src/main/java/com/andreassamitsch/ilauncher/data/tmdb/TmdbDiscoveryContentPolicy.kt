@@ -53,6 +53,18 @@ internal object TmdbDiscoveryContentPolicy {
         "series-genre-16",
     )
 
+    private val strongNonComedyGenres = setOf(
+        ACTION_GENRE_ID,
+        ADVENTURE_GENRE_ID,
+        SCIENCE_FICTION_GENRE_ID,
+        CRIME_GENRE_ID,
+        THRILLER_GENRE_ID,
+        HORROR_GENRE_ID,
+        WAR_GENRE_ID,
+        HISTORY_GENRE_ID,
+        MYSTERY_GENRE_ID,
+    )
+
     fun effectiveRows(
         type: MediaType,
         requested: List<TmdbDiscoveryRowDefinition>,
@@ -86,11 +98,8 @@ internal object TmdbDiscoveryContentPolicy {
         "6".takeIf { settings.kidsMode }
 
     /**
-     * Keep movie discovery tied to the German market even outside Kids Mode.
-     *
-     * TMDB's `language=de-DE` localizes metadata but does not filter availability. `region=DE`
-     * instead requires a matching German release for discover results, which is a better proxy for
-     * a German-language launcher than restricting `original_language` to German productions only.
+     * `region=DE` scopes movie discover to German release-date entries; it is not an audio- or
+     * metadata-language filter. German-localized discovery metadata is checked separately below.
      */
     fun movieRegion(settings: TmdbDiscoveryFilterSettings): String? = "DE"
 
@@ -116,6 +125,7 @@ internal object TmdbDiscoveryContentPolicy {
         val filtered = results.filter { result ->
             result.id > 0 &&
                 !result.adult &&
+                germanDiscoveryMetadataAllows(type, result) &&
                 animeAllowed(result, settings, genreId) &&
                 kidsAllowed(type, result, settings, movieCertificationApplied) &&
                 genreScopeAllows(result, genreId)
@@ -227,6 +237,22 @@ internal object TmdbDiscoveryContentPolicy {
         }
     }
 
+    private fun germanDiscoveryMetadataAllows(
+        type: MediaType,
+        result: TmdbSearchResultDto,
+    ): Boolean {
+        if (type != MediaType.Movie) return true
+        val originalLanguage = result.originalLanguage?.trim()?.lowercase()
+            ?.takeIf(String::isNotBlank)
+            ?: return true
+        if (originalLanguage == "de") return true
+
+        // Discover was requested with language=de-DE. TMDB does not currently provide a generic
+        // fallback translation query, so a non-empty overview is a cheap signal that German
+        // localized metadata actually exists instead of showing an untranslated foreign title.
+        return !result.overview.isNullOrBlank()
+    }
+
     private fun animeAllowed(
         result: TmdbSearchResultDto,
         settings: TmdbDiscoveryFilterSettings,
@@ -254,16 +280,13 @@ internal object TmdbDiscoveryContentPolicy {
         if (genreId?.toIntOrNull() != COMEDY_GENRE_ID) return true
         val genres = result.genreIds.toSet()
 
-        // TMDB can tag superhero/action-adventure titles as Comedy even when humour is secondary.
-        val actionAdventureBlockbuster = ACTION_GENRE_ID in genres &&
-            (ADVENTURE_GENRE_ID in genres ||
-                FANTASY_GENRE_ID in genres ||
-                SCIENCE_FICTION_GENRE_ID in genres)
-
-        // Likewise, Crime + Thriller + Comedy commonly describes a crime/thriller with comic tones.
-        val crimeThriller = CRIME_GENRE_ID in genres && THRILLER_GENRE_ID in genres
-
-        return !actionAdventureBlockbuster && !crimeThriller
+        // TMDB has no primary-genre concept in Discover: with_genres=35 only means that Comedy is
+        // present somewhere. For the launcher's curated Comedy category, two or more strong
+        // non-comedy genres indicate that humour is likely secondary (e.g. Adventure + Sci-Fi for
+        // Back to the Future, Action + Adventure for superhero films, Crime + Thriller for Pulp
+        // Fiction-like mixes). One strong companion genre remains allowed for genuine hybrids.
+        val strongNonComedyCount = strongNonComedyGenres.count(genres::contains)
+        return strongNonComedyCount < 2
     }
 
     private fun TmdbSearchResultDto.isLikelyAnime(): Boolean =
