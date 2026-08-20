@@ -12,7 +12,10 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 private const val SEARCH_TAG = "TMDB_SEARCH"
@@ -50,6 +53,9 @@ class TmdbSearchRepository(
     private val detailsCache = LinkedHashMap<String, CachedDetails>()
     private val browseCache = LinkedHashMap<BrowseCacheKey, CachedBrowse>()
     private val categoryBrowseCache = LinkedHashMap<CategoryBrowseCacheKey, CachedBrowse>()
+    private val germanTranslationCache = LinkedHashMap<Int, CachedGermanTranslation>()
+    private val germanTranslationCacheLock = Any()
+    private val germanTranslationLookupSemaphore = Semaphore(GERMAN_TRANSLATION_MAX_CONCURRENCY)
 
     val isConfigured: Boolean
         get() = network.isConfigured
@@ -484,13 +490,77 @@ class TmdbSearchRepository(
             ).results
             else -> emptyList()
         }
-        return TmdbDiscoveryContentPolicy.prepareDiscoverResults(
+        val prepared = TmdbDiscoveryContentPolicy.prepareDiscoverResults(
             type = type,
             results = results,
             settings = filterSettings,
             genreId = genreId,
             movieCertificationApplied = movieCertificationApplied,
-        ).toMediaItems(imageConfig, type)
+        )
+        val localized = if (type == MediaType.Movie) {
+            keepMoviesWithVerifiedGermanTranslation(prepared)
+        } else {
+            prepared
+        }
+        return localized.toMediaItems(imageConfig, type)
+    }
+
+    private suspend fun keepMoviesWithVerifiedGermanTranslation(
+        results: List<TmdbSearchResultDto>,
+    ): List<TmdbSearchResultDto> = coroutineScope {
+        results.map { result ->
+            async {
+                if (!TmdbDiscoveryContentPolicy.requiresGermanMovieTranslationLookup(result)) {
+                    result
+                } else if (hasGermanMovieTranslation(result.id)) {
+                    result
+                } else {
+                    null
+                }
+            }
+        }.awaitAll().filterNotNull()
+    }
+
+    private suspend fun hasGermanMovieTranslation(movieId: Int): Boolean {
+        val now = System.currentTimeMillis()
+        synchronized(germanTranslationCacheLock) {
+            germanTranslationCache[movieId]
+                ?.takeIf { now - it.updatedAtUtcMillis <= GERMAN_TRANSLATION_CACHE_MILLIS }
+                ?.let { return it.available }
+        }
+
+        return germanTranslationLookupSemaphore.withPermit {
+            val refreshedNow = System.currentTimeMillis()
+            synchronized(germanTranslationCacheLock) {
+                germanTranslationCache[movieId]
+                    ?.takeIf { refreshedNow - it.updatedAtUtcMillis <= GERMAN_TRANSLATION_CACHE_MILLIS }
+                    ?.let { return@withPermit it.available }
+            }
+
+            val available = runCatching {
+                TmdbDiscoveryContentPolicy.hasGermanMovieTranslation(
+                    network.api.movieTranslations(movieId),
+                )
+            }.onFailure { throwable ->
+                Log.w(
+                    SEARCH_TAG,
+                    "TMDB German translation lookup failed for movie $movieId (${throwable.javaClass.simpleName})",
+                )
+            }.getOrNull()
+
+            if (available != null) {
+                synchronized(germanTranslationCacheLock) {
+                    germanTranslationCache[movieId] = CachedGermanTranslation(
+                        available = available,
+                        updatedAtUtcMillis = refreshedNow,
+                    )
+                    trimCache(germanTranslationCache, MAX_GERMAN_TRANSLATION_CACHE_ENTRIES)
+                }
+            }
+
+            // A temporary lookup failure must not make an otherwise valid discovery row disappear.
+            available ?: true
+        }
     }
 
     private fun List<TmdbSearchResultDto>.toMediaItems(
@@ -648,6 +718,11 @@ class TmdbSearchRepository(
         val updatedAtUtcMillis: Long,
     )
 
+    private data class CachedGermanTranslation(
+        val available: Boolean,
+        val updatedAtUtcMillis: Long,
+    )
+
     private companion object {
         const val LANGUAGE = "de-DE"
         const val BROWSE_ROW_LIMIT = 16
@@ -661,9 +736,12 @@ class TmdbSearchRepository(
         const val SEARCH_CACHE_MILLIS = 15L * 60L * 1_000L
         const val DETAILS_CACHE_MILLIS = 60L * 60L * 1_000L
         const val BROWSE_CACHE_MILLIS = 60L * 60L * 1_000L
+        const val GERMAN_TRANSLATION_CACHE_MILLIS = 7L * 24L * 60L * 60L * 1_000L
+        const val GERMAN_TRANSLATION_MAX_CONCURRENCY = 4
         const val MAX_QUERY_CACHE_ENTRIES = 20
         const val MAX_DETAILS_CACHE_ENTRIES = 24
         const val MAX_BROWSE_CACHE_ENTRIES = 6
         const val MAX_CATEGORY_BROWSE_CACHE_ENTRIES = 8
+        const val MAX_GERMAN_TRANSLATION_CACHE_ENTRIES = 512
     }
 }
