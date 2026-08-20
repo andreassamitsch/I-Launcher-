@@ -97,10 +97,7 @@ internal object TmdbDiscoveryContentPolicy {
     fun movieCertificationLte(settings: TmdbDiscoveryFilterSettings): String? =
         "6".takeIf { settings.kidsMode }
 
-    /**
-     * `region=DE` scopes movie discover to German release-date entries; it is not an audio- or
-     * metadata-language filter. German-localized discovery metadata is checked separately below.
-     */
+    /** `region=DE` scopes release dates; it is not a language or dub filter. */
     fun movieRegion(settings: TmdbDiscoveryFilterSettings): String? = "DE"
 
     fun allowCategoryKindInKidsMode(kind: TmdbDiscoveryCategoryRowKind): Boolean = when (kind) {
@@ -125,13 +122,35 @@ internal object TmdbDiscoveryContentPolicy {
         val filtered = results.filter { result ->
             result.id > 0 &&
                 !result.adult &&
-                germanDiscoveryMetadataAllows(type, result) &&
                 animeAllowed(result, settings, genreId) &&
                 kidsAllowed(type, result, settings, movieCertificationApplied) &&
                 genreScopeAllows(result, genreId)
         }
         return rankForGenre(filtered, genreId)
     }
+
+    /**
+     * Only ambiguous, visibly untranslated foreign movie titles need the extra TMDB translations
+     * request. German and English originals stay on the cheap path; a foreign title that was
+     * already changed by the `de-DE` discover response is also clearly localized.
+     */
+    fun requiresGermanMovieTranslationLookup(result: TmdbSearchResultDto): Boolean {
+        val originalLanguage = result.originalLanguage?.trim()?.lowercase()
+            ?.takeIf(String::isNotBlank)
+            ?: return false
+        if (originalLanguage == "de" || originalLanguage == "en") return false
+
+        val localizedTitle = result.title?.trim()?.takeIf(String::isNotBlank) ?: return true
+        val originalTitle = result.originalTitle?.trim()?.takeIf(String::isNotBlank) ?: return true
+        return localizedTitle.equals(originalTitle, ignoreCase = true)
+    }
+
+    /** Exact TMDB translation-list check used for ambiguous foreign movie titles. */
+    fun hasGermanMovieTranslation(response: TmdbMovieTranslationsDto): Boolean =
+        response.translations.any { translation ->
+            translation.languageCode.equals("de", ignoreCase = true) &&
+                !translation.data.title.isNullOrBlank()
+        }
 
     fun prepareFeedResults(
         type: MediaType,
@@ -235,22 +254,6 @@ internal object TmdbDiscoveryContentPolicy {
             reordered.take(distinctLeadCount).mapNotNullTo(usedLeadIds) { it.tmdbId }
             section.copy(items = reordered)
         }
-    }
-
-    private fun germanDiscoveryMetadataAllows(
-        type: MediaType,
-        result: TmdbSearchResultDto,
-    ): Boolean {
-        if (type != MediaType.Movie) return true
-        val originalLanguage = result.originalLanguage?.trim()?.lowercase()
-            ?.takeIf(String::isNotBlank)
-            ?: return true
-        if (originalLanguage == "de") return true
-
-        // Discover was requested with language=de-DE. TMDB does not currently provide a generic
-        // fallback translation query, so a non-empty overview is a cheap signal that German
-        // localized metadata actually exists instead of showing an untranslated foreign title.
-        return !result.overview.isNullOrBlank()
     }
 
     private fun animeAllowed(
