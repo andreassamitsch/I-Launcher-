@@ -34,6 +34,11 @@ internal interface TmdbApi {
         @Query("page") page: Int = 1,
     ): TmdbSearchResponseDto
 
+    @GET("3/movie/{movieId}/translations")
+    suspend fun movieTranslations(
+        @Path("movieId") movieId: Int,
+    ): TmdbMovieTranslationsDto
+
     @GET("3/trending/movie/{timeWindow}")
     suspend fun trendingMovies(
         @Path("timeWindow") timeWindow: String = "week",
