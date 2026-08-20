@@ -579,7 +579,7 @@ class TmdbSearchRepository(
             releaseYear = TmdbRepository.yearOf(releaseDate ?: firstAirDate),
             tmdbId = id,
             posterUri = imageConfig?.url(TmdbImageKind.Poster, posterPath),
-            backdropUri = imageConfig?.url(TmdbImageKind.Backdrop, heroBackdropPath),
+            backdropUri = imageConfig?.url(TmdbImageKind.Backdrop, backdropPath),
             heroBackdropUri = imageConfig?.url(TmdbImageKind.Backdrop, heroBackdropPath),
             logoUri = imageConfig?.url(TmdbImageKind.Logo, logoPath),
             durationMillis = (runtime ?: episodeRunTime?.firstOrNull())?.times(60_000L),
