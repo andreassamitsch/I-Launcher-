@@ -32,6 +32,40 @@ class TmdbDiscoveryContentPolicyTest {
     }
 
     @Test
+    fun comedyDiscoveryRejectsClearlySecondaryComedyMixes() {
+        val thorLike = TmdbSearchResultDto(
+            id = 1,
+            title = "Superhero action adventure",
+            genreIds = listOf(28, 12, 14, 878, 35),
+        )
+        val pulpLike = TmdbSearchResultDto(
+            id = 2,
+            title = "Crime thriller comedy",
+            genreIds = listOf(80, 53, 18, 35),
+        )
+        val backToFutureLike = TmdbSearchResultDto(
+            id = 3,
+            title = "Adventure sci-fi comedy",
+            genreIds = listOf(12, 35, 878),
+        )
+        val directComedy = TmdbSearchResultDto(
+            id = 4,
+            title = "Comedy",
+            genreIds = listOf(35),
+        )
+
+        val filtered = TmdbDiscoveryContentPolicy.prepareDiscoverResults(
+            type = MediaType.Movie,
+            results = listOf(thorLike, pulpLike, backToFutureLike, directComedy),
+            settings = TmdbDiscoveryFilterSettings(hideAnime = false),
+            genreId = "35",
+            movieCertificationApplied = false,
+        )
+
+        assertEquals(setOf(3, 4), filtered.map(TmdbSearchResultDto::id).toSet())
+    }
+
+    @Test
     fun animeIsHiddenOutsideAnimationButKeptInsideAnimation() {
         val anime = TmdbSearchResultDto(
             id = 10,
@@ -110,10 +144,21 @@ class TmdbDiscoveryContentPolicyTest {
     }
 
     @Test
+    fun movieDiscoveryUsesGermanMarketInNormalAndKidsMode() {
+        assertEquals(
+            "DE",
+            TmdbDiscoveryContentPolicy.movieRegion(TmdbDiscoveryFilterSettings(kidsMode = false)),
+        )
+        assertEquals(
+            "DE",
+            TmdbDiscoveryContentPolicy.movieRegion(TmdbDiscoveryFilterSettings(kidsMode = true)),
+        )
+    }
+
+    @Test
     fun kidsModeUsesGermanMovieCertificationUpToFskSix() {
         val settings = TmdbDiscoveryFilterSettings(kidsMode = true)
 
-        assertEquals("DE", TmdbDiscoveryContentPolicy.movieRegion(settings))
         assertEquals("DE", TmdbDiscoveryContentPolicy.movieCertificationCountry(settings))
         assertEquals("6", TmdbDiscoveryContentPolicy.movieCertificationLte(settings))
     }
