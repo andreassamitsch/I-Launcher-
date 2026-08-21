@@ -425,6 +425,7 @@ internal fun LiveTvPlayerScreen(
         AndroidView(
             factory = { viewContext ->
                 PlayerView(viewContext).apply {
+                    keepScreenOn = true
                     useController = false
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     this.player = player
