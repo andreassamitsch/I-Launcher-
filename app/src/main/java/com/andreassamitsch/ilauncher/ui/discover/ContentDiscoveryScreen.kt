@@ -1,27 +1,35 @@
 package com.andreassamitsch.ilauncher.ui.discover
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.home.HeroTextScrollSpeed
 import com.andreassamitsch.ilauncher.data.search.SearchBrowseSection
+import com.andreassamitsch.ilauncher.data.tmdb.TmdbDiscoveryCatalog
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbDiscoveryPreferences
 import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.model.SearchItem
 import com.andreassamitsch.ilauncher.ui.MoviesTopNavigationFocusRequester
 import com.andreassamitsch.ilauncher.ui.SeriesTopNavigationFocusRequester
+import com.andreassamitsch.ilauncher.ui.components.TouchCard
 import com.andreassamitsch.ilauncher.ui.components.WatchNextCard
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import com.andreassamitsch.ilauncher.ui.home.HomeHero
@@ -59,9 +67,16 @@ fun ContentDiscoveryScreen(
     val prefs = remember(context) { TmdbDiscoveryPreferences(context) }
     val movieKeys by prefs.movieRowKeys.collectAsState()
     val seriesKeys by prefs.seriesRowKeys.collectAsState()
+    val hideAnime by prefs.hideAnime.collectAsState()
+    val kidsMode by prefs.kidsMode.collectAsState()
     val mediaType = remember(sections) {
         sections.asSequence().flatMap { it.items.asSequence() }.mapNotNull { it.media?.type }
             .firstOrNull { it == MediaType.Movie || it == MediaType.Series }
+            ?: when {
+                sections.any { it.key.startsWith("movie-") } -> MediaType.Movie
+                sections.any { it.key.startsWith("series-") } -> MediaType.Series
+                else -> null
+            }
     }
     val selectedKeys = when (mediaType) {
         MediaType.Movie -> movieKeys
@@ -74,18 +89,90 @@ fun ContentDiscoveryScreen(
         else -> null
     }
     var selectedSections by remember(mediaType) { mutableStateOf<List<SearchBrowseSection>?>(null) }
+    var isPolicyReloading by remember(mediaType) { mutableStateOf(false) }
 
-    LaunchedEffect(mediaType, selectedKeys, sections, loader) {
+    LaunchedEffect(mediaType, selectedKeys, sections, loader, hideAnime, kidsMode) {
         val type = mediaType
-        if (type == null || loader == null || selectedKeys.isEmpty() || sections.map { it.key } == selectedKeys) {
+        if (type == null || loader == null || selectedKeys.isEmpty()) {
             selectedSections = null
+            isPolicyReloading = false
         } else {
+            isPolicyReloading = true
             selectedSections = runCatching { loader.browse(type, selectedKeys) }
                 .getOrDefault(emptyList()).takeIf { it.isNotEmpty() }
+            isPolicyReloading = false
         }
     }
 
-    val rows = selectedSections ?: sections
+    val mainRows = selectedSections ?: sections
+    val restoredCategoryKey = remember(focusRestoreResultId) {
+        discoveryCategoryKeyFromResultId(focusRestoreResultId)
+    }
+    var selectedCategoryKey by rememberSaveable(mediaType) { mutableStateOf(restoredCategoryKey) }
+    var categoryRows by remember(mediaType) { mutableStateOf<List<SearchBrowseSection>>(emptyList()) }
+    var isCategoryLoading by remember(mediaType) { mutableStateOf(false) }
+    val categoryListState = rememberLazyListState()
+    var moreRestoreSectionKey by remember(mediaType) { mutableStateOf<String?>(null) }
+    var moreRestoreGeneration by remember(mediaType) { mutableIntStateOf(0) }
+    val moreRestoreRequester = remember(moreRestoreSectionKey) { FocusRequester() }
+
+    val selectedCategoryDefinition = remember(mediaType, selectedCategoryKey) {
+        val type = mediaType
+        val key = selectedCategoryKey
+        if (type == null || key == null) null else TmdbDiscoveryCatalog.rows(type).firstOrNull { it.key == key }
+    }
+
+    LaunchedEffect(focusRestoreGeneration, restoredCategoryKey, mediaType) {
+        val type = mediaType ?: return@LaunchedEffect
+        val key = restoredCategoryKey ?: return@LaunchedEffect
+        if (TmdbDiscoveryCatalog.rows(type).any { it.key == key }) {
+            selectedCategoryKey = key
+        }
+    }
+
+    LaunchedEffect(selectedCategoryKey, mediaType, loader, hideAnime, kidsMode) {
+        val type = mediaType
+        val key = selectedCategoryKey
+        categoryRows = emptyList()
+        if (type == null || key == null || loader == null) {
+            isCategoryLoading = false
+            return@LaunchedEffect
+        }
+        isCategoryLoading = true
+        categoryRows = runCatching { loader.browseCategory(type, key) }.getOrDefault(emptyList())
+        isCategoryLoading = false
+    }
+
+    LaunchedEffect(selectedCategoryKey) {
+        if (selectedCategoryKey != null) categoryListState.scrollToItem(0)
+    }
+
+    BackHandler(enabled = selectedCategoryKey != null) {
+        val returnToSection = selectedCategoryKey
+        selectedCategoryKey = null
+        categoryRows = emptyList()
+        isCategoryLoading = false
+        moreRestoreSectionKey = returnToSection
+        moreRestoreGeneration += 1
+    }
+
+    val showingCategory = selectedCategoryKey != null
+    val rows = if (showingCategory) categoryRows else mainRows
+    val activeListState = if (showingCategory) categoryListState else listState
+    val pageTitle = selectedCategoryDefinition?.title ?: title
+    val basePageSubtitle = selectedCategoryDefinition?.let { definition ->
+        "Mehr Auswahl zu „${definition.title}“ – Publikumslieblinge, Top-Bewertungen, neue Empfehlungen und zeitlose Favoriten."
+    } ?: subtitle
+    val pageSubtitle = buildString {
+        append(basePageSubtitle)
+        if (kidsMode) {
+            append(" Kindermodus aktiv: Filme werden konservativ bis FSK 6 gefiltert; Serien auf Kinder-/Familiengenres begrenzt.")
+        } else if (hideAnime) {
+            append(" Anime ist außerhalb der Kategorie Animation ausgeblendet.")
+        }
+    }
+    val pageLoading = if (showingCategory) isCategoryLoading else isLoading || isPolicyReloading
+
     val restoreRequester = remember(focusRestoreResultId) { FocusRequester() }
     val firstResult = remember(rows) {
         rows.asSequence().flatMap { it.items.asSequence() }.firstOrNull { it.media != null }
@@ -104,13 +191,23 @@ fun ContentDiscoveryScreen(
         delay(DiscoveryHeroDetailsDelayMillis)
         heroMedia = runCatching { loader.loadDetails(base) }.getOrDefault(base)
     }
-    LaunchedEffect(focusRestoreGeneration, focusRestoreResultId, rows) {
+    LaunchedEffect(focusRestoreGeneration, focusRestoreResultId, rows, selectedCategoryKey) {
         if (focusRestoreGeneration <= 0 || focusRestoreResultId == null) return@LaunchedEffect
         val rowIndex = rows.indexOfFirst { row -> row.items.any { it.id == focusRestoreResultId } }
         if (rowIndex >= 0) {
-            listState.scrollToItem(rowIndex)
+            activeListState.scrollToItem(rowIndex)
             delay(50)
             runCatching { restoreRequester.requestFocus() }
+        }
+    }
+    LaunchedEffect(moreRestoreGeneration, moreRestoreSectionKey, mainRows, selectedCategoryKey) {
+        if (moreRestoreGeneration <= 0 || selectedCategoryKey != null) return@LaunchedEffect
+        val key = moreRestoreSectionKey ?: return@LaunchedEffect
+        val rowIndex = mainRows.indexOfFirst { it.key == key }
+        if (rowIndex >= 0) {
+            listState.scrollToItem(rowIndex)
+            delay(50)
+            runCatching { moreRestoreRequester.requestFocus() }
         }
     }
 
@@ -121,10 +218,10 @@ fun ContentDiscoveryScreen(
             artworkOverride = (media.heroBackdropUri ?: media.backdropUri)?.let { it to false },
         ).copy(eyebrow = null)
     } ?: HomeHeroContent(
-        key = "discovery:$title",
-        eyebrow = title,
-        title = title,
-        description = subtitle,
+        key = "discovery:$pageTitle",
+        eyebrow = pageTitle,
+        title = pageTitle,
+        description = pageSubtitle,
     )
 
     Box(modifier.fillMaxSize()) {
@@ -139,11 +236,11 @@ fun ContentDiscoveryScreen(
         Box(Modifier.fillMaxSize().padding(top = DiscoveryFirstRailTop).clipToBounds()) {
             when {
                 !tmdbConfigured -> DiscoveryMessage("TMDB ist nicht konfiguriert. Ohne TMDB-Zugang können diese Inhalte nicht geladen werden.")
-                rows.isEmpty() && isLoading -> DiscoveryMessage("TMDB-Inhalte werden geladen …")
+                rows.isEmpty() && pageLoading -> DiscoveryMessage("TMDB-Inhalte werden geladen …")
                 rows.isEmpty() -> DiscoveryMessage("Keine TMDB-Inhalte verfügbar.")
                 else -> LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize().touchScrollFallback(listState, Orientation.Vertical),
+                    state = activeListState,
+                    modifier = Modifier.fillMaxSize().touchScrollFallback(activeListState, Orientation.Vertical),
                     contentPadding = PaddingValues(bottom = DiscoveryBottomFocusReserve),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -156,6 +253,14 @@ fun ContentDiscoveryScreen(
                             loader = loader,
                             onOpen = onOpenResult,
                             onFocused = { heroResult = it },
+                            moreRestoreSectionKey = moreRestoreSectionKey.takeUnless { showingCategory },
+                            moreRestoreRequester = moreRestoreRequester,
+                            onOpenMore = if (!showingCategory && mediaType != null && loader != null) {
+                                { section ->
+                                    moreRestoreSectionKey = null
+                                    selectedCategoryKey = section.key
+                                }
+                            } else null,
                         )
                     }
                 }
@@ -183,6 +288,9 @@ private fun DiscoveryRow(
     loader: TmdbDiscoveryLoader?,
     onOpen: (SearchItem) -> Unit,
     onFocused: (SearchItem) -> Unit,
+    moreRestoreSectionKey: String?,
+    moreRestoreRequester: FocusRequester,
+    onOpenMore: ((SearchBrowseSection) -> Unit)?,
 ) {
     val rowState = rememberLazyListState()
     var hasFocus by remember(section.key) { mutableStateOf(false) }
@@ -231,6 +339,84 @@ private fun DiscoveryRow(
                     modifier = cardModifier,
                 )
             }
+
+            if (onOpenMore != null) {
+                item(key = "more:${section.key}") {
+                    var moreModifier: Modifier = Modifier
+                    if (section.key == moreRestoreSectionKey) {
+                        moreModifier = moreModifier.focusRequester(moreRestoreRequester)
+                    }
+                    navRequester?.let { requester ->
+                        moreModifier = moreModifier.focusProperties { up = requester }
+                    }
+                    DiscoveryMoreCard(
+                        sectionTitle = section.title,
+                        onClick = { onOpenMore(section) },
+                        modifier = moreModifier,
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun DiscoveryMoreCard(
+    sectionTitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var focused by remember(sectionTitle) { mutableStateOf(false) }
+
+    Column(modifier = Modifier.width(172.dp)) {
+        TouchCard(
+            onClick = onClick,
+            modifier = modifier
+                .fillMaxWidth()
+                .height(97.dp)
+                .onFocusChanged { focused = it.isFocused },
+            scale = CardDefaults.scale(focusedScale = 1.045f),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        if (focused) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = "Mehr",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "›",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        Text(
+            text = "Mehr anzeigen",
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            textAlign = TextAlign.Start,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp)
+                .padding(top = 5.dp, start = 2.dp, end = 2.dp)
+                .alpha(if (focused) 1f else 0.82f),
+        )
     }
 }
