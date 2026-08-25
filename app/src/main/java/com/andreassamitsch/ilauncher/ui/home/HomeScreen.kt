@@ -835,13 +835,26 @@ internal fun HomeHero(
                         )
                     }
                     heroContent.eyebrow?.takeIf { it.isNotBlank() }?.let { eyebrow ->
-                        Text(
-                            text = eyebrow,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            heroContent.eyebrowLogoUri?.takeIf { it.isNotBlank() }?.let { sourceLogo ->
+                                AsyncImage(
+                                    model = sourceLogo,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier.size(width = 42.dp, height = 22.dp),
+                                )
+                            }
+                            Text(
+                                text = eyebrow,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                     if (!heroContent.titleCoveredByLogo || heroContent.logoUri.isNullOrBlank()) {
                         Text(
@@ -936,6 +949,7 @@ internal data class HomeHeroContent(
     val artworkUri: String? = null,
     val fitArtwork: Boolean = false,
     val logoUri: String? = null,
+    val eyebrowLogoUri: String? = null,
     val titleCoveredByLogo: Boolean = false,
     val detailsMedia: MediaItem? = null,
     val sourceLabel: String? = null,
@@ -1051,7 +1065,7 @@ internal fun mediaHeroArtwork(item: MediaItem): Pair<String?, Boolean> {
     }
 }
 
-private fun liveTvHero(channel: LiveTvChannel): HomeHeroContent {
+internal fun liveTvHero(channel: LiveTvChannel): HomeHeroContent {
     val now = channel.now
     val metadata = buildList {
         now?.let { add("${formatHeroTime(it.startUtcMillis)}–${formatHeroTime(it.endUtcMillis)}") }
@@ -1065,6 +1079,7 @@ private fun liveTvHero(channel: LiveTvChannel): HomeHeroContent {
     }.joinToString(" · ")
     val description = now?.longDescription ?: now?.shortDescription
     val artwork = liveTvHeroArtwork(now)
+    val titleLogo = now?.tmdbLogoUri?.takeIf { it.isNotBlank() }
 
     return HomeHeroContent(
         key = "live:${channel.serviceReference}",
@@ -1074,7 +1089,9 @@ private fun liveTvHero(channel: LiveTvChannel): HomeHeroContent {
         description = description,
         artworkUri = artwork.first,
         fitArtwork = artwork.second,
-        logoUri = channel.piconUri,
+        logoUri = titleLogo ?: channel.piconUri,
+        eyebrowLogoUri = channel.piconUri?.takeIf { titleLogo != null && it.isNotBlank() },
+        titleCoveredByLogo = titleLogo != null,
         detailsMedia = now?.let { liveProgramMedia(channel, it) },
         sourceLabel = channel.name,
     )
@@ -1106,6 +1123,7 @@ private fun liveProgramMedia(channel: LiveTvChannel, program: LiveTvProgram): Me
     episodeNumber = program.episodeNumber,
     posterUri = program.posterUri,
     backdropUri = program.backdropUri,
+    logoUri = program.tmdbLogoUri,
     episodeStillUri = program.episodeStillUri,
     sourceArtworkUri = program.imageUri,
     voteAverage = program.voteAverage,
