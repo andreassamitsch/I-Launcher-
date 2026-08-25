@@ -1,6 +1,7 @@
 package com.andreassamitsch.ilauncher.ui.home
 
 import com.andreassamitsch.ilauncher.data.home.WatchNextArtworkMode
+import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.MediaSource
@@ -129,6 +130,52 @@ class HomeHeroArtworkTest {
 
         assertNull(uri)
         assertFalse(fit)
+    }
+
+    @Test
+    fun liveTvHeroPrefersTmdbTitleLogoAndKeepsPiconAsSourceIdentity() {
+        val hero = liveTvHero(
+            LiveTvChannel(
+                serviceReference = "1:0:1:test",
+                name = "ORF 1",
+                piconUri = "picon",
+                now = LiveTvProgram(
+                    eventId = 1,
+                    title = "The Rookie",
+                    startUtcMillis = 1_000,
+                    durationMillis = 3_600_000,
+                    tmdbId = 10,
+                    tmdbType = MediaType.Series,
+                    tmdbLogoUri = "tmdb-title-logo",
+                ),
+            ),
+        )
+
+        assertEquals("tmdb-title-logo", hero.logoUri)
+        assertEquals("picon", hero.eyebrowLogoUri)
+        assertTrue(hero.titleCoveredByLogo)
+        assertEquals("ORF 1", hero.eyebrow)
+    }
+
+    @Test
+    fun liveTvHeroKeepsExistingPiconFallbackWithoutTmdbTitleLogo() {
+        val hero = liveTvHero(
+            LiveTvChannel(
+                serviceReference = "1:0:1:test",
+                name = "ORF 1",
+                piconUri = "picon",
+                now = LiveTvProgram(
+                    eventId = 1,
+                    title = "ZiB",
+                    startUtcMillis = 1_000,
+                    durationMillis = 3_600_000,
+                ),
+            ),
+        )
+
+        assertEquals("picon", hero.logoUri)
+        assertNull(hero.eyebrowLogoUri)
+        assertFalse(hero.titleCoveredByLogo)
     }
 
     private fun mediaItem(
