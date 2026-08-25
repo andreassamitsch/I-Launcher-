@@ -294,8 +294,8 @@ private fun DiscoveryRow(
 ) {
     val rowState = rememberLazyListState()
     var hasFocus by remember(section.key) { mutableStateOf(false) }
-    LaunchedEffect(hasFocus, section.items, loader) {
-        if (!hasFocus || loader == null) return@LaunchedEffect
+    LaunchedEffect(section.items, loader) {
+        if (loader == null) return@LaunchedEffect
         snapshotFlow { rowState.layoutInfo.visibleItemsInfo.map { it.index } }
             .map { visible ->
                 if (visible.isEmpty()) emptyList() else {
