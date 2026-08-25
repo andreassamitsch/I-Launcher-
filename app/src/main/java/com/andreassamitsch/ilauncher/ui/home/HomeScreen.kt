@@ -455,6 +455,9 @@ private fun LiveTvHomeRow(
             horizontalArrangement = Arrangement.spacedBy(HOME_MEDIA_CARD_SPACING),
         ) {
             items(state.channels, key = LiveTvChannel::serviceReference) { channel ->
+                LaunchedEffect(channel.serviceReference, channel.now?.startUtcMillis) {
+                    if (channel.now != null) onChannelFocused(channel)
+                }
                 val cardModifier = if (channel.serviceReference == restoreServiceReference) {
                     Modifier.focusRequester(restoreRequester)
                 } else Modifier
