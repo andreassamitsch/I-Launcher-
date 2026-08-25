@@ -205,6 +205,14 @@ internal fun LiveTvPlayerScreen(
         }
     }
 
+    LaunchedEffect(currentChannel?.serviceReference, currentChannel?.now?.startUtcMillis) {
+        val channel = currentChannel ?: return@LaunchedEffect
+        val program = channel.now ?: return@LaunchedEffect
+        if (program.tmdbId == null) {
+            onEnrichEpgProgram(channel.serviceReference, program.startUtcMillis)
+        }
+    }
+
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -342,7 +350,13 @@ internal fun LiveTvPlayerScreen(
             showExitConfirmation -> runCatching { exitConfirmFocusRequester.requestFocus() }
             showEpg && selectedEpgProgramStartUtcMillis == null -> runCatching { epgBackFocusRequester.requestFocus() }
             showEpg -> Unit
-            channelOverviewPinned -> runCatching { overlayFocusRequester.requestFocus() }
+            channelOverviewPinned -> {
+                if (channels.isNotEmpty()) {
+                    zapListState.scrollToItem((currentIndex - 2).coerceAtLeast(0))
+                    withFrameNanos { }
+                }
+                runCatching { overlayFocusRequester.requestFocus() }
+            }
             else -> runCatching { rootFocusRequester.requestFocus() }
         }
     }
@@ -514,6 +528,13 @@ internal fun LiveTvPlayerScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         itemsIndexed(channels, key = { _, channel -> channel.serviceReference }) { index, channel ->
+                            LaunchedEffect(channel.serviceReference, channel.now?.startUtcMillis) {
+                                channel.now?.let { program ->
+                                    if (program.tmdbId == null) {
+                                        onEnrichEpgProgram(channel.serviceReference, program.startUtcMillis)
+                                    }
+                                }
+                            }
                             CompactLiveTvCard(
                                 channel = channel,
                                 channelNumber = index + 1,
