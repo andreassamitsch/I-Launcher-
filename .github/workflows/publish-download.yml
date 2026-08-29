@@ -14,6 +14,7 @@ on:
       - agent/search-ranking-quality
       - agent/settings-ui-focus-polish
       - agent/person-works-ranking
+      - fix/watch-next-series-details
     paths:
       - "app/**"
       - "build.gradle.kts"
