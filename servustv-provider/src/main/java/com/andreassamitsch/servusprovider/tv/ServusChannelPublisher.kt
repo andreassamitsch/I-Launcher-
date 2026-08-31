@@ -2,11 +2,14 @@ package com.andreassamitsch.servusprovider.tv
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.net.Uri
 import androidx.tvprovider.media.tv.PreviewChannel
 import androidx.tvprovider.media.tv.PreviewChannelHelper
 import androidx.tvprovider.media.tv.PreviewProgram
 import androidx.tvprovider.media.tv.TvContractCompat
+import com.andreassamitsch.servusprovider.R
 import com.andreassamitsch.servusprovider.data.ServusNewsEpisode
 import com.andreassamitsch.servusprovider.ui.MainActivity
 import com.andreassamitsch.servusprovider.ui.PlaybackActivity
@@ -46,8 +49,24 @@ class ServusChannelPublisher(context: Context) {
             .setDescription("Die letzten vollständigen Servus-Nachrichten um 19:20")
             .setInternalProviderId(INTERNAL_CHANNEL_ID)
             .setAppLinkIntentUri(appIntentUri)
+            .setLogo(createChannelLogo())
             .build()
         return helper.publishChannel(channel)
+    }
+
+    private fun createChannelLogo(): Bitmap {
+        val drawable = checkNotNull(appContext.getDrawable(R.drawable.ic_launcher)) {
+            "Kanal-Logo konnte nicht aus den App-Ressourcen geladen werden"
+        }
+        return Bitmap.createBitmap(
+            CHANNEL_LOGO_SIZE_PX,
+            CHANNEL_LOGO_SIZE_PX,
+            Bitmap.Config.ARGB_8888,
+        ).also { bitmap ->
+            val canvas = Canvas(bitmap)
+            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            drawable.draw(canvas)
+        }
     }
 
     private fun buildProgram(
@@ -84,5 +103,6 @@ class ServusChannelPublisher(context: Context) {
     private companion object {
         const val INTERNAL_CHANNEL_ID = "servus-news-19-20"
         const val CHANNEL_NAME = "Servus Nachrichten"
+        const val CHANNEL_LOGO_SIZE_PX = 256
     }
 }
