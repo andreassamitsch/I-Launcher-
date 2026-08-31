@@ -1,6 +1,7 @@
 package com.andreassamitsch.servusprovider.data
 
 import android.content.Context
+import android.util.Log
 import com.andreassamitsch.servusprovider.api.ServusApi
 import com.andreassamitsch.servusprovider.api.ServusCardDto
 import com.andreassamitsch.servusprovider.api.ServusNetwork
@@ -21,8 +22,11 @@ class ServusNewsRepository(
     private val channelPublisher = ServusChannelPublisher(appContext)
 
     fun cachedEpisodes(): List<ServusNewsEpisode> = newsStore.loadEpisodes()
+        .sortedByDescending { it.publishedAtMillis }
+
     fun lastSuccessMillis(): Long = newsStore.lastSuccessMillis()
     fun lastError(): String? = newsStore.lastError()
+    fun tvChannelSupported(): Boolean = channelPublisher.isSupported()
 
     suspend fun refresh(): ServusRefreshResult {
         return try {
@@ -31,25 +35,35 @@ class ServusNewsRepository(
             val market = session.countryCode
             val candidates = discoverCandidates(market)
             val details = fetchDetails(market, candidates)
-            val episodes = ServusNewsPolicy.deduplicateEditions(
-                details
-                    .mapNotNull(ServusNewsPolicy::toFullNewsEpisode)
-                    .distinctBy { it.id },
+            val refreshNow = System.currentTimeMillis()
+            val episodes = ServusNewsPolicy.deduplicateEpisodes(
+                details.mapNotNull { card ->
+                    ServusNewsPolicy.toSupportedEpisode(card, refreshNow)
+                },
             ).take(MAX_EPISODES)
 
             check(episodes.isNotEmpty()) {
-                "Keine vollständige Servus-Nachrichten-19:20-Sendung in den API-Ergebnissen gefunden"
+                "Keine unterstützte ServusTV-Sendung in den API-Ergebnissen gefunden"
             }
 
             val result = ServusRefreshResult(
                 episodes = episodes,
-                refreshedAtMillis = System.currentTimeMillis(),
+                refreshedAtMillis = refreshNow,
             )
+            // Standalone data is the primary result. TV-channel publication must never make a
+            // successful phone/tablet refresh fail when there is no TvProvider on the device.
             newsStore.save(result)
-            val contentChanged = previousEpisodes.map { ServusNewsPolicy.editionKey(it) to it.id } !=
-                episodes.map { ServusNewsPolicy.editionKey(it) to it.id }
-            if (contentChanged || !channelPublisher.isPublished()) {
-                channelPublisher.publish(episodes)
+
+            if (channelPublisher.isSupported()) {
+                val contentChanged = previousEpisodes.map { ServusNewsPolicy.contentKey(it) to it.id } !=
+                    episodes.map { ServusNewsPolicy.contentKey(it) to it.id }
+                runCatching {
+                    if (contentChanged || !channelPublisher.isPublished()) {
+                        channelPublisher.publish(episodes)
+                    }
+                }.onFailure { throwable ->
+                    Log.w(TAG, "TvProvider sync skipped after refresh: ${throwable.javaClass.simpleName}")
+                }
             }
             result
         } catch (throwable: Throwable) {
@@ -59,33 +73,47 @@ class ServusNewsRepository(
     }
 
     private suspend fun discoverCandidates(market: String): List<String> = coroutineScope {
-        val searches = buildList {
-            SEARCH_QUERIES.forEach { query ->
-                SEARCH_OFFSETS.forEach { offset ->
-                    add(async { api.search(market, query, offset) })
-                }
+        val responseGroups = SEARCH_QUERIES.map { query ->
+            async {
+                SEARCH_OFFSETS.map { offset ->
+                    async { api.search(market, query, offset) }
+                }.awaitAll()
             }
         }.awaitAll()
 
-        val directCards = searches.flatMap { it.cards }
-        val directIds = directCards
-            .filter(ServusNewsPolicy::couldBelongToNews)
-            .mapNotNull { it.id }
-            .toMutableList()
+        val directCards = responseGroups.flatten().flatMap { it.cards }
+        val directIds = responseGroups.flatMap { responses ->
+            responses
+                .flatMap { it.cards }
+                .filter(ServusNewsPolicy::couldBelongToSupportedContent)
+                .mapNotNull { it.id }
+                .distinct()
+                .take(MAX_DIRECT_IDS_PER_QUERY)
+        }.toMutableList()
 
-        val newsPages = directCards.filter { card ->
-            card.type == "page" && ServusNewsPolicy.couldBelongToNews(card)
+        // Page results are valuable because their collections often contain the newest episodes
+        // even when generic search ranking is not strictly chronological.
+        val contentPages = directCards.filter { card ->
+            card.type == "page" && ServusNewsPolicy.couldBelongToSupportedContent(card)
         }
-        val collectionIds = newsPages.mapNotNull { it.id }.distinct().take(MAX_NEWS_PAGES).map { pageId ->
-            async {
-                runCatching { api.product(market, pageId) }
-                    .getOrNull()
-                    ?.collections
-                    .orEmpty()
-                    .filterNot { it.listType == "reference" }
-                    .mapNotNull { it.id }
+        val collectionIds = contentPages
+            .mapNotNull { it.id }
+            .distinct()
+            .take(MAX_CONTENT_PAGES)
+            .map { pageId ->
+                async {
+                    runCatching { api.product(market, pageId) }
+                        .getOrNull()
+                        ?.collections
+                        .orEmpty()
+                        .filterNot { it.listType == "reference" }
+                        .mapNotNull { it.id }
+                }
             }
-        }.awaitAll().flatten().distinct().take(MAX_COLLECTIONS)
+            .awaitAll()
+            .flatten()
+            .distinct()
+            .take(MAX_COLLECTIONS)
 
         val collectionCards = collectionIds.map { collectionId ->
             async {
@@ -97,7 +125,7 @@ class ServusNewsRepository(
         }.awaitAll().flatten()
 
         directIds += collectionCards
-            .filter(ServusNewsPolicy::couldBelongToNews)
+            .filter(ServusNewsPolicy::couldBelongToSupportedContent)
             .mapNotNull { it.id }
 
         directIds.distinct().take(MAX_DETAIL_CANDIDATES)
@@ -115,12 +143,19 @@ class ServusNewsRepository(
     }
 
     private companion object {
-        val SEARCH_QUERIES = listOf("Servus Nachrichten", "Nachrichten 19:20")
+        const val TAG = "ServusRepository"
+        val SEARCH_QUERIES = listOf(
+            "Servus Nachrichten",
+            "Nachrichten 19:20",
+            "Servus Nachrichten in 90 Sekunden",
+            "Der Wegscheider",
+        )
         val SEARCH_OFFSETS = listOf(0, 15, 30)
+        const val MAX_DIRECT_IDS_PER_QUERY = 16
         const val DETAIL_PARALLELISM = 6
-        const val MAX_NEWS_PAGES = 4
-        const val MAX_COLLECTIONS = 8
-        const val MAX_DETAIL_CANDIDATES = 50
-        const val MAX_EPISODES = 12
+        const val MAX_CONTENT_PAGES = 8
+        const val MAX_COLLECTIONS = 12
+        const val MAX_DETAIL_CANDIDATES = 72
+        const val MAX_EPISODES = 40
     }
 }
