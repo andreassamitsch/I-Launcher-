@@ -10,14 +10,14 @@
         android:allowBackup="false"
         android:banner="@drawable/tv_banner"
         android:icon="@drawable/ic_launcher"
-        android:label="Servus Nachrichten Provider"
+        android:label="ServusTV Aktuelles"
         android:supportsRtl="true"
         android:theme="@style/Theme.ServusProvider">
 
         <activity
             android:name=".ui.PlaybackActivity"
             android:exported="true"
-            android:screenOrientation="landscape">
+            android:screenOrientation="sensorLandscape">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -28,8 +28,7 @@
 
         <activity
             android:name=".ui.MainActivity"
-            android:exported="true"
-            android:screenOrientation="landscape">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

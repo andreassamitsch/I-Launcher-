@@ -18,6 +18,7 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.SeekBar
 import android.widget.TextView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -50,14 +51,16 @@ class PlaybackActivity : Activity() {
     private lateinit var message: TextView
     private lateinit var controlsFade: View
     private lateinit var controlsContainer: LinearLayout
-    private lateinit var timeline: ProgressBar
+    private lateinit var timeline: SeekBar
     private lateinit var timeText: TextView
     private lateinit var settingsButton: Button
     private var selectedVideoSummary = "wird ermittelt"
     private var selectedAudioSummary = "wird ermittelt"
+    private var userSeeking = false
 
     private val hideControlsRunnable = Runnable {
-        if (!settingsButton.hasFocus() && settingsDialog?.isShowing != true) {
+        if (settingsDialog?.isShowing != true) {
+            if (settingsButton.hasFocus()) rootView.requestFocus()
             controlsContainer.visibility = View.GONE
             controlsFade.visibility = View.GONE
         }
@@ -166,6 +169,10 @@ class PlaybackActivity : Activity() {
         playerView = PlayerView(this).apply {
             useController = false
             isFocusable = false
+            isClickable = true
+            // The TV path is fully D-Pad driven. On a phone a tap gives a minimal Play/Pause
+            // interaction without bringing back Media3's large touch controller.
+            setOnClickListener { togglePlayback() }
         }
         rootView.addView(
             playerView,
@@ -217,11 +224,8 @@ class PlaybackActivity : Activity() {
             setOnClickListener { showSettingsDialog() }
             setOnFocusChangeListener { _, hasFocus ->
                 if (hasFocus) {
-                    handler.removeCallbacks(hideControlsRunnable)
                     controlsContainer.visibility = View.VISIBLE
                     controlsFade.visibility = View.VISIBLE
-                } else {
-                    scheduleControlsHide()
                 }
             }
         }
@@ -234,17 +238,42 @@ class PlaybackActivity : Activity() {
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
         )
 
-        timeline = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+        timeline = SeekBar(this).apply {
             max = TIMELINE_MAX
             progress = 0
             secondaryProgress = 0
-            isIndeterminate = false
             isFocusable = false
+            setOnSeekBarChangeListener(
+                object : SeekBar.OnSeekBarChangeListener {
+                    override fun onStartTrackingTouch(seekBar: SeekBar) {
+                        userSeeking = true
+                        handler.removeCallbacks(hideControlsRunnable)
+                    }
+
+                    override fun onProgressChanged(seekBar: SeekBar, value: Int, fromUser: Boolean) {
+                        if (!fromUser) return
+                        val duration = player?.duration?.takeIf { it > 0 && it != C.TIME_UNSET } ?: return
+                        val target = (duration * value) / TIMELINE_MAX
+                        timeText.text = "${formatTime(target)} / ${formatTime(duration)}"
+                    }
+
+                    override fun onStopTrackingTouch(seekBar: SeekBar) {
+                        val exoPlayer = player
+                        val duration = exoPlayer?.duration?.takeIf { it > 0 && it != C.TIME_UNSET }
+                        if (exoPlayer != null && duration != null) {
+                            exoPlayer.seekTo((duration * seekBar.progress) / TIMELINE_MAX)
+                        }
+                        userSeeking = false
+                        updateTimeline()
+                        showControls()
+                    }
+                },
+            )
         }
         controlsContainer.addView(
             timeline,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(10)).apply {
-                topMargin = dp(8)
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(26)).apply {
+                topMargin = dp(2)
             },
         )
         rootView.addView(
@@ -327,6 +356,11 @@ class PlaybackActivity : Activity() {
 
                         override fun onPlaybackStateChanged(playbackState: Int) {
                             updateTimeline()
+                            if (playbackState == Player.STATE_ENDED) {
+                                // VOD has no useful post-roll screen in this app. Returning to the
+                                // list/launcher immediately also avoids leaving a black PlayerView open.
+                                finish()
+                            }
                         }
                     },
                 )
@@ -370,7 +404,7 @@ class PlaybackActivity : Activity() {
 
     private fun scheduleControlsHide() {
         handler.removeCallbacks(hideControlsRunnable)
-        if (!settingsButton.hasFocus() && settingsDialog?.isShowing != true) {
+        if (settingsDialog?.isShowing != true) {
             handler.postDelayed(hideControlsRunnable, CONTROLS_TIMEOUT_MS)
         }
     }
@@ -381,13 +415,15 @@ class PlaybackActivity : Activity() {
         val position = positionOverride ?: exoPlayer.currentPosition.coerceAtLeast(0L)
         val buffered = exoPlayer.bufferedPosition.coerceAtLeast(position)
         if (duration > 0) {
-            timeline.progress = ((position.coerceAtMost(duration) * TIMELINE_MAX) / duration).toInt()
+            if (!userSeeking) {
+                timeline.progress = ((position.coerceAtMost(duration) * TIMELINE_MAX) / duration).toInt()
+            }
             timeline.secondaryProgress = ((buffered.coerceAtMost(duration) * TIMELINE_MAX) / duration).toInt()
-        } else {
+        } else if (!userSeeking) {
             timeline.progress = 0
             timeline.secondaryProgress = 0
         }
-        timeText.text = "${formatTime(position)} / ${formatTime(duration)}"
+        if (!userSeeking) timeText.text = "${formatTime(position)} / ${formatTime(duration)}"
     }
 
     private fun showSettingsDialog() {
@@ -409,7 +445,7 @@ class PlaybackActivity : Activity() {
             setTextColor(Color.WHITE)
         })
         panel.addView(TextView(this).apply {
-            text = "Qualität\n$selectedVideoSummary\n\nAudio\n$selectedAudioSummary\n\nSpringen\n10 Sekunden mit D-Pad links/rechts"
+            text = "Qualität\n$selectedVideoSummary\n\nAudio\n$selectedAudioSummary\n\nSpringen\n10 Sekunden mit D-Pad links/rechts\n\nTouch\nTippen = Play/Pause, Zeitleiste = Position"
             textSize = 16f
             setTextColor(Color.LTGRAY)
             setPadding(0, dp(16), 0, dp(18))
@@ -431,10 +467,11 @@ class PlaybackActivity : Activity() {
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             setGravity(Gravity.BOTTOM or Gravity.END)
-            setLayout(dp(460), ViewGroup.LayoutParams.WRAP_CONTENT)
+            val maxWidth = resources.displayMetrics.widthPixels - dp(32)
+            setLayout(minOf(dp(460), maxWidth), ViewGroup.LayoutParams.WRAP_CONTENT)
             attributes = attributes.apply {
-                x = dp(32)
-                y = dp(86)
+                x = dp(16)
+                y = dp(48)
             }
         }
         settingsDialog = dialog
