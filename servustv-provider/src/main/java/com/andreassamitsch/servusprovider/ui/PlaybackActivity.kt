@@ -48,6 +48,7 @@ class PlaybackActivity : Activity() {
     private lateinit var playerView: PlayerView
     private lateinit var progress: ProgressBar
     private lateinit var message: TextView
+    private lateinit var controlsFade: View
     private lateinit var controlsContainer: LinearLayout
     private lateinit var timeline: ProgressBar
     private lateinit var timeText: TextView
@@ -58,6 +59,7 @@ class PlaybackActivity : Activity() {
     private val hideControlsRunnable = Runnable {
         if (!settingsButton.hasFocus() && settingsDialog?.isShowing != true) {
             controlsContainer.visibility = View.GONE
+            controlsFade.visibility = View.GONE
         }
     }
     private val progressRunnable = object : Runnable {
@@ -173,7 +175,7 @@ class PlaybackActivity : Activity() {
             ),
         )
 
-        val bottomFade = View(this).apply {
+        controlsFade = View(this).apply {
             background = GradientDrawable(
                 GradientDrawable.Orientation.BOTTOM_TOP,
                 intArrayOf(
@@ -184,7 +186,7 @@ class PlaybackActivity : Activity() {
             )
         }
         rootView.addView(
-            bottomFade,
+            controlsFade,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(CONTROLS_FADE_HEIGHT_DP),
@@ -217,6 +219,7 @@ class PlaybackActivity : Activity() {
                 if (hasFocus) {
                     handler.removeCallbacks(hideControlsRunnable)
                     controlsContainer.visibility = View.VISIBLE
+                    controlsFade.visibility = View.VISIBLE
                 } else {
                     scheduleControlsHide()
                 }
@@ -358,6 +361,7 @@ class PlaybackActivity : Activity() {
 
     private fun showControls(focusSettings: Boolean = false) {
         controlsContainer.visibility = View.VISIBLE
+        controlsFade.visibility = View.VISIBLE
         updateTimeline()
         handler.removeCallbacks(hideControlsRunnable)
         if (focusSettings) settingsButton.requestFocus()
@@ -484,6 +488,7 @@ class PlaybackActivity : Activity() {
     private fun showError(text: String) {
         progress.visibility = View.GONE
         controlsContainer.visibility = View.GONE
+        controlsFade.visibility = View.GONE
         message.text = text
         message.visibility = View.VISIBLE
     }
@@ -497,7 +502,7 @@ class PlaybackActivity : Activity() {
     }
 
     private fun formatTime(millis: Long): String {
-        val totalSeconds = (millis.coerceAtLeast(0L) / 1_000L)
+        val totalSeconds = millis.coerceAtLeast(0L) / 1_000L
         val hours = totalSeconds / 3_600L
         val minutes = (totalSeconds % 3_600L) / 60L
         val seconds = totalSeconds % 60L
