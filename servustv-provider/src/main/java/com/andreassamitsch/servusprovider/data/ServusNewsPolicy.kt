@@ -49,6 +49,32 @@ object ServusNewsPolicy {
         )
     }
 
+    /**
+     * Servus kann dieselbe 19:20-Ausgabe über mehrere Such-/Collection-Pfade mit unterschiedlichen
+     * Content-IDs liefern. Für unseren Kanal ist die fachliche Identität deshalb die Ausgabe eines
+     * Kalendertags, nicht die API-ID.
+     */
+    fun editionKey(episode: ServusNewsEpisode): String {
+        titleEditionDate(episode.title)?.let { return "19:20-$it" }
+        val localDate = Instant.ofEpochMilli(episode.publishedAtMillis)
+            .atZone(ZoneId.systemDefault())
+            .toLocalDate()
+        return "19:20-$localDate"
+    }
+
+    fun deduplicateEditions(episodes: List<ServusNewsEpisode>): List<ServusNewsEpisode> {
+        return episodes
+            .groupBy(::editionKey)
+            .values
+            .mapNotNull { candidates ->
+                candidates.maxWithOrNull(
+                    compareBy<ServusNewsEpisode> { it.publishedAtMillis }
+                        .thenBy { it.durationMillis },
+                )
+            }
+            .sortedByDescending { it.publishedAtMillis }
+    }
+
     fun landscapeArtwork(id: String, resources: List<String>): String? {
         val resource = resources.firstOrNull { name ->
             name.contains("landscape", ignoreCase = true) &&
@@ -56,6 +82,13 @@ object ServusNewsPolicy {
                 !name.contains("treatment_", ignoreCase = true)
         } ?: return null
         return "${ServusNetwork.ARTWORK_BASE_URL}$id/$resource/f_avif,c_fill,w_1280,q_70?namespace=stv&refresh=true"
+    }
+
+    private fun titleEditionDate(title: String): String? {
+        val match = dateInTitle.find(title) ?: return null
+        val day = match.groupValues[1].toIntOrNull() ?: return null
+        val month = match.groupValues[2].toIntOrNull() ?: return null
+        return "%02d-%02d".format(Locale.ROOT, month, day)
     }
 
     private fun searchableText(card: ServusCardDto): String = listOfNotNull(
