@@ -16,11 +16,20 @@ import com.andreassamitsch.servusprovider.ui.PlaybackActivity
 
 class ServusChannelPublisher(context: Context) {
     private val appContext = context.applicationContext
-    private val helper = PreviewChannelHelper(appContext)
+    private val helper by lazy { PreviewChannelHelper(appContext) }
 
-    fun isPublished(): Boolean = helper.getAllChannels().any { it.internalProviderId == INTERNAL_CHANNEL_ID }
+    /** Normal Android phones/tablets usually do not expose Android TV's TvProvider authority. */
+    fun isSupported(): Boolean =
+        appContext.packageManager.resolveContentProvider(TvContractCompat.AUTHORITY, 0) != null
+
+    fun isPublished(): Boolean {
+        if (!isSupported()) return false
+        return helper.getAllChannels().any { it.internalProviderId == INTERNAL_CHANNEL_ID }
+    }
 
     fun publish(episodes: List<ServusNewsEpisode>) {
+        if (!isSupported()) return
+
         val channelId = findOrCreateChannel()
         appContext.contentResolver.delete(
             TvContractCompat.buildPreviewProgramsUriForChannel(channelId),
@@ -34,24 +43,34 @@ class ServusChannelPublisher(context: Context) {
     }
 
     private fun findOrCreateChannel(): Long {
-        helper.getAllChannels()
+        val existing = helper.getAllChannels()
             .firstOrNull { it.internalProviderId == INTERNAL_CHANNEL_ID }
-            ?.let { return it.id }
+        val channel = buildChannel()
+        if (existing != null) {
+            // Keep the original internal ID so I Launcher's existing channel preference remains stable,
+            // but update the visible metadata now that the row contains more than the 19:20 edition.
+            helper.updatePreviewChannel(existing.id, channel)
+            return existing.id
+        }
+        return helper.publishChannel(channel).also { channelId ->
+            check(channelId >= 0L) { "Android-TV-Kanal konnte nicht veröffentlicht werden" }
+        }
+    }
 
+    private fun buildChannel(): PreviewChannel {
         val appIntentUri = Uri.parse(
             Intent(appContext, MainActivity::class.java)
                 .setAction(Intent.ACTION_VIEW)
                 .setData(Uri.parse("iservus://channel/news"))
                 .toUri(Intent.URI_INTENT_SCHEME),
         )
-        val channel = PreviewChannel.Builder()
+        return PreviewChannel.Builder()
             .setDisplayName(CHANNEL_NAME)
-            .setDescription("Die letzten vollständigen Servus-Nachrichten um 19:20")
+            .setDescription("Servus Nachrichten, Nachrichten in 90 Sekunden und Der Wegscheider")
             .setInternalProviderId(INTERNAL_CHANNEL_ID)
             .setAppLinkIntentUri(appIntentUri)
             .setLogo(createChannelLogo())
             .build()
-        return helper.publishChannel(channel)
     }
 
     private fun createChannelLogo(): Bitmap {
@@ -84,7 +103,7 @@ class ServusChannelPublisher(context: Context) {
             .setChannelId(channelId)
             .setType(TvContractCompat.PreviewPrograms.TYPE_TV_EPISODE)
             .setTitle(episode.title)
-            .setDescription(episode.description ?: "Servus Nachrichten 19:20")
+            .setDescription(episode.description ?: episode.showName ?: "ServusTV")
             .setDurationMillis(episode.durationMillis.toInt())
             .setInternalProviderId(episode.id)
             .setIntentUri(playbackIntentUri)
@@ -101,8 +120,9 @@ class ServusChannelPublisher(context: Context) {
     }
 
     private companion object {
+        // Intentionally unchanged from the first prototype to preserve the launcher's channel identity.
         const val INTERNAL_CHANNEL_ID = "servus-news-19-20"
-        const val CHANNEL_NAME = "Servus Nachrichten"
+        const val CHANNEL_NAME = "ServusTV Aktuelles"
         const val CHANNEL_LOGO_SIZE_PX = 256
     }
 }
