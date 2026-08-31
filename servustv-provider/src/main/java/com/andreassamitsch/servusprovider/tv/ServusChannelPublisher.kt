@@ -34,9 +34,19 @@ class ServusChannelPublisher(context: Context) {
     }
 
     private fun findOrCreateChannel(): Long {
-        helper.getAllChannels()
-            .firstOrNull { it.internalProviderId == INTERNAL_CHANNEL_ID }
-            ?.let { return it.id }
+        val existingChannels = helper.getAllChannels()
+            .filter { it.internalProviderId == INTERNAL_CHANNEL_ID }
+            .sortedBy { it.id }
+        existingChannels.firstOrNull()?.let { primary ->
+            existingChannels.drop(1).forEach { duplicate ->
+                appContext.contentResolver.delete(
+                    TvContractCompat.buildChannelUri(duplicate.id),
+                    null,
+                    null,
+                )
+            }
+            return primary.id
+        }
 
         val appIntentUri = Uri.parse(
             Intent(appContext, MainActivity::class.java)
