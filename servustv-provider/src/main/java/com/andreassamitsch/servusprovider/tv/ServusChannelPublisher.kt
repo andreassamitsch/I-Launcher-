@@ -18,7 +18,8 @@ class ServusChannelPublisher(context: Context) {
     private val appContext = context.applicationContext
     private val helper = PreviewChannelHelper(appContext)
 
-    fun isPublished(): Boolean = helper.getAllChannels().any { it.internalProviderId == INTERNAL_CHANNEL_ID }
+    fun isPublished(): Boolean = helper.getAllChannels()
+        .count { it.internalProviderId == INTERNAL_CHANNEL_ID } == 1
 
     fun publish(episodes: List<ServusNewsEpisode>) {
         val channelId = findOrCreateChannel()
