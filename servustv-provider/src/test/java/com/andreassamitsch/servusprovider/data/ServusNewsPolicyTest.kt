@@ -1,6 +1,8 @@
 package com.andreassamitsch.servusprovider.data
 
+import com.andreassamitsch.servusprovider.api.SearchResponseDto
 import com.andreassamitsch.servusprovider.api.ServusCardDto
+import com.google.gson.Gson
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -27,6 +29,62 @@ class ServusNewsPolicyTest {
         assertNotNull(episode)
         assertEquals("AA123", episode?.id)
         assertTrue(episode?.artworkUri?.contains("rbtv_display_art_landscape") == true)
+    }
+
+    @Test
+    fun mediaResourcesObjectReturnedByApiIsNormalised() {
+        val response = Gson().fromJson(
+            """
+            {
+              "cards": [
+                {
+                  "id": "AA126",
+                  "type": "video",
+                  "content_type": "episode",
+                  "title": "Nachrichten 19:20 | 31.08.",
+                  "show_name": "Servus Nachrichten",
+                  "duration": 720000,
+                  "playable": true,
+                  "media_resources": {
+                    "rbtv_display_art_landscape": {
+                      "type": "image"
+                    },
+                    "rbtv_display_art_portrait": {
+                      "type": "image"
+                    }
+                  }
+                }
+              ]
+            }
+            """.trimIndent(),
+            SearchResponseDto::class.java,
+        )
+
+        val card = response.cards.single()
+        assertTrue(card.mediaResources.contains("rbtv_display_art_landscape"))
+        assertNotNull(ServusNewsPolicy.toFullNewsEpisode(card))
+    }
+
+    @Test
+    fun mediaResourcesArrayRemainsSupported() {
+        val response = Gson().fromJson(
+            """
+            {
+              "cards": [
+                {
+                  "id": "AA127",
+                  "media_resources": ["rbtv_display_art_landscape", "rbtv_display_art_portrait"]
+                }
+              ]
+            }
+            """.trimIndent(),
+            SearchResponseDto::class.java,
+        )
+
+        assertEquals(
+            listOf("rbtv_display_art_landscape", "rbtv_display_art_portrait"),
+            response.cards.single().mediaResources,
+        )
     }
 
     @Test
