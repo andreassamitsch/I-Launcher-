@@ -18,8 +18,7 @@ class ServusChannelPublisher(context: Context) {
     private val appContext = context.applicationContext
     private val helper = PreviewChannelHelper(appContext)
 
-    fun isPublished(): Boolean = helper.getAllChannels()
-        .count { it.internalProviderId == INTERNAL_CHANNEL_ID } == 1
+    fun isPublished(): Boolean = helper.getAllChannels().any { it.internalProviderId == INTERNAL_CHANNEL_ID }
 
     fun publish(episodes: List<ServusNewsEpisode>) {
         val channelId = findOrCreateChannel()
@@ -35,19 +34,9 @@ class ServusChannelPublisher(context: Context) {
     }
 
     private fun findOrCreateChannel(): Long {
-        val existingChannels = helper.getAllChannels()
-            .filter { it.internalProviderId == INTERNAL_CHANNEL_ID }
-            .sortedBy { it.id }
-        existingChannels.firstOrNull()?.let { primary ->
-            existingChannels.drop(1).forEach { duplicate ->
-                appContext.contentResolver.delete(
-                    TvContractCompat.buildChannelUri(duplicate.id),
-                    null,
-                    null,
-                )
-            }
-            return primary.id
-        }
+        helper.getAllChannels()
+            .firstOrNull { it.internalProviderId == INTERNAL_CHANNEL_ID }
+            ?.let { return it.id }
 
         val appIntentUri = Uri.parse(
             Intent(appContext, MainActivity::class.java)
