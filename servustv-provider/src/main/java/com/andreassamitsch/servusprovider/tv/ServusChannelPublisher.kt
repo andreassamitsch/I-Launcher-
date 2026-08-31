@@ -47,9 +47,10 @@ class ServusChannelPublisher(context: Context) {
             .firstOrNull { it.internalProviderId == INTERNAL_CHANNEL_ID }
         val channel = buildChannel()
         if (existing != null) {
-            // Keep the original internal ID so I Launcher's existing channel preference remains stable,
-            // but update the visible metadata now that the row contains more than the 19:20 edition.
-            helper.updatePreviewChannel(existing.id, channel)
+            // Keep the original internal ID so I Launcher's existing channel preference remains stable.
+            // A metadata-only update is best effort: even if one TV implementation rejects it, the
+            // existing channel ID is still valid and its program list must continue to refresh.
+            runCatching { helper.updatePreviewChannel(existing.id, channel) }
             return existing.id
         }
         return helper.publishChannel(channel).also { channelId ->
