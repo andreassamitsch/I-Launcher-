@@ -3,6 +3,7 @@ package com.andreassamitsch.servusprovider.ui
 import android.app.Activity
 import android.graphics.Color
 import android.os.Bundle
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -10,10 +11,15 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import com.andreassamitsch.servusprovider.api.ServusNetwork
 import com.andreassamitsch.servusprovider.data.ServusPlaybackResolver
@@ -115,10 +121,30 @@ class PlaybackActivity : Activity() {
                 ),
             )
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+        val trackSelector = DefaultTrackSelector(this).apply {
+            setParameters(
+                buildUponParameters()
+                    .setForceHighestSupportedBitrate(true)
+                    .setTunnelingEnabled(true),
+            )
+        }
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setTrackSelector(trackSelector)
             .build()
             .also { exoPlayer ->
+                exoPlayer.addListener(
+                    object : Player.Listener {
+                        override fun onTracksChanged(tracks: Tracks) {
+                            logSelectedTracks(tracks)
+                        }
+
+                        override fun onPlayerError(error: PlaybackException) {
+                            Log.e(TAG, "Media3 playback error: ${error.errorCodeName}", error)
+                            showError("Wiedergabefehler: ${error.errorCodeName}")
+                        }
+                    },
+                )
                 playerView.player = exoPlayer
                 exoPlayer.setMediaItem(MediaItem.fromUri(url))
                 exoPlayer.playWhenReady = true
@@ -126,6 +152,39 @@ class PlaybackActivity : Activity() {
             }
         progress.visibility = View.GONE
         message.visibility = View.GONE
+    }
+
+    private fun logSelectedTracks(tracks: Tracks) {
+        val selectedVideo = mutableListOf<String>()
+        val selectedAudio = mutableListOf<String>()
+        tracks.groups.forEach { group ->
+            repeat(group.length) { trackIndex ->
+                if (!group.isTrackSelected(trackIndex)) return@repeat
+                val format = group.getTrackFormat(trackIndex)
+                when (group.type) {
+                    C.TRACK_TYPE_VIDEO -> selectedVideo += buildString {
+                        append(format.width)
+                        append('x')
+                        append(format.height)
+                        if (format.bitrate > 0) append(" @ ${format.bitrate}bps")
+                        format.sampleMimeType?.let { append(" $it") }
+                    }
+
+                    C.TRACK_TYPE_AUDIO -> selectedAudio += buildString {
+                        format.sampleMimeType?.let { append(it) }
+                        if (format.channelCount > 0) append(" ${format.channelCount}ch")
+                        if (format.sampleRate > 0) append(" ${format.sampleRate}Hz")
+                        if (format.bitrate > 0) append(" ${format.bitrate}bps")
+                        format.language?.let { append(" lang=$it") }
+                    }.trim()
+                }
+            }
+        }
+        Log.i(
+            TAG,
+            "Selected tracks: video=${selectedVideo.joinToString().ifBlank { "none" }}, " +
+                "audio=${selectedAudio.joinToString().ifBlank { "none" }}, tunneling=requested",
+        )
     }
 
     private fun showError(text: String) {
@@ -141,4 +200,8 @@ class PlaybackActivity : Activity() {
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private companion object {
+        const val TAG = "ServusPlayback"
+    }
 }
