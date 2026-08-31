@@ -67,16 +67,32 @@ Die Preview-Programme enthalten einen expliziten Intent zur `PlaybackActivity` d
 5. erneuert als letzten Versuch die Session,
 6. spielt den HLS-Stream direkt mit Media3 ab.
 
+Für VOD wird das HLS-Mastermanifest an Media3 übergeben. Nach dem ersten TCL-Gerätetest wird die Trackwahl bewusst TV-orientiert konfiguriert:
+
+- `DefaultTrackSelector.setForceHighestSupportedBitrate(true)` wählt die höchste vom Gerät unterstützte Video-/Audio-Variante, die die übrigen Constraints erfüllt. Damit wird keine feste 1080p-Untergrenze gesetzt, die bei Inhalten ohne 1080p zu fehlender Videoselektion führen könnte; liefert das Manifest 1080p oder mehr und unterstützt der Fernseher den Track, wird die höchste unterstützte Variante gewählt.
+- `setTunnelingEnabled(true)` fordert den hardwaregestützten Audio-/Video-Tunnelpfad an, sofern die ausgewählte Audio-/Video-Kombination und die Renderer ihn unterstützen. Da Media3 ausdrücklich auf gerätespezifische Einschränkungen bei Tunneling hinweist, ist das Ergebnis auf dem TCL zu prüfen.
+- Logcat-Tag `ServusPlayback` protokolliert nur die tatsächlich selektierte Videoauflösung/Bitrate und Audioformatdaten sowie Media3-Fehler. Stream-URL, Session-Token und andere Zugangsdaten werden nicht geloggt.
+
+Ein fester Audio-Offset wird nicht geraten. Falls die Synchronität trotz Tunneling nicht stimmt, muss zuerst auf realer Hardware bestimmt werden, ob Audio vor- oder nacheilt und ob der Versatz konstant oder zeitabhängig ist.
+
 Stream-URLs werden nicht in den Preview-Programmen oder im lokalen Episoden-Cache gespeichert.
 
 ## Gerätetest
 
-Der Prototyp ist erst nach realem TV-Test als funktional bestätigt zu betrachten. Konkret prüfen:
+Erster realer TCL-Test am 2026-08-31:
 
-1. `Servus-News-Provider-debug.apk` installieren und einmal öffnen.
-2. Prüfen, ob eine aktuelle 19:20-Sendung gefunden wird.
-3. I Launcher öffnen und kontrollieren, ob die Reihe `Servus Nachrichten` erscheint.
-4. Karte fokussieren und prüfen, ob Hero/Bild korrekt übernommen werden.
-5. Mit OK starten und Ladezeit bis zum ersten Bild vergleichen mit Kodi.
-6. Nach Veröffentlichung einer neuen Ausgabe prüfen, ob diese spätestens nach dem 15-Minuten-Refresh ohne Launcher-Neustart vorne in der Reihe erscheint.
-7. Netzwerk kurz trennen: gecachte Karten müssen weiter sichtbar bleiben; Playback darf nachvollziehbar fehlschlagen statt die alte HLS-URL zu persistieren.
+- Preview Channel lässt sich nach dem Channel-Logo-Fix erfolgreich anlegen.
+- `Servus Nachrichten` wird in I Launcher als Kanal/Reihe angezeigt.
+- Wiedergabe startet grundsätzlich.
+- Offene Befunde dieses Builds: Video startete in sichtbar niedriger Qualität; Audio war leicht asynchron.
+
+Nächster Test mit der Quality-/Sync-Konfiguration:
+
+1. aktualisierte `Servus-News-Provider-debug.apk` installieren.
+2. Eine vollständige 19:20-Sendung aus I Launcher starten.
+3. Prüfen, ob die Wiedergabe direkt in hoher Qualität startet; bei verfügbarem 1080p soll mindestens diese Qualität genutzt werden.
+4. Per `adb logcat -s ServusPlayback` die tatsächlich gewählte Videoauflösung/Bitrate kontrollieren.
+5. Lippen-/Ton-Synchronität über mehrere Minuten prüfen und festhalten, ob Audio vor- oder nacheilt.
+6. Falls Tunneling die Synchronität verschlechtert oder neue Wiedergabefehler erzeugt, Tunneling wieder deaktivieren und anhand der Track-/Player-Diagnose den nächsten Schritt bestimmen.
+7. Nach Veröffentlichung einer neuen Ausgabe prüfen, ob diese spätestens nach dem 15-Minuten-Refresh ohne Launcher-Neustart vorne in der Reihe erscheint.
+8. Netzwerk kurz trennen: gecachte Karten müssen weiter sichtbar bleiben; Playback darf nachvollziehbar fehlschlagen statt die alte HLS-URL zu persistieren.
