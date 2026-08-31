@@ -31,4 +31,6 @@ Kotlin · Jetpack Compose · Compose for TV · AndroidX · Coroutines/Flow · Ro
 
 ## Lizenz
 
-MIT
+I Launcher ist ab diesem Stand unter der **GNU General Public License v3.0 only (`GPL-3.0-only`)** lizenziert. Siehe [`LICENSE`](LICENSE).
+
+Frühere Versionen, die unter MIT veröffentlicht wurden, behalten die ihnen bereits erteilten MIT-Rechte.
