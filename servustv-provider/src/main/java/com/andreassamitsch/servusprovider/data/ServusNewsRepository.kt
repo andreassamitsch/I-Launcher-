@@ -31,11 +31,11 @@ class ServusNewsRepository(
             val market = session.countryCode
             val candidates = discoverCandidates(market)
             val details = fetchDetails(market, candidates)
-            val episodes = details
-                .mapNotNull(ServusNewsPolicy::toFullNewsEpisode)
-                .distinctBy { it.id }
-                .sortedByDescending { it.publishedAtMillis }
-                .take(MAX_EPISODES)
+            val episodes = ServusNewsPolicy.deduplicateEditions(
+                details
+                    .mapNotNull(ServusNewsPolicy::toFullNewsEpisode)
+                    .distinctBy { it.id },
+            ).take(MAX_EPISODES)
 
             check(episodes.isNotEmpty()) {
                 "Keine vollständige Servus-Nachrichten-19:20-Sendung in den API-Ergebnissen gefunden"
@@ -46,7 +46,8 @@ class ServusNewsRepository(
                 refreshedAtMillis = System.currentTimeMillis(),
             )
             newsStore.save(result)
-            val contentChanged = previousEpisodes.map { it.id } != episodes.map { it.id }
+            val contentChanged = previousEpisodes.map { ServusNewsPolicy.editionKey(it) to it.id } !=
+                episodes.map { ServusNewsPolicy.editionKey(it) to it.id }
             if (contentChanged || !channelPublisher.isPublished()) {
                 channelPublisher.publish(episodes)
             }

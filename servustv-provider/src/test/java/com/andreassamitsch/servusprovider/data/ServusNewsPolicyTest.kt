@@ -32,6 +32,49 @@ class ServusNewsPolicyTest {
     }
 
     @Test
+    fun sameEditionWithDifferentContentIdsIsPublishedOnlyOnce() {
+        val shorter = episode(
+            id = "AA-DUPLICATE-1",
+            title = "Nachrichten 19:20 | 30.08.",
+            durationMillis = 10 * 60 * 1000L,
+            publishedAtMillis = 1_000L,
+        )
+        val preferred = episode(
+            id = "AA-DUPLICATE-2",
+            title = "Servus Nachrichten 19:20 | 30.08.",
+            durationMillis = 12 * 60 * 1000L,
+            publishedAtMillis = 2_000L,
+        )
+
+        val result = ServusNewsPolicy.deduplicateEditions(listOf(shorter, preferred))
+
+        assertEquals(1, result.size)
+        assertEquals("AA-DUPLICATE-2", result.single().id)
+        assertEquals(ServusNewsPolicy.editionKey(shorter), ServusNewsPolicy.editionKey(preferred))
+    }
+
+    @Test
+    fun editionsFromDifferentDaysRemainSeparate() {
+        val first = episode(
+            id = "AA-DAY-1",
+            title = "Nachrichten 19:20 | 30.08.",
+            durationMillis = 12 * 60 * 1000L,
+            publishedAtMillis = 1_000L,
+        )
+        val second = episode(
+            id = "AA-DAY-2",
+            title = "Nachrichten 19:20 | 31.08.",
+            durationMillis = 12 * 60 * 1000L,
+            publishedAtMillis = 2_000L,
+        )
+
+        val result = ServusNewsPolicy.deduplicateEditions(listOf(first, second))
+
+        assertEquals(2, result.size)
+        assertEquals(listOf("AA-DAY-2", "AA-DAY-1"), result.map { it.id })
+    }
+
+    @Test
     fun mediaResourcesObjectReturnedByApiIsNormalised() {
         val response = Gson().fromJson(
             """
@@ -126,4 +169,19 @@ class ServusNewsPolicyTest {
             ServusPlaybackResolver.buildVodUrl("CONTENT", "TOKEN"),
         )
     }
+
+    private fun episode(
+        id: String,
+        title: String,
+        durationMillis: Long,
+        publishedAtMillis: Long,
+    ) = ServusNewsEpisode(
+        id = id,
+        title = title,
+        showName = "Servus Nachrichten",
+        description = null,
+        durationMillis = durationMillis,
+        publishedAtMillis = publishedAtMillis,
+        artworkUri = null,
+    )
 }

@@ -48,6 +48,8 @@ Der Prototyp sucht sowohl nach `Servus Nachrichten` als auch `Nachrichten 19:20`
 
 Damit sollen Einzelclips und Kurzformate nicht als volle Sendung im Launcher-Kanal landen.
 
+ServusTV kann dieselbe 19:20-Ausgabe über mehrere Such-/Collection-Pfade mit unterschiedlichen Content-IDs liefern. Deshalb wird im Provider nicht nur nach API-ID dedupliziert, sondern anschließend nach der fachlichen Identität **19:20-Ausgabe + Kalendertag**. Pro Tag wird nur eine Ausgabe veröffentlicht; bei mehreren Kandidaten gewinnt der zeitlich neuere bzw. längere Kandidat.
+
 ## Local First / Aktualisierung
 
 - Bereits gefundene Episoden bleiben lokal gecacht.
@@ -67,32 +69,46 @@ Die Preview-Programme enthalten einen expliziten Intent zur `PlaybackActivity` d
 5. erneuert als letzten Versuch die Session,
 6. spielt den HLS-Stream direkt mit Media3 ab.
 
-Für VOD wird das HLS-Mastermanifest an Media3 übergeben. Nach dem ersten TCL-Gerätetest wird die Trackwahl bewusst TV-orientiert konfiguriert:
+Für VOD wird das HLS-Mastermanifest an Media3 übergeben. Die Trackwahl ist TV-orientiert konfiguriert:
 
 - `DefaultTrackSelector.setForceHighestSupportedBitrate(true)` wählt die höchste vom Gerät unterstützte Video-/Audio-Variante, die die übrigen Constraints erfüllt. Damit wird keine feste 1080p-Untergrenze gesetzt, die bei Inhalten ohne 1080p zu fehlender Videoselektion führen könnte; liefert das Manifest 1080p oder mehr und unterstützt der Fernseher den Track, wird die höchste unterstützte Variante gewählt.
-- `setTunnelingEnabled(true)` fordert den hardwaregestützten Audio-/Video-Tunnelpfad an, sofern die ausgewählte Audio-/Video-Kombination und die Renderer ihn unterstützen. Da Media3 ausdrücklich auf gerätespezifische Einschränkungen bei Tunneling hinweist, ist das Ergebnis auf dem TCL zu prüfen.
+- `setTunnelingEnabled(true)` fordert den hardwaregestützten Audio-/Video-Tunnelpfad an, sofern die ausgewählte Audio-/Video-Kombination und die Renderer ihn unterstützen.
 - Logcat-Tag `ServusPlayback` protokolliert nur die tatsächlich selektierte Videoauflösung/Bitrate und Audioformatdaten sowie Media3-Fehler. Stream-URL, Session-Token und andere Zugangsdaten werden nicht geloggt.
 
-Ein fester Audio-Offset wird nicht geraten. Falls die Synchronität trotz Tunneling nicht stimmt, muss zuerst auf realer Hardware bestimmt werden, ob Audio vor- oder nacheilt und ob der Versatz konstant oder zeitabhängig ist.
+Der reale TCL-Test vom 2026-08-31 bestätigt mit dieser Konfiguration **scharfes Bild und saubere Audio-/Video-Synchronität**. Deshalb bleiben Trackwahl und Tunneling für den folgenden Player-UX-Pass unverändert.
+
+### TV-Player-Steuerung
+
+Der Media3-Standardcontroller wird im Provider nicht verwendet. Die Playback-Activity besitzt einen reduzierten TV-Controller:
+
+- D-Pad links: 10 Sekunden zurück
+- D-Pad rechts: 10 Sekunden vor
+- OK / Play-Pause: Wiedergabe pausieren bzw. fortsetzen
+- D-Pad hoch/runter: reduzierte Steuerleiste einblenden und `Einstellungen` fokussieren
+- nur Zeitangabe, Zeitleiste und Einstellungen in der unteren Steuerleiste
+- keine vollflächige Abdunklung; nur ein transparenter schwarzer Verlauf hinter der unteren Zeitleiste
+- Steuerleiste und Verlauf blenden gemeinsam nach kurzer Inaktivität aus
+- Einstellungen zeigen aktuell ausgewählte Bild-/Audioeigenschaften und die Sprungweite, ohne Stream-URLs oder Tokens offenzulegen
 
 Stream-URLs werden nicht in den Preview-Programmen oder im lokalen Episoden-Cache gespeichert.
 
 ## Gerätetest
 
-Erster realer TCL-Test am 2026-08-31:
+Bisher auf realem TCL bestätigt:
 
 - Preview Channel lässt sich nach dem Channel-Logo-Fix erfolgreich anlegen.
 - `Servus Nachrichten` wird in I Launcher als Kanal/Reihe angezeigt.
-- Wiedergabe startet grundsätzlich.
-- Offene Befunde dieses Builds: Video startete in sichtbar niedriger Qualität; Audio war leicht asynchron.
+- Wiedergabe startet direkt über Media3.
+- hohe Bildqualität und Audio-/Video-Synchronität sind mit Highest-Supported-Trackwahl + Tunneling gut.
 
-Nächster Test mit der Quality-/Sync-Konfiguration:
+Nächster TCL-Test:
 
-1. aktualisierte `Servus-News-Provider-debug.apk` installieren.
-2. Eine vollständige 19:20-Sendung aus I Launcher starten.
-3. Prüfen, ob die Wiedergabe direkt in hoher Qualität startet; bei verfügbarem 1080p soll mindestens diese Qualität genutzt werden.
-4. Per `adb logcat -s ServusPlayback` die tatsächlich gewählte Videoauflösung/Bitrate kontrollieren.
-5. Lippen-/Ton-Synchronität über mehrere Minuten prüfen und festhalten, ob Audio vor- oder nacheilt.
-6. Falls Tunneling die Synchronität verschlechtert oder neue Wiedergabefehler erzeugt, Tunneling wieder deaktivieren und anhand der Track-/Player-Diagnose den nächsten Schritt bestimmen.
-7. Nach Veröffentlichung einer neuen Ausgabe prüfen, ob diese spätestens nach dem 15-Minuten-Refresh ohne Launcher-Neustart vorne in der Reihe erscheint.
-8. Netzwerk kurz trennen: gecachte Karten müssen weiter sichtbar bleiben; Playback darf nachvollziehbar fehlschlagen statt die alte HLS-URL zu persistieren.
+1. Provider aktualisieren und `Jetzt aktualisieren` einmal auslösen, damit der Cache neu dedupliziert und der TvProvider-Kanal neu geschrieben wird.
+2. Prüfen, dass pro Datum nur eine 19:20-Ausgabe in I Launcher erscheint.
+3. Sendung starten: D-Pad links/rechts muss jeweils 10 Sekunden springen.
+4. OK muss Play/Pause schalten.
+5. Hoch/Runter muss die reduzierte Steuerleiste mit `Einstellungen` fokussieren.
+6. Prüfen, dass außerhalb des unteren Verlaufs das Videobild nicht abgedunkelt wird und Leiste + Verlauf automatisch gemeinsam ausblenden.
+7. Einstellungen öffnen und per D-Pad wieder schließen; Fokus darf nicht verloren gehen.
+8. Bildqualität und A/V-Sync erneut kurz gegenprüfen, damit der UI-Pass keine Wiedergaberegression verursacht.
+9. Nach Veröffentlichung einer neuen Ausgabe prüfen, ob diese spätestens nach dem 15-Minuten-Refresh ohne Launcher-Neustart vorne in der Reihe erscheint.
