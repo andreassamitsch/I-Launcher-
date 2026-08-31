@@ -57,7 +57,6 @@ ServusTV kann dieselbe 19:20-Ausgabe über mehrere Such-/Collection-Pfade mit un
 - WorkManager prüft bei verfügbarer Netzwerkverbindung alle 15 Minuten auf neue Ausgaben.
 - `TvContract.ACTION_INITIALIZE_PROGRAMS` stößt zusätzlich eine sofortige Aktualisierung an.
 - Nach einem erfolgreichen Refresh wird der Preview Channel neu publiziert; I Launcher beobachtet den TvProvider bereits per `ContentObserver` und erhält die Änderung ohne Neustart.
-- Falls durch ältere Prototypstände mehrere TvProvider-Kanäle mit derselben internen Servus-Kanal-ID existieren, behält der Publisher einen Kanal und entfernt die überzähligen.
 
 ## Playback
 
@@ -88,7 +87,7 @@ Der Media3-Standardcontroller wird im Provider nicht verwendet. Die Playback-Act
 - D-Pad hoch/runter: reduzierte Steuerleiste einblenden und `Einstellungen` fokussieren
 - nur Zeitangabe, Zeitleiste und Einstellungen in der unteren Steuerleiste
 - keine vollflächige Abdunklung; nur ein transparenter schwarzer Verlauf hinter der unteren Zeitleiste
-- Steuerleiste blendet nach kurzer Inaktivität aus
+- Steuerleiste und Verlauf blenden gemeinsam nach kurzer Inaktivität aus
 - Einstellungen zeigen aktuell ausgewählte Bild-/Audioeigenschaften und die Sprungweite, ohne Stream-URLs oder Tokens offenzulegen
 
 Stream-URLs werden nicht in den Preview-Programmen oder im lokalen Episoden-Cache gespeichert.
@@ -106,11 +105,10 @@ Nächster TCL-Test:
 
 1. Provider aktualisieren und `Jetzt aktualisieren` einmal auslösen, damit der Cache neu dedupliziert und der TvProvider-Kanal neu geschrieben wird.
 2. Prüfen, dass pro Datum nur eine 19:20-Ausgabe in I Launcher erscheint.
-3. Prüfen, dass kein zweiter gleichnamiger Servus-Preview-Channel vorhanden ist.
-4. Sendung starten: D-Pad links/rechts muss jeweils 10 Sekunden springen.
-5. OK muss Play/Pause schalten.
-6. Hoch/Runter muss die reduzierte Steuerleiste mit `Einstellungen` fokussieren.
-7. Prüfen, dass außerhalb des unteren Verlaufs das Videobild nicht abgedunkelt wird und die Leiste automatisch ausblendet.
-8. Einstellungen öffnen und per D-Pad wieder schließen; Fokus darf nicht verloren gehen.
-9. Bildqualität und A/V-Sync erneut kurz gegenprüfen, damit der UI-Pass keine Wiedergaberegression verursacht.
-10. Nach Veröffentlichung einer neuen Ausgabe prüfen, ob diese spätestens nach dem 15-Minuten-Refresh ohne Launcher-Neustart vorne in der Reihe erscheint.
+3. Sendung starten: D-Pad links/rechts muss jeweils 10 Sekunden springen.
+4. OK muss Play/Pause schalten.
+5. Hoch/Runter muss die reduzierte Steuerleiste mit `Einstellungen` fokussieren.
+6. Prüfen, dass außerhalb des unteren Verlaufs das Videobild nicht abgedunkelt wird und Leiste + Verlauf automatisch gemeinsam ausblenden.
+7. Einstellungen öffnen und per D-Pad wieder schließen; Fokus darf nicht verloren gehen.
+8. Bildqualität und A/V-Sync erneut kurz gegenprüfen, damit der UI-Pass keine Wiedergaberegression verursacht.
+9. Nach Veröffentlichung einer neuen Ausgabe prüfen, ob diese spätestens nach dem 15-Minuten-Refresh ohne Launcher-Neustart vorne in der Reihe erscheint.
