@@ -74,6 +74,73 @@ object ServusCatalogPolicy {
         return episodeTitle.isNotBlank() && episodeTitle.contains(targetTitle)
     }
 
+    /**
+     * Selects the small set of collection cards whose product details are worth hydrating.
+     *
+     * Collection responses are discovery/order sources and can omit duration, content type or the
+     * VOD `sunrise_timestamp`. We therefore keep candidates even when those detail-only fields are
+     * missing, but still require strong show membership and a video-like identity. Known full
+     * episodes/films come first, unknown content types second and explicit clips last. Relative API
+     * order is preserved inside every group.
+     */
+    fun selectEpisodeCardsForHydration(
+        cards: List<ServusCardDto>,
+        showId: String,
+        showTitle: String,
+        limit: Int,
+    ): List<ServusCardDto> {
+        if (limit <= 0) return emptyList()
+
+        val eligible = cards.asSequence()
+            .filter { card ->
+                card.id?.isNotBlank() == true &&
+                    card.title?.isNotBlank() == true &&
+                    card.playable != false &&
+                    isVideoLike(card) &&
+                    belongsToShow(card, showId, showTitle)
+            }
+            .distinctBy { it.id }
+            .toList()
+
+        val full = eligible.filter(::isFullEpisodeCard)
+        val unknown = eligible.filter { it.contentType.isNullOrBlank() }
+        val fallback = eligible.filterNot { card ->
+            isFullEpisodeCard(card) || card.contentType.isNullOrBlank()
+        }
+
+        return (full + unknown + fallback)
+            .distinctBy { it.id }
+            .take(limit)
+    }
+
+    /**
+     * Product details are authoritative for VOD availability and detailed metadata, while the
+     * collection card can carry show membership/artwork fields that the product response omits.
+     * Merge both instead of replacing the collection card so hydration cannot accidentally detach
+     * a valid episode from its show.
+     */
+    fun mergeEpisodeProduct(collectionCard: ServusCardDto, detail: ServusCardDto): ServusCardDto =
+        ServusCardDto(
+            id = prefer(detail.id, collectionCard.id),
+            type = prefer(detail.type, collectionCard.type),
+            contentType = prefer(detail.contentType, collectionCard.contentType),
+            title = prefer(detail.title, collectionCard.title),
+            showName = prefer(detail.showName, collectionCard.showName),
+            subheading = prefer(detail.subheading, collectionCard.subheading),
+            shortDescription = prefer(detail.shortDescription, collectionCard.shortDescription),
+            longDescription = prefer(detail.longDescription, collectionCard.longDescription),
+            duration = detail.duration ?: collectionCard.duration,
+            playable = detail.playable ?: collectionCard.playable,
+            sunriseTimestamp = prefer(detail.sunriseTimestamp, collectionCard.sunriseTimestamp),
+            sunsetTimestamp = prefer(detail.sunsetTimestamp, collectionCard.sunsetTimestamp),
+            startTime = prefer(detail.startTime, collectionCard.startTime),
+            endTime = prefer(detail.endTime, collectionCard.endTime),
+            seasonNumber = detail.seasonNumber ?: collectionCard.seasonNumber,
+            episodeNumber = detail.episodeNumber ?: collectionCard.episodeNumber,
+            mediaResources = (detail.mediaResources + collectionCard.mediaResources).distinct(),
+            collections = (detail.collections + collectionCard.collections).distinct(),
+        )
+
     fun toShowEpisode(
         card: ServusCardDto,
         showId: String,
@@ -180,6 +247,19 @@ object ServusCatalogPolicy {
             LocalDateTime.parse(value.take(19)).toInstant(ZoneOffset.UTC).toEpochMilli()
         }.getOrNull()
     }
+
+    private fun isVideoLike(card: ServusCardDto): Boolean =
+        card.type == "video" ||
+            card.contentType.equals("episode", ignoreCase = true) ||
+            card.contentType.equals("film", ignoreCase = true) ||
+            card.contentType.equals("clip", ignoreCase = true)
+
+    private fun isFullEpisodeCard(card: ServusCardDto): Boolean =
+        card.contentType.equals("episode", ignoreCase = true) ||
+            card.contentType.equals("film", ignoreCase = true)
+
+    private fun prefer(primary: String?, fallback: String?): String? =
+        primary?.takeIf { it.isNotBlank() } ?: fallback?.takeIf { it.isNotBlank() }
 
     private fun normalizeWords(value: String): String = value
         .lowercase(Locale.GERMAN)
