@@ -13,8 +13,11 @@ data class ServusNewsEpisode(
     val description: String?,
     val durationMillis: Long,
     /**
-     * Publication/availability/broadcast timestamp supplied or derivable from ServusTV metadata.
-     * Null deliberately means "unknown". The local import/refresh time must never be stored here.
+     * Availability timestamp supplied directly by ServusTV (`sunrise_timestamp`).
+     *
+     * Broadcast/program times and times parsed from titles must never be stored here: they describe
+     * the linear TV slot, not when the VOD actually became available. Null deliberately means that
+     * ServusTV did not provide a trustworthy availability timestamp for this item.
      */
     val publishedAtMillis: Long?,
     val artworkUri: String?,
@@ -23,6 +26,12 @@ data class ServusNewsEpisode(
     val categoryId: String? = null,
     val categoryTitle: String? = null,
     val contentType: String? = null,
+    /**
+     * Local first observation of this content ID during a periodic refresh. This is intentionally
+     * separate from `publishedAtMillis`: it is an approximation (bounded by the refresh interval),
+     * but it tells us when the app actually observed the VOD online without inventing a source time.
+     */
+    val observedAvailableAtMillis: Long? = null,
 )
 
 data class ServusRefreshResult(

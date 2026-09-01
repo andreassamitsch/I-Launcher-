@@ -9,7 +9,28 @@ class ServusHubStore(context: Context) {
     private val categoryListType = object : TypeToken<List<ServusCategory>>() {}.type
     private val liveListType = object : TypeToken<List<ServusLiveChannel>>() {}.type
 
-    fun loadCategories(): List<ServusCategory> = loadList(KEY_CATEGORIES, categoryListType)
+    fun loadCategories(): List<ServusCategory> {
+        val categories = loadList<ServusCategory>(KEY_CATEGORIES, categoryListType)
+        if (categories.isEmpty() || preferences.getInt(KEY_TIME_SCHEMA, 1) >= CURRENT_TIME_SCHEMA) {
+            return categories
+        }
+
+        // dev.2 could attach recommendation/news cards to unrelated shows and could also store
+        // broadcast/title times as publishedAtMillis. Those cached episode records cannot be repaired
+        // reliably after the fact. Keep the show/category metadata, drop only episode snapshots and
+        // force one full catalogue refresh with the corrected membership/timestamp policy.
+        val migrated = categories.map { category ->
+            category.copy(
+                shows = category.shows.map { show -> show.copy(episodes = emptyList()) },
+            )
+        }
+        preferences.edit()
+            .putString(KEY_CATEGORIES, ServusNetwork.gson.toJson(migrated))
+            .putLong(KEY_CATALOG_SUCCESS, 0L)
+            .putInt(KEY_TIME_SCHEMA, CURRENT_TIME_SCHEMA)
+            .apply()
+        return migrated
+    }
 
     fun loadLiveChannels(): List<ServusLiveChannel> = loadList(KEY_LIVE_CHANNELS, liveListType)
 
@@ -17,6 +38,15 @@ class ServusHubStore(context: Context) {
         preferences.edit()
             .putString(KEY_CATEGORIES, ServusNetwork.gson.toJson(categories))
             .putLong(KEY_CATALOG_SUCCESS, refreshedAtMillis)
+            .putInt(KEY_TIME_SCHEMA, CURRENT_TIME_SCHEMA)
+            .apply()
+    }
+
+    /** Saves targeted selected-show updates without pretending the complete catalogue was refreshed. */
+    fun saveCatalogContent(categories: List<ServusCategory>) {
+        preferences.edit()
+            .putString(KEY_CATEGORIES, ServusNetwork.gson.toJson(categories))
+            .putInt(KEY_TIME_SCHEMA, CURRENT_TIME_SCHEMA)
             .apply()
     }
 
@@ -62,5 +92,7 @@ class ServusHubStore(context: Context) {
         const val KEY_CATALOG_SUCCESS = "catalog_success"
         const val KEY_LIVE_SUCCESS = "live_success"
         const val KEY_CATALOG_DIAGNOSTIC = "catalog_diagnostic"
+        const val KEY_TIME_SCHEMA = "availability_time_schema"
+        const val CURRENT_TIME_SCHEMA = 2
     }
 }

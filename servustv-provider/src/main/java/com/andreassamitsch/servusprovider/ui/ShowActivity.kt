@@ -131,14 +131,11 @@ class ShowActivity : Activity() {
         selectionButton.setOnClickListener {
             val categories = repository.cachedCategories()
             val selected = currentSelectionStore.isSelected(show, categories)
-            currentSelectionStore.setSelected(
-                showId = show.id,
-                selected = !selected,
-                categories = categories,
-            )
+            repository.setCurrentShowSelected(show.id, !selected)
             renderSelectionButton()
-            // Apply the local choice immediately to Android TV. The normal refresh worker then
-            // refreshes the fast feed without making the UI wait on the network.
+            // Apply the cached local choice immediately. The worker then performs a lightweight
+            // selected-show refresh, so a user-added show does not wait for the six-hour full
+            // catalogue cycle before a newly available episode reaches Aktuelles.
             runCatching { channelPublisher.publish(repository.cachedEpisodes()) }
             ServusRefreshWorker.enqueueNow(applicationContext)
         }
@@ -237,7 +234,14 @@ class ShowActivity : Activity() {
     }
 
     private fun buildEpisodeMeta(episode: ServusNewsEpisode): String = buildList {
-        episode.publishedAtMillis?.let { add(formatDate(it)) }
+        when {
+            episode.observedAvailableAtMillis != null -> {
+                add("Online erkannt ${formatDate(episode.observedAvailableAtMillis)}")
+            }
+            episode.publishedAtMillis != null -> {
+                add("Verfügbar ab ${formatDate(episode.publishedAtMillis)}")
+            }
+        }
         add(formatDuration(episode.durationMillis))
     }.joinToString(" · ")
 

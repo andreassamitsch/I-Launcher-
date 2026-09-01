@@ -102,13 +102,21 @@ object ServusNewsPolicy {
     }
 
     /**
+     * Best timestamp for recency ordering. A source-provided availability timestamp wins. The
+     * locally observed online time is a transparent fallback and is never confused with broadcast
+     * start time.
+     */
+    fun recencyMillis(episode: ServusNewsEpisode): Long? =
+        episode.publishedAtMillis ?: episode.observedAvailableAtMillis
+
+    /**
      * The API can expose the same item through search and collections with different content IDs.
      * We therefore deduplicate by editorial identity while still preserving multiple 90-second
-     * updates on the same day. Unknown source timestamps never get replaced by an import time;
-     * their title becomes part of the stable fallback identity instead.
+     * updates on the same day. Unknown availability timestamps never get replaced by an import or
+     * broadcast time; their title becomes part of the stable fallback identity instead.
      */
     fun contentKey(episode: ServusNewsEpisode): String {
-        val localDateTime = episode.publishedAtMillis
+        val localDateTime = recencyMillis(episode)
             ?.let(Instant::ofEpochMilli)
             ?.atZone(ZoneId.systemDefault())
         val date = localDateTime?.toLocalDate()
@@ -138,12 +146,12 @@ object ServusNewsPolicy {
             .values
             .mapNotNull { candidates ->
                 candidates.maxWithOrNull(
-                    compareBy<ServusNewsEpisode> { it.publishedAtMillis ?: Long.MIN_VALUE }
+                    compareBy<ServusNewsEpisode> { recencyMillis(it) ?: Long.MIN_VALUE }
                         .thenBy { it.durationMillis },
                 )
             }
             .sortedWith(
-                compareByDescending<ServusNewsEpisode> { it.publishedAtMillis ?: Long.MIN_VALUE },
+                compareByDescending<ServusNewsEpisode> { recencyMillis(it) ?: Long.MIN_VALUE },
             )
     }
 
