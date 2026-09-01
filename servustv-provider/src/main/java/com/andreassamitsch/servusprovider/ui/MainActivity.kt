@@ -163,10 +163,15 @@ class MainActivity : Activity() {
         }
         if (categories.isEmpty()) {
             addSectionTitle("Sendungen")
+            val diagnostic = repository.catalogDiagnostic()
             contentContainer.addView(TextView(this).apply {
-                text = "Sendungskatalog wird beim nächsten vollständigen Refresh geladen."
+                text = if (diagnostic.isNullOrBlank()) {
+                    "Sendungskatalog wurde noch nicht erfolgreich geladen. Bitte vollständigen Refresh starten."
+                } else {
+                    "Sendungskatalog nicht verfügbar.\n$diagnostic"
+                }
                 textSize = if (isTvDevice) 16f else 14f
-                setTextColor(Color.GRAY)
+                setTextColor(if (diagnostic?.startsWith("Katalogfehler") == true) Color.rgb(255, 190, 140) else Color.GRAY)
                 setPadding(0, 0, 0, dp(16))
             })
         } else {
@@ -316,7 +321,16 @@ class MainActivity : Activity() {
             if (result.isSuccess) {
                 renderCached()
             } else {
-                statusText.text = "Datenaktualisierung fehlgeschlagen: ${result.exceptionOrNull()?.message ?: "Unbekannter Fehler"}"
+                // Fast data may already have been refreshed before the catalogue failed. Always
+                // redraw cache first, then show the explicit requested-refresh failure.
+                renderCached()
+                val message = result.exceptionOrNull()?.message ?: "Unbekannter Fehler"
+                statusText.text = buildString {
+                    append(statusText.text)
+                    append("\n")
+                    append(if (forceCatalog) "Voll-Refresh fehlgeschlagen: " else "Datenaktualisierung fehlgeschlagen: ")
+                    append(message)
+                }
             }
         }
     }
