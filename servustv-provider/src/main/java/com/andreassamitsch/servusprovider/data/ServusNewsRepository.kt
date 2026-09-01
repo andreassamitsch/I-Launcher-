@@ -35,6 +35,7 @@ class ServusNewsRepository(
     fun lastSuccessMillis(): Long = newsStore.lastSuccessMillis()
     fun catalogLastSuccessMillis(): Long = hubStore.catalogLastSuccessMillis()
     fun liveLastSuccessMillis(): Long = hubStore.liveLastSuccessMillis()
+    fun catalogDiagnostic(): String? = hubStore.catalogDiagnostic()
     fun lastError(): String? = newsStore.lastError()
     fun tvChannelSupported(): Boolean = channelPublisher.isSupported()
 
@@ -77,10 +78,21 @@ class ServusNewsRepository(
 
             val catalogWasRefreshed = forceCatalog || shouldRefreshCatalog(refreshNow)
             val categories = if (catalogWasRefreshed) {
-                runCatching { refreshShowCatalog(market, refreshNow) }
-                    .onSuccess { refreshed -> hubStore.saveCatalog(refreshed, refreshNow) }
-                    .onFailure { Log.w(TAG, "Show catalog refresh failed (${it.javaClass.simpleName})") }
-                    .getOrElse { hubStore.loadCategories() }
+                val cachedCategories = hubStore.loadCategories()
+                try {
+                    val outcome = refreshShowCatalog(market, refreshNow)
+                    hubStore.saveCatalog(outcome.categories, refreshNow)
+                    hubStore.saveCatalogDiagnostic(outcome.diagnostic)
+                    outcome.categories
+                } catch (catalogError: ServusCatalogRefreshException) {
+                    val diagnostic = catalogError.message ?: "Katalogfehler ohne Detail"
+                    hubStore.saveCatalogDiagnostic(diagnostic)
+                    Log.w(TAG, diagnostic)
+                    // A manual full refresh is an explicit diagnostic action. Do not report success
+                    // when that requested part failed, even though Aktuelles/Live were refreshed.
+                    if (forceCatalog) throw catalogError
+                    cachedCategories
+                }
             } else {
                 hubStore.loadCategories()
             }
@@ -101,6 +113,10 @@ class ServusNewsRepository(
                 }
             }
             result
+        } catch (catalogError: ServusCatalogRefreshException) {
+            // This is intentionally separate from the fast-data error store: Aktuelles/Live may
+            // already have refreshed successfully and must not be presented as failed data.
+            throw catalogError
         } catch (throwable: Throwable) {
             newsStore.saveError(throwable.message ?: throwable.javaClass.simpleName)
             throw throwable
@@ -181,26 +197,61 @@ class ServusNewsRepository(
         }.awaitAll().filterNotNull()
     }
 
-    private suspend fun refreshShowCatalog(market: String, nowMillis: Long): List<ServusCategory> = coroutineScope {
-        val landing = api.product(market, SHOWS_PRODUCT_ID)
+    private suspend fun refreshShowCatalog(market: String, nowMillis: Long): CatalogRefreshOutcome = coroutineScope {
+        val diagnostics = ServusCatalogDiagnosticBuilder()
+
+        val landing = try {
+            api.product(market, SHOWS_PRODUCT_ID)
+        } catch (throwable: Throwable) {
+            throw diagnostics.failure("Landing products/sendungen", throwable)
+        }
+        diagnostics.recordLanding(landing.collections)
+
         val categoryRefs = landing.collections
             .filter { it.listType != "reference" && !it.id.isNullOrBlank() }
+        diagnostics.recordCategoryFilter(categoryRefs.size)
+        if (categoryRefs.isEmpty()) {
+            throw diagnostics.failure(
+                stage = "Kategorien",
+                detail = "0 verwertbare Collections nach aktuellem list_type/reference-Filter",
+            )
+        }
 
-        val seeds = categoryRefs.mapIndexed { order, ref ->
-            async {
-                val first = api.collection(market, requireNotNull(ref.id), 0)
-                val cards = fetchCollectionCards(market, requireNotNull(ref.id), first, MAX_CATEGORY_PAGES)
-                CategorySeed(
-                    id = requireNotNull(ref.id),
-                    title = first.label?.takeIf { it.isNotBlank() }
-                        ?: ref.label?.takeIf { it.isNotBlank() }
-                        ?: "ServusTV",
-                    order = order,
-                    cards = cards.filter(ServusCatalogPolicy::isShowCard),
-                )
-            }
-        }.awaitAll()
-            .filterNot { seed -> seed.title.startsWith("TV-Kanäle", true) || seed.title.startsWith("Live-Kanäle", true) }
+        val seeds = try {
+            categoryRefs.mapIndexed { order, ref ->
+                async {
+                    val collectionId = requireNotNull(ref.id)
+                    val first = try {
+                        api.collection(market, collectionId, 0)
+                    } catch (throwable: Throwable) {
+                        throw IllegalStateException(
+                            "erste Seite der Kategorie '${ref.label?.takeIf { it.isNotBlank() } ?: "ohne Label"}' fehlgeschlagen: " +
+                                "${throwable.javaClass.simpleName}: ${throwable.message.orEmpty()}",
+                        )
+                    }
+                    val cards = fetchCollectionCards(market, collectionId, first, MAX_CATEGORY_PAGES)
+                    val showCards = cards.filter(ServusCatalogPolicy::isShowCard)
+                    CategorySeed(
+                        id = collectionId,
+                        title = first.label?.takeIf { it.isNotBlank() }
+                            ?: ref.label?.takeIf { it.isNotBlank() }
+                            ?: "ServusTV",
+                        order = order,
+                        rawCardCount = cards.size,
+                        cards = showCards,
+                    )
+                }
+            }.awaitAll()
+                .filterNot { seed ->
+                    seed.title.startsWith("TV-Kanäle", true) || seed.title.startsWith("Live-Kanäle", true)
+                }
+        } catch (throwable: Throwable) {
+            throw diagnostics.failure("Kategorie-Collection", throwable)
+        }
+
+        seeds.forEach { seed ->
+            diagnostics.recordCategory(seed.title, seed.rawCardCount, seed.cards.size)
+        }
 
         val uniqueShowCards = LinkedHashMap<String, ServusCardDto>()
         seeds.forEach { seed ->
@@ -208,17 +259,28 @@ class ServusNewsRepository(
                 card.id?.let { uniqueShowCards.putIfAbsent(it, card) }
             }
         }
+        diagnostics.recordUniqueShows(uniqueShowCards.size)
+        if (uniqueShowCards.isEmpty()) {
+            throw diagnostics.failure(
+                stage = "Sendungsfilter",
+                detail = "0 Sendungskarten nach aktuellem Filter (id+title, type=page, content_type!=film)",
+            )
+        }
 
         val semaphore = Semaphore(SHOW_PARALLELISM)
-        val cores = uniqueShowCards.values.map { card ->
-            async {
-                semaphore.withPermit {
-                    loadShowCore(market, card, nowMillis)
+        val cores = try {
+            uniqueShowCards.values.map { card ->
+                async {
+                    semaphore.withPermit {
+                        loadShowCore(market, card, nowMillis)
+                    }
                 }
-            }
-        }.awaitAll().filterNotNull().associateBy { it.id }
+            }.awaitAll().filterNotNull().associateBy { it.id }
+        } catch (throwable: Throwable) {
+            throw diagnostics.failure("Sendungsdetails", throwable)
+        }
 
-        seeds.map { seed ->
+        val categories = seeds.map { seed ->
             val shows = seed.cards.mapNotNull { card ->
                 val id = card.id ?: return@mapNotNull null
                 val core = cores[id] ?: return@mapNotNull null
@@ -242,6 +304,22 @@ class ServusNewsRepository(
             }.distinctBy { it.id }
             ServusCategory(seed.id, seed.title, seed.order, shows)
         }.filter { it.shows.isNotEmpty() }
+
+        val showCount = categories
+            .flatMap { it.shows }
+            .distinctBy { it.id }
+            .size
+        if (categories.isEmpty() || showCount == 0) {
+            throw diagnostics.failure(
+                stage = "Ergebnis",
+                detail = "Katalog-Mapping ergab 0 Kategorien bzw. 0 Sendungen",
+            )
+        }
+
+        CatalogRefreshOutcome(
+            categories = categories,
+            diagnostic = diagnostics.success(categories.size, showCount),
+        )
     }
 
     private suspend fun loadShowCore(
@@ -353,7 +431,13 @@ class ServusNewsRepository(
         val id: String,
         val title: String,
         val order: Int,
+        val rawCardCount: Int,
         val cards: List<ServusCardDto>,
+    )
+
+    private data class CatalogRefreshOutcome(
+        val categories: List<ServusCategory>,
+        val diagnostic: String,
     )
 
     private data class ShowCore(
