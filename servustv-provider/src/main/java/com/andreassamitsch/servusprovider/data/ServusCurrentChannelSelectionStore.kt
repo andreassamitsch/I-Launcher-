@@ -37,37 +37,32 @@ class ServusCurrentChannelSelectionStore(context: Context) {
     }
 
     /**
-     * Builds the actual aggregate channel from the fast legacy feed plus selected catalogue shows.
-     * The legacy feed stays fresh on the existing short refresh interval; catalogue additions are
-     * refreshed with the catalogue itself. Once configured, legacy items are filtered against the
-     * selected default shows so removing a default show also removes it from Aktuelles.
+     * Builds the visible aggregate rail from the fast legacy feed plus selected catalogue shows.
+     * At least the newest cached item of every selected show is reserved before the rail is cut to
+     * its UI limit. This prevents timestamped 90-second updates from pushing a newly selected show
+     * with no source timestamp completely out of the visible rail.
      */
     fun effectiveEpisodes(
         categories: List<ServusCategory>,
         legacyEpisodes: List<ServusNewsEpisode>,
     ): List<ServusNewsEpisode> {
-        if (!isConfigured()) return legacyEpisodes
+        if (!isConfigured()) return legacyEpisodes.take(MAX_CURRENT_EPISODES)
 
         val allShows = categories.flatMap { it.shows }.distinctBy { it.id }
         val selectedIds = effectiveSelectedShowIds(categories)
         val selectedShows = allShows.filter { it.id in selectedIds }
-        val filteredLegacy = legacyEpisodes.filter { episode ->
-            ServusCurrentChannelPolicy.matchesSelectedShow(
-                episode = episode,
-                selectedShows = selectedShows,
-                allShows = allShows,
-            )
-        }
-        val selectedCatalogueEpisodes = selectedShows.flatMap { it.episodes }
-
-        return ServusNewsPolicy.deduplicateEpisodes(filteredLegacy + selectedCatalogueEpisodes)
-            .take(MAX_CURRENT_EPISODES)
+        return ServusCurrentChannelPolicy.composeCurrentEpisodes(
+            selectedShows = selectedShows,
+            allShows = allShows,
+            legacyEpisodes = legacyEpisodes,
+            limit = MAX_CURRENT_EPISODES,
+        )
     }
 
     private companion object {
         const val PREFS_NAME = "servus_current_channel_selection"
         const val KEY_SELECTED_SHOW_IDS = "selected_show_ids"
-        const val MAX_CURRENT_EPISODES = 40
+        const val MAX_CURRENT_EPISODES = 20
     }
 }
 
@@ -80,6 +75,38 @@ object ServusCurrentChannelPolicy {
     fun isLegacyDefaultTitle(title: String): Boolean {
         val normalized = normalize(title)
         return normalized.contains("servus nachrichten") || normalized.contains("wegscheider")
+    }
+
+    fun composeCurrentEpisodes(
+        selectedShows: List<ServusShow>,
+        allShows: List<ServusShow>,
+        legacyEpisodes: List<ServusNewsEpisode>,
+        limit: Int,
+    ): List<ServusNewsEpisode> {
+        if (limit <= 0 || selectedShows.isEmpty()) return emptyList()
+
+        val filteredLegacy = legacyEpisodes.filter { episode ->
+            matchesSelectedShow(
+                episode = episode,
+                selectedShows = selectedShows,
+                allShows = allShows,
+            )
+        }
+        val selectedCatalogueEpisodes = selectedShows.flatMap { it.episodes }
+        val merged = ServusNewsPolicy.deduplicateEpisodes(filteredLegacy + selectedCatalogueEpisodes)
+        if (merged.size <= limit) return merged
+
+        val anchorIds = selectedShows
+            .mapNotNull { it.episodes.firstOrNull()?.id }
+            .toSet()
+        val anchors = merged.filter { it.id in anchorIds }
+            .take(limit)
+        if (anchors.size >= limit) return sortByAvailability(anchors)
+
+        val filler = merged
+            .filterNot { it.id in anchorIds }
+            .take(limit - anchors.size)
+        return sortByAvailability(filler + anchors)
     }
 
     fun matchesSelectedShow(
@@ -121,6 +148,11 @@ object ServusCurrentChannelPolicy {
             }
         }
     }
+
+    private fun sortByAvailability(episodes: List<ServusNewsEpisode>): List<ServusNewsEpisode> =
+        episodes.sortedWith(
+            compareByDescending<ServusNewsEpisode> { ServusNewsPolicy.recencyMillis(it) ?: Long.MIN_VALUE },
+        )
 
     private fun normalize(value: String): String = value
         .lowercase(Locale.GERMAN)
