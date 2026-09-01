@@ -10,13 +10,17 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.andreassamitsch.servusprovider.data.ServusCurrentChannelSelectionStore
 import com.andreassamitsch.servusprovider.data.ServusNewsEpisode
 import com.andreassamitsch.servusprovider.data.ServusNewsRepository
 import com.andreassamitsch.servusprovider.data.ServusShow
+import com.andreassamitsch.servusprovider.tv.ServusChannelPublisher
+import com.andreassamitsch.servusprovider.work.ServusRefreshWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,10 +35,14 @@ class ShowActivity : Activity() {
         packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
     }
     private lateinit var repository: ServusNewsRepository
+    private lateinit var currentSelectionStore: ServusCurrentChannelSelectionStore
+    private lateinit var channelPublisher: ServusChannelPublisher
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         repository = ServusNewsRepository(applicationContext)
+        currentSelectionStore = ServusCurrentChannelSelectionStore(applicationContext)
+        channelPublisher = ServusChannelPublisher(applicationContext)
         val showId = intent?.data?.lastPathSegment?.takeIf { it.isNotBlank() }
         val show = showId?.let(repository::cachedShow)
         if (show == null) {
@@ -106,6 +114,48 @@ class ShowActivity : Activity() {
                 setPadding(0, dp(12), 0, 0)
             })
         }
+
+        val selectionButton = Button(this).apply {
+            isAllCaps = false
+            setPadding(dp(18), dp(8), dp(18), dp(8))
+        }
+        fun renderSelectionButton() {
+            val selected = currentSelectionStore.isSelected(show, repository.cachedCategories())
+            selectionButton.text = if (selected) {
+                "Aus Aktuelles entfernen"
+            } else {
+                "Zu Aktuelles hinzufügen"
+            }
+        }
+        renderSelectionButton()
+        selectionButton.setOnClickListener {
+            val categories = repository.cachedCategories()
+            val selected = currentSelectionStore.isSelected(show, categories)
+            currentSelectionStore.setSelected(
+                showId = show.id,
+                selected = !selected,
+                categories = categories,
+            )
+            renderSelectionButton()
+            // Apply the local choice immediately to Android TV. The normal refresh worker then
+            // refreshes the fast feed without making the UI wait on the network.
+            runCatching { channelPublisher.publish(repository.cachedEpisodes()) }
+            ServusRefreshWorker.enqueueNow(applicationContext)
+        }
+        info.addView(
+            selectionButton,
+            LinearLayout.LayoutParams(
+                if (isTvDevice) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(16) },
+        )
+        info.addView(TextView(this).apply {
+            text = "Die Auswahl gilt lokal für den Kanal „ServusTV Aktuelles“ und kann jederzeit geändert werden."
+            textSize = if (isTvDevice) 13f else 12f
+            setTextColor(Color.GRAY)
+            setPadding(0, dp(6), 0, 0)
+        })
+
         header.addView(
             info,
             LinearLayout.LayoutParams(
@@ -129,6 +179,7 @@ class ShowActivity : Activity() {
                 textSize = if (isTvDevice) 16f else 14f
                 setTextColor(Color.GRAY)
             })
+            if (isTvDevice) selectionButton.requestFocus()
         } else {
             var first: View? = null
             show.episodes.forEach { episode ->
@@ -176,7 +227,7 @@ class ShowActivity : Activity() {
             maxLines = 2
         })
         text.addView(TextView(this).apply {
-            this.text = "${formatDate(episode.publishedAtMillis)} · ${formatDuration(episode.durationMillis)}"
+            this.text = buildEpisodeMeta(episode)
             textSize = if (isTvDevice) 14f else 12f
             setTextColor(Color.GRAY)
             setPadding(0, dp(5), 0, 0)
@@ -184,6 +235,11 @@ class ShowActivity : Activity() {
         row.addView(text, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         return row
     }
+
+    private fun buildEpisodeMeta(episode: ServusNewsEpisode): String = buildList {
+        episode.publishedAtMillis?.let { add(formatDate(it)) }
+        add(formatDuration(episode.durationMillis))
+    }.joinToString(" · ")
 
     private fun openPlayback(id: String) {
         startActivity(
