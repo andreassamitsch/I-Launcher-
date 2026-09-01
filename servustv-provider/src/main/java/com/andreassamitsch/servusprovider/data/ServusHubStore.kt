@@ -20,6 +20,15 @@ class ServusHubStore(context: Context) {
             .apply()
     }
 
+    fun saveCatalogDiagnostic(message: String) {
+        preferences.edit()
+            .putString(KEY_CATALOG_DIAGNOSTIC, ServusCatalogDiagnosticBuilder.sanitize(message))
+            .apply()
+    }
+
+    fun catalogDiagnostic(): String? = preferences.getString(KEY_CATALOG_DIAGNOSTIC, null)
+        ?.takeIf { it.isNotBlank() }
+
     fun saveLiveChannels(channels: List<ServusLiveChannel>, refreshedAtMillis: Long) {
         preferences.edit()
             .putString(KEY_LIVE_CHANNELS, ServusNetwork.gson.toJson(channels))
@@ -52,5 +61,6 @@ class ServusHubStore(context: Context) {
         const val KEY_LIVE_CHANNELS = "live_channels"
         const val KEY_CATALOG_SUCCESS = "catalog_success"
         const val KEY_LIVE_SUCCESS = "live_success"
+        const val KEY_CATALOG_DIAGNOSTIC = "catalog_diagnostic"
     }
 }
