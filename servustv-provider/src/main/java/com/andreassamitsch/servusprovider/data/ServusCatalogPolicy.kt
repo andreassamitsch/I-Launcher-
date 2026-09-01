@@ -22,6 +22,14 @@ object ServusCatalogPolicy {
             card.type == "page" &&
             card.contentType != "film"
 
+    /**
+     * ServusTV can expose market-/rights-specific catalogue collections that are present on the
+     * landing page but deliberately reject access. Only that explicit 403 is safe to ignore.
+     * Network failures, server errors and unexpected response codes must still fail the catalogue
+     * refresh so an incomplete snapshot does not overwrite the last good cache.
+     */
+    fun canSkipCategoryHttpCode(statusCode: Int): Boolean = statusCode == 403
+
     fun buildShow(
         categoryId: String,
         categoryTitle: String,
