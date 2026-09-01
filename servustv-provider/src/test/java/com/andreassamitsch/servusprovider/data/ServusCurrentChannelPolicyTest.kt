@@ -67,6 +67,59 @@ class ServusCurrentChannelPolicyTest {
         )
     }
 
+    @Test
+    fun selectedShowWithoutTimestampCannotBePushedOutByTimestampedNews() {
+        val selectedEpisode = episode(
+            id = "evening-newest",
+            title = "Servus am Abend | 31.08.",
+            showName = "Servus am Abend",
+        ).copy(showId = "evening")
+        val selectedShow = show("evening", "Servus am Abend", episodes = listOf(selectedEpisode))
+        val news90 = show("news90", "Servus Nachrichten in 90 Sekunden")
+        val legacy = (1..30).map { index ->
+            episode(
+                id = "news-$index",
+                title = "Meldung $index",
+                showName = "Servus Nachrichten in 90 Sekunden",
+            ).copy(
+                publishedAtMillis = 10_000_000L + index,
+            )
+        }
+
+        val result = ServusCurrentChannelPolicy.composeCurrentEpisodes(
+            selectedShows = listOf(news90, selectedShow),
+            allShows = listOf(news90, selectedShow),
+            legacyEpisodes = legacy,
+            limit = 20,
+        )
+
+        assertEquals(20, result.size)
+        assertTrue(result.any { it.id == "evening-newest" })
+    }
+
+    @Test
+    fun observedAvailabilityParticipatesInCurrentOrdering() {
+        val show = show(
+            "evening",
+            "Servus am Abend",
+            episodes = listOf(
+                episode("older", "Servus am Abend | 30.08.", "Servus am Abend")
+                    .copy(showId = "evening", observedAvailableAtMillis = 1_000L),
+                episode("newer", "Servus am Abend | 31.08.", "Servus am Abend")
+                    .copy(showId = "evening", observedAvailableAtMillis = 2_000L),
+            ),
+        )
+
+        val result = ServusCurrentChannelPolicy.composeCurrentEpisodes(
+            selectedShows = listOf(show),
+            allShows = listOf(show),
+            legacyEpisodes = emptyList(),
+            limit = 20,
+        )
+
+        assertEquals(listOf("newer", "older"), result.map { it.id })
+    }
+
     private fun category(vararg shows: ServusShow) = ServusCategory(
         id = "category",
         title = "Kategorie",
@@ -74,7 +127,11 @@ class ServusCurrentChannelPolicyTest {
         shows = shows.toList(),
     )
 
-    private fun show(id: String, title: String) = ServusShow(
+    private fun show(
+        id: String,
+        title: String,
+        episodes: List<ServusNewsEpisode> = emptyList(),
+    ) = ServusShow(
         id = id,
         title = title,
         description = null,
@@ -83,7 +140,7 @@ class ServusCurrentChannelPolicyTest {
         artworkUri = null,
         squareArtworkUri = null,
         logoUri = null,
-        episodes = emptyList(),
+        episodes = episodes,
     )
 
     private fun episode(id: String, title: String, showName: String) = ServusNewsEpisode(
