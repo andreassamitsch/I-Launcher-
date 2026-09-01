@@ -25,6 +25,7 @@ class ServusNewsRepository(
     private val currentSelectionStore = ServusCurrentChannelSelectionStore(appContext)
     private val observedAvailabilityStore = ServusObservedAvailabilityStore(appContext)
     private val channelPublisher = ServusChannelPublisher(appContext)
+    private val showEpisodeDetailSemaphore = Semaphore(SHOW_EPISODE_DETAIL_PARALLELISM)
 
     fun cachedEpisodes(): List<ServusNewsEpisode> = newsStore.loadEpisodes()
         .sortedWith(
@@ -105,7 +106,7 @@ class ServusNewsRepository(
             var categories = if (catalogRefreshRequested) {
                 val cachedCategories = hubStore.loadCategories()
                 try {
-                    val outcome = refreshShowCatalog(market, refreshNow)
+                    val outcome = refreshShowCatalog(market, refreshNow, cachedCategories)
                     hubStore.saveCatalogDiagnostic(outcome.diagnostic)
                     catalogRefreshSucceeded = true
                     outcome.categories
@@ -248,7 +249,11 @@ class ServusNewsRepository(
         }.awaitAll().filterNotNull()
     }
 
-    private suspend fun refreshShowCatalog(market: String, nowMillis: Long): CatalogRefreshOutcome = coroutineScope {
+    private suspend fun refreshShowCatalog(
+        market: String,
+        nowMillis: Long,
+        cachedCategories: List<ServusCategory>,
+    ): CatalogRefreshOutcome = coroutineScope {
         val diagnostics = ServusCatalogDiagnosticBuilder()
 
         val landing = try {
@@ -338,12 +343,24 @@ class ServusNewsRepository(
             )
         }
 
+        val cachedEpisodesByShowId = cachedCategories
+            .flatMap { it.shows }
+            .distinctBy { it.id }
+            .associate { show -> show.id to show.episodes }
         val semaphore = Semaphore(SHOW_PARALLELISM)
         val cores = try {
             uniqueShowCards.values.map { card ->
                 async {
                     semaphore.withPermit {
-                        loadShowCore(market, card, nowMillis)
+                        val cachedEpisodes = card.id
+                            ?.let { showId -> cachedEpisodesByShowId[showId] }
+                            .orEmpty()
+                        loadShowCore(
+                            market = market,
+                            card = card,
+                            nowMillis = nowMillis,
+                            cachedEpisodes = cachedEpisodes,
+                        )
                     }
                 }
             }.awaitAll().filterNotNull().associateBy { it.id }
@@ -425,6 +442,7 @@ class ServusNewsRepository(
                             card = fallbackCard,
                             nowMillis = nowMillis,
                             maxCollectionPages = MAX_SELECTED_SHOW_COLLECTION_PAGES,
+                            cachedEpisodes = show.episodes,
                         )
                     }.getOrNull()?.let { show.id to it }
                 }
@@ -483,6 +501,7 @@ class ServusNewsRepository(
         card: ServusCardDto,
         nowMillis: Long,
         maxCollectionPages: Int = MAX_SHOW_COLLECTION_PAGES,
+        cachedEpisodes: List<ServusNewsEpisode> = emptyList(),
     ): ShowCore? {
         val id = card.id ?: return null
         val detail = runCatching { api.product(market, id) }.getOrNull()
@@ -506,8 +525,22 @@ class ServusNewsRepository(
             }.awaitAll().flatten()
         }
 
-        val mapped = rawCards.mapNotNull { episodeCard ->
-            ServusCatalogPolicy.toShowEpisode(
+        val candidateCards = ServusCatalogPolicy.selectEpisodeCardsForHydration(
+            cards = rawCards,
+            showId = id,
+            showTitle = title,
+            limit = MAX_SHOW_EPISODE_DETAIL_CANDIDATES,
+        )
+        val hydratedCards = hydrateShowEpisodeCards(
+            market = market,
+            cards = candidateCards,
+            cachedEpisodes = cachedEpisodes,
+        )
+        val cachedById = cachedEpisodes.associateBy { it.id }
+        val mapped = hydratedCards.mapNotNull { hydrated ->
+            val episodeCard = hydrated.card
+            val cachedEpisode = episodeCard.id?.let { episodeId -> cachedById[episodeId] }
+            val fresh = ServusCatalogPolicy.toShowEpisode(
                 card = episodeCard,
                 showId = id,
                 showTitle = title,
@@ -516,6 +549,28 @@ class ServusNewsRepository(
                 showLogoUri = logoUri,
                 nowMillis = nowMillis,
             )
+            when {
+                fresh != null -> {
+                    val cachedPublishedAtMillis = cachedEpisode?.publishedAtMillis
+                    if (fresh.publishedAtMillis == null && cachedPublishedAtMillis != null) {
+                        fresh.copy(publishedAtMillis = cachedPublishedAtMillis)
+                    } else {
+                        fresh
+                    }
+                }
+
+                !hydrated.productDetailLoaded && episodeCard.playable != false && cachedEpisode != null -> {
+                    cachedEpisode.copy(
+                        showName = cachedEpisode.showName?.takeIf { it.isNotBlank() } ?: title,
+                        showId = id,
+                        logoUri = logoUri ?: cachedEpisode.logoUri,
+                        categoryId = "",
+                        categoryTitle = "",
+                    )
+                }
+
+                else -> null
+            }
         }
         val episodes = ServusCatalogPolicy.selectChannelEpisodes(mapped)
         return ShowCore(
@@ -531,6 +586,41 @@ class ServusNewsRepository(
             episodes = episodes,
         )
     }
+
+    private suspend fun hydrateShowEpisodeCards(
+        market: String,
+        cards: List<ServusCardDto>,
+        cachedEpisodes: List<ServusNewsEpisode>,
+    ): List<HydratedShowEpisodeCard> = coroutineScope {
+        val cachedById = cachedEpisodes.associateBy { it.id }
+        cards.map { card ->
+            async {
+                val id = card.id ?: return@async HydratedShowEpisodeCard(card, productDetailLoaded = false)
+                val cachedPublishedAtMillis = cachedById[id]?.publishedAtMillis
+                val hasReusableSourceTime = !card.sunriseTimestamp.isNullOrBlank() || cachedPublishedAtMillis != null
+                if (hasReusableSourceTime && canMapShowEpisodeWithoutProduct(card)) {
+                    HydratedShowEpisodeCard(card, productDetailLoaded = false)
+                } else {
+                    showEpisodeDetailSemaphore.withPermit {
+                        val detail = runCatching { api.product(market, id) }.getOrNull()
+                        if (detail == null) {
+                            HydratedShowEpisodeCard(card, productDetailLoaded = false)
+                        } else {
+                            HydratedShowEpisodeCard(
+                                card = ServusCatalogPolicy.mergeEpisodeProduct(card, detail),
+                                productDetailLoaded = true,
+                            )
+                        }
+                    }
+                }
+            }
+        }.awaitAll()
+    }
+
+    private fun canMapShowEpisodeWithoutProduct(card: ServusCardDto): Boolean =
+        card.duration?.let { it > 0L } == true &&
+            card.playable != false &&
+            (card.type == "video" || card.contentType == "film")
 
     private suspend fun refreshLiveChannels(market: String, nowMillis: Long): List<ServusLiveChannel> = coroutineScope {
         val first = api.collection(market, LIVE_COLLECTION_ID, 0)
@@ -608,6 +698,11 @@ class ServusNewsRepository(
         val changed: Boolean,
     )
 
+    private data class HydratedShowEpisodeCard(
+        val card: ServusCardDto,
+        val productDetailLoaded: Boolean,
+    )
+
     private data class ShowCore(
         val id: String,
         val title: String,
@@ -640,6 +735,8 @@ class ServusNewsRepository(
         const val MAX_CURRENT_EPISODES = 40
 
         const val SHOW_PARALLELISM = 4
+        const val SHOW_EPISODE_DETAIL_PARALLELISM = 6
+        const val MAX_SHOW_EPISODE_DETAIL_CANDIDATES = 20
         const val MAX_CATEGORY_PAGES = 20
         const val MAX_SHOW_COLLECTIONS = 5
         const val MAX_SHOW_COLLECTION_PAGES = 3
