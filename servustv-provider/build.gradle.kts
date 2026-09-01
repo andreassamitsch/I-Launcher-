@@ -1,3 +1,6 @@
+import org.gradle.api.tasks.testing.Test
+import org.gradle.api.tasks.testing.logging.TestLogEvent
+
 plugins {
     id("com.android.application")
 }
@@ -87,4 +90,13 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp")
 
     testImplementation("junit:junit:4.13.2")
+}
+
+// Diagnostic branch only: surface the sanitized live API field inspection in GitHub Actions logs.
+// This PR is intentionally never merged into the ServusTV production branch.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events = setOf(TestLogEvent.FAILED, TestLogEvent.STANDARD_OUT, TestLogEvent.STANDARD_ERROR)
+        showStandardStreams = true
+    }
 }
