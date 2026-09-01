@@ -19,6 +19,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.andreassamitsch.servusprovider.BuildConfig
 import com.andreassamitsch.servusprovider.data.ServusCategory
+import com.andreassamitsch.servusprovider.data.ServusCurrentChannelSelectionStore
 import com.andreassamitsch.servusprovider.data.ServusLiveChannel
 import com.andreassamitsch.servusprovider.data.ServusNewsEpisode
 import com.andreassamitsch.servusprovider.data.ServusNewsPolicy
@@ -49,6 +50,7 @@ class MainActivity : Activity() {
     }
 
     private lateinit var repository: ServusNewsRepository
+    private lateinit var currentSelectionStore: ServusCurrentChannelSelectionStore
     private lateinit var updateManager: ServusUpdateManager
     private lateinit var statusText: TextView
     private lateinit var contentContainer: LinearLayout
@@ -64,6 +66,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         repository = ServusNewsRepository(applicationContext)
+        currentSelectionStore = ServusCurrentChannelSelectionStore(applicationContext)
         updateManager = ServusUpdateManager(applicationContext)
         ServusRefreshWorker.schedule(applicationContext)
         setContentView(buildUi())
@@ -164,17 +167,26 @@ class MainActivity : Activity() {
     }
 
     private fun renderCached() {
-        episodes = repository.cachedEpisodes()
         categories = repository.cachedCategories()
+        episodes = currentSelectionStore.effectiveEpisodes(
+            categories = categories,
+            legacyEpisodes = repository.cachedEpisodes(),
+        )
         liveChannels = repository.cachedLiveChannels()
         val success = repository.lastSuccessMillis()
         val showCount = categories.flatMap { it.shows }.distinctBy { it.id }.size
+        val selectedShowCount = currentSelectionStore.effectiveSelectedShowIds(categories).size
         statusText.text = buildString {
             if (success > 0L) {
                 append("Letzte Aktualisierung: ")
                 append(DateFormat.getDateTimeInstance().format(Date(success)))
             } else {
                 append("Noch keine erfolgreiche Aktualisierung")
+            }
+            if (currentSelectionStore.isConfigured()) {
+                append("\nAktuelles: $selectedShowCount Sendung")
+                if (selectedShowCount != 1) append("en")
+                append(" ausgewählt")
             }
             if (repository.tvChannelSupported()) {
                 append("\nAndroid TV: Aktuelles + Live")
@@ -189,9 +201,20 @@ class MainActivity : Activity() {
 
     private fun renderContent() {
         contentContainer.removeAllViews()
+        addSectionTitle("Aktuelles")
         if (episodes.isNotEmpty()) {
-            addSectionTitle("Aktuelles")
             addRail(episodes.take(MAX_CURRENT_UI_ITEMS).map(::buildEpisodeCard))
+        } else {
+            contentContainer.addView(TextView(this).apply {
+                text = if (currentSelectionStore.isConfigured()) {
+                    "Für Aktuelles ist derzeit keine Sendung ausgewählt oder verfügbar. Öffne eine Sendung und füge sie zu Aktuelles hinzu."
+                } else {
+                    "Noch keine aktuellen Sendungen verfügbar."
+                }
+                textSize = if (isTvDevice) 15f else 13f
+                setTextColor(Color.GRAY)
+                setPadding(0, 0, 0, dp(10))
+            })
         }
         if (liveChannels.isNotEmpty()) {
             addSectionTitle("Live TV")
@@ -256,7 +279,7 @@ class MainActivity : Activity() {
         logoUri = episode.logoUri,
         eyebrow = ServusNewsPolicy.displayLabel(episode),
         title = episode.title,
-        meta = "${formatPublishedAt(episode.publishedAtMillis)} · ${formatDuration(episode.durationMillis)}",
+        meta = buildEpisodeMeta(episode),
         onClick = { openPlayback(episode.id) },
     )
 
@@ -273,14 +296,17 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun buildShowCard(show: ServusShow): View = buildMediaCard(
-        artworkUri = show.artworkUri ?: show.squareArtworkUri,
-        logoUri = show.logoUri,
-        eyebrow = null,
-        title = show.title,
-        meta = if (show.episodes.isEmpty()) "Mediathek" else "${show.episodes.size} aktuelle Videos",
-        onClick = { openShow(show.id) },
-    )
+    private fun buildShowCard(show: ServusShow): View {
+        val selected = currentSelectionStore.isSelected(show, categories)
+        return buildMediaCard(
+            artworkUri = show.artworkUri ?: show.squareArtworkUri,
+            logoUri = show.logoUri,
+            eyebrow = if (selected) "AKTUELLES" else null,
+            title = show.title,
+            meta = if (show.episodes.isEmpty()) "Mediathek" else "${show.episodes.size} aktuelle Videos",
+            onClick = { openShow(show.id) },
+        )
+    }
 
     private fun buildMediaCard(
         artworkUri: String?,
@@ -481,6 +507,11 @@ class MainActivity : Activity() {
         view.scaleX = if (focused && isTvDevice) 1.035f else 1f
         view.scaleY = if (focused && isTvDevice) 1.035f else 1f
     }
+
+    private fun buildEpisodeMeta(episode: ServusNewsEpisode): String = buildList {
+        episode.publishedAtMillis?.let { add(formatPublishedAt(it)) }
+        add(formatDuration(episode.durationMillis))
+    }.joinToString(" · ")
 
     private fun formatPublishedAt(millis: Long): String =
         SimpleDateFormat("dd.MM. · HH:mm", Locale.getDefault()).format(Date(millis))
