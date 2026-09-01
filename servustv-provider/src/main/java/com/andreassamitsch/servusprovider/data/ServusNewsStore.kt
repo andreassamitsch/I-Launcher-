@@ -10,15 +10,26 @@ class ServusNewsStore(context: Context) {
 
     fun loadEpisodes(): List<ServusNewsEpisode> {
         val raw = preferences.getString(KEY_EPISODES, null) ?: return emptyList()
-        return runCatching {
+        val episodes = runCatching {
             ServusNetwork.gson.fromJson<List<ServusNewsEpisode>>(raw, episodeListType).orEmpty()
         }.getOrDefault(emptyList())
+        if (episodes.isEmpty() || preferences.getInt(KEY_TIME_SCHEMA, 1) >= CURRENT_TIME_SCHEMA) {
+            return episodes
+        }
+
+        val migrated = episodes.map { it.copy(publishedAtMillis = null) }
+        preferences.edit()
+            .putString(KEY_EPISODES, ServusNetwork.gson.toJson(migrated))
+            .putInt(KEY_TIME_SCHEMA, CURRENT_TIME_SCHEMA)
+            .apply()
+        return migrated
     }
 
     fun save(result: ServusRefreshResult) {
         preferences.edit()
             .putString(KEY_EPISODES, ServusNetwork.gson.toJson(result.episodes))
             .putLong(KEY_LAST_SUCCESS, result.refreshedAtMillis)
+            .putInt(KEY_TIME_SCHEMA, CURRENT_TIME_SCHEMA)
             .remove(KEY_LAST_ERROR)
             .apply()
     }
@@ -35,5 +46,7 @@ class ServusNewsStore(context: Context) {
         const val KEY_EPISODES = "episodes"
         const val KEY_LAST_SUCCESS = "last_success"
         const val KEY_LAST_ERROR = "last_error"
+        const val KEY_TIME_SCHEMA = "availability_time_schema"
+        const val CURRENT_TIME_SCHEMA = 2
     }
 }
