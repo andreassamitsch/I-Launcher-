@@ -31,6 +31,8 @@ Auf Android TV erhält jede Sendung mit abspielbaren Inhalten einen eigenen Prev
 
 Bei Sendungen mit echten `episode`-/`film`-Einträgen werden diese für den Kanal bevorzugt. Nur wenn eine Sendung keine solchen Vollinhalte liefert, dienen andere abspielbare Videos als Fallback. Pro Sendung werden aktuell höchstens 18 neueste Einträge veröffentlicht.
 
+Die Sendungs-Collections dienen dabei nur als Discovery-/Reihenfolgequelle. Für höchstens 20 plausible aktuelle Folgen pro Sendung werden die jeweiligen `products/v5.3/.../<contentId>`-Details nachgeladen, weil erst dort der verlässliche VOD-Zeitstempel `sunrise_timestamp` durchgehend vorhanden ist. Die Detailaufrufe sind global auf sechs parallele Requests begrenzt. Bereits lokal gecachte, von ServusTV stammende `publishedAtMillis`-Werte werden bei späteren Refreshes wiederverwendet; dadurch müssen im Normalfall nur neue bzw. bislang zeitstempellose Content-IDs erneut hydratisiert werden. `start_time`, `end_time` und Uhrzeiten aus Titeln bleiben ausdrücklich EPG-/Broadcastdaten und werden nicht als Veröffentlichungszeit verwendet.
+
 ## App-Oberfläche
 
 Die Standalone-App zeigt Local First:
@@ -69,6 +71,8 @@ ServusTV liefert Media-Resources pro Produkt. Für Sendungsbranding wird bevorzu
 - bei manuellem `Jetzt aktualisieren`
 - anschließend ungefähr alle sechs Stunden
 
+Für explizit zu `Aktuelles` hinzugewählte Sendungen bleibt der leichte 15-Minuten-Refresh bestehen. Bei diesen Refreshes werden vorhandene ServusTV-Verfügbarkeitszeiten aus dem lokalen Sendungs-Cache wiederverwendet und nur neue bzw. noch nicht belastbar zeitgestempelte Folgen über den Produkt-Endpunkt nachgeladen.
+
 Der lokale Cache bleibt auch auf Smartphones ohne Android-TvProvider die primäre Datenquelle. Ein fehlender TvProvider darf Datenabruf und Standalone-App nicht scheitern lassen.
 
 ## Playback
@@ -92,7 +96,7 @@ Die bereits auf TCL bestätigte Media3-Konfiguration bleibt bestehen:
 3. Kategorien und Sendungszuordnung stichprobenartig mit ServusTV vergleichen.
 4. Bei Sendungen mit `rbtv_title_treatment` muss das Logo sichtbar sein.
 5. I Launcher prüfen: bestehendes `ServusTV Aktuelles` bleibt vorhanden, zusätzlich `ServusTV Live` und eigene Sendungs-Kanäle.
-6. Einen Sendungs-Kanal öffnen und mehrere Folgen direkt starten.
+6. Einen Sendungs-Kanal öffnen und mehrere Folgen direkt starten. Bei aktuellen Folgen muss die Reihenfolge anhand `sunrise_timestamp` plausibel sein; beispielsweise soll `Servus Wetter` den tatsächlichen VOD-Verfügbarkeitszeitpunkt statt nur der Dauer anzeigen, sofern ServusTV diesen liefert.
 7. Prüfen, ob I Launcher das vom Preview Program gelieferte Sendungslogo in Hero/Anreicherung übernimmt.
 8. `ServusTV Live` prüfen: alle aktuell gelieferten Live-Kanäle erscheinen; laufender EPG-Titel wird angezeigt, sofern vom Guide geliefert.
 9. Haupt-ServusTV-Live und mindestens einen digitalen Live-Kanal starten.
