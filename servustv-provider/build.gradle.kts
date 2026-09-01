@@ -2,6 +2,26 @@ plugins {
     id("com.android.application")
 }
 
+val servusVersionCode = providers.gradleProperty("servusVersionCode")
+    .orNull
+    ?.toIntOrNull()
+    ?: 1
+val servusVersionName = providers.gradleProperty("servusVersionName")
+    .orNull
+    ?.takeIf { it.isNotBlank() }
+    ?: "0.1.0-prototype"
+
+val developmentSigningStoreFile = System.getenv("IL_SIGNING_STORE_FILE")?.takeIf { it.isNotBlank() }
+val developmentSigningStorePassword = System.getenv("IL_SIGNING_STORE_PASSWORD")?.takeIf { it.isNotBlank() }
+val developmentSigningKeyAlias = System.getenv("IL_SIGNING_KEY_ALIAS")?.takeIf { it.isNotBlank() }
+val developmentSigningKeyPassword = System.getenv("IL_SIGNING_KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+val developmentSigningConfigured = listOf(
+    developmentSigningStoreFile,
+    developmentSigningStorePassword,
+    developmentSigningKeyAlias,
+    developmentSigningKeyPassword,
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.andreassamitsch.servusprovider"
     compileSdk = 36
@@ -10,8 +30,8 @@ android {
         applicationId = "com.andreassamitsch.servusprovider"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0-prototype"
+        versionCode = servusVersionCode
+        versionName = servusVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -21,7 +41,28 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
+    signingConfigs {
+        if (developmentSigningConfigured) {
+            create("development") {
+                storeFile = file(requireNotNull(developmentSigningStoreFile))
+                storePassword = developmentSigningStorePassword
+                keyAlias = developmentSigningKeyAlias
+                keyPassword = developmentSigningKeyPassword
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (developmentSigningConfigured) {
+                signingConfig = signingConfigs.getByName("development")
+            }
+        }
+
         release {
             isMinifyEnabled = false
         }

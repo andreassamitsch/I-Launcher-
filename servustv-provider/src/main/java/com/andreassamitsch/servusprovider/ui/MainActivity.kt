@@ -17,17 +17,24 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
+import com.andreassamitsch.servusprovider.BuildConfig
 import com.andreassamitsch.servusprovider.data.ServusCategory
 import com.andreassamitsch.servusprovider.data.ServusLiveChannel
 import com.andreassamitsch.servusprovider.data.ServusNewsEpisode
 import com.andreassamitsch.servusprovider.data.ServusNewsPolicy
 import com.andreassamitsch.servusprovider.data.ServusNewsRepository
 import com.andreassamitsch.servusprovider.data.ServusShow
+import com.andreassamitsch.servusprovider.update.ServusInstallResult
+import com.andreassamitsch.servusprovider.update.ServusUpdateManager
+import com.andreassamitsch.servusprovider.update.ServusUpdateState
 import com.andreassamitsch.servusprovider.work.ServusRefreshWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.DateFormat
@@ -42,10 +49,14 @@ class MainActivity : Activity() {
     }
 
     private lateinit var repository: ServusNewsRepository
+    private lateinit var updateManager: ServusUpdateManager
     private lateinit var statusText: TextView
     private lateinit var contentContainer: LinearLayout
     private lateinit var progress: ProgressBar
     private lateinit var refreshButton: Button
+    private lateinit var updateStatusText: TextView
+    private lateinit var updateButton: Button
+    private var updatePollingJob: Job? = null
     private var episodes: List<ServusNewsEpisode> = emptyList()
     private var categories: List<ServusCategory> = emptyList()
     private var liveChannels: List<ServusLiveChannel> = emptyList()
@@ -53,18 +64,23 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         repository = ServusNewsRepository(applicationContext)
+        updateManager = ServusUpdateManager(applicationContext)
         ServusRefreshWorker.schedule(applicationContext)
         setContentView(buildUi())
         renderCached()
+        observeUpdates()
+        scope.launch { updateManager.checkForUpdates() }
         refresh(forceCatalog = false)
     }
 
     override fun onResume() {
         super.onResume()
         if (::contentContainer.isInitialized) renderCached()
+        if (::updateManager.isInitialized) updateManager.refreshDownloadState()
     }
 
     override fun onDestroy() {
+        updatePollingJob?.cancel()
         scope.cancel()
         super.onDestroy()
     }
@@ -88,7 +104,7 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
         })
         content.addView(TextView(this).apply {
-            text = "Aktuelles · Live TV · Sendungen"
+            text = "Aktuelles · Live TV · Sendungen · ${BuildConfig.VERSION_NAME}"
             textSize = if (isTvDevice) 18f else 16f
             setTextColor(Color.LTGRAY)
             setPadding(0, dp(6), 0, dp(14))
@@ -114,6 +130,26 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ).apply {
                 topMargin = dp(12)
+            },
+        )
+
+        updateStatusText = TextView(this).apply {
+            textSize = if (isTvDevice) 14f else 12f
+            setTextColor(Color.GRAY)
+            setPadding(0, dp(12), 0, dp(4))
+        }
+        content.addView(updateStatusText)
+
+        updateButton = Button(this).apply {
+            text = "Auf Updates prüfen"
+            setOnClickListener { handleUpdateAction() }
+        }
+        content.addView(
+            updateButton,
+            LinearLayout.LayoutParams(
+                if (isTvDevice) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
                 bottomMargin = dp(20)
             },
         )
@@ -321,8 +357,6 @@ class MainActivity : Activity() {
             if (result.isSuccess) {
                 renderCached()
             } else {
-                // Fast data may already have been refreshed before the catalogue failed. Always
-                // redraw cache first, then show the explicit requested-refresh failure.
                 renderCached()
                 val message = result.exceptionOrNull()?.message ?: "Unbekannter Fehler"
                 statusText.text = buildString {
@@ -333,6 +367,93 @@ class MainActivity : Activity() {
                 }
             }
         }
+    }
+
+    private fun observeUpdates() {
+        scope.launch {
+            updateManager.state.collectLatest { state ->
+                renderUpdateState(state)
+                if (state is ServusUpdateState.Downloading) startUpdatePolling() else stopUpdatePolling()
+            }
+        }
+    }
+
+    private fun renderUpdateState(state: ServusUpdateState) {
+        when (state) {
+            ServusUpdateState.Idle -> {
+                updateStatusText.text = "Version ${BuildConfig.VERSION_NAME}"
+                updateButton.text = "Auf Updates prüfen"
+                updateButton.isEnabled = true
+            }
+            ServusUpdateState.Checking -> {
+                updateStatusText.text = "Suche nach neuer Version …"
+                updateButton.text = "Prüfe …"
+                updateButton.isEnabled = false
+            }
+            is ServusUpdateState.UpToDate -> {
+                updateStatusText.text = "ServusTV ${state.versionName} ist aktuell."
+                updateButton.text = "Auf Updates prüfen"
+                updateButton.isEnabled = true
+            }
+            is ServusUpdateState.Available -> {
+                updateStatusText.text = "Update ${state.info.versionName} verfügbar."
+                updateButton.text = "Update herunterladen"
+                updateButton.isEnabled = true
+            }
+            is ServusUpdateState.Downloading -> {
+                updateStatusText.text = state.progressPercent?.let { "Update wird heruntergeladen: $it %" }
+                    ?: "Update wird heruntergeladen …"
+                updateButton.text = "Download läuft"
+                updateButton.isEnabled = false
+            }
+            is ServusUpdateState.ReadyToInstall -> {
+                updateStatusText.text = "Update ${state.info.versionName} ist bereit."
+                updateButton.text = "Update installieren"
+                updateButton.isEnabled = true
+            }
+            is ServusUpdateState.Error -> {
+                updateStatusText.text = "Update: ${state.message}"
+                updateButton.text = "Erneut prüfen"
+                updateButton.isEnabled = true
+            }
+        }
+    }
+
+    private fun handleUpdateAction() {
+        when (val state = updateManager.state.value) {
+            ServusUpdateState.Idle,
+            is ServusUpdateState.UpToDate,
+            is ServusUpdateState.Error,
+            -> scope.launch { updateManager.checkForUpdates() }
+
+            ServusUpdateState.Checking -> Unit
+            is ServusUpdateState.Available -> updateManager.startDownload(state.info)
+            is ServusUpdateState.Downloading -> updateManager.refreshDownloadState()
+            is ServusUpdateState.ReadyToInstall -> scope.launch {
+                when (val result = updateManager.installDownloadedUpdate()) {
+                    ServusInstallResult.Started -> updateStatusText.text = "Android-Systeminstaller geöffnet."
+                    ServusInstallResult.PermissionRequired -> {
+                        updateStatusText.text = "Bitte 'Installation aus dieser Quelle' für ServusTV erlauben und anschließend erneut installieren."
+                    }
+                    is ServusInstallResult.Error -> updateStatusText.text = "Update: ${result.message}"
+                }
+            }
+        }
+    }
+
+    private fun startUpdatePolling() {
+        if (updatePollingJob?.isActive == true) return
+        updatePollingJob = scope.launch {
+            while (updateManager.state.value is ServusUpdateState.Downloading) {
+                delay(1_000L)
+                updateManager.refreshDownloadState()
+            }
+        }
+    }
+
+    private fun stopUpdatePolling() {
+        updatePollingJob?.cancel()
+        updatePollingJob = null
     }
 
     private fun openPlayback(id: String) {
