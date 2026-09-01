@@ -10,7 +10,7 @@
         android:allowBackup="false"
         android:banner="@drawable/tv_banner"
         android:icon="@drawable/ic_launcher"
-        android:label="ServusTV Aktuelles"
+        android:label="ServusTV"
         android:supportsRtl="true"
         android:theme="@style/Theme.ServusProvider">
 
@@ -23,6 +23,17 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="iservus" android:host="play" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.ShowActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="iservus" android:host="show" />
             </intent-filter>
         </activity>
 

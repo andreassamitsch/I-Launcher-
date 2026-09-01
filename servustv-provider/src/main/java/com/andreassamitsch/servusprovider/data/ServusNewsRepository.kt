@@ -2,6 +2,7 @@ package com.andreassamitsch.servusprovider.data
 
 import android.content.Context
 import android.util.Log
+import com.andreassamitsch.servusprovider.api.SearchResponseDto
 import com.andreassamitsch.servusprovider.api.ServusApi
 import com.andreassamitsch.servusprovider.api.ServusCardDto
 import com.andreassamitsch.servusprovider.api.ServusNetwork
@@ -19,28 +20,43 @@ class ServusNewsRepository(
     private val appContext = context.applicationContext
     private val sessionStore = ServusSessionStore(appContext, api)
     private val newsStore = ServusNewsStore(appContext)
+    private val hubStore = ServusHubStore(appContext)
     private val channelPublisher = ServusChannelPublisher(appContext)
 
     fun cachedEpisodes(): List<ServusNewsEpisode> = newsStore.loadEpisodes()
         .sortedByDescending { it.publishedAtMillis }
 
+    fun cachedCategories(): List<ServusCategory> = hubStore.loadCategories().sortedBy { it.order }
+
+    fun cachedLiveChannels(): List<ServusLiveChannel> = hubStore.loadLiveChannels()
+
+    fun cachedShow(showId: String): ServusShow? = hubStore.findShow(showId)
+
     fun lastSuccessMillis(): Long = newsStore.lastSuccessMillis()
+    fun catalogLastSuccessMillis(): Long = hubStore.catalogLastSuccessMillis()
+    fun liveLastSuccessMillis(): Long = hubStore.liveLastSuccessMillis()
     fun lastError(): String? = newsStore.lastError()
     fun tvChannelSupported(): Boolean = channelPublisher.isSupported()
 
-    suspend fun refresh(): ServusRefreshResult {
+    /**
+     * Fast data (Aktuelles + live guide) is refreshed on every run. The complete show catalogue is
+     * deliberately slower: initial/manual refresh or every six hours. A full catalogue currently
+     * requires several requests per show and must not run every 15 minutes.
+     */
+    suspend fun refresh(forceCatalog: Boolean = false): ServusRefreshResult {
         return try {
             val previousEpisodes = newsStore.loadEpisodes()
             val session = sessionStore.get()
             val market = session.countryCode
-            val candidates = discoverCandidates(market)
-            val details = fetchDetails(market, candidates)
             val refreshNow = System.currentTimeMillis()
+
+            val candidates = discoverCurrentCandidates(market)
+            val details = fetchDetails(market, candidates)
             val episodes = ServusNewsPolicy.deduplicateEpisodes(
                 details.mapNotNull { card ->
                     ServusNewsPolicy.toSupportedEpisode(card, refreshNow)
                 },
-            ).take(MAX_EPISODES)
+            ).take(MAX_CURRENT_EPISODES)
 
             check(episodes.isNotEmpty()) {
                 "Keine unterstützte ServusTV-Sendung in den API-Ergebnissen gefunden"
@@ -50,19 +66,38 @@ class ServusNewsRepository(
                 episodes = episodes,
                 refreshedAtMillis = refreshNow,
             )
-            // Standalone data is the primary result. TV-channel publication must never make a
-            // successful phone/tablet refresh fail when there is no TvProvider on the device.
             newsStore.save(result)
 
+            val liveChannels = runCatching { refreshLiveChannels(market, refreshNow) }
+                .onFailure { Log.w(TAG, "Live refresh failed (${it.javaClass.simpleName})") }
+                .getOrElse { hubStore.loadLiveChannels() }
+            if (liveChannels.isNotEmpty()) {
+                hubStore.saveLiveChannels(liveChannels, refreshNow)
+            }
+
+            val catalogWasRefreshed = forceCatalog || shouldRefreshCatalog(refreshNow)
+            val categories = if (catalogWasRefreshed) {
+                runCatching { refreshShowCatalog(market, refreshNow) }
+                    .onSuccess { refreshed -> hubStore.saveCatalog(refreshed, refreshNow) }
+                    .onFailure { Log.w(TAG, "Show catalog refresh failed (${it.javaClass.simpleName})") }
+                    .getOrElse { hubStore.loadCategories() }
+            } else {
+                hubStore.loadCategories()
+            }
+
             if (channelPublisher.isSupported()) {
-                val contentChanged = previousEpisodes.map { ServusNewsPolicy.contentKey(it) to it.id } !=
-                    episodes.map { ServusNewsPolicy.contentKey(it) to it.id }
                 runCatching {
+                    val contentChanged = previousEpisodes.map { ServusNewsPolicy.contentKey(it) to it.id } !=
+                        episodes.map { ServusNewsPolicy.contentKey(it) to it.id }
                     if (contentChanged || !channelPublisher.isPublished()) {
                         channelPublisher.publish(episodes)
                     }
+                    if (liveChannels.isNotEmpty()) channelPublisher.publishLive(liveChannels)
+                    if (catalogWasRefreshed && categories.isNotEmpty()) {
+                        channelPublisher.publishShows(categories)
+                    }
                 }.onFailure { throwable ->
-                    Log.w(TAG, "TvProvider sync skipped after refresh: ${throwable.javaClass.simpleName}")
+                    Log.w(TAG, "TvProvider sync skipped after refresh (${throwable.javaClass.simpleName})")
                 }
             }
             result
@@ -72,7 +107,13 @@ class ServusNewsRepository(
         }
     }
 
-    private suspend fun discoverCandidates(market: String): List<String> = coroutineScope {
+    private fun shouldRefreshCatalog(nowMillis: Long): Boolean {
+        if (hubStore.loadCategories().isEmpty()) return true
+        val last = hubStore.catalogLastSuccessMillis()
+        return last <= 0L || nowMillis - last >= CATALOG_REFRESH_INTERVAL_MS
+    }
+
+    private suspend fun discoverCurrentCandidates(market: String): List<String> = coroutineScope {
         val responseGroups = SEARCH_QUERIES.map { query ->
             async {
                 SEARCH_OFFSETS.map { offset ->
@@ -91,8 +132,6 @@ class ServusNewsRepository(
                 .take(MAX_DIRECT_IDS_PER_QUERY)
         }.toMutableList()
 
-        // Page results are valuable because their collections often contain the newest episodes
-        // even when generic search ranking is not strictly chronological.
         val contentPages = directCards.filter { card ->
             card.type == "page" && ServusNewsPolicy.couldBelongToSupportedContent(card)
         }
@@ -113,7 +152,7 @@ class ServusNewsRepository(
             .awaitAll()
             .flatten()
             .distinct()
-            .take(MAX_COLLECTIONS)
+            .take(MAX_CURRENT_COLLECTIONS)
 
         val collectionCards = collectionIds.map { collectionId ->
             async {
@@ -142,8 +181,198 @@ class ServusNewsRepository(
         }.awaitAll().filterNotNull()
     }
 
+    private suspend fun refreshShowCatalog(market: String, nowMillis: Long): List<ServusCategory> = coroutineScope {
+        val landing = api.product(market, SHOWS_PRODUCT_ID)
+        val categoryRefs = landing.collections
+            .filter { it.listType != "reference" && !it.id.isNullOrBlank() }
+
+        val seeds = categoryRefs.mapIndexed { order, ref ->
+            async {
+                val first = api.collection(market, requireNotNull(ref.id), 0)
+                val cards = fetchCollectionCards(market, requireNotNull(ref.id), first, MAX_CATEGORY_PAGES)
+                CategorySeed(
+                    id = requireNotNull(ref.id),
+                    title = first.label?.takeIf { it.isNotBlank() }
+                        ?: ref.label?.takeIf { it.isNotBlank() }
+                        ?: "ServusTV",
+                    order = order,
+                    cards = cards.filter(ServusCatalogPolicy::isShowCard),
+                )
+            }
+        }.awaitAll()
+            .filterNot { seed -> seed.title.startsWith("TV-Kanäle", true) || seed.title.startsWith("Live-Kanäle", true) }
+
+        val uniqueShowCards = LinkedHashMap<String, ServusCardDto>()
+        seeds.forEach { seed ->
+            seed.cards.forEach { card ->
+                card.id?.let { uniqueShowCards.putIfAbsent(it, card) }
+            }
+        }
+
+        val semaphore = Semaphore(SHOW_PARALLELISM)
+        val cores = uniqueShowCards.values.map { card ->
+            async {
+                semaphore.withPermit {
+                    loadShowCore(market, card, nowMillis)
+                }
+            }
+        }.awaitAll().filterNotNull().associateBy { it.id }
+
+        seeds.map { seed ->
+            val shows = seed.cards.mapNotNull { card ->
+                val id = card.id ?: return@mapNotNull null
+                val core = cores[id] ?: return@mapNotNull null
+                val episodes = core.episodes.map { episode ->
+                    episode.copy(
+                        categoryId = seed.id,
+                        categoryTitle = seed.title,
+                    )
+                }
+                ServusShow(
+                    id = core.id,
+                    title = core.title,
+                    description = core.description,
+                    categoryId = seed.id,
+                    categoryTitle = seed.title,
+                    artworkUri = core.artworkUri,
+                    squareArtworkUri = core.squareArtworkUri,
+                    logoUri = core.logoUri,
+                    episodes = episodes,
+                )
+            }.distinctBy { it.id }
+            ServusCategory(seed.id, seed.title, seed.order, shows)
+        }.filter { it.shows.isNotEmpty() }
+    }
+
+    private suspend fun loadShowCore(
+        market: String,
+        card: ServusCardDto,
+        nowMillis: Long,
+    ): ShowCore? {
+        val id = card.id ?: return null
+        val detail = runCatching { api.product(market, id) }.getOrNull()
+        val title = detail?.title?.takeIf { !it.isNullOrBlank() }
+            ?: card.title?.takeIf { it.isNotBlank() }
+            ?: return null
+        val resources = (detail?.mediaResources.orEmpty() + card.mediaResources).distinct()
+        val logoUri = ServusCatalogPolicy.titleTreatment(id, resources)
+        val collectionRefs = detail?.collections.orEmpty()
+            .filter { it.listType != "reference" && !it.id.isNullOrBlank() }
+            .take(MAX_SHOW_COLLECTIONS)
+
+        val rawCards = coroutineScope {
+            collectionRefs.map { ref ->
+                async {
+                    val collectionId = requireNotNull(ref.id)
+                    val first = runCatching { api.collection(market, collectionId, 0) }.getOrNull()
+                        ?: return@async emptyList()
+                    fetchCollectionCards(market, collectionId, first, MAX_SHOW_COLLECTION_PAGES)
+                }
+            }.awaitAll().flatten()
+        }
+
+        val mapped = rawCards.mapNotNull { episodeCard ->
+            ServusCatalogPolicy.toShowEpisode(
+                card = episodeCard,
+                showId = id,
+                showTitle = title,
+                categoryId = "",
+                categoryTitle = "",
+                showLogoUri = logoUri,
+                nowMillis = nowMillis,
+            )
+        }
+        val episodes = ServusCatalogPolicy.selectChannelEpisodes(mapped)
+        return ShowCore(
+            id = id,
+            title = title,
+            description = detail?.longDescription?.takeIf { it.isNotBlank() }
+                ?: detail?.shortDescription?.takeIf { it.isNotBlank() }
+                ?: card.longDescription?.takeIf { it.isNotBlank() }
+                ?: card.shortDescription?.takeIf { it.isNotBlank() },
+            artworkUri = ServusCatalogPolicy.landscapeArtwork(id, resources),
+            squareArtworkUri = ServusCatalogPolicy.squareArtwork(id, resources),
+            logoUri = logoUri,
+            episodes = episodes,
+        )
+    }
+
+    private suspend fun refreshLiveChannels(market: String, nowMillis: Long): List<ServusLiveChannel> = coroutineScope {
+        val first = api.collection(market, LIVE_COLLECTION_ID, 0)
+        val cards = fetchCollectionCards(market, LIVE_COLLECTION_ID, first, MAX_LIVE_PAGES)
+            .filter { !it.id.isNullOrBlank() && !it.title.isNullOrBlank() }
+            .distinctBy { it.id }
+        val semaphore = Semaphore(LIVE_GUIDE_PARALLELISM)
+        cards.map { card ->
+            async {
+                semaphore.withPermit {
+                    val id = requireNotNull(card.id)
+                    val guide = runCatching { api.guide(market, id) }.getOrNull()
+                    val programs = guide?.cards.orEmpty()
+                        .mapNotNull(ServusCatalogPolicy::liveProgram)
+                        .filter { it.endAtMillis > nowMillis - LIVE_GUIDE_PAST_GRACE_MS }
+                        .sortedBy { it.startAtMillis }
+                        .take(MAX_GUIDE_PROGRAMS)
+                    ServusLiveChannel(
+                        id = id,
+                        title = requireNotNull(card.title),
+                        description = card.longDescription?.takeIf { it.isNotBlank() }
+                            ?: card.shortDescription?.takeIf { it.isNotBlank() },
+                        artworkUri = ServusCatalogPolicy.landscapeArtwork(id, card.mediaResources),
+                        squareArtworkUri = ServusCatalogPolicy.squareArtwork(id, card.mediaResources),
+                        logoUri = ServusCatalogPolicy.titleTreatment(id, card.mediaResources),
+                        programs = programs,
+                    )
+                }
+            }
+        }.awaitAll()
+    }
+
+    private suspend fun fetchCollectionCards(
+        market: String,
+        collectionId: String,
+        first: SearchResponseDto,
+        maxPages: Int,
+    ): List<ServusCardDto> {
+        val cards = first.cards.toMutableList()
+        var next = first.meta?.next
+        var page = 1
+        val seenOffsets = mutableSetOf(0)
+        while (!next.isNullOrBlank() && page < maxPages) {
+            val offset = ServusCatalogPolicy.nextOffset(next) ?: break
+            if (!seenOffsets.add(offset)) break
+            val response = runCatching { api.collection(market, collectionId, offset) }.getOrNull() ?: break
+            cards += response.cards
+            next = response.meta?.next
+            page++
+        }
+        return cards
+    }
+
+    private data class CategorySeed(
+        val id: String,
+        val title: String,
+        val order: Int,
+        val cards: List<ServusCardDto>,
+    )
+
+    private data class ShowCore(
+        val id: String,
+        val title: String,
+        val description: String?,
+        val artworkUri: String?,
+        val squareArtworkUri: String?,
+        val logoUri: String?,
+        val episodes: List<ServusNewsEpisode>,
+    )
+
     private companion object {
         const val TAG = "ServusRepository"
+        const val SHOWS_PRODUCT_ID = "sendungen"
+        const val LIVE_COLLECTION_ID = "6e6475bc-d2f2-4593-b95f-ed0a74206c62"
+        const val CATALOG_REFRESH_INTERVAL_MS = 6L * 60L * 60L * 1000L
+        const val LIVE_GUIDE_PAST_GRACE_MS = 30L * 60L * 1000L
+
         val SEARCH_QUERIES = listOf(
             "Servus Nachrichten",
             "Nachrichten 19:20",
@@ -154,8 +383,16 @@ class ServusNewsRepository(
         const val MAX_DIRECT_IDS_PER_QUERY = 16
         const val DETAIL_PARALLELISM = 6
         const val MAX_CONTENT_PAGES = 8
-        const val MAX_COLLECTIONS = 12
+        const val MAX_CURRENT_COLLECTIONS = 12
         const val MAX_DETAIL_CANDIDATES = 72
-        const val MAX_EPISODES = 40
+        const val MAX_CURRENT_EPISODES = 40
+
+        const val SHOW_PARALLELISM = 4
+        const val MAX_CATEGORY_PAGES = 20
+        const val MAX_SHOW_COLLECTIONS = 5
+        const val MAX_SHOW_COLLECTION_PAGES = 3
+        const val MAX_LIVE_PAGES = 3
+        const val LIVE_GUIDE_PARALLELISM = 4
+        const val MAX_GUIDE_PROGRAMS = 8
     }
 }
