@@ -151,7 +151,7 @@ class ServusNewsPolicyTest {
     }
 
     @Test
-    fun visibleDateAndTimeAreUsedWhenSunriseTimestampIsMissing() {
+    fun visibleEditorialDateAndTimeAreNotUsedAsVodAvailability() {
         val episode = ServusNewsPolicy.toSupportedEpisode(
             ServusCardDto(
                 id = "AA90FALLBACK",
@@ -165,12 +165,7 @@ class ServusNewsPolicyTest {
         )
 
         assertNotNull(episode)
-        val expectedLocal = java.time.LocalDate.of(2026, 8, 30)
-            .atTime(12, 0)
-            .atZone(java.time.ZoneId.systemDefault())
-            .toInstant()
-            .toEpochMilli()
-        assertEquals(expectedLocal, episode?.publishedAtMillis)
+        assertNull(episode?.publishedAtMillis)
     }
 
     @Test
