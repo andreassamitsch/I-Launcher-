@@ -509,7 +509,14 @@ class MainActivity : Activity() {
     }
 
     private fun buildEpisodeMeta(episode: ServusNewsEpisode): String = buildList {
-        episode.publishedAtMillis?.let { add(formatPublishedAt(it)) }
+        when {
+            episode.observedAvailableAtMillis != null -> {
+                add("Online erkannt ${formatPublishedAt(episode.observedAvailableAtMillis)}")
+            }
+            episode.publishedAtMillis != null -> {
+                add("Verfügbar ab ${formatPublishedAt(episode.publishedAtMillis)}")
+            }
+        }
         add(formatDuration(episode.durationMillis))
     }.joinToString(" · ")
 
