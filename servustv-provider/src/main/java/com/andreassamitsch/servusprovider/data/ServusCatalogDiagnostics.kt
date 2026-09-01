@@ -12,6 +12,7 @@ internal class ServusCatalogDiagnosticBuilder {
     private val entries = mutableListOf<String>()
     private var recordedCategories = 0
     private var omittedCategories = 0
+    private var skippedCategories = 0
 
     fun recordLanding(collections: List<ServusCollectionRefDto>) {
         val typeCounts = collections
@@ -37,8 +38,28 @@ internal class ServusCatalogDiagnosticBuilder {
         }
     }
 
+    fun recordSkippedCategory(title: String?, throwable: Throwable) {
+        skippedCategories++
+        if (skippedCategories <= MAX_RECORDED_SKIPPED_CATEGORIES) {
+            val name = compact(title?.takeIf { it.isNotBlank() } ?: "ohne Label")
+            val reason = compact(
+                buildString {
+                    append(throwable.javaClass.simpleName)
+                    throwable.message?.takeIf { it.isNotBlank() }?.let {
+                        append(": ")
+                        append(it)
+                    }
+                },
+            )
+            entries += "übersprungen: $name ($reason)"
+        }
+    }
+
     fun recordUniqueShows(count: Int) {
         if (omittedCategories > 0) entries += "+$omittedCategories weitere Kategorien"
+        if (skippedCategories > MAX_RECORDED_SKIPPED_CATEGORIES) {
+            entries += "+${skippedCategories - MAX_RECORDED_SKIPPED_CATEGORIES} weitere übersprungene Kategorien"
+        }
         entries += "eindeutige Sendungskarten: $count"
     }
 
@@ -70,7 +91,8 @@ internal class ServusCatalogDiagnosticBuilder {
 
     companion object {
         private const val MAX_RECORDED_CATEGORIES = 8
-        private const val MAX_LABEL_CHARS = 42
+        private const val MAX_RECORDED_SKIPPED_CATEGORIES = 4
+        private const val MAX_LABEL_CHARS = 72
         private val URL_PATTERN = Regex("https?://\\S+", RegexOption.IGNORE_CASE)
 
         internal fun sanitize(value: String): String = value
@@ -79,7 +101,7 @@ internal class ServusCatalogDiagnosticBuilder {
             .trim()
             .take(MAX_DIAGNOSTIC_CHARS)
 
-        private const val MAX_DIAGNOSTIC_CHARS = 1200
+        private const val MAX_DIAGNOSTIC_CHARS = 1600
     }
 }
 
