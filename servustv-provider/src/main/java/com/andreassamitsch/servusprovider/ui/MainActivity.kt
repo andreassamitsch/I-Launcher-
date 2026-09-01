@@ -3,25 +3,26 @@ package com.andreassamitsch.servusprovider.ui
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
-import android.util.LruCache
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
-import com.andreassamitsch.servusprovider.api.ServusNetwork
+import com.andreassamitsch.servusprovider.data.ServusCategory
+import com.andreassamitsch.servusprovider.data.ServusLiveChannel
 import com.andreassamitsch.servusprovider.data.ServusNewsEpisode
 import com.andreassamitsch.servusprovider.data.ServusNewsPolicy
 import com.andreassamitsch.servusprovider.data.ServusNewsRepository
+import com.andreassamitsch.servusprovider.data.ServusShow
 import com.andreassamitsch.servusprovider.work.ServusRefreshWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +30,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.Request
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -37,20 +37,18 @@ import java.util.Locale
 
 class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val artworkCache = object : LruCache<String, Bitmap>(ARTWORK_CACHE_KIB) {
-        override fun sizeOf(key: String, value: Bitmap): Int = (value.byteCount / 1024).coerceAtLeast(1)
-    }
     private val isTvDevice: Boolean by lazy {
         packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
     }
 
     private lateinit var repository: ServusNewsRepository
     private lateinit var statusText: TextView
-    private lateinit var episodesContainer: LinearLayout
+    private lateinit var contentContainer: LinearLayout
     private lateinit var progress: ProgressBar
     private lateinit var refreshButton: Button
-    private lateinit var playButton: Button
     private var episodes: List<ServusNewsEpisode> = emptyList()
+    private var categories: List<ServusCategory> = emptyList()
+    private var liveChannels: List<ServusLiveChannel> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,7 +56,12 @@ class MainActivity : Activity() {
         ServusRefreshWorker.schedule(applicationContext)
         setContentView(buildUi())
         renderCached()
-        refresh()
+        refresh(forceCatalog = false)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::contentContainer.isInitialized) renderCached()
     }
 
     override fun onDestroy() {
@@ -80,63 +83,44 @@ class MainActivity : Activity() {
         root.addView(content, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
 
         content.addView(TextView(this).apply {
-            text = "ServusTV Aktuelles"
-            textSize = if (isTvDevice) 30f else 26f
+            text = "ServusTV"
+            textSize = if (isTvDevice) 32f else 28f
             setTextColor(Color.WHITE)
         })
         content.addView(TextView(this).apply {
-            text = "Servus Nachrichten · 90 Sekunden · Der Wegscheider"
+            text = "Aktuelles · Live TV · Sendungen"
             textSize = if (isTvDevice) 18f else 16f
             setTextColor(Color.LTGRAY)
-            setPadding(0, dp(8), 0, dp(18))
+            setPadding(0, dp(6), 0, dp(14))
         })
 
         statusText = TextView(this).apply {
-            textSize = if (isTvDevice) 17f else 15f
-            setTextColor(Color.WHITE)
+            textSize = if (isTvDevice) 16f else 14f
+            setTextColor(Color.LTGRAY)
         }
         content.addView(statusText)
 
-        progress = ProgressBar(this).apply {
-            visibility = View.GONE
-        }
+        progress = ProgressBar(this).apply { visibility = View.GONE }
         content.addView(progress)
 
-        val actions = LinearLayout(this).apply {
-            orientation = if (isTvDevice) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-            setPadding(0, dp(14), 0, dp(20))
-        }
         refreshButton = Button(this).apply {
             text = "Jetzt aktualisieren"
-            setOnClickListener { refresh() }
-        }
-        playButton = Button(this).apply {
-            text = "Neueste Sendung abspielen"
-            isEnabled = false
-            setOnClickListener { episodes.firstOrNull()?.let(::openEpisode) }
-        }
-        if (isTvDevice) {
-            actions.addView(refreshButton)
-            actions.addView(playButton)
-        } else {
-            actions.addView(
-                refreshButton,
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
-            )
-            actions.addView(
-                playButton,
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = dp(8)
-                },
-            )
-        }
-        content.addView(actions)
-
-        episodesContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            setOnClickListener { refresh(forceCatalog = true) }
         }
         content.addView(
-            episodesContainer,
+            refreshButton,
+            LinearLayout.LayoutParams(
+                if (isTvDevice) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topMargin = dp(12)
+                bottomMargin = dp(20)
+            },
+        )
+
+        contentContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(
+            contentContainer,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
         )
         if (isTvDevice) refreshButton.requestFocus()
@@ -145,194 +129,239 @@ class MainActivity : Activity() {
 
     private fun renderCached() {
         episodes = repository.cachedEpisodes()
+        categories = repository.cachedCategories()
+        liveChannels = repository.cachedLiveChannels()
         val success = repository.lastSuccessMillis()
-        val lastError = repository.lastError()
+        val showCount = categories.flatMap { it.shows }.distinctBy { it.id }.size
         statusText.text = buildString {
-            if (success > 0) {
-                append("Letzte erfolgreiche Aktualisierung: ")
+            if (success > 0L) {
+                append("Letzte Aktualisierung: ")
                 append(DateFormat.getDateTimeInstance().format(Date(success)))
             } else {
                 append("Noch keine erfolgreiche Aktualisierung")
             }
             if (repository.tvChannelSupported()) {
-                append("\nAndroid-TV-Kanal: ServusTV Aktuelles")
+                append("\nAndroid TV: Aktuelles + Live")
+                if (showCount > 0) append(" + $showCount Sendungskanäle")
             } else {
-                append("\nStandalone-Modus: Android-TV-Kanal ist auf diesem Gerät nicht verfügbar.")
+                append("\nStandalone-Modus ohne Android-TV-Kanäle")
             }
-            if (!lastError.isNullOrBlank()) append("\nLetzter Datenfehler: $lastError")
+            repository.lastError()?.takeIf { it.isNotBlank() }?.let { append("\nLetzter Datenfehler: $it") }
         }
-        playButton.isEnabled = episodes.isNotEmpty()
-        renderEpisodes()
+        renderContent()
     }
 
-    private fun renderEpisodes() {
-        episodesContainer.removeAllViews()
-        if (episodes.isEmpty()) {
-            episodesContainer.addView(TextView(this).apply {
-                text = "Noch keine Sendungen im lokalen Cache."
-                textSize = if (isTvDevice) 17f else 15f
-                setTextColor(Color.LTGRAY)
-                setPadding(0, dp(8), 0, dp(16))
+    private fun renderContent() {
+        contentContainer.removeAllViews()
+        if (episodes.isNotEmpty()) {
+            addSectionTitle("Aktuelles")
+            addRail(episodes.take(MAX_CURRENT_UI_ITEMS).map(::buildEpisodeCard))
+        }
+        if (liveChannels.isNotEmpty()) {
+            addSectionTitle("Live TV")
+            addRail(liveChannels.map(::buildLiveCard))
+        }
+        if (categories.isEmpty()) {
+            addSectionTitle("Sendungen")
+            contentContainer.addView(TextView(this).apply {
+                text = "Sendungskatalog wird beim nächsten vollständigen Refresh geladen."
+                textSize = if (isTvDevice) 16f else 14f
+                setTextColor(Color.GRAY)
+                setPadding(0, 0, 0, dp(16))
             })
-            return
-        }
-
-        episodes.forEach { episode ->
-            episodesContainer.addView(
-                buildEpisodeCard(episode),
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    bottomMargin = dp(12)
-                },
-            )
+        } else {
+            categories.sortedBy { it.order }.forEach { category ->
+                addSectionTitle(category.title)
+                addRail(category.shows.map(::buildShowCard))
+            }
         }
     }
 
-    private fun buildEpisodeCard(episode: ServusNewsEpisode): LinearLayout {
+    private fun addSectionTitle(title: String) {
+        contentContainer.addView(TextView(this).apply {
+            text = title
+            textSize = if (isTvDevice) 24f else 20f
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(14), 0, dp(10))
+        })
+    }
+
+    private fun addRail(cards: List<View>) {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(10), dp(12), dp(10))
-            isClickable = true
-            isFocusable = true
-            isFocusableInTouchMode = false
-            setCardBackground(this, focused = false)
-            setOnClickListener { openEpisode(episode) }
-            setOnFocusChangeListener { view, focused -> setCardBackground(view, focused) }
+            gravity = Gravity.TOP
+            setPadding(dp(2), dp(2), dp(2), dp(8))
         }
-
-        val imageWidth = dp(if (isTvDevice) 260 else 132)
-        val imageHeight = (imageWidth * 9) / 16
-        val image = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            setBackgroundColor(Color.rgb(34, 34, 34))
-            isFocusable = false
-            isClickable = true
-            contentDescription = "${episode.title} abspielen"
-            setOnClickListener { openEpisode(episode) }
+        cards.forEach { card ->
+            row.addView(
+                card,
+                LinearLayout.LayoutParams(
+                    dp(if (isTvDevice) CARD_WIDTH_TV_DP else CARD_WIDTH_PHONE_DP),
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { marginEnd = dp(if (isTvDevice) 14 else 10) },
+            )
         }
-        row.addView(image, LinearLayout.LayoutParams(imageWidth, imageHeight))
-
-        val textColumn = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(if (isTvDevice) 18 else 12), 0, 0, 0)
-        }
-        val showName = TextView(this).apply {
-            text = ServusNewsPolicy.displayLabel(episode)
-            textSize = if (isTvDevice) 14f else 12f
-            setTextColor(Color.LTGRAY)
-            isFocusable = false
-            isClickable = true
-            setOnClickListener { openEpisode(episode) }
-        }
-        val title = TextView(this).apply {
-            text = episode.title
-            textSize = if (isTvDevice) 20f else 16f
-            setTextColor(Color.WHITE)
-            maxLines = 2
-            isFocusable = false
-            isClickable = true
-            setPadding(0, dp(4), 0, dp(5))
-            setOnClickListener { openEpisode(episode) }
-        }
-        val meta = TextView(this).apply {
-            text = buildString {
-                append(formatPublishedAt(episode.publishedAtMillis))
-                append(" · ")
-                append(formatDuration(episode.durationMillis))
-            }
-            textSize = if (isTvDevice) 14f else 12f
-            setTextColor(Color.GRAY)
-        }
-        textColumn.addView(showName)
-        textColumn.addView(title)
-        textColumn.addView(meta)
-        row.addView(
-            textColumn,
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        contentContainer.addView(
+            HorizontalScrollView(this).apply {
+                isHorizontalScrollBarEnabled = false
+                addView(row)
+            },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
         )
-
-        episode.artworkUri?.let { loadArtwork(image, it) }
-        return row
     }
 
-    private fun refresh() {
+    private fun buildEpisodeCard(episode: ServusNewsEpisode): View = buildMediaCard(
+        artworkUri = episode.artworkUri,
+        logoUri = episode.logoUri,
+        eyebrow = ServusNewsPolicy.displayLabel(episode),
+        title = episode.title,
+        meta = "${formatPublishedAt(episode.publishedAtMillis)} · ${formatDuration(episode.durationMillis)}",
+        onClick = { openPlayback(episode.id) },
+    )
+
+    private fun buildLiveCard(channel: ServusLiveChannel): View {
+        val current = channel.currentProgram()
+        val meta = current?.let { program -> "Jetzt: ${program.title}" } ?: channel.description.orEmpty()
+        return buildMediaCard(
+            artworkUri = channel.artworkUri ?: channel.squareArtworkUri,
+            logoUri = channel.logoUri,
+            eyebrow = "LIVE",
+            title = channel.title,
+            meta = meta,
+            onClick = { openPlayback(channel.id) },
+        )
+    }
+
+    private fun buildShowCard(show: ServusShow): View = buildMediaCard(
+        artworkUri = show.artworkUri ?: show.squareArtworkUri,
+        logoUri = show.logoUri,
+        eyebrow = null,
+        title = show.title,
+        meta = if (show.episodes.isEmpty()) "Mediathek" else "${show.episodes.size} aktuelle Videos",
+        onClick = { openShow(show.id) },
+    )
+
+    private fun buildMediaCard(
+        artworkUri: String?,
+        logoUri: String?,
+        eyebrow: String?,
+        title: String,
+        meta: String,
+        onClick: () -> Unit,
+    ): LinearLayout {
+        val width = dp(if (isTvDevice) CARD_WIDTH_TV_DP else CARD_WIDTH_PHONE_DP)
+        val imageHeight = width * 9 / 16
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            isClickable = true
+            isFocusable = true
+            setPadding(dp(8), dp(8), dp(8), dp(10))
+            setCardBackground(this, false)
+            setOnClickListener { onClick() }
+            setOnFocusChangeListener { view, focused -> setCardBackground(view, focused) }
+
+            val image = ImageView(this@MainActivity).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(Color.rgb(30, 30, 30))
+                isFocusable = false
+                isClickable = false
+            }
+            addView(image, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, imageHeight))
+            ServusArtworkLoader.load(scope, image, artworkUri)
+
+            if (!logoUri.isNullOrBlank()) {
+                val logo = ImageView(this@MainActivity).apply {
+                    scaleType = ImageView.ScaleType.FIT_START
+                    adjustViewBounds = true
+                    setPadding(0, dp(8), 0, dp(2))
+                    isFocusable = false
+                }
+                addView(logo, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (isTvDevice) 42 else 34)))
+                ServusArtworkLoader.load(scope, logo, logoUri)
+            }
+            if (!eyebrow.isNullOrBlank()) {
+                addView(TextView(this@MainActivity).apply {
+                    text = eyebrow
+                    textSize = if (isTvDevice) 13f else 11f
+                    setTextColor(Color.LTGRAY)
+                    maxLines = 1
+                    setPadding(0, dp(7), 0, 0)
+                })
+            }
+            addView(TextView(this@MainActivity).apply {
+                text = title
+                textSize = if (isTvDevice) 18f else 15f
+                setTextColor(Color.WHITE)
+                maxLines = 2
+                setPadding(0, dp(4), 0, dp(3))
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = meta
+                textSize = if (isTvDevice) 13f else 11f
+                setTextColor(Color.GRAY)
+                maxLines = 2
+            })
+        }
+    }
+
+    private fun refresh(forceCatalog: Boolean) {
         refreshButton.isEnabled = false
         progress.visibility = View.VISIBLE
         scope.launch {
             val result = runCatching {
-                withContext(Dispatchers.IO) { repository.refresh() }
+                withContext(Dispatchers.IO) { repository.refresh(forceCatalog = forceCatalog) }
             }
             progress.visibility = View.GONE
             refreshButton.isEnabled = true
             if (result.isSuccess) {
                 renderCached()
             } else {
-                val message = result.exceptionOrNull()?.message ?: "Unbekannter Fehler"
-                statusText.text = "Datenaktualisierung fehlgeschlagen: $message"
+                statusText.text = "Datenaktualisierung fehlgeschlagen: ${result.exceptionOrNull()?.message ?: "Unbekannter Fehler"}"
             }
         }
     }
 
-    private fun loadArtwork(imageView: ImageView, url: String) {
-        imageView.tag = url
-        artworkCache.get(url)?.let { cached ->
-            imageView.setImageBitmap(cached)
-            return
-        }
-        scope.launch {
-            val bitmap = withContext(Dispatchers.IO) { downloadArtwork(url) } ?: return@launch
-            artworkCache.put(url, bitmap)
-            if (imageView.tag == url) imageView.setImageBitmap(bitmap)
-        }
+    private fun openPlayback(id: String) {
+        startActivity(
+            Intent(this, PlaybackActivity::class.java)
+                .setAction(Intent.ACTION_VIEW)
+                .setData(Uri.parse("iservus://play/${Uri.encode(id)}")),
+        )
     }
 
-    private fun downloadArtwork(url: String): Bitmap? = runCatching {
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", ServusNetwork.WEB_USER_AGENT)
-            .header("Referer", "https://www.servustv.com/")
-            .build()
-        ServusNetwork.httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return@use null
-            BitmapFactory.decodeStream(response.body.byteStream())
-        }
-    }.getOrNull()
+    private fun openShow(showId: String) {
+        startActivity(
+            Intent(this, ShowActivity::class.java)
+                .setAction(Intent.ACTION_VIEW)
+                .setData(Uri.parse("iservus://show/${Uri.encode(showId)}")),
+        )
+    }
 
     private fun setCardBackground(view: View, focused: Boolean) {
         view.background = GradientDrawable().apply {
             cornerRadius = dp(12).toFloat()
-            setColor(if (focused) Color.rgb(42, 42, 42) else Color.rgb(20, 20, 20))
+            setColor(if (focused) Color.rgb(42, 42, 42) else Color.rgb(19, 19, 19))
             if (focused) setStroke(dp(2), Color.WHITE)
         }
-    }
-
-    private fun openEpisode(episode: ServusNewsEpisode) {
-        startActivity(
-            Intent(this, PlaybackActivity::class.java)
-                .setAction(Intent.ACTION_VIEW)
-                .setData(android.net.Uri.parse("iservus://play/${android.net.Uri.encode(episode.id)}")),
-        )
+        view.scaleX = if (focused && isTvDevice) 1.035f else 1f
+        view.scaleY = if (focused && isTvDevice) 1.035f else 1f
     }
 
     private fun formatPublishedAt(millis: Long): String =
         SimpleDateFormat("dd.MM. · HH:mm", Locale.getDefault()).format(Date(millis))
 
     private fun formatDuration(millis: Long): String {
-        val seconds = (millis / 1_000L).coerceAtLeast(0L)
-        val minutes = seconds / 60L
-        val remainingSeconds = seconds % 60L
-        return if (minutes > 0 && remainingSeconds > 0) {
-            "$minutes:${remainingSeconds.toString().padStart(2, '0')} Min."
-        } else if (minutes > 0) {
-            "$minutes Min."
-        } else {
-            "$remainingSeconds Sek."
-        }
+        val totalSeconds = millis.coerceAtLeast(0L) / 1_000L
+        val minutes = totalSeconds / 60L
+        val seconds = totalSeconds % 60L
+        return if (minutes > 0) "$minutes:${seconds.toString().padStart(2, '0')} Min." else "$seconds Sek."
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private companion object {
-        const val ARTWORK_CACHE_KIB = 12 * 1024
+        const val CARD_WIDTH_TV_DP = 300
+        const val CARD_WIDTH_PHONE_DP = 220
+        const val MAX_CURRENT_UI_ITEMS = 20
     }
 }

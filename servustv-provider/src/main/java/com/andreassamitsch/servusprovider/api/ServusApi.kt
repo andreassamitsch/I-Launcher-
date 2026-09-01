@@ -32,6 +32,13 @@ interface ServusApi {
         @Query("offset") offset: Int,
     ): SearchResponseDto
 
+    @GET("guides/v5/stv/de/{market}/{id}")
+    suspend fun guide(
+        @Path("market") market: String,
+        @Path("id") id: String,
+        @Query("complete") complete: Boolean = false,
+    ): SearchResponseDto
+
     @GET("products/dynamic/v5/stv/de/{market}/{id}")
     suspend fun dynamicProduct(
         @Path("market") market: String,

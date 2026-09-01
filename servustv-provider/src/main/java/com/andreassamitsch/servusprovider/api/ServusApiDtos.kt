@@ -13,6 +13,9 @@ data class SessionDto(
 )
 
 data class SearchResponseDto(
+    val id: String? = null,
+    val label: String? = null,
+    @SerializedName("list_type") val listType: String? = null,
     val cards: List<ServusCardDto> = emptyList(),
     val collections: List<ServusCollectionRefDto> = emptyList(),
     val meta: ServusMetaDto? = null,
@@ -41,6 +44,10 @@ data class ServusCardDto(
     val playable: Boolean? = null,
     @SerializedName("sunrise_timestamp") val sunriseTimestamp: String? = null,
     @SerializedName("sunset_timestamp") val sunsetTimestamp: String? = null,
+    @SerializedName("start_time") val startTime: String? = null,
+    @SerializedName("end_time") val endTime: String? = null,
+    @SerializedName("season_number") val seasonNumber: Int? = null,
+    @SerializedName("episode_number") val episodeNumber: Int? = null,
     @SerializedName("media_resources")
     @JsonAdapter(MediaResourcesDeserializer::class)
     val mediaResources: List<String> = emptyList(),
@@ -52,7 +59,7 @@ data class ServusCardDto(
  *
  * Some endpoints/cards use an array of resource names while others use an object whose keys
  * are the resource names and whose values contain resource metadata. Normalising both forms at
- * the DTO boundary keeps the repository and artwork policy independent from that API detail.
+ * the DTO boundary keeps repositories and artwork selection independent from that API detail.
  */
 class MediaResourcesDeserializer : JsonDeserializer<List<String>> {
     override fun deserialize(
@@ -69,9 +76,7 @@ class MediaResourcesDeserializer : JsonDeserializer<List<String>> {
             element.isJsonArray -> element.asJsonArray.flatMap(::collectResourceNames)
             element.isJsonObject -> buildList {
                 element.asJsonObject.entrySet().forEach { (key, value) ->
-                    // For the object form the API uses the media-resource identifier as the key.
                     add(key)
-                    // Also inspect nested values so the parser remains compatible with wrapper objects.
                     addAll(collectResourceNames(value))
                 }
             }
