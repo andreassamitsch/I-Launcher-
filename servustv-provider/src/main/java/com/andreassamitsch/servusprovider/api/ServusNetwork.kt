@@ -31,10 +31,12 @@ object ServusNetwork {
         }
         .build()
 
-    val api: ServusApi = Retrofit.Builder()
+    private val rawApi: ServusApi = Retrofit.Builder()
         .baseUrl(API_BASE_URL)
         .client(httpClient)
         .addConverterFactory(GsonConverterFactory.create(gson))
         .build()
         .create(ServusApi::class.java)
+
+    val api: ServusApi = ServusResilientApi(rawApi)
 }
