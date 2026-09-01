@@ -12,7 +12,11 @@ data class ServusNewsEpisode(
     val showName: String?,
     val description: String?,
     val durationMillis: Long,
-    val publishedAtMillis: Long,
+    /**
+     * Publication/availability/broadcast timestamp supplied or derivable from ServusTV metadata.
+     * Null deliberately means "unknown". The local import/refresh time must never be stored here.
+     */
+    val publishedAtMillis: Long?,
     val artworkUri: String?,
     val showId: String? = null,
     val logoUri: String? = null,
