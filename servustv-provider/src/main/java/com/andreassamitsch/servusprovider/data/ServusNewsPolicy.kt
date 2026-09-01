@@ -3,10 +3,7 @@ package com.andreassamitsch.servusprovider.data
 import com.andreassamitsch.servusprovider.api.ServusCardDto
 import com.andreassamitsch.servusprovider.api.ServusNetwork
 import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalTime
 import java.time.ZoneId
-import java.time.format.DateTimeParseException
 import java.util.Locale
 
 /** Supported ServusTV formats that are intentionally exposed by this small standalone app. */
@@ -22,8 +19,6 @@ object ServusNewsPolicy {
     private const val MAX_90_SECONDS_MILLIS = 5L * 60L * 1000L
     private const val MIN_WEGSCHEIDER_MILLIS = 4L * 60L * 1000L
 
-    private val datePattern = Regex("""\b(\d{1,2})\.(\d{1,2})\.?\b""")
-    private val timePattern = Regex("""\b(\d{1,2}):(\d{2})\s*(?:uhr)?\b""", RegexOption.IGNORE_CASE)
     private val excludedFullNewsFragments = listOf(
         "90 sekunden",
         "90-sekunden",
@@ -87,7 +82,7 @@ object ServusNewsPolicy {
             description = card.longDescription?.takeIf { it.length > 20 }
                 ?: card.shortDescription?.takeIf { it.isNotBlank() },
             durationMillis = duration,
-            publishedAtMillis = parsePublishedAt(card, nowMillis),
+            publishedAtMillis = ServusSourceTimestampPolicy.resolve(card, nowMillis),
             artworkUri = landscapeArtwork(id, card.mediaResources),
         )
     }
@@ -109,21 +104,30 @@ object ServusNewsPolicy {
     /**
      * The API can expose the same item through search and collections with different content IDs.
      * We therefore deduplicate by editorial identity while still preserving multiple 90-second
-     * updates on the same day.
+     * updates on the same day. Unknown source timestamps never get replaced by an import time;
+     * their title becomes part of the stable fallback identity instead.
      */
     fun contentKey(episode: ServusNewsEpisode): String {
-        val instant = Instant.ofEpochMilli(episode.publishedAtMillis)
-        val localDateTime = instant.atZone(ZoneId.systemDefault())
-        val date = localDateTime.toLocalDate()
+        val localDateTime = episode.publishedAtMillis
+            ?.let(Instant::ofEpochMilli)
+            ?.atZone(ZoneId.systemDefault())
+        val date = localDateTime?.toLocalDate()
         val normalizedTitle = normalizeTitle(episode.title)
         return when (contentKind(episode)) {
-            ServusContentKind.FULL_NEWS -> "full-news-$date"
+            ServusContentKind.FULL_NEWS -> date?.let { "full-news-$it" }
+                ?: "full-news-unknown-$normalizedTitle"
             ServusContentKind.NEWS_90_SECONDS -> {
-                val minute = localDateTime.withSecond(0).withNano(0).toLocalTime()
-                "news-90-$date-$minute-$normalizedTitle"
+                val minute = localDateTime?.withSecond(0)?.withNano(0)?.toLocalTime()
+                if (date != null && minute != null) {
+                    "news-90-$date-$minute-$normalizedTitle"
+                } else {
+                    "news-90-unknown-$normalizedTitle"
+                }
             }
-            ServusContentKind.WEGSCHEIDER -> "wegscheider-$date-$normalizedTitle"
-            null -> "unknown-$date-$normalizedTitle"
+            ServusContentKind.WEGSCHEIDER -> date?.let { "wegscheider-$it-$normalizedTitle" }
+                ?: "wegscheider-unknown-$normalizedTitle"
+            null -> date?.let { "unknown-$it-$normalizedTitle" }
+                ?: "unknown-${episode.showId.orEmpty()}-$normalizedTitle"
         }
     }
 
@@ -134,11 +138,13 @@ object ServusNewsPolicy {
             .values
             .mapNotNull { candidates ->
                 candidates.maxWithOrNull(
-                    compareBy<ServusNewsEpisode> { it.publishedAtMillis }
+                    compareBy<ServusNewsEpisode> { it.publishedAtMillis ?: Long.MIN_VALUE }
                         .thenBy { it.durationMillis },
                 )
             }
-            .sortedByDescending { it.publishedAtMillis }
+            .sortedWith(
+                compareByDescending<ServusNewsEpisode> { it.publishedAtMillis ?: Long.MIN_VALUE },
+            )
     }
 
     /** Backwards-compatible name used by the earlier 19:20-only prototype. */
@@ -188,44 +194,6 @@ object ServusNewsPolicy {
     ).joinToString(" ")
         .lowercase(Locale.GERMAN)
         .replace('–', '-')
-
-    private fun parsePublishedAt(card: ServusCardDto, nowMillis: Long): Long {
-        card.sunriseTimestamp?.let { value ->
-            try {
-                return Instant.parse(value).toEpochMilli()
-            } catch (_: DateTimeParseException) {
-                // Some API responses omit a timezone. Fall through to visible date/time metadata.
-            }
-        }
-
-        val source = listOfNotNull(
-            card.title,
-            card.subheading,
-            card.shortDescription,
-            card.longDescription,
-        ).joinToString(" ")
-        val date = parseLocalDate(source, nowMillis) ?: return nowMillis
-        val time = parseLocalTime(source) ?: LocalTime.MIDNIGHT
-        return date.atTime(time).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-    }
-
-    private fun parseLocalDate(source: String, nowMillis: Long): LocalDate? {
-        val match = datePattern.find(source) ?: return null
-        val day = match.groupValues[1].toIntOrNull() ?: return null
-        val month = match.groupValues[2].toIntOrNull() ?: return null
-        val zone = ZoneId.systemDefault()
-        val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
-        var candidate = runCatching { LocalDate.of(today.year, month, day) }.getOrNull() ?: return null
-        if (candidate.isAfter(today.plusDays(31))) candidate = candidate.minusYears(1)
-        return candidate
-    }
-
-    private fun parseLocalTime(source: String): LocalTime? {
-        val match = timePattern.find(source) ?: return null
-        val hour = match.groupValues[1].toIntOrNull() ?: return null
-        val minute = match.groupValues[2].toIntOrNull() ?: return null
-        return runCatching { LocalTime.of(hour, minute) }.getOrNull()
-    }
 
     private fun normalizeTitle(value: String): String = value
         .lowercase(Locale.GERMAN)
