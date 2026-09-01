@@ -12,6 +12,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import retrofit2.HttpException
 
 class ServusNewsRepository(
     context: Context,
@@ -213,32 +214,41 @@ class ServusNewsRepository(
             )
         }
 
-        val categoryLoads = categoryRefs.mapIndexed { order, ref ->
-            async {
-                val collectionId = requireNotNull(ref.id)
-                runCatching {
-                    val first = api.collection(market, collectionId, 0)
-                    val cards = fetchCollectionCards(market, collectionId, first, MAX_CATEGORY_PAGES)
-                    val showCards = cards.filter(ServusCatalogPolicy::isShowCard)
-                    CategoryLoadResult(
-                        seed = CategorySeed(
-                            id = collectionId,
-                            title = first.label?.takeIf { it.isNotBlank() }
-                                ?: ref.label?.takeIf { it.isNotBlank() }
-                                ?: "ServusTV",
-                            order = order,
-                            rawCardCount = cards.size,
-                            cards = showCards,
-                        ),
-                    )
-                }.getOrElse { throwable ->
-                    CategoryLoadResult(
-                        skippedTitle = ref.label,
-                        error = throwable,
-                    )
+        val categoryLoads = try {
+            categoryRefs.mapIndexed { order, ref ->
+                async {
+                    val collectionId = requireNotNull(ref.id)
+                    runCatching {
+                        val first = api.collection(market, collectionId, 0)
+                        val cards = fetchCollectionCards(market, collectionId, first, MAX_CATEGORY_PAGES)
+                        val showCards = cards.filter(ServusCatalogPolicy::isShowCard)
+                        CategoryLoadResult(
+                            seed = CategorySeed(
+                                id = collectionId,
+                                title = first.label?.takeIf { it.isNotBlank() }
+                                    ?: ref.label?.takeIf { it.isNotBlank() }
+                                    ?: "ServusTV",
+                                order = order,
+                                rawCardCount = cards.size,
+                                cards = showCards,
+                            ),
+                        )
+                    }.getOrElse { throwable ->
+                        val httpError = throwable as? HttpException
+                        if (httpError != null && ServusCatalogPolicy.canSkipCategoryHttpCode(httpError.code())) {
+                            CategoryLoadResult(
+                                skippedTitle = ref.label,
+                                error = throwable,
+                            )
+                        } else {
+                            throw throwable
+                        }
+                    }
                 }
-            }
-        }.awaitAll()
+            }.awaitAll()
+        } catch (throwable: Throwable) {
+            throw diagnostics.failure("Kategorie-Collection", throwable)
+        }
 
         categoryLoads.filter { it.error != null }.forEach { load ->
             diagnostics.recordSkippedCategory(load.skippedTitle, requireNotNull(load.error))
