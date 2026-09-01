@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.andreassamitsch.servusprovider.servustv-provider-debug-35:/drawable_ic_launcher.xml.flat",
+        "source": "com.andreassamitsch.servusprovider.servustv-provider-main-37:/drawable/ic_launcher.xml"
+    },
+    {
+        "merged": "com.andreassamitsch.servusprovider.servustv-provider-debug-35:/drawable_tv_banner.xml.flat",
+        "source": "com.andreassamitsch.servusprovider.servustv-provider-main-37:/drawable/tv_banner.xml"
+    }
+]

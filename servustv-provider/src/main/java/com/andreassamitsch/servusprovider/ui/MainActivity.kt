@@ -124,7 +124,7 @@ class MainActivity : Activity() {
 
         refreshButton = Button(this).apply {
             text = "Jetzt aktualisieren"
-            setOnClickListener { refresh(forceCatalog = true) }
+            setOnClickListener { refresh(forceCatalog = false) }
         }
         content.addView(
             refreshButton,

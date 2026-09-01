@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-09-01T17:51:15.790Z" hostname="runnervmgx7h7" time="0.02">
+  <properties/>
+  <testcase name="wegscheiderIsAccepted" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.001"/>
+  <testcase name="visibleEditorialDateAndTimeAreNotUsedAsVodAvailability" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.0"/>
+  <testcase name="sameFullEditionWithDifferentContentIdsIsPublishedOnlyOnce" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.004"/>
+  <testcase name="full1920EditionIsAccepted" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.0"/>
+  <testcase name="multipleNinetySecondUpdatesOnSameDayRemainChronological" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.001"/>
+  <testcase name="ninetySecondEditionIsAcceptedButNormalNewsClipIsNot" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.0"/>
+  <testcase name="ninetySecondLabelDoesNotLeakIntoFull1920Format" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.0"/>
+  <testcase name="duplicateNinetySecondItemWithDifferentIdsIsCollapsed" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.001"/>
+  <testcase name="vodUrlMatchesKodiAddonPattern" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.0"/>
+  <testcase name="mediaResourcesObjectReturnedByApiIsNormalised" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.011"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

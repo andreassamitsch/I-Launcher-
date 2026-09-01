@@ -11,9 +11,9 @@ import retrofit2.HttpException
  * Small resilience layer around ServusTV's read-only API.
  *
  * The service occasionally returns transient 5xx responses when several discovery requests arrive
- * at once. All GET requests get a bounded retry. Search fan-out is additionally limited so the
- * four queries x three offsets used by "Aktuelles" cannot hit the backend as twelve simultaneous
- * calls. If a later search page (offset > 0) still fails transiently after all retries, it is
+ * at once. All GET requests get a bounded retry. Search fan-out is additionally limited while the
+ * Aktuelles discovery follows only pagination links advertised by the server. If a later search
+ * page (offset > 0) still fails transiently after all retries, it is
  * treated like an empty pagination page; the primary offset=0 page remains mandatory so a whole
  * query cannot silently disappear from the snapshot.
  */

@@ -68,8 +68,12 @@ ServusTV liefert Media-Resources pro Produkt. Für Sendungsbranding wird bevorzu
 `Aktuelles` sowie Live/Guide werden mit dem vorhandenen Hintergrundrefresh aktualisiert. Der vollständige Sendungskatalog ist deutlich größer und wird deshalb nicht alle 15 Minuten erneut geladen:
 
 - sofort, wenn lokal noch kein Katalog vorhanden ist
-- bei manuellem `Jetzt aktualisieren`
 - anschließend ungefähr alle sechs Stunden
+- bei einem ausdrücklich erzwungenen Diagnose-/Vollrefresh
+
+`Jetzt aktualisieren` verwendet im Normalfall denselben schnellen Pfad wie der Hintergrundrefresh. Nur wenn der Sendungskatalog fehlt oder ohnehin älter als sechs Stunden ist, wird dabei zusätzlich der Vollkatalog geladen.
+
+Auch `Aktuelles` arbeitet inkrementell: Die vier Suchbegriffe laden nur die vom Server über `meta.next` angekündigten Seiten (maximal drei pro Suchbegriff). Bereits lokal vollständig bekannte Content-IDs werden nicht bei jedem 15-Minuten- oder manuellen Refresh erneut über den Produkt-Endpunkt geladen; nur neue IDs werden hydratisiert. Ein getesteter `limit`-Queryparameter wurde vom aktuellen ServusTV-Endpunkt nicht eingehalten und wird deshalb bewusst nicht verwendet. Ein direktes Produkt `nachrichten` existiert im getesteten AT-Markt ebenfalls nicht.
 
 Für explizit zu `Aktuelles` hinzugewählte Sendungen bleibt der leichte 15-Minuten-Refresh bestehen. Bei diesen Refreshes werden vorhandene ServusTV-Verfügbarkeitszeiten aus dem lokalen Sendungs-Cache wiederverwendet und nur neue bzw. noch nicht belastbar zeitgestempelte Folgen über den Produkt-Endpunkt nachgeladen.
 
@@ -91,7 +95,7 @@ Die bereits auf TCL bestätigte Media3-Konfiguration bleibt bestehen:
 
 ### TCL / I Launcher
 
-1. App aktualisieren und einmal `Jetzt aktualisieren` auslösen. Der erste komplette Sendungskatalog darf spürbar länger dauern als der bisherige Aktuelles-Refresh.
+1. App aktualisieren und einmal `Jetzt aktualisieren` auslösen. Bei vorhandenem, frischem Sendungskatalog muss dieser Refresh deutlich schneller als der erste Vollkatalog-Import sein.
 2. App prüfen: `Aktuelles`, `Live TV` und ServusTV-Kategorien müssen erscheinen.
 3. Kategorien und Sendungszuordnung stichprobenartig mit ServusTV vergleichen.
 4. Bei Sendungen mit `rbtv_title_treatment` muss das Logo sichtbar sein.

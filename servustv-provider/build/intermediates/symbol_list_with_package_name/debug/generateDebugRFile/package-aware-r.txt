@@ -1,0 +1,4 @@
+com.andreassamitsch.servusprovider
+drawable ic_launcher
+drawable tv_banner
+style Theme_ServusProvider

@@ -1,0 +1,8 @@
+com.andreassamitsch.servusprovider.servustv-provider-pngs-0 /home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/build/generated/res/pngs/debug
+com.andreassamitsch.servusprovider.servustv-provider-updated_navigation_xml-1 /home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/build/generated/updated_navigation_xml/debug
+com.andreassamitsch.servusprovider.servustv-provider-packageDebugResources-2 /home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/build/intermediates/incremental/debug/packageDebugResources/merged.dir
+com.andreassamitsch.servusprovider.servustv-provider-packageDebugResources-3 /home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
+com.andreassamitsch.servusprovider.servustv-provider-debug-4 /home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/build/intermediates/merged_res/debug/mergeDebugResources
+com.andreassamitsch.servusprovider.servustv-provider-debug-5 /home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/debug/res
+com.andreassamitsch.servusprovider.servustv-provider-main-6 /home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/res
+gradleHome-0 /home/runner/.gradle

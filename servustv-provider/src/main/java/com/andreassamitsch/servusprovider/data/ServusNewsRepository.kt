@@ -58,7 +58,8 @@ class ServusNewsRepository(
 
     /**
      * Fast data (Aktuelles + live guide) is refreshed on every run. The complete show catalogue is
-     * deliberately slower: initial/manual refresh or every six hours. When the user explicitly
+     * deliberately slower: initially, when stale, or on an explicit forced refresh. A normal manual
+     * update therefore stays on the fast path unless the catalogue itself is due. When the user
      * configures additional shows for Aktuelles, only those non-legacy shows get a lightweight
      * first-page refresh on the normal 15-minute worker cadence so newly available episodes do not
      * wait up to six hours.
@@ -72,9 +73,10 @@ class ServusNewsRepository(
             val detectNewAvailability = observedAvailabilityStore.isInitialized()
 
             val candidates = discoverCurrentCandidates(market)
-            val details = fetchDetails(market, candidates)
+            val currentPlan = ServusCurrentRefreshPolicy.plan(candidates, previousEpisodes)
+            val details = fetchDetails(market, currentPlan.idsToLoad)
             val mappedEpisodes = ServusNewsPolicy.deduplicateEpisodes(
-                details.mapNotNull { card ->
+                currentPlan.cachedEpisodes + details.mapNotNull { card ->
                     ServusNewsPolicy.toSupportedEpisode(card, refreshNow)
                 },
             ).take(MAX_CURRENT_EPISODES)
@@ -183,11 +185,7 @@ class ServusNewsRepository(
 
     private suspend fun discoverCurrentCandidates(market: String): List<String> = coroutineScope {
         val responseGroups = SEARCH_QUERIES.map { query ->
-            async {
-                SEARCH_OFFSETS.map { offset ->
-                    async { api.search(market, query, offset) }
-                }.awaitAll()
-            }
+            async { fetchCurrentSearchPages(market, query) }
         }.awaitAll()
 
         val directCards = responseGroups.flatten().flatMap { it.cards }
@@ -236,6 +234,29 @@ class ServusNewsRepository(
             .mapNotNull { it.id }
 
         directIds.distinct().take(MAX_DETAIL_CANDIDATES)
+    }
+
+    /** Follow only pagination links the ServusTV API actually advertises. */
+    private suspend fun fetchCurrentSearchPages(
+        market: String,
+        query: String,
+    ): List<SearchResponseDto> {
+        val responses = mutableListOf<SearchResponseDto>()
+        val seenOffsets = mutableSetOf(0)
+        var response = api.search(market, query, 0)
+        responses += response
+        var next = response.meta?.next
+        var page = 1
+
+        while (!next.isNullOrBlank() && page < MAX_CURRENT_SEARCH_PAGES) {
+            val offset = ServusCatalogPolicy.nextOffset(next) ?: break
+            if (!seenOffsets.add(offset)) break
+            response = api.search(market, query, offset)
+            responses += response
+            next = response.meta?.next
+            page++
+        }
+        return responses
     }
 
     private suspend fun fetchDetails(market: String, ids: List<String>): List<ServusCardDto> = coroutineScope {
@@ -726,7 +747,7 @@ class ServusNewsRepository(
             "Servus Nachrichten in 90 Sekunden",
             "Der Wegscheider",
         )
-        val SEARCH_OFFSETS = listOf(0, 15, 30)
+        const val MAX_CURRENT_SEARCH_PAGES = 3
         const val MAX_DIRECT_IDS_PER_QUERY = 16
         const val DETAIL_PARALLELISM = 6
         const val MAX_CONTENT_PAGES = 8
