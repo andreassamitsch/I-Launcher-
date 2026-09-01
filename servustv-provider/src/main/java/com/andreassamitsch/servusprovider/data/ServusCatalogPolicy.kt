@@ -53,6 +53,27 @@ object ServusCatalogPolicy {
         )
     }
 
+    /**
+     * A show product can reference editorial/recommendation collections that contain videos from
+     * other shows. Never attach every playable card blindly to the opened show.
+     *
+     * Strong membership evidence is, in order: an exact normalised `show_name`, an explicit parent
+     * collection reference to the show ID, or the target show title contained in the episode title.
+     * If none of those is present, reject the card rather than showing a confidently wrong episode.
+     */
+    fun belongsToShow(card: ServusCardDto, showId: String, showTitle: String): Boolean {
+        val targetTitle = normalizeWords(showTitle)
+        if (targetTitle.isBlank()) return false
+
+        card.showName?.takeIf { it.isNotBlank() }?.let { suppliedShow ->
+            return normalizeWords(suppliedShow) == targetTitle
+        }
+        if (card.collections.any { it.id == showId }) return true
+
+        val episodeTitle = normalizeWords(card.title.orEmpty())
+        return episodeTitle.isNotBlank() && episodeTitle.contains(targetTitle)
+    }
+
     fun toShowEpisode(
         card: ServusCardDto,
         showId: String,
@@ -67,6 +88,7 @@ object ServusCatalogPolicy {
         val duration = card.duration?.takeIf { it > 0L } ?: return null
         if (card.playable == false) return null
         if (card.type != "video" && card.contentType != "film") return null
+        if (!belongsToShow(card, showId, showTitle)) return null
 
         return ServusNewsEpisode(
             id = id,
@@ -93,7 +115,7 @@ object ServusCatalogPolicy {
             .values
             .mapNotNull { values -> values.maxByOrNull { it.durationMillis } }
             .sortedWith(
-                compareByDescending<ServusNewsEpisode> { it.publishedAtMillis ?: Long.MIN_VALUE },
+                compareByDescending<ServusNewsEpisode> { ServusNewsPolicy.recencyMillis(it) ?: Long.MIN_VALUE },
             )
         val full = deduplicated.filter { it.contentType == "episode" || it.contentType == "film" }
         return (full.ifEmpty { deduplicated }).take(MAX_SHOW_EPISODES)
@@ -143,7 +165,7 @@ object ServusCatalogPolicy {
     }
 
     private fun episodeKey(episode: ServusNewsEpisode): String {
-        val minute = episode.publishedAtMillis?.div(60_000L)?.toString() ?: "unknown"
+        val minute = ServusNewsPolicy.recencyMillis(episode)?.div(60_000L)?.toString() ?: "unknown"
         return "${episode.showId.orEmpty()}|$minute|${normalize(episode.title)}"
     }
 
@@ -158,6 +180,12 @@ object ServusCatalogPolicy {
             LocalDateTime.parse(value.take(19)).toInstant(ZoneOffset.UTC).toEpochMilli()
         }.getOrNull()
     }
+
+    private fun normalizeWords(value: String): String = value
+        .lowercase(Locale.GERMAN)
+        .replace('–', '-')
+        .replace(Regex("""[^a-z0-9äöüß]+"""), " ")
+        .trim()
 
     private fun normalize(value: String): String = value
         .lowercase(Locale.GERMAN)
