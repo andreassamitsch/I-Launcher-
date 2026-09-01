@@ -437,3 +437,13 @@ Bei Funktionen, die nur auf realer TV-Hardware geprüft werden können:
 - Testergebnis anschließend auswerten und nachbessern
 
 Keine APK als getestet bezeichnen, wenn lediglich kompiliert wurde. Ein statischer Emulator-Screenshot bestätigt keine zeitliche Breath-Animation und kein echtes Kodi-Handoff; diese Punkte müssen am TV geprüft werden.
+
+## 28. ServusTV-Testbuilds und In-App-Updates
+
+Für Änderungen am `servustv-provider`, die für einen realen Geräte- oder Hardwaretest bestimmt sind, gilt zusätzlich verbindlich:
+
+- Nach erfolgreichem relevanten Build und bestandenen Tests muss der aktuelle Teststand über den **stabil signierten ServusTV-Development-Updatekanal** veröffentlicht werden.
+- Ein bloßes CI-Debug-Artefakt ist kein ausreichender Handoff, solange der In-App-Updater funktionsfähig zur Verfügung steht.
+- Vor dem Hinweis an den Tester muss das veröffentlichte `update.json` geprüft werden: höhere `versionCode`/`versionName`, erwarteter Source-/Head-SHA und SHA-256 der veröffentlichten APK.
+- Bei mehreren schnellen Commits und Publisher-Concurrency zählt nur der letzte vollständig erfolgreiche, stabil signierte Publisher-Lauf als gültiger Testbuild.
+- Die Veröffentlichung über den Updater ersetzt nicht den realen Gerätetest. Einen Build niemals als auf Hardware getestet bezeichnen, solange nur CI/Compilation bestätigt sind.
