@@ -2,6 +2,7 @@ package com.andreassamitsch.servusprovider.data
 
 import com.andreassamitsch.servusprovider.api.SearchResponseDto
 import com.andreassamitsch.servusprovider.api.ServusCardDto
+import com.andreassamitsch.servusprovider.api.ServusCollectionRefDto
 import com.google.gson.Gson
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -103,6 +104,93 @@ class ServusCatalogPolicyTest {
         )
 
         assertTrue(ServusCatalogPolicy.belongsToShow(card, "EVENING", "Servus am Abend"))
+    }
+
+    @Test
+    fun hydrationCandidatesPreferFullEpisodesAndUnknownTypesBeforeClips() {
+        val cards = listOf(
+            ServusCardDto(
+                id = "OTHER",
+                type = "video",
+                contentType = "episode",
+                title = "Andere Sendung",
+                showName = "Andere Sendung",
+                playable = true,
+            ),
+            ServusCardDto(
+                id = "CLIP",
+                type = "video",
+                contentType = "clip",
+                title = "Servus Wetter kompakt",
+                showName = "Servus Wetter",
+                playable = true,
+            ),
+            ServusCardDto(
+                id = "UNKNOWN",
+                type = "video",
+                title = "31.08. | Servus Wetter",
+                showName = "Servus Wetter",
+                playable = true,
+            ),
+            ServusCardDto(
+                id = "FULL",
+                type = "video",
+                contentType = "episode",
+                title = "01.09. | Servus Wetter",
+                showName = "Servus Wetter",
+                playable = true,
+            ),
+        )
+
+        val candidates = ServusCatalogPolicy.selectEpisodeCardsForHydration(
+            cards = cards,
+            showId = "WEATHER",
+            showTitle = "Servus Wetter",
+            limit = 2,
+        )
+
+        assertEquals(listOf("FULL", "UNKNOWN"), candidates.map { it.id })
+    }
+
+    @Test
+    fun productDetailHydrationAddsSunriseAndKeepsCollectionMembership() {
+        val collectionCard = ServusCardDto(
+            id = "WEATHER-01",
+            type = "video",
+            title = "Folge vom 01.09.",
+            duration = 4 * 60 * 1000L,
+            playable = true,
+            mediaResources = listOf("collection_landscape"),
+            collections = listOf(ServusCollectionRefDto(id = "WEATHER")),
+        )
+        val productDetail = ServusCardDto(
+            id = "WEATHER-01",
+            type = "video",
+            contentType = "episode",
+            title = "Folge vom 01.09.",
+            sunriseTimestamp = "2026-09-01T14:45:00Z",
+            sunsetTimestamp = "2026-09-08T14:54:42Z",
+            mediaResources = listOf("detail_landscape"),
+        )
+
+        val merged = ServusCatalogPolicy.mergeEpisodeProduct(collectionCard, productDetail)
+        val episode = ServusCatalogPolicy.toShowEpisode(
+            card = merged,
+            showId = "WEATHER",
+            showTitle = "Servus Wetter",
+            categoryId = "CAT",
+            categoryTitle = "News & Magazine",
+            showLogoUri = null,
+            nowMillis = Instant.parse("2026-09-01T16:00:00Z").toEpochMilli(),
+        )
+
+        assertTrue(ServusCatalogPolicy.belongsToShow(merged, "WEATHER", "Servus Wetter"))
+        assertTrue(merged.mediaResources.containsAll(listOf("detail_landscape", "collection_landscape")))
+        assertNotNull(episode)
+        assertEquals(
+            Instant.parse("2026-09-01T14:45:00Z").toEpochMilli(),
+            episode!!.publishedAtMillis,
+        )
     }
 
     @Test
