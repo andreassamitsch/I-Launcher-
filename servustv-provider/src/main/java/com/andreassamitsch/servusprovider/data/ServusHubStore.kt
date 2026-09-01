@@ -9,7 +9,33 @@ class ServusHubStore(context: Context) {
     private val categoryListType = object : TypeToken<List<ServusCategory>>() {}.type
     private val liveListType = object : TypeToken<List<ServusLiveChannel>>() {}.type
 
-    fun loadCategories(): List<ServusCategory> = loadList(KEY_CATEGORIES, categoryListType)
+    fun loadCategories(): List<ServusCategory> {
+        val categories = loadList<ServusCategory>(KEY_CATEGORIES, categoryListType)
+        if (categories.isEmpty() || preferences.getInt(KEY_TIME_SCHEMA, 1) >= CURRENT_TIME_SCHEMA) {
+            return categories
+        }
+
+        // dev.2 could store broadcast/title times as publishedAtMillis. They cannot be distinguished
+        // reliably from a true sunrise timestamp afterwards, so discard them once rather than keep
+        // displaying a known-wrong publication time. The next network refresh repopulates only
+        // trustworthy source availability timestamps.
+        val migrated = categories.map { category ->
+            category.copy(
+                shows = category.shows.map { show ->
+                    show.copy(
+                        episodes = show.episodes.map { episode ->
+                            episode.copy(publishedAtMillis = null)
+                        },
+                    )
+                },
+            )
+        }
+        preferences.edit()
+            .putString(KEY_CATEGORIES, ServusNetwork.gson.toJson(migrated))
+            .putInt(KEY_TIME_SCHEMA, CURRENT_TIME_SCHEMA)
+            .apply()
+        return migrated
+    }
 
     fun loadLiveChannels(): List<ServusLiveChannel> = loadList(KEY_LIVE_CHANNELS, liveListType)
 
@@ -17,6 +43,7 @@ class ServusHubStore(context: Context) {
         preferences.edit()
             .putString(KEY_CATEGORIES, ServusNetwork.gson.toJson(categories))
             .putLong(KEY_CATALOG_SUCCESS, refreshedAtMillis)
+            .putInt(KEY_TIME_SCHEMA, CURRENT_TIME_SCHEMA)
             .apply()
     }
 
@@ -62,5 +89,7 @@ class ServusHubStore(context: Context) {
         const val KEY_CATALOG_SUCCESS = "catalog_success"
         const val KEY_LIVE_SUCCESS = "live_success"
         const val KEY_CATALOG_DIAGNOSTIC = "catalog_diagnostic"
+        const val KEY_TIME_SCHEMA = "availability_time_schema"
+        const val CURRENT_TIME_SCHEMA = 2
     }
 }
