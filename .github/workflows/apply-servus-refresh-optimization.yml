@@ -1,0 +1,121 @@
+name: Apply ServusTV Refresh Optimization
+
+on:
+  push:
+    branches:
+      - feat/servustv-news-provider-prototype
+    paths:
+      - ".github/workflows/apply-servus-refresh-optimization.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: feat/servustv-news-provider-prototype
+          fetch-depth: 0
+
+      - name: Apply measured refresh optimizations
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          repo = Path("servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusNewsRepository.kt")
+          text = repo.read_text()
+
+          old = '''            val candidates = discoverCurrentCandidates(market)\n            val details = fetchDetails(market, candidates)\n            val mappedEpisodes = ServusNewsPolicy.deduplicateEpisodes(\n                details.mapNotNull { card ->\n                    ServusNewsPolicy.toSupportedEpisode(card, refreshNow)\n                },\n            ).take(MAX_CURRENT_EPISODES)\n'''
+          new = '''            val candidates = discoverCurrentCandidates(market)\n            val currentPlan = ServusCurrentRefreshPolicy.plan(candidates, previousEpisodes)\n            val details = fetchDetails(market, currentPlan.idsToLoad)\n            val mappedEpisodes = ServusNewsPolicy.deduplicateEpisodes(\n                currentPlan.cachedEpisodes + details.mapNotNull { card ->\n                    ServusNewsPolicy.toSupportedEpisode(card, refreshNow)\n                },\n            ).take(MAX_CURRENT_EPISODES)\n'''
+          if text.count(old) != 1:
+              raise SystemExit("Expected current-detail block exactly once")
+          text = text.replace(old, new)
+
+          old_comment = '''     * Fast data (Aktuelles + live guide) is refreshed on every run. The complete show catalogue is\n     * deliberately slower: initial/manual refresh or every six hours. When the user explicitly\n     * configures additional shows for Aktuelles, only those non-legacy shows get a lightweight\n'''
+          new_comment = '''     * Fast data (Aktuelles + live guide) is refreshed on every run. The complete show catalogue is\n     * deliberately slower: initially, when stale, or on an explicit forced refresh. A normal manual\n     * update therefore stays on the fast path unless the catalogue itself is due. When the user\n     * configures additional shows for Aktuelles, only those non-legacy shows get a lightweight\n'''
+          if text.count(old_comment) != 1:
+              raise SystemExit("Expected repository refresh comment exactly once")
+          text = text.replace(old_comment, new_comment)
+
+          start_marker = '    private suspend fun discoverCurrentCandidates(market: String): List<String> = coroutineScope {\n'
+          end_marker = '    private suspend fun fetchDetails(market: String, ids: List<String>): List<ServusCardDto> = coroutineScope {\n'
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          replacement = '''    private suspend fun discoverCurrentCandidates(market: String): List<String> = coroutineScope {\n        val responseGroups = SEARCH_QUERIES.map { query ->\n            async { fetchCurrentSearchPages(market, query) }\n        }.awaitAll()\n\n        val directCards = responseGroups.flatten().flatMap { it.cards }\n        val directIds = responseGroups.flatMap { responses ->\n            responses\n                .flatMap { it.cards }\n                .filter(ServusNewsPolicy::couldBelongToSupportedContent)\n                .mapNotNull { it.id }\n                .distinct()\n                .take(MAX_DIRECT_IDS_PER_QUERY)\n        }.toMutableList()\n\n        val contentPages = directCards.filter { card ->\n            card.type == "page" && ServusNewsPolicy.couldBelongToSupportedContent(card)\n        }\n        val collectionIds = contentPages\n            .mapNotNull { it.id }\n            .distinct()\n            .take(MAX_CONTENT_PAGES)\n            .map { pageId ->\n                async {\n                    runCatching { api.product(market, pageId) }\n                        .getOrNull()\n                        ?.collections\n                        .orEmpty()\n                        .filterNot { it.listType == "reference" }\n                        .mapNotNull { it.id }\n                }\n            }\n            .awaitAll()\n            .flatten()\n            .distinct()\n            .take(MAX_CURRENT_COLLECTIONS)\n\n        val collectionCards = collectionIds.map { collectionId ->\n            async {\n                runCatching { api.collection(market, collectionId, 0) }\n                    .getOrNull()\n                    ?.cards\n                    .orEmpty()\n            }\n        }.awaitAll().flatten()\n\n        directIds += collectionCards\n            .filter(ServusNewsPolicy::couldBelongToSupportedContent)\n            .mapNotNull { it.id }\n\n        directIds.distinct().take(MAX_DETAIL_CANDIDATES)\n    }\n\n    /** Follow only pagination links the ServusTV API actually advertises. */\n    private suspend fun fetchCurrentSearchPages(\n        market: String,\n        query: String,\n    ): List<SearchResponseDto> {\n        val responses = mutableListOf<SearchResponseDto>()\n        val seenOffsets = mutableSetOf(0)\n        var response = api.search(market, query, 0)\n        responses += response\n        var next = response.meta?.next\n        var page = 1\n\n        while (!next.isNullOrBlank() && page < MAX_CURRENT_SEARCH_PAGES) {\n            val offset = ServusCatalogPolicy.nextOffset(next) ?: break\n            if (!seenOffsets.add(offset)) break\n            response = api.search(market, query, offset)\n            responses += response\n            next = response.meta?.next\n            page++\n        }\n        return responses\n    }\n\n'''
+          text = text[:start] + replacement + text[end:]
+
+          old_constant = '        val SEARCH_OFFSETS = listOf(0, 15, 30)\n'
+          new_constant = '        const val MAX_CURRENT_SEARCH_PAGES = 3\n'
+          if text.count(old_constant) != 1:
+              raise SystemExit("Expected SEARCH_OFFSETS exactly once")
+          text = text.replace(old_constant, new_constant)
+          repo.write_text(text)
+
+          policy = Path("servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCurrentRefreshPolicy.kt")
+          if policy.exists():
+              raise SystemExit("ServusCurrentRefreshPolicy.kt already exists")
+          policy.write_text('''package com.andreassamitsch.servusprovider.data\n\ninternal data class ServusCurrentCandidatePlan(\n    val cachedEpisodes: List<ServusNewsEpisode>,\n    val idsToLoad: List<String>,\n)\n\n/**\n * Keeps the frequent Aktuelles refresh incremental. Candidate discovery still comes from the live\n * ServusTV API, but immutable product details are only hydrated for content IDs we have not already\n * accepted and stored locally.\n */\ninternal object ServusCurrentRefreshPolicy {\n    fun plan(\n        candidateIds: List<String>,\n        cachedEpisodes: List<ServusNewsEpisode>,\n    ): ServusCurrentCandidatePlan {\n        val distinctIds = candidateIds.asSequence()\n            .filter { it.isNotBlank() }\n            .distinct()\n            .toList()\n        val cachedById = cachedEpisodes.associateBy { it.id }\n        return ServusCurrentCandidatePlan(\n            cachedEpisodes = distinctIds.mapNotNull(cachedById::get),\n            idsToLoad = distinctIds.filterNot(cachedById::containsKey),\n        )\n    }\n}\n''')
+
+          main = Path("servustv-provider/src/main/java/com/andreassamitsch/servusprovider/ui/MainActivity.kt")
+          text = main.read_text()
+          old = '            setOnClickListener { refresh(forceCatalog = true) }\n'
+          new = '            setOnClickListener { refresh(forceCatalog = false) }\n'
+          if text.count(old) != 1:
+              raise SystemExit("Expected manual refresh listener exactly once")
+          main.write_text(text.replace(old, new))
+
+          resilient = Path("servustv-provider/src/main/java/com/andreassamitsch/servusprovider/api/ServusResilientApi.kt")
+          text = resilient.read_text()
+          old = ''' * The service occasionally returns transient 5xx responses when several discovery requests arrive\n * at once. All GET requests get a bounded retry. Search fan-out is additionally limited so the\n * four queries x three offsets used by "Aktuelles" cannot hit the backend as twelve simultaneous\n * calls. If a later search page (offset > 0) still fails transiently after all retries, it is\n'''
+          new = ''' * The service occasionally returns transient 5xx responses when several discovery requests arrive\n * at once. All GET requests get a bounded retry. Search fan-out is additionally limited while the\n * Aktuelles discovery follows only pagination links advertised by the server. If a later search\n * page (offset > 0) still fails transiently after all retries, it is\n'''
+          if text.count(old) != 1:
+              raise SystemExit("Expected resilient API comment exactly once")
+          resilient.write_text(text.replace(old, new))
+
+          doc = Path("docs/SERVUSTV_NEWS_PROVIDER_PROTOTYPE.md")
+          text = doc.read_text()
+          old = '''- sofort, wenn lokal noch kein Katalog vorhanden ist\n- bei manuellem `Jetzt aktualisieren`\n- anschließend ungefähr alle sechs Stunden\n\nFür explizit zu `Aktuelles` hinzugewählte Sendungen bleibt der leichte 15-Minuten-Refresh bestehen. Bei diesen Refreshes werden vorhandene ServusTV-Verfügbarkeitszeiten aus dem lokalen Sendungs-Cache wiederverwendet und nur neue bzw. noch nicht belastbar zeitgestempelte Folgen über den Produkt-Endpunkt nachgeladen.\n'''
+          new = '''- sofort, wenn lokal noch kein Katalog vorhanden ist\n- anschließend ungefähr alle sechs Stunden\n- bei einem ausdrücklich erzwungenen Diagnose-/Vollrefresh\n\n`Jetzt aktualisieren` verwendet im Normalfall denselben schnellen Pfad wie der Hintergrundrefresh. Nur wenn der Sendungskatalog fehlt oder ohnehin älter als sechs Stunden ist, wird dabei zusätzlich der Vollkatalog geladen.\n\nAuch `Aktuelles` arbeitet inkrementell: Die vier Suchbegriffe laden nur die vom Server über `meta.next` angekündigten Seiten (maximal drei pro Suchbegriff). Bereits lokal vollständig bekannte Content-IDs werden nicht bei jedem 15-Minuten- oder manuellen Refresh erneut über den Produkt-Endpunkt geladen; nur neue IDs werden hydratisiert. Ein getesteter `limit`-Queryparameter wurde vom aktuellen ServusTV-Endpunkt nicht eingehalten und wird deshalb bewusst nicht verwendet. Ein direktes Produkt `nachrichten` existiert im getesteten AT-Markt ebenfalls nicht.\n\nFür explizit zu `Aktuelles` hinzugewählte Sendungen bleibt der leichte 15-Minuten-Refresh bestehen. Bei diesen Refreshes werden vorhandene ServusTV-Verfügbarkeitszeiten aus dem lokalen Sendungs-Cache wiederverwendet und nur neue bzw. noch nicht belastbar zeitgestempelte Folgen über den Produkt-Endpunkt nachgeladen.\n'''
+          if text.count(old) != 1:
+              raise SystemExit("Expected documentation refresh block exactly once")
+          text = text.replace(old, new)
+          old_test = '1. App aktualisieren und einmal `Jetzt aktualisieren` auslösen. Der erste komplette Sendungskatalog darf spürbar länger dauern als der bisherige Aktuelles-Refresh.\n'
+          new_test = '1. App aktualisieren und einmal `Jetzt aktualisieren` auslösen. Bei vorhandenem, frischem Sendungskatalog muss dieser Refresh deutlich schneller als der erste Vollkatalog-Import sein.\n'
+          if text.count(old_test) != 1:
+              raise SystemExit("Expected device-test step exactly once")
+          doc.write_text(text.replace(old_test, new_test))
+          PY
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Test and build ServusTV
+        run: gradle :servustv-provider:testDebugUnitTest :servustv-provider:assembleDebug --stacktrace
+
+      - name: Commit optimized implementation and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/apply-servus-refresh-optimization.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add servustv-provider docs/SERVUSTV_NEWS_PROVIDER_PROTOTYPE.md .github/workflows/apply-servus-refresh-optimization.yml
+          git commit -m "perf(servustv): make frequent refresh incremental"
+          git push origin HEAD:feat/servustv-news-provider-prototype
