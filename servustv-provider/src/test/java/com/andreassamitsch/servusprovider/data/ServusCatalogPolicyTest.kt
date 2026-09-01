@@ -30,6 +30,14 @@ class ServusCatalogPolicyTest {
     }
 
     @Test
+    fun onlyForbiddenCategoryCanBeSkipped() {
+        assertTrue(ServusCatalogPolicy.canSkipCategoryHttpCode(403))
+        assertFalse(ServusCatalogPolicy.canSkipCategoryHttpCode(401))
+        assertFalse(ServusCatalogPolicy.canSkipCategoryHttpCode(404))
+        assertFalse(ServusCatalogPolicy.canSkipCategoryHttpCode(500))
+    }
+
+    @Test
     fun titleTreatmentIsExposedAsLogo() {
         val uri = ServusCatalogPolicy.titleTreatment(
             "SHOW-ID",
