@@ -1,0 +1,101 @@
+name: Probe ServusTV API
+
+on:
+  push:
+    branches:
+      - feat/servustv-news-provider-prototype
+    paths:
+      - ".github/workflows/probe-servus-api.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe public ServusTV API
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import urllib.parse
+          import urllib.request
+          import urllib.error
+
+          BASE = "https://tv-api.redbull.com/"
+          MARKET = "at"
+          HEADERS = {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36",
+              "Accept": "application/json, text/plain, */*",
+              "Accept-Language": "de-DE,de;q=0.9,en;q=0.8",
+              "Origin": "https://www.servustv.com",
+              "Referer": "https://www.servustv.com/",
+          }
+
+          def get(path, params=None):
+              url = urllib.parse.urljoin(BASE, path)
+              if params:
+                  url += "?" + urllib.parse.urlencode(params)
+              req = urllib.request.Request(url, headers=HEADERS)
+              try:
+                  with urllib.request.urlopen(req, timeout=20) as response:
+                      body = response.read().decode("utf-8")
+                      return response.status, url, json.loads(body)
+              except urllib.error.HTTPError as exc:
+                  body = exc.read().decode("utf-8", "replace")[:300]
+                  print(f"HTTP {exc.code}: {url} body={body!r}")
+                  return exc.code, url, None
+
+          def summarize_response(label, result):
+              status, url, data = result
+              print(f"\n=== {label} ===")
+              print(f"status={status} url={url}")
+              if not isinstance(data, dict):
+                  return data
+              print("keys=", sorted(data.keys()))
+              cards = data.get("cards") or []
+              collections = data.get("collections") or []
+              print(f"cards={len(cards)} collections={len(collections)}")
+              print("meta=", json.dumps(data.get("meta"), ensure_ascii=False, sort_keys=True))
+              if cards:
+                  first = cards[0]
+                  print("first_card_keys=", sorted(first.keys()))
+                  print("first_card=", json.dumps({
+                      k: first.get(k) for k in (
+                          "id", "type", "content_type", "title", "show_name", "duration",
+                          "playable", "sunrise_timestamp", "start_time", "end_time"
+                      ) if k in first
+                  }, ensure_ascii=False, sort_keys=True))
+              if collections:
+                  print("collections_preview=", json.dumps([
+                      {k: item.get(k) for k in ("id", "list_type", "label")}
+                      for item in collections[:8]
+                  ], ensure_ascii=False, sort_keys=True))
+              return data
+
+          session = summarize_response("session", get("v3/session", {
+              "namespace": "stv", "category": "personal_computer", "os_family": "http"
+          }))
+          if isinstance(session, dict):
+              print("session_country_code=", session.get("country_code"))
+
+          news = summarize_response("product nachrichten", get(f"products/v5.3/stv/de/{MARKET}/nachrichten"))
+          summarize_response("product sendungen", get(f"products/v5.3/stv/de/{MARKET}/sendungen"))
+
+          search_base = {"q": "Servus Nachrichten", "offset": 0}
+          base_search = summarize_response("search default", get(f"search/v5/stv/de/{MARKET}/top_results", search_base))
+          summarize_response("search limit=5", get(f"search/v5/stv/de/{MARKET}/top_results", {**search_base, "limit": 5}))
+
+          collection_id = None
+          if isinstance(news, dict):
+              for item in news.get("collections") or []:
+                  if item.get("id") and item.get("list_type") != "reference":
+                      collection_id = item["id"]
+                      break
+          if collection_id:
+              summarize_response("news collection default", get(f"collections/v5.3/stv/de/{MARKET}/{collection_id}", {"offset": 0}))
+              summarize_response("news collection limit=5", get(f"collections/v5.3/stv/de/{MARKET}/{collection_id}", {"offset": 0, "limit": 5}))
+          else:
+              print("No usable collection on product nachrichten")
+          PY
