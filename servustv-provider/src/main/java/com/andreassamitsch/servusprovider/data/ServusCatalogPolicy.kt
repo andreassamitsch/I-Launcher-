@@ -3,17 +3,12 @@ package com.andreassamitsch.servusprovider.data
 import com.andreassamitsch.servusprovider.api.ServusCardDto
 import com.andreassamitsch.servusprovider.api.ServusNetwork
 import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalTime
 import java.time.LocalDateTime
-import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeParseException
 import java.util.Locale
 
 object ServusCatalogPolicy {
-    private val datePattern = Regex("""\b(\d{1,2})\.(\d{1,2})\.?\b""")
-    private val timePattern = Regex("""\b(\d{1,2}):(\d{2})\s*(?:uhr)?\b""", RegexOption.IGNORE_CASE)
     private val nextOffsetPattern = Regex("""(?:[?&]offset=)(\d+)""")
 
     fun isShowCard(card: ServusCardDto): Boolean =
@@ -80,7 +75,7 @@ object ServusCatalogPolicy {
             description = card.longDescription?.takeIf { it.isNotBlank() }
                 ?: card.shortDescription?.takeIf { it.isNotBlank() },
             durationMillis = duration,
-            publishedAtMillis = publishedAtMillis(card, nowMillis),
+            publishedAtMillis = ServusSourceTimestampPolicy.resolve(card, nowMillis),
             artworkUri = landscapeArtwork(id, card.mediaResources),
             showId = showId,
             logoUri = showLogoUri,
@@ -97,7 +92,9 @@ object ServusCatalogPolicy {
             .groupBy(::episodeKey)
             .values
             .mapNotNull { values -> values.maxByOrNull { it.durationMillis } }
-            .sortedByDescending { it.publishedAtMillis }
+            .sortedWith(
+                compareByDescending<ServusNewsEpisode> { it.publishedAtMillis ?: Long.MIN_VALUE },
+            )
         val full = deduplicated.filter { it.contentType == "episode" || it.contentType == "film" }
         return (full.ifEmpty { deduplicated }).take(MAX_SHOW_EPISODES)
     }
@@ -146,21 +143,8 @@ object ServusCatalogPolicy {
     }
 
     private fun episodeKey(episode: ServusNewsEpisode): String {
-        val minute = episode.publishedAtMillis / 60_000L
+        val minute = episode.publishedAtMillis?.div(60_000L)?.toString() ?: "unknown"
         return "${episode.showId.orEmpty()}|$minute|${normalize(episode.title)}"
-    }
-
-    private fun publishedAtMillis(card: ServusCardDto, nowMillis: Long): Long {
-        parseInstant(card.sunriseTimestamp)?.let { return it }
-        val source = listOfNotNull(
-            card.title,
-            card.subheading,
-            card.shortDescription,
-            card.longDescription,
-        ).joinToString(" ")
-        val date = parseLocalDate(source, nowMillis) ?: return nowMillis
-        val time = parseLocalTime(source) ?: LocalTime.MIDNIGHT
-        return date.atTime(time).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
     }
 
     private fun parseInstant(value: String?): Long? {
@@ -173,23 +157,6 @@ object ServusCatalogPolicy {
         return runCatching {
             LocalDateTime.parse(value.take(19)).toInstant(ZoneOffset.UTC).toEpochMilli()
         }.getOrNull()
-    }
-
-    private fun parseLocalDate(source: String, nowMillis: Long): LocalDate? {
-        val match = datePattern.find(source) ?: return null
-        val day = match.groupValues[1].toIntOrNull() ?: return null
-        val month = match.groupValues[2].toIntOrNull() ?: return null
-        val today = Instant.ofEpochMilli(nowMillis).atZone(ZoneId.systemDefault()).toLocalDate()
-        var candidate = runCatching { LocalDate.of(today.year, month, day) }.getOrNull() ?: return null
-        if (candidate.isAfter(today.plusDays(31))) candidate = candidate.minusYears(1)
-        return candidate
-    }
-
-    private fun parseLocalTime(source: String): LocalTime? {
-        val match = timePattern.find(source) ?: return null
-        val hour = match.groupValues[1].toIntOrNull() ?: return null
-        val minute = match.groupValues[2].toIntOrNull() ?: return null
-        return runCatching { LocalTime.of(hour, minute) }.getOrNull()
     }
 
     private fun normalize(value: String): String = value

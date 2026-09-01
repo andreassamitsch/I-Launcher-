@@ -16,8 +16,11 @@ import androidx.tvprovider.media.tv.TvContractCompat
 import com.andreassamitsch.servusprovider.R
 import com.andreassamitsch.servusprovider.api.ServusNetwork
 import com.andreassamitsch.servusprovider.data.ServusCategory
+import com.andreassamitsch.servusprovider.data.ServusCurrentChannelSelectionStore
+import com.andreassamitsch.servusprovider.data.ServusHubStore
 import com.andreassamitsch.servusprovider.data.ServusLiveChannel
 import com.andreassamitsch.servusprovider.data.ServusNewsEpisode
+import com.andreassamitsch.servusprovider.data.ServusNewsStore
 import com.andreassamitsch.servusprovider.data.ServusShow
 import com.andreassamitsch.servusprovider.ui.MainActivity
 import com.andreassamitsch.servusprovider.ui.PlaybackActivity
@@ -31,6 +34,9 @@ class ServusChannelPublisher(context: Context) {
     private val appContext = context.applicationContext
     private val helper by lazy { PreviewChannelHelper(appContext) }
     private val remoteLogoCache = mutableMapOf<String, Bitmap?>()
+    private val hubStore = ServusHubStore(appContext)
+    private val newsStore = ServusNewsStore(appContext)
+    private val currentSelectionStore = ServusCurrentChannelSelectionStore(appContext)
 
     fun isSupported(): Boolean =
         appContext.packageManager.resolveContentProvider(TvContractCompat.AUTHORITY, 0) != null
@@ -43,17 +49,21 @@ class ServusChannelPublisher(context: Context) {
     /** Keeps the original aggregate channel and its stable internal ID. */
     fun publish(episodes: List<ServusNewsEpisode>) {
         if (!isSupported()) return
+        val effectiveEpisodes = currentSelectionStore.effectiveEpisodes(
+            categories = hubStore.loadCategories(),
+            legacyEpisodes = episodes,
+        )
         val channelId = findOrCreateChannel(
             internalId = CURRENT_CHANNEL_ID,
             displayName = CURRENT_CHANNEL_NAME,
-            description = "Servus Nachrichten, Nachrichten in 90 Sekunden und Der Wegscheider",
+            description = "Deine ausgewählten aktuellen Sendungen von ServusTV",
             appIntent = Intent(appContext, MainActivity::class.java)
                 .setAction(Intent.ACTION_VIEW)
                 .setData(Uri.parse("iservus://channel/news")),
             logo = createAppLogo(),
         )
-        replacePrograms(channelId, episodes.mapIndexed { index, episode ->
-            buildEpisodeProgram(channelId, episode, episodes.size - index, episode.logoUri)
+        replacePrograms(channelId, effectiveEpisodes.mapIndexed { index, episode ->
+            buildEpisodeProgram(channelId, episode, effectiveEpisodes.size - index, episode.logoUri)
         })
     }
 
@@ -68,6 +78,13 @@ class ServusChannelPublisher(context: Context) {
             .mapNotNull { channel -> channel.internalProviderId?.let { it to channel.id } }
             .toMap()
         shows.forEach { show -> publishShow(show, existingByInternalId[showInternalId(show.id)]) }
+
+        // A catalogue refresh can change episodes of a user-selected show without changing the
+        // fast legacy news feed. Republish the aggregate channel here as well so that those changes
+        // are visible immediately instead of waiting for an unrelated news item to change.
+        if (currentSelectionStore.isConfigured()) {
+            publish(newsStore.loadEpisodes())
+        }
     }
 
     /** One aggregate rail that contains every ServusTV live station as a directly playable card. */
@@ -163,8 +180,10 @@ class ServusChannelPublisher(context: Context) {
             .setWeight(weight)
             .setBrowsable(true)
             .setSearchable(true)
-            .setReleaseDate(RELEASE_DATE_FORMAT.format(Date(episode.publishedAtMillis)))
 
+        episode.publishedAtMillis?.let { sourceTimestamp ->
+            builder.setReleaseDate(RELEASE_DATE_FORMAT.format(Date(sourceTimestamp)))
+        }
         episode.artworkUri?.let { uri ->
             val artwork = Uri.parse(uri)
             builder.setPosterArtUri(artwork)
