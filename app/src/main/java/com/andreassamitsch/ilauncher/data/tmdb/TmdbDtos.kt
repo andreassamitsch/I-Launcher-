@@ -16,6 +16,8 @@ internal data class TmdbSearchResultDto(
     val overview: String? = null,
     @SerializedName("release_date") val releaseDate: String? = null,
     @SerializedName("first_air_date") val firstAirDate: String? = null,
+    @SerializedName("original_language") val originalLanguage: String? = null,
+    @SerializedName("origin_country") val originCountry: List<String> = emptyList(),
     val popularity: Double = 0.0,
     @SerializedName("vote_average") val voteAverage: Double = 0.0,
     @SerializedName("vote_count") val voteCount: Int = 0,
@@ -23,6 +25,26 @@ internal data class TmdbSearchResultDto(
     @SerializedName("backdrop_path") val backdropPath: String? = null,
     @SerializedName("genre_ids") val genreIds: List<Int> = emptyList(),
     val adult: Boolean = false,
+)
+
+internal data class TmdbMovieTranslationsDto(
+    val id: Int = 0,
+    val translations: List<TmdbMovieTranslationDto> = emptyList(),
+)
+
+internal data class TmdbMovieTranslationDto(
+    @SerializedName("iso_3166_1") val countryCode: String? = null,
+    @SerializedName("iso_639_1") val languageCode: String? = null,
+    val name: String? = null,
+    @SerializedName("english_name") val englishName: String? = null,
+    val data: TmdbMovieTranslationDataDto = TmdbMovieTranslationDataDto(),
+)
+
+internal data class TmdbMovieTranslationDataDto(
+    val title: String? = null,
+    val overview: String? = null,
+    val homepage: String? = null,
+    val runtime: Int? = null,
 )
 
 internal data class TmdbConfigurationDto(
@@ -208,6 +230,8 @@ internal data class TmdbPersonCreditDto(
     val overview: String? = null,
     @SerializedName("release_date") val releaseDate: String? = null,
     @SerializedName("first_air_date") val firstAirDate: String? = null,
+    @SerializedName("original_language") val originalLanguage: String? = null,
+    @SerializedName("origin_country") val originCountry: List<String> = emptyList(),
     @SerializedName("poster_path") val posterPath: String? = null,
     @SerializedName("backdrop_path") val backdropPath: String? = null,
     @SerializedName("vote_average") val voteAverage: Double = 0.0,
