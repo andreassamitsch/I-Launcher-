@@ -25,14 +25,17 @@ jobs:
           python3 <<'PY'
           from pathlib import Path
           import subprocess
-          import textwrap
 
           workflow = Path('.github/workflows/apply-servustv-demand-refresh.yml').read_text()
           marker_start = "          python3 <<'PY'\n"
           marker_end = "\n          PY\n\n      - name: Test and build ServusTV"
           start = workflow.index(marker_start) + len(marker_start)
           end = workflow.index(marker_end, start)
-          script = textwrap.dedent(workflow[start:end])
+          embedded = workflow[start:end]
+          script = '\n'.join(
+              line[10:] if line.startswith('          ') else line
+              for line in embedded.splitlines()
+          ) + '\n'
           Path('/tmp/apply_servustv.py').write_text(script)
           subprocess.run(['python3', '/tmp/apply_servustv.py'], check=True)
           PY
