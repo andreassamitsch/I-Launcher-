@@ -32,10 +32,15 @@ jobs:
           start = workflow.index(marker_start) + len(marker_start)
           end = workflow.index(marker_end, start)
           embedded = workflow[start:end]
-          script = '\n'.join(
-              line[10:] if line.startswith('          ') else line
-              for line in embedded.splitlines()
-          ) + '\n'
+          output = []
+          in_triple = False
+          for line in embedded.splitlines():
+              if not in_triple and line.startswith('          '):
+                  line = line[10:]
+              output.append(line)
+              if line.count("'''") % 2 == 1:
+                  in_triple = not in_triple
+          script = '\n'.join(output) + '\n'
           Path('/tmp/apply_servustv.py').write_text(script)
           subprocess.run(['python3', '/tmp/apply_servustv.py'], check=True)
           PY
