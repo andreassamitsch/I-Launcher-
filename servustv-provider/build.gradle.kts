@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
 }
 
+// The signed updater publisher injects monotonically increasing development versions via Gradle properties.
 val servusVersionCode = providers.gradleProperty("servusVersionCode")
     .orNull
     ?.toIntOrNull()
