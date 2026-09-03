@@ -1,0 +1,29 @@
+name: Probe ServusTV 90 Logo
+on:
+  push:
+    branches: [feat/servustv-news-provider-prototype]
+    paths: [.github/workflows/probe-servustv-90-logo.yml]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe exact show product
+        run: |
+          python3 - <<'PY'
+          import json, urllib.request
+          url='https://tv-api.redbull.com/products/v5.3/stv/de/at/AAYGF2URW6ALQYE42IJK'
+          req=urllib.request.Request(url, headers={
+            'User-Agent':'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:153.0) Gecko/20100101 Firefox/153.0',
+            'Accept':'application/json, text/plain, */*',
+            'Accept-Language':'de-DE,de;q=0.9,en;q=0.8',
+            'Origin':'https://www.servustv.com',
+            'Referer':'https://www.servustv.com/'})
+          with urllib.request.urlopen(req, timeout=20) as r:
+            data=json.load(r)
+          print('TITLE:', data.get('title'))
+          print('ID:', data.get('id'))
+          for key in ('media_resources','mediaResources'):
+            if key in data:
+              print(key+':')
+              for x in data[key] or []: print(' ',x)
+          PY
