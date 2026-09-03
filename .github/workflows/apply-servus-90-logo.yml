@@ -1,0 +1,222 @@
+name: Apply approved Servus 90-second logo
+
+on:
+  push:
+    branches:
+      - feat/servustv-news-provider-prototype
+    paths:
+      - .github/workflows/apply-servus-90-logo.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/servustv-news-provider-prototype
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install approved logo asset
+        shell: bash
+        run: |
+          mkdir -p servustv-provider/src/main/res/drawable-nodpi
+          cat > /tmp/servus90.b64 <<'B64'
+          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
+          B64
+          tr -d '[:space:]' < /tmp/servus90.b64 | base64 -d > servustv-provider/src/main/res/drawable-nodpi/servus_news_90_logo.png
+      - name: Apply branding policy and propagation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected one match in {path}, found {count}: {old[:80]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          branding = Path('servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusBranding.kt')
+          branding.write_text('''package com.andreassamitsch.servusprovider.data
+
+/** Canonical show branding that must survive caches and Android TV publication. */
+object ServusBranding {
+    const val NEWS_90_SECONDS_SHOW_ID = "AAYGF2URW6ALQYE42IJK"
+    const val NEWS_90_SECONDS_LOGO_URI =
+        "android.resource://com.andreassamitsch.servusprovider/drawable/servus_news_90_logo"
+
+    fun logoUriForShow(showId: String?, fallback: String?): String? =
+        if (showId == NEWS_90_SECONDS_SHOW_ID) NEWS_90_SECONDS_LOGO_URI else fallback
+
+    fun logoUriForEpisode(episode: ServusNewsEpisode, fallback: String?): String? =
+        if (
+            episode.showId == NEWS_90_SECONDS_SHOW_ID ||
+            ServusNewsPolicy.contentKind(episode) == ServusContentKind.NEWS_90_SECONDS
+        ) {
+            NEWS_90_SECONDS_LOGO_URI
+        } else {
+            fallback
+        }
+}
+''')
+
+          catalog = 'servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicy.kt'
+          replace_once(catalog,
+              '            logoUri = titleTreatment(id, resources),',
+              '            logoUri = ServusBranding.logoUriForShow(id, titleTreatment(id, resources)),')
+          replace_once(catalog,
+              '            logoUri = showLogoUri,',
+              '            logoUri = ServusBranding.logoUriForShow(showId, showLogoUri),')
+          replace_once(catalog, '''        if (id == NEWS_90_SECONDS_SHOW_ID) {
+            val displayArt = resources.firstOrNull { name ->
+                name.equals("rbtv_display_art_landscape", ignoreCase = true)
+            }
+            if (displayArt != null) {
+                return "${ServusNetwork.ARTWORK_BASE_URL}$id/$displayArt/f_webp,c_fill,w_640,q_80?namespace=stv&refresh=true"
+            }
+        }
+''', '')
+          replace_once(catalog,
+              '    const val NEWS_90_SECONDS_SHOW_ID = "AAYGF2URW6ALQYE42IJK"',
+              '    const val NEWS_90_SECONDS_SHOW_ID = ServusBranding.NEWS_90_SECONDS_SHOW_ID')
+
+          news = 'servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusNewsPolicy.kt'
+          replace_once(news,
+              '            artworkUri = landscapeArtwork(id, card.mediaResources),\n        )',
+              '            artworkUri = landscapeArtwork(id, card.mediaResources),\n            logoUri = if (kind == ServusContentKind.NEWS_90_SECONDS) {\n                ServusBranding.NEWS_90_SECONDS_LOGO_URI\n            } else {\n                null\n            },\n        )')
+
+          current = 'servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCurrentChannelSelectionStore.kt'
+          replace_once(current,
+              '                    logoUri = episode.logoUri ?: show.logoUri,',
+              '                    logoUri = ServusBranding.logoUriForShow(show.id, episode.logoUri ?: show.logoUri),')
+
+          publisher = 'servustv-provider/src/main/java/com/andreassamitsch/servusprovider/tv/ServusChannelPublisher.kt'
+          replace_once(publisher,
+              'import com.andreassamitsch.servusprovider.data.ServusCategory\n',
+              'import com.andreassamitsch.servusprovider.data.ServusBranding\nimport com.andreassamitsch.servusprovider.data.ServusCategory\n')
+          replace_once(publisher,
+              '        logoUri?.takeIf { it.isNotBlank() }?.let { builder.setLogoUri(Uri.parse(it)) }',
+              '        ServusBranding.logoUriForEpisode(episode, logoUri ?: episode.logoUri)\n            ?.takeIf { it.isNotBlank() }\n            ?.let { builder.setLogoUri(Uri.parse(it)) }')
+          replace_once(publisher, '''    private fun createShowLogo(show: ServusShow): Bitmap {
+        val source = show.logoUri?.let(::downloadBitmap)
+            ?: show.squareArtworkUri?.let(::downloadBitmap)
+            ?: show.artworkUri?.let(::downloadBitmap)
+            ?: return createAppLogo()
+        return fitOnDarkCanvas(source)
+    }
+''', '''    private fun createShowLogo(show: ServusShow): Bitmap {
+        val source = if (show.id == ServusBranding.NEWS_90_SECONDS_SHOW_ID) {
+            BitmapFactory.decodeResource(appContext.resources, R.drawable.servus_news_90_logo)
+        } else {
+            show.logoUri?.let(::downloadBitmap)
+        }
+            ?: show.squareArtworkUri?.let(::downloadBitmap)
+            ?: show.artworkUri?.let(::downloadBitmap)
+            ?: return createAppLogo()
+        return fitOnDarkCanvas(source)
+    }
+''')
+
+          test = 'servustv-provider/src/test/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicyTest.kt'
+          replace_once(test, '''    @Test
+    fun ninetySecondNewsUsesItsOwnDisplayArt() {
+        val uri = ServusCatalogPolicy.titleTreatment(
+            ServusCatalogPolicy.NEWS_90_SECONDS_SHOW_ID,
+            listOf("rbtv_background_landscape", "rbtv_display_art_landscape"),
+        )
+        assertNotNull(uri)
+        assertTrue(uri!!.contains("AAYGF2URW6ALQYE42IJK/rbtv_display_art_landscape"))
+        assertTrue(uri.contains("w_640"))
+    }
+''', '''    @Test
+    fun ninetySecondNewsUsesDedicatedPackagedLogo() {
+        val show = ServusCatalogPolicy.buildShow(
+            categoryId = "CAT",
+            categoryTitle = "News & Magazine",
+            card = ServusCardDto(
+                id = ServusCatalogPolicy.NEWS_90_SECONDS_SHOW_ID,
+                type = "page",
+                title = "Servus Nachrichten in 90 Sekunden",
+                mediaResources = listOf("rbtv_display_art_landscape"),
+            ),
+            detail = null,
+            episodes = emptyList(),
+        )
+        assertNotNull(show)
+        assertEquals(ServusBranding.NEWS_90_SECONDS_LOGO_URI, show!!.logoUri)
+    }
+''')
+
+          branding_test = Path('servustv-provider/src/test/java/com/andreassamitsch/servusprovider/data/ServusBrandingTest.kt')
+          branding_test.write_text('''package com.andreassamitsch.servusprovider.data
+
+import com.andreassamitsch.servusprovider.api.ServusCardDto
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class ServusBrandingTest {
+    @Test
+    fun legacyNinetySecondEpisodeAlwaysGetsDedicatedLogo() {
+        val episode = ServusNewsPolicy.toSupportedEpisode(
+            ServusCardDto(
+                id = "NEWS90",
+                type = "video",
+                contentType = "episode",
+                title = "Servus Nachrichten in 90 Sekunden",
+                duration = 90_000L,
+                playable = true,
+            ),
+            nowMillis = 1_000L,
+        )!!
+
+        assertEquals(ServusBranding.NEWS_90_SECONDS_LOGO_URI, episode.logoUri)
+        assertEquals(
+            ServusBranding.NEWS_90_SECONDS_LOGO_URI,
+            ServusBranding.logoUriForEpisode(episode, "https://wrong.example/logo.webp"),
+        )
+    }
+
+    @Test
+    fun normalServusNewsKeepsItsOwnFallbackLogo() {
+        val episode = ServusNewsEpisode(
+            id = "FULL",
+            title = "Servus Nachrichten 19:20",
+            showName = "Servus Nachrichten",
+            description = null,
+            durationMillis = 600_000L,
+            publishedAtMillis = null,
+            artworkUri = null,
+        )
+
+        assertEquals(
+            "https://example.test/full-news-logo.webp",
+            ServusBranding.logoUriForEpisode(episode, "https://example.test/full-news-logo.webp"),
+        )
+    }
+}
+''')
+          PY
+      - name: Verify logo asset
+        shell: bash
+        run: |
+          file servustv-provider/src/main/res/drawable-nodpi/servus_news_90_logo.png
+          test -s servustv-provider/src/main/res/drawable-nodpi/servus_news_90_logo.png
+      - name: Test and build
+        run: ./gradlew :servustv-provider:testDebugUnitTest :servustv-provider:assembleDebug :app:testDebugUnitTest :app:assembleDebug --stacktrace
+      - name: Commit implementation and remove temporary workflow
+        shell: bash
+        run: |
+          rm -f .github/workflows/apply-servus-90-logo.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(servustv): use dedicated 90-second news logo"
+          git push origin HEAD:feat/servustv-news-provider-prototype
