@@ -84,6 +84,13 @@ jobs:
           )
           text = text.replace('append("\\\\n")', 'append("\\n")')
           main.write_text(text)
+
+          playback = Path('servustv-provider/src/main/java/com/andreassamitsch/servusprovider/ui/PlaybackActivity.kt')
+          playback_text = playback.read_text().replace(
+              'scaleType = ImageButton.ScaleType.CENTER_INSIDE',
+              'scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE',
+          )
+          playback.write_text(playback_text)
           PY
 
       - name: Test and build ServusTV
