@@ -1,0 +1,84 @@
+name: Fix ServusTV show TV action
+
+on:
+  push:
+    branches:
+      - feat/servustv-news-provider-prototype
+    paths:
+      - .github/workflows/fix-servustv-show-tv-button.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/servustv-news-provider-prototype
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.5.0"
+      - name: Make TV-channel action visible everywhere
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('servustv-provider/src/main/java/com/andreassamitsch/servusprovider/ui/ShowActivity.kt')
+          text = path.read_text()
+          start = text.index('        if (repository.tvChannelSupported()) {\n            val tvButton = buildIconButton')
+          end = text.index('        info.addView(actions)', start)
+          new = '''        val tvChannelSupported = repository.tvChannelSupported()
+          val tvButton = buildIconButton(R.drawable.ic_tv, "Als Android-TV-Kanal veröffentlichen")
+          fun renderTvButton() {
+              val selected = repository.isShowChannelSelected(show.id)
+              tvButton.contentDescription = when {
+                  !tvChannelSupported -> "Android-TV-Kanal – nur auf Android TV verfügbar"
+                  selected -> "Android-TV-Kanal entfernen"
+                  else -> "Als Android-TV-Kanal veröffentlichen"
+              }
+              setIconSelected(tvButton, selected)
+              tvButton.alpha = if (tvChannelSupported) {
+                  if (selected || tvButton.hasFocus()) 1f else 0.8f
+              } else {
+                  0.45f
+              }
+          }
+          renderTvButton()
+          tvButton.setOnClickListener {
+              if (!tvChannelSupported) {
+                  Toast.makeText(this, "Android-TV-Kanäle sind nur auf Android TV verfügbar.", Toast.LENGTH_SHORT).show()
+                  return@setOnClickListener
+              }
+              val selected = repository.isShowChannelSelected(show.id)
+              repository.setShowChannelSelected(show.id, !selected)
+              renderTvButton()
+              ServusRefreshWorker.enqueueNow(applicationContext)
+              Toast.makeText(
+                  this,
+                  if (selected) "Android-TV-Kanal entfernt" else "Android-TV-Kanal aktiviert",
+                  Toast.LENGTH_SHORT,
+              ).show()
+          }
+          actions.addView(tvButton, iconLayoutParams().apply { marginStart = dp(8) })
+'''
+          text = text[:start] + new + text[end:]
+          path.write_text(text)
+          PY
+      - name: Test and build
+        run: gradle :servustv-provider:testDebugUnitTest :servustv-provider:assembleDebug --stacktrace
+      - name: Commit tested change
+        run: |
+          rm .github/workflows/fix-servustv-show-tv-button.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(servustv): keep TV channel action visible"
+          git push origin HEAD:feat/servustv-news-provider-prototype
