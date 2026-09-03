@@ -26,9 +26,84 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.5.0"
-      - name: Apply logo metadata fix
+      - name: Patch publisher
+        shell: bash
         run: |
-          echo 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpyZXBvID0gUGF0aCgnc2VydnVzdHYtcHJvdmlkZXIvc3JjL21haW4vamF2YS9jb20vYW5kcmVhc3NhbWl0c2NoL3NlcnZ1c3Byb3ZpZGVyL2RhdGEvU2VydnVzTmV3c1JlcG9zaXRvcnkua3QnKQp0ZXh0ID0gcmVwby5yZWFkX3RleHQoKQoKdGV4dCA9IHRleHQucmVwbGFjZSgKJycnICAgICAgICAgICAgdmFsIGVwaXNvZGVzID0gb2JzZXJ2ZWRBdmFpbGFiaWxpdHlTdG9yZS5hbm5vdGF0ZU5ld2x5T2JzZXJ2ZWQoCiAgICAgICAgICAgICAgICBlcGlzb2RlcyA9IG1hcHBlZEVwaXNvZGVzLAogICAgICAgICAgICAgICAgb2JzZXJ2ZWRBdE1pbGxpcyA9IHJlZnJlc2hOb3csCiAgICAgICAgICAgICAgICBkZXRlY3ROZXdJdGVtcyA9IGRldGVjdE5ld0F2YWlsYWJpbGl0eSwKICAgICAgICAgICAgKQonJycsCicnJyAgICAgICAgICAgIHZhciBlcGlzb2RlcyA9IG9ic2VydmVkQXZhaWxhYmlsaXR5U3RvcmUuYW5ub3RhdGVOZXdseU9ic2VydmVkKAogICAgICAgICAgICAgICAgZXBpc29kZXMgPSBtYXBwZWRFcGlzb2RlcywKICAgICAgICAgICAgICAgIG9ic2VydmVkQXRNaWxsaXMgPSByZWZyZXNoTm93LAogICAgICAgICAgICAgICAgZGV0ZWN0TmV3SXRlbXMgPSBkZXRlY3ROZXdBdmFpbGFiaWxpdHksCiAgICAgICAgICAgICkKJycnLCAxKQoKdGV4dCA9IHRleHQucmVwbGFjZSgKJycnICAgICAgICAgICAgdmFsIHJlc3VsdCA9IFNlcnZ1c1JlZnJlc2hSZXN1bHQoCiAgICAgICAgICAgICAgICBlcGlzb2RlcyA9IGVwaXNvZGVzLAogICAgICAgICAgICAgICAgcmVmcmVzaGVkQXRNaWxsaXMgPSByZWZyZXNoTm93LAogICAgICAgICAgICApCicnJywKJycnICAgICAgICAgICAgdmFyIHJlc3VsdCA9IFNlcnZ1c1JlZnJlc2hSZXN1bHQoCiAgICAgICAgICAgICAgICBlcGlzb2RlcyA9IGVwaXNvZGVzLAogICAgICAgICAgICAgICAgcmVmcmVzaGVkQXRNaWxsaXMgPSByZWZyZXNoTm93LAogICAgICAgICAgICApCicnJywgMSkKCnRleHQgPSB0ZXh0LnJlcGxhY2UoCicnJyAgICAgICAgICAgIHZhbCB0cmFja2VkQXZhaWxhYmlsaXR5Q2hhbmdlZCA9IGNhdGVnb3JpZXMgIT0gYmVmb3JlQXZhaWxhYmlsaXR5QW5ub3RhdGlvbgoKICAgICAgICAgICAgaWYgKGNhdGFsb2dSZWZyZXNoU3VjY2VlZGVkKSB7CicnJywKJycnICAgICAgICAgICAgdmFsIHRyYWNrZWRBdmFpbGFiaWxpdHlDaGFuZ2VkID0gY2F0ZWdvcmllcyAhPSBiZWZvcmVBdmFpbGFiaWxpdHlBbm5vdGF0aW9uCgogICAgICAgICAgICB2YWwgZW5yaWNoZWRDdXJyZW50RXBpc29kZXMgPSBTZXJ2dXNDdXJyZW50U2hvd01ldGFkYXRhUG9saWN5LmVucmljaCgKICAgICAgICAgICAgICAgIGVwaXNvZGVzID0gZXBpc29kZXMsCiAgICAgICAgICAgICAgICBjYXRlZ29yaWVzID0gY2F0ZWdvcmllcywKICAgICAgICAgICAgKQogICAgICAgICAgICBpZiAoZW5yaWNoZWRDdXJyZW50RXBpc29kZXMgIT0gZXBpc29kZXMpIHsKICAgICAgICAgICAgICAgIGVwaXNvZGVzID0gZW5yaWNoZWRDdXJyZW50RXBpc29kZXMKICAgICAgICAgICAgICAgIHJlc3VsdCA9IHJlc3VsdC5jb3B5KGVwaXNvZGVzID0gZXBpc29kZXMpCiAgICAgICAgICAgICAgICBuZXdzU3RvcmUuc2F2ZShyZXN1bHQpCiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIGlmIChjYXRhbG9nUmVmcmVzaFN1Y2NlZWRlZCkgewo nJycnLnJlcGxhY2UoIiBcbiIsICJcbiIpLCAxKQoKdGV4dCA9IHRleHQucmVwbGFjZSgKJycnICAgICAgICAgICAgICAgICAgICB2YWwgY29udGVudENoYW5nZWQgPSBwcmV2aW91c0VwaXNvZGVzLm1hcCB7IFNlcnZ1c05ld3NQb2xpY3kuY29udGVudEtleShpdCkgdG8gaXQuaWQgfSAhPQogICAgICAgICAgICAgICAgICAgICAgICBlcGlzb2Rlcy5tYXAgeyBTZXJ2dXNOZXdzUG9saWN5LmNvbnRlbnRLZXkoaXQpIHRvIGl0LmlkIH0KJycnLAonJycgICAgICAgICAgICAgICAgICAgIHZhbCBjb250ZW50Q2hhbmdlZCA9IHByZXZpb3VzRXBpc29kZXMubWFwIHsKICAgICAgICAgICAgICAgICAgICAgICAgbGlzdE9mKAogICAgICAgICAgICAgICAgICAgICAgICAgICAgU2VydnVzTmV3c1BvbGljeS5jb250ZW50S2V5KGl0KSwKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGl0LmlkLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgaXQuc2hvd0lkLm9yRW1wdHkoKSwKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGl0LmxvZ29Vcmkub3JFbXB0eSgpLAogICAgICAgICAgICAgICAgICAgICAgICApCiAgICAgICAgICAgICAgICAgICAgfSAhPSBlcGlzb2Rlcy5tYXAgewogICAgICAgICAgICAgICAgICAgICAgICBsaXN0T2YoCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBTZXJ2dXNOZXdzUG9saWN5LmNvbnRlbnRLZXkoaXQpLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgaXQuaWQsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBpdC5zaG93SWQub3JFbXB0eSgpLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgaXQubG9nb1VyaS5vckVtcHR5KCksCiAgICAgICAgICAgICAgICAgICAgICAgICApCiAgICAgICAgICAgICAgICAgICAgfQonJycsIDEpCgpyZXBvLndyaXRlX3RleHQodGV4dCkKClBhdGgoJ3NlcnZ1c3R2LXByb3ZpZGVyL3NyYy9tYWluL2phdmEvY29tL2FuZHJlYXNzYW1pdHNjaC9zZXJ2dXNwcm92aWRlci9kYXRhL1NlcnZ1c0N1cnJlbnRTaG93TWV0YWRhdGFQb2xpY3kua3QnKS53cml0ZV90ZXh0KCcnJ3BhY2thZ2UgY29tLmFuZHJlYXNzYW1pdHNjaC5zZXJ2dXNwcm92aWRlci5kYXRhCgppbXBvcnQgamF2YS51dGlsLkxvY2FsZQoKb2JqZWN0IFNlcnZ1c0N1cnJlbnRTaG93TWV0YWRhdGFQb2xpY3kgewogICAgZnVuIGVucmljaCgKICAgICAgICBlcGlzb2RlczogTGlzdDxTZXJ2dXNOZXdzRXBpc29kZT4sCiAgICAgICAgY2F0ZWdvcmllczogTGlzdDxTZXJ2dXNDYXRlZ29yeT4sCiAgICApOiBMaXN0PFNlcnZ1c05ld3NFcGlzb2RlPiB7CiAgICAgICAgdmFsIHNob3dzID0gY2F0ZWdvcmllcy5mbGF0TWFwIHsgaXQuc2hvd3MgfS5kaXN0aW5jdEJ5IHsgaXQuaWQgfQogICAgICAgIGlmIChzaG93cy5pc0VtcHR5KCkpIHJldHVybiBlcGlzb2RlcwoKICAgICAgICByZXR1cm4gZXBpc29kZXMubWFwIHsgZXBpc29kZSAtPgogICAgICAgICAgICB2YWwga2luZCA9IFNlcnZ1c05ld3NQb2xpY3kuY29udGVudEtpbmQoZXBpc29kZSkgPzogcmV0dXJuQG1hcCBlcGlzb2RlCiAgICAgICAgICAgIHZhbCBzaG93ID0gc2hvd3MKICAgICAgICAgICAgICAgIC5tYXAgeyBjYW5kaWRhdGUgLT4gY2FuZGlkYXRlIHRvIG1hdGNoU2NvcmUoa2luZCwgY2FuZGlkYXRlLnRpdGxlKSB9CiAgICAgICAgICAgICAgICAuZmlsdGVyIHsgKF8sIHNjb3JlKSAtPiBzY29yZSA+IDAgfQogICAgICAgICAgICAgICAgLm1heEJ5T3JOdWxsIHsgKF8sIHNjb3JlKSAtPiBzY29yZSB9CiAgICAgICAgICAgICAgICA/LmZpcnN0CiAgICAgICAgICAgICAgICA/OiByZXR1cm5AbWFwIGVwaXNvZGUKCiAgICAgICAgICAgIGVwaXNvZGUuY29weSgKICAgICAgICAgICAgICAgIHNob3dJZCA9IGVwaXNvZGUuc2hvd0lkPy50YWtlSWYgeyBpdC5pc05vdEJsYW5rKCkgfSA/OiBzaG93LmlkLAogICAgICAgICAgICAgICAgc2hvd05hbWUgPSBzaG93LnRpdGxlLAogICAgICAgICAgICAgICAgbG9nb1VyaSA9IGVwaXNvZGUubG9nb1VyaT8udGFrZUlmIHsgaXQuaXNOT3RCbGFuaygpIH0gPzogc2hvdy5sb2dvVXJpLAogICAgICAgICAgICApCiAgICAgICAgfQogICAgfQoKICAgIHByaXZhdGUgZnVuIG1hdGNoU2NvcmUoa2luZDogU2VydnVzQ29udGVudEtpbmQsIHRpdGxlOiBTdHJpbmcpOiBJbnQgewogICAgICAgIHZhbCBub3JtYWxpemVkID0gbm9ybWFsaXplKHRpdGxlKQogICAgICAgIHJldHVybiB3aGVuIChraW5kKSB7CiAgICAgICAgICAgIFNlcnZ1c0NvbnRlbnRLaW5kLkZVTExfTkVXUyAtPiB3aGVuIHsKICAgICAgICAgICAgICAgICI5MCBzZWt1bmRlbiIgaW4gbm9ybWFsaXplZCB8fCAiOTAtc2VrdW5kZW4iIGluIG5vcm1hbGl6ZWQgLT4gMAogICAgICAgICAgICAgICAgIm5hY2hyaWNodGVuIiAhaW4gbm9ybWFsaXplZCAtPiAwCiAgICAgICAgICAgICAgICAiMTk6MjAiIGluIG5vcm1hbGl6ZWQgLT4gMzAwCiAgICAgICAgICAgICAgICAic2VydnVzIG5hY2hyaWNodGVuIiBpbiBub3JtYWxpemVkIC0+IDIwMAogICAgICAgICAgICAgICAgZWxzZSAtPiAxMDAKICAgICAgICAgICAgfQogICAgICAgICAgICBTZXJ2dXNDb250ZW50S2luZC5ORVdTXzkwX1NFQ09ORFMgLT4gd2hlbiB7CiAgICAgICAgICAgICAgICAibmFjaHJpY2h0ZW4iICEgaW4gbm9ybWFsaXplZCAtPiAwCiAgICAgICAgICAgICAgICAiOTAgc2VrdW5kZW4iIGluIG5vcm1hbGl6ZWQgfHwgIjkwLXNla3VuZGVuIiBpbiBub3JtYWxpemVkIC0+IDMwMAogICAgICAgICAgICAgICAgZWxzZSAtPiAwCiAgICAgICAgICAgIH0KICAgICAgICAgICAgU2VydnVzQ29udGVudEtpbmQuV0VHU0NIRUlERVIgLT4gaWYgKCJ3ZWdzY2hlaWRlciIgaW4gbm9ybWFsaXplZCkgMzAwIGVsc2UgMAogICAgICAgIH0KICAgIH0KCiAgICBwcml2YXRlIGZ1biBub3JtYWxpemUodmFsdWU6IFN0cmluZyk6IFN0cmluZyA9IHZhbHVlCiAgICAgICAgLmxvd2VyY2FzZShMb2NhbGUuR0VSTUFOKQogICAgICAgIC5yZXBsYWNlKOKAkycsICctJykKICAgICAgICAucmVwbGFjZShSZWdleCgiIiJcXHMrIiIiKSwgIiAiKQogICAgICAgIC50cmltKCkKfQonJycpCgp0ZXN0ID0gUGF0aCgnc2VydnVzdHYtcHJvdmlkZXIvc3JjL3Rlc3QvamF2YS9jb20vYW5kcmVhc3NhbWl0c2NoL3NlcnZ1c3Byb3ZpZGVyL2RhdGEvU2VydnVzQ3VycmVudFNob3dNZXRhZGF0YVBvbGljeVRlc3Qua3QnKQp0ZXN0LnBhcmVudC5ta2RpcihwYXJlbnRzPVRydWUsIGV4aXN0X29rPVRydWUpCnRlc3Qud3JpdGVfdGV4dCgnJydwYWNrYWdlIGNvbS5hbmRyZWFzc2FtaXRzY2guc2VydnVzcHJvdmlkZXIuZGF0YQoKaW1wb3J0IG9yZy5qdW5pdC5Bc3NlcnQuYXNzZXJ0RXF1YWxzCmltcG9ydCBvcmcuanVuaXQuQXNzZXJ0LmFzc2VydE51bGwKaW1wb3J0IG9yZy5qdW5pdC5UZXN0CgpjbGFzcyBTZXJ2dXNDdXJyZW50U2hvd01ldGFkYXRhUG9saWN5VGVzdCB7CiAgICBAVGVzdAogICAgZnVuIGVucmljaGVzU3VwcG9ydGVkQ3VycmVudEVwaXNvZGVzV2l0aE1hdGNoaW5nU2hvd0xvZ28oKSB7CiAgICAgICAgdmFsIGNhdGVnb3JpZXMgPSBsaXN0T2YoCiAgICAgICAgICAgIFNlcnZ1c0NhdGVnb3J5KAogICAgICAgICAgICAgICAgaWQgPSAibmV3cyIsCiAgICAgICAgICAgICAgICB0aXRsZSA9ICJOYWNocmljaHRlbiIsCiAgICAgICAgICAgICAgICBvcmRlciA9IDAsCiAgICAgICAgICAgICAgICBzaG93cyA9IGxpc3RPZigKICAgICAgICAgICAgICAgICAgICBzaG93KCJmdWxsIiwgIlNlcnZ1cyBOYWNocmljaHRlbiAxOToyMCIsICJodHRwczovL2Nkbi9mdWxsLWxvZ28ud2VicCIpLAogICAgICAgICAgICAgICAgICAgIHNob3coInNob3J0IiwgIlNlcnZ1cyBOYWNocmljaHRlbiBpbiA5MCBTZWt1bmRlbiIsICJodHRwczovL2Nkbi9zaG9ydC1sb2dvLndlYnAiKSwKICAgICAgICAgICAgICAgICAgICBzaG93KCJ3ZWciLCAiRGVyIFdlZ3NjaGVpZGVyIiwgImh0dHBzOi8vY2RuL3dlZy1sb2dvLndlYnAiKSwKICAgICAgICAgICAgICAgICksCiAgICAgICAgICAgICksCiAgICAgICAgKQogICAgICAgIHZhbCBlcGlzb2RlcyA9IGxpc3RPZigKICAgICAgICAgICAgZXBpc29kZSgiYSIsICJOYWNocmljaHRlbiAxOToyMCB8IDAzLjA5LiIsICJTZXJ2dXMgTmFjaHJpY2h0ZW4iLCAxNSAqIDYwXzAwMEwpLAogICAgICAgICAgICBlcGlzb2RlKCJiIiwgIlNlcnZ1cyBOYWNocmljaHRlbiBpbiA5MCBTZWt1bmRlbiIsICJTZXJ2dXMgTmFjaHJpY2h0ZW4gaW4gOTAgU2VrdW5kZW4iLCA5MF8wMDBMKSwKICAgICAgICAgICAgZXBpc29kZSgiYyIsICJEZXIgV2Vnc2NoZWlkZXIiLCAiRGVyIFdlZ3NjaGVpZGVyIiwgOCAqIDYwXzAwMEwpLAogICAgICAgICkKCiAgICAgICAgdmFsIHJlc3VsdCA9IFNlcnZ1c0N1cnJlbnRTaG93TWV0YWRhdGFQb2xpY3kuZW5yaWNoKGVwaXNvZGVzLCBjYXRlZ29yaWVzKQoKICAgICAgICBhc3NlcnRFcXVhbHMoImZ1bGwiLCByZXN1bHRbMF0uc2hvd0lkKQogICAgICAgIGFzc2VydEVxdWFscygiaHR0cHM6Ly9jZG4vZnVsbC1sb2dvLndlYnAiLCByZXN1bHRbMF0ubG9nb1VyaSkKICAgICAgICBhc3NlcnRFcXVhbHMoInNob3J0IiwgcmVzdWx0WzFdLnNob3dJZCkKICAgICAgICBhc3NlcnRFcXVhbHMoImh0dHBzOi8vY2RuL3Nob3J0LWxvZ28ud2VicCIsIHJlc3VsdFsxXS5sb2dvVXJpKQogICAgICAgIGFzc2VydEVxdWFscygid2VnIiwgcmVzdWx0WzJdLnNob3dJZCkKICAgICAgICBhc3NlcnRFcXVhbHMoImh0dHBzOi8vY2RuL3dlZy1sb2dvLndlYnAiLCByZXN1bHRbMl0ubG9nb1VyaSkKICAgIH0KCiAgICBAVGVzdAogICAgZnVuIGtlZXBzRXBpc29kZVVuY2hhbmdlZFdoZW5Ob01hdGNoaW5nU2hvd0V4aXN0cygpIHsKICAgICAgICB2YWwgc291cmNlID0gZXBpc29kZSgiYSIsICJOYWNocmljaHRlbiAxOToyMCB8IDAzLjA5LiIsICJTZXJ2dXMgTmFjaHJpY2h0ZW4iLCAxNSAqIDYwXzAwMEwpCiAgICAgICAgdmFsIHJlc3VsdCA9IFNlcnZ1c0N1cnJlbnRTaG93TWV0YWRhdGFQb2xpY3kuZW5yaWNoKGxpc3RPZihzb3VyY2UpLCBlbXB0eUxpc3QoKSkuc2luZ2xlKCkKICAgICAgICBhc3NlcnROdWxsKHJlc3VsdC5zaG93SWQpCiAgICAgICAgYXNzZXJ0TnVsbChyZXN1bHQubG9nb1VyaSkKICAgIH0KCiAgICBwcml2YXRlIGZ1biBzaG93KGlkOiBTdHJpbmcsIHRpdGxlOiBTdHJpbmcsIGxvZ286IFN0cmluZykgPSBTZXJ2dXNTaG93KAogICAgICAgIGlkID0gaWQsCiAgICAgICAgdGl0bGUgPSB0aXRsZSwKICAgICAgICBkZXNjcmlwdGlvbiA9IG51bGwsCiAgICAgICAgY2F0ZWdvcnlJZCA9ICJuZXdzIiwKICAgICAgICBjYXRlZ29yeVRpdGxlID0gIk5hY2hyaWNodGVuIiwKICAgICAgICBhcnR3b3JrVXJpID0gbnVsbCwKICAgICAgICBzcXVhcmVBcnR3b3JrVXJpID0gbnVsbCwKICAgICAgICBsb2dvVXJpID0gbG9nbywKICAgICAgICBlcGlzb2RlcyA9IGVtcHR5TGlzdCgpLAogICAgKQoKICAgIHByaXZhdGUgZnVuIGVwaXNvZGUoaWQ6IFN0cmluZywgdGl0bGU6IFN0cmluZywgc2hvd05hbWU6IFN0cmluZywgZHVyYXRpb246IExvbmcpID0gU2VydnVzTmV3c0VwaXNvZGUoCiAgICAgICAgaWQgPSBpZCwKICAgICAgICB0aXRsZSA9IHRpdGxlLAogICAgICAgIHNob3dOYW1lID0gc2hvd05hbWUsCiAgICAgICAgZGVzY3JpcHRpb24gPSBudWxsLAogICAgICAgIGR1cmF0aW9uTWlsbGlzID0gZHVyYXRpb24sCiAgICAgICAgcHVibGlzaGVkQXRNaWxsaXMgPSBudWxsLAogICAgICAgIGFydHdvcmtVcmkgPSBudWxsLAogICAgKQp9CicnJykK' | base64 -d | python3
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("servustv-provider/src/main/java/com/andreassamitsch/servusprovider/tv/ServusChannelPublisher.kt")
+          text = path.read_text()
+
+          old = "import com.andreassamitsch.servusprovider.data.ServusCurrentChannelSelectionStore\n"
+          new = old + "import com.andreassamitsch.servusprovider.data.ServusCurrentShowMetadataPolicy\n"
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = "    private val showChannelSelectionStore = ServusShowChannelSelectionStore(appContext)\n"
+          new = old + "    private val publishPreferences = appContext.getSharedPreferences(PUBLISH_PREFS, Context.MODE_PRIVATE)\n"
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = '''    fun isPublished(): Boolean {
+              if (!isSupported()) return false
+              return helper.getAllChannels().any { it.internalProviderId == CURRENT_CHANNEL_ID }
+          }
+          '''
+          new = '''    fun isPublished(): Boolean {
+              if (!isSupported()) return false
+              if (publishPreferences.getInt(KEY_CURRENT_METADATA_VERSION, 0) < CURRENT_METADATA_VERSION) return false
+              return helper.getAllChannels().any { it.internalProviderId == CURRENT_CHANNEL_ID }
+          }
+          '''
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = '''        val effectiveEpisodes = currentSelectionStore.effectiveEpisodes(
+              categories = hubStore.loadCategories(),
+              legacyEpisodes = episodes,
+          )
+          '''
+          new = '''        val categories = hubStore.loadCategories()
+              val effectiveEpisodes = ServusCurrentShowMetadataPolicy.enrich(
+                  episodes = currentSelectionStore.effectiveEpisodes(
+                      categories = categories,
+                      legacyEpisodes = episodes,
+                  ),
+                  categories = categories,
+              )
+          '''
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = '''        replacePrograms(channelId, effectiveEpisodes.mapIndexed { index, episode ->
+              buildEpisodeProgram(channelId, episode, effectiveEpisodes.size - index, episode.logoUri)
+          })
+          '''
+          new = '''        replacePrograms(channelId, effectiveEpisodes.mapIndexed { index, episode ->
+              buildEpisodeProgram(channelId, episode, effectiveEpisodes.size - index, episode.logoUri)
+          })
+              if (effectiveEpisodes.any { !it.logoUri.isNullOrBlank() }) {
+                  publishPreferences.edit().putInt(KEY_CURRENT_METADATA_VERSION, CURRENT_METADATA_VERSION).apply()
+              }
+          '''
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = '''        const val CHANNEL_LOGO_SIZE_PX = 256
+              const val CHANNEL_LOGO_PADDING_PX = 16
+          '''
+          new = '''        const val CHANNEL_LOGO_SIZE_PX = 256
+              const val CHANNEL_LOGO_PADDING_PX = 16
+              private const val PUBLISH_PREFS = "servus_tv_publish"
+              private const val KEY_CURRENT_METADATA_VERSION = "current_metadata_version"
+              private const val CURRENT_METADATA_VERSION = 1
+          '''
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
       - name: Test and build
         run: gradle :servustv-provider:testDebugUnitTest :servustv-provider:assembleDebug :app:testDebugUnitTest :app:assembleDebug --stacktrace
       - name: Commit tested fix
@@ -36,8 +111,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/workflows/fix-servustv-current-logos.yml
-          git add servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusNewsRepository.kt
-          git add servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCurrentShowMetadataPolicy.kt
-          git add servustv-provider/src/test/java/com/andreassamitsch/servusprovider/data/ServusCurrentShowMetadataPolicyTest.kt
-          git commit -m "fix(servustv): publish current show logos"
+          git add servustv-provider/src/main/java/com/andreassamitsch/servusprovider/tv/ServusChannelPublisher.kt
+          git commit -m "fix(servustv): republish current show logos"
           git push origin HEAD:feat/servustv-news-provider-prototype
