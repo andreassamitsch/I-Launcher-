@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andreassamitsch.servusprovider.data.ServusCurrentChannelPolicyTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-09-03T13:25:41.595Z" hostname="runnervmgx7h7" time="0.043">
+<testsuite name="com.andreassamitsch.servusprovider.data.ServusCurrentChannelPolicyTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-09-03T17:30:35.573Z" hostname="runnervmejwal" time="0.075">
   <properties/>
-  <testcase name="observedAvailabilityParticipatesInCurrentOrdering" classname="com.andreassamitsch.servusprovider.data.ServusCurrentChannelPolicyTest" time="0.014"/>
-  <testcase name="legacyCurrentShowsAreSelectedByDefault" classname="com.andreassamitsch.servusprovider.data.ServusCurrentChannelPolicyTest" time="0.001"/>
-  <testcase name="ninetySecondLegacyEpisodeRequiresDedicatedShowWhenCatalogueProvidesOne" classname="com.andreassamitsch.servusprovider.data.ServusCurrentChannelPolicyTest" time="0.002"/>
-  <testcase name="selectedShowWithoutTimestampCannotBePushedOutByTimestampedNews" classname="com.andreassamitsch.servusprovider.data.ServusCurrentChannelPolicyTest" time="0.019"/>
-  <testcase name="episodeWithExplicitShowIdFollowsUserSelection" classname="com.andreassamitsch.servusprovider.data.ServusCurrentChannelPolicyTest" time="0.0"/>
+  <testcase name="observedAvailabilityParticipatesInCurrentOrdering" classname="com.andreassamitsch.servusprovider.data.ServusCurrentChannelPolicyTest" time="0.018"/>
+  <testcase name="legacyCurrentShowsAreSelectedByDefault" classname="com.andreassamitsch.servusprovider.data.ServusCurrentChannelPolicyTest" time="0.011"/>
+  <testcase name="ninetySecondLegacyEpisodeRequiresDedicatedShowWhenCatalogueProvidesOne" classname="com.andreassamitsch.servusprovider.data.ServusCurrentChannelPolicyTest" time="0.001"/>
+  <testcase name="selectedShowWithoutTimestampCannotBePushedOutByTimestampedNews" classname="com.andreassamitsch.servusprovider.data.ServusCurrentChannelPolicyTest" time="0.041"/>
+  <testcase name="episodeWithExplicitShowIdFollowsUserSelection" classname="com.andreassamitsch.servusprovider.data.ServusCurrentChannelPolicyTest" time="0.001"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

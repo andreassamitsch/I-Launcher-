@@ -61,6 +61,8 @@ class PlaybackActivity : Activity() {
     private lateinit var settingsButton: ImageButton
     private var selectedVideoSummary = "wird ermittelt"
     private var selectedAudioSummary = "wird ermittelt"
+    private var subtitlesEnabled = false
+    private var trackSelector: DefaultTrackSelector? = null
     private var userSeeking = false
     private val isTvDevice: Boolean by lazy {
         packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
@@ -371,16 +373,19 @@ class PlaybackActivity : Activity() {
                 ),
             )
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
-        val trackSelector = DefaultTrackSelector(this).apply {
+        val selector = DefaultTrackSelector(this).apply {
             setParameters(
                 buildUponParameters()
                     .setForceHighestSupportedBitrate(true)
-                    .setTunnelingEnabled(true),
+                    .setTunnelingEnabled(true)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true),
             )
         }
+        trackSelector = selector
+        subtitlesEnabled = false
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
-            .setTrackSelector(trackSelector)
+            .setTrackSelector(selector)
             .build()
             .also { exoPlayer ->
                 exoPlayer.addListener(
@@ -490,6 +495,15 @@ class PlaybackActivity : Activity() {
             setTextColor(Color.LTGRAY)
             setPadding(0, dp(16), 0, dp(18))
         })
+        val subtitleButton = Button(this).apply {
+            text = subtitleButtonLabel()
+            isAllCaps = false
+            setOnClickListener {
+                setSubtitlesEnabled(!subtitlesEnabled)
+                text = subtitleButtonLabel()
+            }
+        }
+        panel.addView(subtitleButton)
         val closeButton = Button(this).apply {
             text = "Schließen"
             isAllCaps = false
@@ -516,6 +530,18 @@ class PlaybackActivity : Activity() {
         }
         settingsDialog = dialog
         closeButton.requestFocus()
+    }
+
+    private fun subtitleButtonLabel(): String =
+        if (subtitlesEnabled) "Untertitel: Ein" else "Untertitel: Aus"
+
+    private fun setSubtitlesEnabled(enabled: Boolean) {
+        subtitlesEnabled = enabled
+        val selector = trackSelector ?: return
+        selector.setParameters(
+            selector.buildUponParameters()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled),
+        )
     }
 
     private fun logSelectedTracks(tracks: Tracks) {
@@ -576,6 +602,8 @@ class PlaybackActivity : Activity() {
         playerView.player = null
         player?.release()
         player = null
+        trackSelector = null
+        subtitlesEnabled = false
     }
 
     private fun formatTime(millis: Long): String {
