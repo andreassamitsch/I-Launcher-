@@ -2,7 +2,12 @@ package com.andreassamitsch.servusprovider.data
 
 import android.content.Context
 
-/** Local opt-in for one Android-TV Preview Channel per ServusTV show. */
+/**
+ * Local opt-in for one Android-TV Preview Channel per ServusTV show.
+ *
+ * Selection changes carry a small persistent sync marker so the next TvProvider reconciliation also
+ * removes legacy/opted-out channels even when the episode payload itself did not change.
+ */
 class ServusShowChannelSelectionStore(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
