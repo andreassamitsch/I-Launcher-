@@ -1,0 +1,1501 @@
+name: Apply ServusTV demand refresh update
+
+on:
+  push:
+    branches:
+      - feat/servustv-news-provider-prototype
+    paths:
+      - .github/workflows/apply-servustv-demand-refresh.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/servustv-news-provider-prototype
+          fetch-depth: 0
+
+      - name: Apply ServusTV data and UX changes
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"Expected block not found in {path}: {old[:120]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          data_dir = Path("servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data")
+          ui_dir = Path("servustv-provider/src/main/java/com/andreassamitsch/servusprovider/ui")
+          res_dir = Path("servustv-provider/src/main/res/drawable")
+          test_dir = Path("servustv-provider/src/test/java/com/andreassamitsch/servusprovider/data")
+          res_dir.mkdir(parents=True, exist_ok=True)
+
+          # ------------------------------------------------------------------
+          # Selection + pure refresh policy
+          # ------------------------------------------------------------------
+          (data_dir / "ServusShowChannelSelectionStore.kt").write_text(r'''package com.andreassamitsch.servusprovider.data
+
+import android.content.Context
+
+/** Local opt-in for one Android-TV Preview Channel per ServusTV show. */
+class ServusShowChannelSelectionStore(context: Context) {
+    private val preferences = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    fun selectedShowIds(): Set<String> =
+        preferences.getStringSet(KEY_SELECTED_SHOW_IDS, emptySet()).orEmpty().toSet()
+
+    fun effectiveSelectedShowIds(categories: List<ServusCategory>): Set<String> {
+        val validIds = categories
+            .asSequence()
+            .flatMap { it.shows.asSequence() }
+            .map { it.id }
+            .toSet()
+        return selectedShowIds().filterTo(linkedSetOf()) { it in validIds }
+    }
+
+    fun isSelected(showId: String): Boolean = showId in selectedShowIds()
+
+    fun setSelected(showId: String, selected: Boolean) {
+        val ids = selectedShowIds().toMutableSet()
+        if (selected) ids += showId else ids -= showId
+        preferences.edit().putStringSet(KEY_SELECTED_SHOW_IDS, ids).apply()
+    }
+
+    private companion object {
+        const val PREFS_NAME = "servus_show_channel_selection"
+        const val KEY_SELECTED_SHOW_IDS = "selected_show_ids"
+    }
+}
+''')
+
+          (data_dir / "ServusShowRefreshPolicy.kt").write_text(r'''package com.andreassamitsch.servusprovider.data
+
+/** Decides which catalogue shows need episode traffic during a periodic refresh. */
+object ServusShowRefreshPolicy {
+    fun periodicShowIds(
+        categories: List<ServusCategory>,
+        currentSelectionConfigured: Boolean,
+        currentSelectedIds: Set<String>,
+        tvChannelSelectedIds: Set<String>,
+    ): Set<String> {
+        val shows = categories.flatMap { it.shows }.distinctBy { it.id }
+        val validIds = shows.mapTo(hashSetOf()) { it.id }
+        val result = linkedSetOf<String>()
+
+        if (currentSelectionConfigured) {
+            shows.asSequence()
+                .filter { it.id in currentSelectedIds }
+                .filterNot { ServusCurrentChannelPolicy.isLegacyDefaultTitle(it.title) }
+                .mapTo(result) { it.id }
+        }
+
+        tvChannelSelectedIds.asSequence()
+            .filter { it in validIds }
+            .forEach(result::add)
+        return result
+    }
+}
+''')
+
+          # ------------------------------------------------------------------
+          # Repository: metadata-only catalogue + selected/on-demand episodes
+          # ------------------------------------------------------------------
+          repo = "servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusNewsRepository.kt"
+          replace(
+              repo,
+              "    private val currentSelectionStore = ServusCurrentChannelSelectionStore(appContext)\n    private val observedAvailabilityStore = ServusObservedAvailabilityStore(appContext)",
+              "    private val currentSelectionStore = ServusCurrentChannelSelectionStore(appContext)\n    private val showChannelSelectionStore = ServusShowChannelSelectionStore(appContext)\n    private val observedAvailabilityStore = ServusObservedAvailabilityStore(appContext)",
+          )
+          replace(
+              repo,
+              '''    fun setCurrentShowSelected(showId: String, selected: Boolean) {
+        val categories = hubStore.loadCategories()
+        if (selected) {
+            categories.asSequence()
+                .flatMap { it.shows.asSequence() }
+                .firstOrNull { it.id == showId }
+                ?.let { show -> observedAvailabilityStore.baseline(show.episodes) }
+        }
+        currentSelectionStore.setSelected(showId, selected, categories)
+    }
+
+    fun lastSuccessMillis(): Long = newsStore.lastSuccessMillis()
+''',
+              '''    fun setCurrentShowSelected(showId: String, selected: Boolean) {
+        val categories = hubStore.loadCategories()
+        if (selected) {
+            categories.asSequence()
+                .flatMap { it.shows.asSequence() }
+                .firstOrNull { it.id == showId }
+                ?.let { show -> observedAvailabilityStore.baseline(show.episodes) }
+        }
+        currentSelectionStore.setSelected(showId, selected, categories)
+    }
+
+    fun isShowChannelSelected(showId: String): Boolean = showChannelSelectionStore.isSelected(showId)
+
+    fun selectedShowChannelIds(categories: List<ServusCategory> = hubStore.loadCategories()): Set<String> =
+        showChannelSelectionStore.effectiveSelectedShowIds(categories)
+
+    fun setShowChannelSelected(showId: String, selected: Boolean) {
+        if (selected) {
+            hubStore.findShow(showId)?.let { show -> observedAvailabilityStore.baseline(show.episodes) }
+        }
+        showChannelSelectionStore.setSelected(showId, selected)
+    }
+
+    fun lastSuccessMillis(): Long = newsStore.lastSuccessMillis()
+''',
+          )
+          replace(
+              repo,
+              '''    /**
+     * Fast data (Aktuelles + live guide) is refreshed on every run. The complete show catalogue is
+     * deliberately slower: initially, when stale, or on an explicit forced refresh. A normal manual
+     * update therefore stays on the fast path unless the catalogue itself is due. When the user
+     * configures additional shows for Aktuelles, only those non-legacy shows get a lightweight
+     * first-page refresh on the normal 15-minute worker cadence so newly available episodes do not
+     * wait up to six hours.
+     */
+''',
+              '''    /**
+     * Fast data (Aktuelles + live guide) is refreshed on every run. The complete show catalogue is
+     * metadata-only and deliberately slower: initially, when stale, or on an explicit forced refresh.
+     * Episode collections are not traversed for every catalogue show. Periodic episode traffic is
+     * limited to explicitly added Aktuelles shows and shows opted into an Android-TV channel. Any
+     * other show loads its episodes only when the user opens that show in the app.
+     */
+''',
+          )
+          replace(
+              repo,
+              '''            var selectedShowsRefreshed = false
+            if (!catalogRefreshSucceeded && currentSelectionStore.isConfigured() && categories.isNotEmpty()) {
+                val targeted = refreshConfiguredAdditionalShows(market, categories, refreshNow)
+                categories = targeted.categories
+                selectedShowsRefreshed = targeted.changed
+            }
+
+            val beforeAvailabilityAnnotation = categories
+            categories = annotateSelectedShowAvailability(
+                categories = categories,
+                observedAtMillis = refreshNow,
+                detectNewItems = detectNewAvailability,
+            )
+            val selectedAvailabilityChanged = categories != beforeAvailabilityAnnotation
+
+            if (catalogRefreshSucceeded) {
+                hubStore.saveCatalog(categories, refreshNow)
+            } else if (selectedShowsRefreshed || selectedAvailabilityChanged) {
+                hubStore.saveCatalogContent(categories)
+            }
+
+            val selectedIds = currentSelectionStore.effectiveSelectedShowIds(categories)
+            val selectedCatalogueEpisodes = categories
+                .flatMap { it.shows }
+                .filter { it.id in selectedIds }
+                .flatMap { it.episodes }
+            observedAvailabilityStore.finishSuccessfulRefresh(episodes + selectedCatalogueEpisodes)
+''',
+              '''            val periodicShowIds = ServusShowRefreshPolicy.periodicShowIds(
+                categories = categories,
+                currentSelectionConfigured = currentSelectionStore.isConfigured(),
+                currentSelectedIds = currentSelectionStore.effectiveSelectedShowIds(categories),
+                tvChannelSelectedIds = showChannelSelectionStore.effectiveSelectedShowIds(categories),
+            )
+            var periodicShowsRefreshed = false
+            if (categories.isNotEmpty() && periodicShowIds.isNotEmpty()) {
+                val targeted = refreshSubscribedShows(market, categories, refreshNow, periodicShowIds)
+                categories = targeted.categories
+                periodicShowsRefreshed = targeted.changed
+            }
+
+            val beforeAvailabilityAnnotation = categories
+            categories = annotateTrackedShowAvailability(
+                categories = categories,
+                trackedShowIds = periodicShowIds,
+                observedAtMillis = refreshNow,
+                detectNewItems = detectNewAvailability,
+            )
+            val trackedAvailabilityChanged = categories != beforeAvailabilityAnnotation
+
+            if (catalogRefreshSucceeded) {
+                hubStore.saveCatalog(categories, refreshNow)
+            } else if (periodicShowsRefreshed || trackedAvailabilityChanged) {
+                hubStore.saveCatalogContent(categories)
+            }
+
+            val trackedCatalogueEpisodes = categories
+                .flatMap { it.shows }
+                .filter { it.id in periodicShowIds }
+                .flatMap { it.episodes }
+            observedAvailabilityStore.finishSuccessfulRefresh(episodes + trackedCatalogueEpisodes)
+''',
+          )
+          replace(
+              repo,
+              '''                    val customCurrentChanged = currentSelectionStore.isConfigured() &&
+                        (catalogRefreshSucceeded || selectedShowsRefreshed || selectedAvailabilityChanged)
+                    if (contentChanged || customCurrentChanged || !channelPublisher.isPublished()) {
+                        channelPublisher.publish(episodes)
+                    }
+                    if (liveChannels.isNotEmpty()) channelPublisher.publishLive(liveChannels)
+                    if (catalogRefreshSucceeded && categories.isNotEmpty()) {
+                        channelPublisher.publishShows(categories)
+                    }
+''',
+              '''                    val customCurrentChanged = currentSelectionStore.isConfigured() &&
+                        (catalogRefreshSucceeded || periodicShowsRefreshed || trackedAvailabilityChanged)
+                    if (contentChanged || customCurrentChanged || !channelPublisher.isPublished()) {
+                        channelPublisher.publish(episodes)
+                    }
+                    if (liveChannels.isNotEmpty()) channelPublisher.publishLive(liveChannels)
+                    if ((catalogRefreshSucceeded || periodicShowsRefreshed) && categories.isNotEmpty()) {
+                        channelPublisher.publishShows(categories)
+                    }
+''',
+          )
+          replace(
+              repo,
+              '''        val cachedEpisodesByShowId = cachedCategories
+            .flatMap { it.shows }
+            .distinctBy { it.id }
+            .associate { show -> show.id to show.episodes }
+        val semaphore = Semaphore(SHOW_PARALLELISM)
+        val cores = try {
+            uniqueShowCards.values.map { card ->
+                async {
+                    semaphore.withPermit {
+                        val cachedEpisodes = card.id
+                            ?.let { showId -> cachedEpisodesByShowId[showId] }
+                            .orEmpty()
+                        loadShowCore(
+                            market = market,
+                            card = card,
+                            nowMillis = nowMillis,
+                            cachedEpisodes = cachedEpisodes,
+                        )
+                    }
+                }
+            }.awaitAll().filterNotNull().associateBy { it.id }
+        } catch (throwable: Throwable) {
+            throw diagnostics.failure("Sendungsdetails", throwable)
+        }
+''',
+              '''        val cachedShowsById = cachedCategories
+            .flatMap { it.shows }
+            .distinctBy { it.id }
+            .associateBy { it.id }
+        val cores = uniqueShowCards.values.mapNotNull { card ->
+            val cachedShow = card.id?.let(cachedShowsById::get)
+            showMetadataFromCard(card, cachedShow)
+        }.associateBy { it.id }
+''',
+          )
+          replace(
+              repo,
+              '''    private suspend fun refreshConfiguredAdditionalShows(
+        market: String,
+        categories: List<ServusCategory>,
+        nowMillis: Long,
+    ): SelectedShowRefreshOutcome = coroutineScope {
+        val selectedIds = currentSelectionStore.effectiveSelectedShowIds(categories)
+        val selectedShows = categories
+            .flatMap { it.shows }
+            .distinctBy { it.id }
+            .filter { show ->
+                show.id in selectedIds && !ServusCurrentChannelPolicy.isLegacyDefaultTitle(show.title)
+            }
+''',
+              '''    private suspend fun refreshSubscribedShows(
+        market: String,
+        categories: List<ServusCategory>,
+        nowMillis: Long,
+        showIds: Set<String>,
+    ): SubscribedShowRefreshOutcome = coroutineScope {
+        val selectedShows = categories
+            .flatMap { it.shows }
+            .distinctBy { it.id }
+            .filter { show -> show.id in showIds }
+''',
+          )
+          # Consistent names for the targeted refresh implementation.
+          p = Path(repo)
+          text = p.read_text()
+          text = text.replace("SelectedShowRefreshOutcome", "SubscribedShowRefreshOutcome")
+          text = text.replace("SELECTED_SHOW_PARALLELISM", "SUBSCRIBED_SHOW_PARALLELISM")
+          text = text.replace("MAX_SELECTED_SHOW_COLLECTION_PAGES", "MAX_SUBSCRIBED_SHOW_COLLECTION_PAGES")
+          p.write_text(text)
+
+          replace(
+              repo,
+              '''    private fun annotateSelectedShowAvailability(
+        categories: List<ServusCategory>,
+        observedAtMillis: Long,
+        detectNewItems: Boolean,
+    ): List<ServusCategory> {
+        if (categories.isEmpty()) return categories
+        val selectedIds = currentSelectionStore.effectiveSelectedShowIds(categories)
+        if (selectedIds.isEmpty()) return categories
+
+        return categories.map { category ->
+            category.copy(
+                shows = category.shows.map { show ->
+                    if (show.id !in selectedIds || show.episodes.isEmpty()) return@map show
+''',
+              '''    private fun annotateTrackedShowAvailability(
+        categories: List<ServusCategory>,
+        trackedShowIds: Set<String>,
+        observedAtMillis: Long,
+        detectNewItems: Boolean,
+    ): List<ServusCategory> {
+        if (categories.isEmpty() || trackedShowIds.isEmpty()) return categories
+
+        return categories.map { category ->
+            category.copy(
+                shows = category.shows.map { show ->
+                    if (show.id !in trackedShowIds || show.episodes.isEmpty()) return@map show
+''',
+          )
+
+          insertion = r'''    suspend fun refreshShow(showId: String): ServusShow? {
+        val categories = hubStore.loadCategories()
+        val cachedShow = categories.asSequence()
+            .flatMap { it.shows.asSequence() }
+            .firstOrNull { it.id == showId }
+            ?: return null
+        val session = sessionStore.get()
+        val nowMillis = System.currentTimeMillis()
+        val core = loadShowCore(
+            market = session.countryCode,
+            card = ServusCardDto(
+                id = cachedShow.id,
+                type = "page",
+                title = cachedShow.title,
+                longDescription = cachedShow.description,
+            ),
+            nowMillis = nowMillis,
+            maxCollectionPages = MAX_SHOW_COLLECTION_PAGES,
+            cachedEpisodes = cachedShow.episodes,
+        ) ?: return cachedShow
+        val annotatedEpisodes = observedAvailabilityStore.annotateNewlyObserved(
+            episodes = core.episodes,
+            observedAtMillis = nowMillis,
+            detectNewItems = observedAvailabilityStore.isInitialized(),
+        )
+        val updatedCategories = categories.map { category ->
+            category.copy(
+                shows = category.shows.map { show ->
+                    if (show.id != showId) return@map show
+                    show.copy(
+                        title = core.title,
+                        description = core.description ?: show.description,
+                        artworkUri = core.artworkUri ?: show.artworkUri,
+                        squareArtworkUri = core.squareArtworkUri ?: show.squareArtworkUri,
+                        logoUri = core.logoUri ?: show.logoUri,
+                        episodes = annotatedEpisodes.map { episode ->
+                            episode.copy(
+                                categoryId = category.id,
+                                categoryTitle = category.title,
+                            )
+                        },
+                    )
+                },
+            )
+        }
+        hubStore.saveCatalogContent(updatedCategories)
+        observedAvailabilityStore.finishSuccessfulRefresh(annotatedEpisodes)
+
+        val refreshedShow = updatedCategories.asSequence()
+            .flatMap { it.shows.asSequence() }
+            .firstOrNull { it.id == showId }
+        if (channelPublisher.isSupported() && refreshedShow != null) {
+            runCatching {
+                if (currentSelectionStore.isSelected(refreshedShow, updatedCategories)) {
+                    channelPublisher.publish(newsStore.loadEpisodes())
+                }
+                if (showChannelSelectionStore.isSelected(showId)) {
+                    channelPublisher.publishShows(updatedCategories)
+                }
+            }.onFailure { throwable ->
+                Log.w(TAG, "TvProvider sync skipped after show refresh (${throwable.javaClass.simpleName})")
+            }
+        }
+        return refreshedShow
+    }
+
+    private fun showMetadataFromCard(card: ServusCardDto, cachedShow: ServusShow?): ShowCore? {
+        val id = card.id ?: return null
+        val title = card.title?.takeIf { it.isNotBlank() }
+            ?: cachedShow?.title?.takeIf { it.isNotBlank() }
+            ?: return null
+        return ShowCore(
+            id = id,
+            title = title,
+            description = card.longDescription?.takeIf { it.isNotBlank() }
+                ?: card.shortDescription?.takeIf { it.isNotBlank() }
+                ?: cachedShow?.description,
+            artworkUri = ServusCatalogPolicy.landscapeArtwork(id, card.mediaResources) ?: cachedShow?.artworkUri,
+            squareArtworkUri = ServusCatalogPolicy.squareArtwork(id, card.mediaResources) ?: cachedShow?.squareArtworkUri,
+            logoUri = ServusCatalogPolicy.titleTreatment(id, card.mediaResources) ?: cachedShow?.logoUri,
+            episodes = cachedShow?.episodes.orEmpty(),
+        )
+    }
+
+'''
+          replace(
+              repo,
+              "    private suspend fun loadShowCore(\n",
+              insertion + "    private suspend fun loadShowCore(\n",
+          )
+          replace(
+              repo,
+              '''        val episodes = ServusCatalogPolicy.selectChannelEpisodes(mapped)
+        return ShowCore(
+''',
+              '''        val episodes = if (rawCards.isEmpty() && cachedEpisodes.isNotEmpty()) {
+            ServusCatalogPolicy.selectChannelEpisodes(cachedEpisodes)
+        } else {
+            ServusCatalogPolicy.selectChannelEpisodes(mapped)
+        }
+        return ShowCore(
+''',
+          )
+          p = Path(repo)
+          text = p.read_text()
+          text = text.replace("        const val SHOW_PARALLELISM = 4\n", "")
+          p.write_text(text)
+
+          # ------------------------------------------------------------------
+          # TvProvider: only explicitly selected show channels
+          # ------------------------------------------------------------------
+          publisher = "servustv-provider/src/main/java/com/andreassamitsch/servusprovider/tv/ServusChannelPublisher.kt"
+          replace(
+              publisher,
+              "import com.andreassamitsch.servusprovider.data.ServusShow\n",
+              "import com.andreassamitsch.servusprovider.data.ServusShow\nimport com.andreassamitsch.servusprovider.data.ServusShowChannelSelectionStore\n",
+          )
+          replace(
+              publisher,
+              "    private val currentSelectionStore = ServusCurrentChannelSelectionStore(appContext)\n",
+              "    private val currentSelectionStore = ServusCurrentChannelSelectionStore(appContext)\n    private val showChannelSelectionStore = ServusShowChannelSelectionStore(appContext)\n",
+          )
+          replace(
+              publisher,
+              '''    /** One stable Android-TV Preview Channel per show returned by ServusTV's `sendungen` catalogue. */
+    fun publishShows(categories: List<ServusCategory>) {
+        if (!isSupported()) return
+        val shows = categories
+            .flatMap { it.shows }
+            .distinctBy { it.id }
+            .filter { it.episodes.isNotEmpty() }
+        val existingByInternalId = helper.getAllChannels()
+            .mapNotNull { channel -> channel.internalProviderId?.let { it to channel.id } }
+            .toMap()
+        shows.forEach { show -> publishShow(show, existingByInternalId[showInternalId(show.id)]) }
+
+        // A catalogue refresh can change episodes of a user-selected show without changing the
+        // fast legacy news feed. Republish the aggregate channel here as well so that those changes
+        // are visible immediately instead of waiting for an unrelated news item to change.
+        if (currentSelectionStore.isConfigured()) {
+            publish(newsStore.loadEpisodes())
+        }
+    }
+''',
+              '''    /** Synchronizes only shows explicitly opted into an Android-TV Preview Channel. */
+    fun publishShows(categories: List<ServusCategory>) {
+        if (!isSupported()) return
+        val selectedIds = showChannelSelectionStore.effectiveSelectedShowIds(categories)
+        val selectedInternalIds = selectedIds.mapTo(hashSetOf(), ::showInternalId)
+        val existingShowChannels = helper.getAllChannels()
+            .filter { channel -> channel.internalProviderId?.startsWith(SHOW_CHANNEL_PREFIX) == true }
+
+        existingShowChannels
+            .filter { channel -> channel.internalProviderId !in selectedInternalIds }
+            .forEach { channel ->
+                appContext.contentResolver.delete(TvContractCompat.buildChannelUri(channel.id), null, null)
+            }
+
+        val existingByInternalId = existingShowChannels
+            .mapNotNull { channel -> channel.internalProviderId?.let { it to channel.id } }
+            .toMap()
+        categories
+            .flatMap { it.shows }
+            .distinctBy { it.id }
+            .filter { it.id in selectedIds && it.episodes.isNotEmpty() }
+            .forEach { show -> publishShow(show, existingByInternalId[showInternalId(show.id)]) }
+
+        if (currentSelectionStore.isConfigured()) {
+            publish(newsStore.loadEpisodes())
+        }
+    }
+''',
+          )
+
+          # ------------------------------------------------------------------
+          # Show screen: on-demand episode load + compact star/TV actions
+          # ------------------------------------------------------------------
+          (ui_dir / "ShowActivity.kt").write_text(r'''package com.andreassamitsch.servusprovider.ui
+
+import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.res.ColorStateList
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.net.Uri
+import android.os.Bundle
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.HorizontalScrollView
+import android.widget.ImageButton
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
+import com.andreassamitsch.servusprovider.R
+import com.andreassamitsch.servusprovider.data.ServusCurrentChannelSelectionStore
+import com.andreassamitsch.servusprovider.data.ServusNewsEpisode
+import com.andreassamitsch.servusprovider.data.ServusNewsRepository
+import com.andreassamitsch.servusprovider.data.ServusShow
+import com.andreassamitsch.servusprovider.tv.ServusChannelPublisher
+import com.andreassamitsch.servusprovider.work.ServusRefreshWorker
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class ShowActivity : Activity() {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val isTvDevice: Boolean by lazy {
+        packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    }
+    private lateinit var repository: ServusNewsRepository
+    private lateinit var currentSelectionStore: ServusCurrentChannelSelectionStore
+    private lateinit var channelPublisher: ServusChannelPublisher
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        repository = ServusNewsRepository(applicationContext)
+        currentSelectionStore = ServusCurrentChannelSelectionStore(applicationContext)
+        channelPublisher = ServusChannelPublisher(applicationContext)
+        val showId = intent?.data?.lastPathSegment?.takeIf { it.isNotBlank() }
+        val show = showId?.let(repository::cachedShow)
+        if (show == null) {
+            finish()
+            return
+        }
+        setContentView(buildUi(show, loadingEpisodes = show.episodes.isEmpty()))
+        refreshOpenedShow(show)
+    }
+
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
+    }
+
+    private fun refreshOpenedShow(cachedShow: ServusShow) {
+        scope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) { repository.refreshShow(cachedShow.id) }
+            }
+            if (isFinishing || isDestroyed) return@launch
+            val refreshed = result.getOrNull() ?: cachedShow
+            if (refreshed != cachedShow || cachedShow.episodes.isEmpty()) {
+                setContentView(buildUi(refreshed, loadingEpisodes = false))
+            }
+            result.exceptionOrNull()?.let {
+                Toast.makeText(this@ShowActivity, "Sendung konnte nicht aktualisiert werden.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun buildUi(show: ServusShow, loadingEpisodes: Boolean): ScrollView {
+        val padding = dp(if (isTvDevice) 36 else 18)
+        val scroll = ScrollView(this).apply {
+            setBackgroundColor(Color.rgb(9, 9, 9))
+            isFillViewport = true
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(padding, padding, padding, padding)
+        }
+        scroll.addView(content, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+
+        val header = LinearLayout(this).apply {
+            orientation = if (isTvDevice) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+            gravity = Gravity.TOP
+        }
+        val heroWidth = if (isTvDevice) dp(440) else ViewGroup.LayoutParams.MATCH_PARENT
+        val heroHeight = if (isTvDevice) dp(248) else dp(190)
+        val artwork = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setBackgroundColor(Color.rgb(28, 28, 28))
+        }
+        header.addView(artwork, LinearLayout.LayoutParams(heroWidth, heroHeight))
+        ServusArtworkLoader.load(scope, artwork, show.artworkUri ?: show.squareArtworkUri)
+
+        val info = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(if (isTvDevice) dp(28) else 0, if (isTvDevice) 0 else dp(18), 0, 0)
+        }
+        if (!show.logoUri.isNullOrBlank()) {
+            val logo = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.FIT_START
+                adjustViewBounds = true
+            }
+            info.addView(logo, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (isTvDevice) 82 else 64)))
+            ServusArtworkLoader.load(scope, logo, show.logoUri)
+        }
+        info.addView(TextView(this).apply {
+            text = show.title
+            textSize = if (isTvDevice) 30f else 24f
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(8), 0, dp(6))
+        })
+        info.addView(TextView(this).apply {
+            text = show.categoryTitle
+            textSize = if (isTvDevice) 15f else 13f
+            setTextColor(Color.LTGRAY)
+        })
+        show.description?.takeIf { it.isNotBlank() }?.let { description ->
+            info.addView(TextView(this).apply {
+                text = description
+                textSize = if (isTvDevice) 16f else 14f
+                setTextColor(Color.LTGRAY)
+                maxLines = if (isTvDevice) 5 else 7
+                setPadding(0, dp(12), 0, 0)
+            })
+        }
+
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            setPadding(0, dp(14), 0, 0)
+        }
+        val currentButton = buildIconButton(R.drawable.ic_star, "Zu Aktuelles hinzufügen")
+        fun renderCurrentButton() {
+            val selected = currentSelectionStore.isSelected(show, repository.cachedCategories())
+            currentButton.contentDescription = if (selected) "Aus Aktuelles entfernen" else "Zu Aktuelles hinzufügen"
+            setIconSelected(currentButton, selected)
+        }
+        renderCurrentButton()
+        currentButton.setOnClickListener {
+            val categories = repository.cachedCategories()
+            val selected = currentSelectionStore.isSelected(show, categories)
+            repository.setCurrentShowSelected(show.id, !selected)
+            renderCurrentButton()
+            runCatching { channelPublisher.publish(repository.cachedEpisodes()) }
+            ServusRefreshWorker.enqueueNow(applicationContext)
+            Toast.makeText(
+                this,
+                if (selected) "Aus Aktuelles entfernt" else "Zu Aktuelles hinzugefügt",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+        actions.addView(currentButton, iconLayoutParams())
+
+        if (repository.tvChannelSupported()) {
+            val tvButton = buildIconButton(R.drawable.ic_tv, "Als Android-TV-Kanal veröffentlichen")
+            fun renderTvButton() {
+                val selected = repository.isShowChannelSelected(show.id)
+                tvButton.contentDescription = if (selected) "Android-TV-Kanal entfernen" else "Als Android-TV-Kanal veröffentlichen"
+                setIconSelected(tvButton, selected)
+            }
+            renderTvButton()
+            tvButton.setOnClickListener {
+                val selected = repository.isShowChannelSelected(show.id)
+                repository.setShowChannelSelected(show.id, !selected)
+                renderTvButton()
+                ServusRefreshWorker.enqueueNow(applicationContext)
+                Toast.makeText(
+                    this,
+                    if (selected) "Android-TV-Kanal entfernt" else "Android-TV-Kanal aktiviert",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+            actions.addView(tvButton, iconLayoutParams().apply { marginStart = dp(8) })
+        }
+        info.addView(actions)
+
+        header.addView(
+            info,
+            LinearLayout.LayoutParams(
+                if (isTvDevice) 0 else ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                if (isTvDevice) 1f else 0f,
+            ),
+        )
+        content.addView(header)
+
+        content.addView(TextView(this).apply {
+            text = "Folgen & Videos"
+            textSize = if (isTvDevice) 24f else 20f
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(28), 0, dp(12))
+        })
+
+        var firstEpisode: View? = null
+        when {
+            show.episodes.isNotEmpty() -> show.episodes.forEach { episode ->
+                val card = buildEpisodeCard(episode)
+                if (firstEpisode == null) firstEpisode = card
+                content.addView(
+                    card,
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        bottomMargin = dp(12)
+                    },
+                )
+            }
+            loadingEpisodes -> content.addView(TextView(this).apply {
+                text = "Folgen werden geladen …"
+                textSize = if (isTvDevice) 16f else 14f
+                setTextColor(Color.GRAY)
+            })
+            else -> content.addView(TextView(this).apply {
+                text = "Für diese Sendung sind aktuell keine abspielbaren Videos verfügbar."
+                textSize = if (isTvDevice) 16f else 14f
+                setTextColor(Color.GRAY)
+            })
+        }
+        if (isTvDevice) firstEpisode?.requestFocus() ?: currentButton.requestFocus()
+        return scroll
+    }
+
+    private fun buildIconButton(iconRes: Int, description: String): ImageButton = ImageButton(this).apply {
+        setImageResource(iconRes)
+        contentDescription = description
+        imageTintList = ColorStateList.valueOf(Color.WHITE)
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        setPadding(dp(11), dp(11), dp(11), dp(11))
+        isFocusable = true
+        isClickable = true
+        setIconBackground(this, focused = false)
+        setOnFocusChangeListener { view, focused -> setIconBackground(view as ImageButton, focused) }
+    }
+
+    private fun iconLayoutParams(): LinearLayout.LayoutParams =
+        LinearLayout.LayoutParams(dp(if (isTvDevice) 48 else 44), dp(if (isTvDevice) 48 else 44))
+
+    private fun setIconSelected(button: ImageButton, selected: Boolean) {
+        button.isSelected = selected
+        setIconBackground(button, button.hasFocus())
+    }
+
+    private fun setIconBackground(button: ImageButton, focused: Boolean) {
+        val selected = button.isSelected
+        button.background = GradientDrawable().apply {
+            cornerRadius = dp(12).toFloat()
+            setColor(
+                when {
+                    focused -> Color.rgb(62, 62, 62)
+                    selected -> Color.rgb(42, 42, 42)
+                    else -> Color.rgb(22, 22, 22)
+                },
+            )
+            if (focused) setStroke(dp(2), Color.WHITE)
+            else if (selected) setStroke(dp(1), Color.rgb(120, 120, 120))
+        }
+        button.alpha = if (selected || focused) 1f else 0.8f
+        button.scaleX = if (focused && isTvDevice) 1.06f else 1f
+        button.scaleY = if (focused && isTvDevice) 1.06f else 1f
+    }
+
+    private fun buildEpisodeCard(episode: ServusNewsEpisode): LinearLayout {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(10), dp(12), dp(10))
+            isClickable = true
+            isFocusable = true
+            setBackgroundForFocus(this, false)
+            setOnClickListener { openPlayback(episode.id) }
+            setOnFocusChangeListener { view, focused -> setBackgroundForFocus(view, focused) }
+        }
+        val width = dp(if (isTvDevice) 260 else 132)
+        val image = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setBackgroundColor(Color.rgb(30, 30, 30))
+        }
+        row.addView(image, LinearLayout.LayoutParams(width, width * 9 / 16))
+        ServusArtworkLoader.load(scope, image, episode.artworkUri)
+
+        val text = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(if (isTvDevice) 18 else 12), 0, 0, 0)
+        }
+        text.addView(TextView(this).apply {
+            this.text = episode.title
+            textSize = if (isTvDevice) 19f else 15f
+            setTextColor(Color.WHITE)
+            maxLines = 2
+        })
+        text.addView(TextView(this).apply {
+            this.text = buildEpisodeMeta(episode)
+            textSize = if (isTvDevice) 14f else 12f
+            setTextColor(Color.GRAY)
+            setPadding(0, dp(5), 0, 0)
+        })
+        row.addView(text, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        return row
+    }
+
+    private fun buildEpisodeMeta(episode: ServusNewsEpisode): String = buildList {
+        when {
+            episode.observedAvailableAtMillis != null -> add("Online erkannt ${formatDate(episode.observedAvailableAtMillis)}")
+            episode.publishedAtMillis != null -> add("Verfügbar ab ${formatDate(episode.publishedAtMillis)}")
+        }
+        add(formatDuration(episode.durationMillis))
+    }.joinToString(" · ")
+
+    private fun openPlayback(id: String) {
+        startActivity(
+            Intent(this, PlaybackActivity::class.java)
+                .setAction(Intent.ACTION_VIEW)
+                .setData(Uri.parse("iservus://play/${Uri.encode(id)}")),
+        )
+    }
+
+    private fun setBackgroundForFocus(view: View, focused: Boolean) {
+        view.background = GradientDrawable().apply {
+            cornerRadius = dp(12).toFloat()
+            setColor(if (focused) Color.rgb(42, 42, 42) else Color.rgb(19, 19, 19))
+            if (focused) setStroke(dp(2), Color.WHITE)
+        }
+        view.scaleX = if (focused && isTvDevice) 1.02f else 1f
+        view.scaleY = if (focused && isTvDevice) 1.02f else 1f
+    }
+
+    private fun formatDate(millis: Long): String =
+        SimpleDateFormat("dd.MM.yyyy · HH:mm", Locale.getDefault()).format(Date(millis))
+
+    private fun formatDuration(millis: Long): String {
+        val seconds = millis / 1_000L
+        val minutes = seconds / 60L
+        val rest = seconds % 60L
+        return "$minutes:${rest.toString().padStart(2, '0')} Min."
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+}
+''')
+
+          # ------------------------------------------------------------------
+          # Main screen: compact refresh/update/info icons, hide dev details
+          # ------------------------------------------------------------------
+          main = "servustv-provider/src/main/java/com/andreassamitsch/servusprovider/ui/MainActivity.kt"
+          replace(main, "import android.content.Intent\n", "import android.content.Intent\nimport android.content.res.ColorStateList\n")
+          replace(main, "import android.widget.Button\n", "import android.widget.ImageButton\n")
+          replace(main, "import com.andreassamitsch.servusprovider.BuildConfig\n", "import com.andreassamitsch.servusprovider.BuildConfig\nimport com.andreassamitsch.servusprovider.R\n")
+          replace(
+              main,
+              '''    private lateinit var refreshButton: Button
+    private lateinit var updateStatusText: TextView
+    private lateinit var updateButton: Button
+''',
+              '''    private lateinit var refreshButton: ImageButton
+    private lateinit var updateStatusText: TextView
+    private lateinit var updateButton: ImageButton
+    private lateinit var devInfoButton: ImageButton
+    private var developerInfoVisible = false
+''',
+          )
+          replace(
+              main,
+              '            text = "Aktuelles · Live TV · Sendungen · ${BuildConfig.VERSION_NAME}"',
+              '            text = "Aktuelles · Live TV · Sendungen"',
+          )
+          replace(
+              main,
+              '''        statusText = TextView(this).apply {
+            textSize = if (isTvDevice) 16f else 14f
+            setTextColor(Color.LTGRAY)
+        }
+        content.addView(statusText)
+
+        progress = ProgressBar(this).apply { visibility = View.GONE }
+        content.addView(progress)
+
+        refreshButton = Button(this).apply {
+            text = "Jetzt aktualisieren"
+            setOnClickListener { refresh(forceCatalog = false) }
+        }
+        content.addView(
+            refreshButton,
+            LinearLayout.LayoutParams(
+                if (isTvDevice) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topMargin = dp(12)
+            },
+        )
+
+        updateStatusText = TextView(this).apply {
+            textSize = if (isTvDevice) 14f else 12f
+            setTextColor(Color.GRAY)
+            setPadding(0, dp(12), 0, dp(4))
+        }
+        content.addView(updateStatusText)
+
+        updateButton = Button(this).apply {
+            text = "Auf Updates prüfen"
+            setOnClickListener { handleUpdateAction() }
+        }
+        content.addView(
+            updateButton,
+            LinearLayout.LayoutParams(
+                if (isTvDevice) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                bottomMargin = dp(20)
+            },
+        )
+''',
+              '''        statusText = TextView(this).apply {
+            textSize = if (isTvDevice) 14f else 12f
+            setTextColor(Color.GRAY)
+            visibility = View.GONE
+        }
+        content.addView(statusText)
+
+        val utilityRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            setPadding(0, dp(4), 0, dp(10))
+        }
+        refreshButton = buildIconButton(R.drawable.ic_refresh, "Aktualisieren").apply {
+            setOnClickListener { refresh(forceCatalog = false) }
+        }
+        updateButton = buildIconButton(R.drawable.ic_update, "Auf Updates prüfen").apply {
+            setOnClickListener { handleUpdateAction() }
+        }
+        devInfoButton = buildIconButton(R.drawable.ic_info, "Technische Informationen anzeigen").apply {
+            setOnClickListener {
+                developerInfoVisible = !developerInfoVisible
+                contentDescription = if (developerInfoVisible) {
+                    "Technische Informationen ausblenden"
+                } else {
+                    "Technische Informationen anzeigen"
+                }
+                renderDeveloperInfoVisibility()
+            }
+        }
+        utilityRow.addView(refreshButton, utilityIconLayoutParams())
+        utilityRow.addView(updateButton, utilityIconLayoutParams().apply { marginStart = dp(8) })
+        utilityRow.addView(devInfoButton, utilityIconLayoutParams().apply { marginStart = dp(8) })
+        progress = ProgressBar(this).apply { visibility = View.GONE }
+        utilityRow.addView(
+            progress,
+            LinearLayout.LayoutParams(dp(32), dp(32)).apply {
+                marginStart = dp(12)
+                gravity = Gravity.CENTER_VERTICAL
+            },
+        )
+        content.addView(utilityRow)
+
+        updateStatusText = TextView(this).apply {
+            textSize = if (isTvDevice) 13f else 12f
+            setTextColor(Color.GRAY)
+            setPadding(0, 0, 0, dp(8))
+            visibility = View.GONE
+        }
+        content.addView(updateStatusText)
+''',
+          )
+          replace(
+              main,
+              '''        val showCount = categories.flatMap { it.shows }.distinctBy { it.id }.size
+        val selectedShowCount = currentSelectionStore.effectiveSelectedShowIds(categories).size
+        statusText.text = buildString {
+            if (success > 0L) {
+''',
+              '''        val selectedShowCount = currentSelectionStore.effectiveSelectedShowIds(categories).size
+        val tvShowCount = repository.selectedShowChannelIds(categories).size
+        statusText.text = buildString {
+            append("Version ${BuildConfig.VERSION_NAME}")
+            if (success > 0L) {
+                append("\\n")
+''',
+          )
+          replace(
+              main,
+              '''            if (repository.tvChannelSupported()) {
+                append("\nAndroid TV: Aktuelles + Live")
+                if (showCount > 0) append(" + $showCount Sendungskanäle")
+            } else {
+                append("\nStandalone-Modus ohne Android-TV-Kanäle")
+            }
+            repository.lastError()?.takeIf { it.isNotBlank() }?.let { append("\nLetzter Datenfehler: $it") }
+        }
+        renderContent()
+''',
+              '''            if (repository.tvChannelSupported()) {
+                append("\nAndroid TV: Aktuelles + Live")
+                if (tvShowCount > 0) append(" + $tvShowCount aktivierte Sendungskanäle")
+            } else {
+                append("\nStandalone-Modus ohne Android-TV-Kanäle")
+            }
+            repository.lastError()?.takeIf { it.isNotBlank() }?.let { append("\nLetzter Datenfehler: $it") }
+        }
+        renderDeveloperInfoVisibility()
+        renderContent()
+''',
+          )
+          replace(
+              main,
+              '''        val selected = currentSelectionStore.isSelected(show, categories)
+        return buildMediaCard(
+            artworkUri = show.artworkUri ?: show.squareArtworkUri,
+            logoUri = show.logoUri,
+            eyebrow = if (selected) "AKTUELLES" else null,
+            title = show.title,
+            meta = if (show.episodes.isEmpty()) "Mediathek" else "${show.episodes.size} aktuelle Videos",
+''',
+              '''        val selected = currentSelectionStore.isSelected(show, categories)
+        val tvChannelSelected = repository.isShowChannelSelected(show.id)
+        return buildMediaCard(
+            artworkUri = show.artworkUri ?: show.squareArtworkUri,
+            logoUri = show.logoUri,
+            eyebrow = when {
+                selected && tvChannelSelected -> "AKTUELLES · TV-KANAL"
+                selected -> "AKTUELLES"
+                tvChannelSelected -> "TV-KANAL"
+                else -> null
+            },
+            title = show.title,
+            meta = if (show.episodes.isEmpty()) "Mediathek" else "${show.episodes.size} aktuelle Videos",
+''',
+          )
+          replace(
+              main,
+              '''            if (result.isSuccess) {
+                renderCached()
+            } else {
+                renderCached()
+                val message = result.exceptionOrNull()?.message ?: "Unbekannter Fehler"
+                statusText.text = buildString {
+''',
+              '''            if (result.isSuccess) {
+                renderCached()
+            } else {
+                developerInfoVisible = true
+                renderCached()
+                val message = result.exceptionOrNull()?.message ?: "Unbekannter Fehler"
+                statusText.text = buildString {
+''',
+          )
+          # Replace update-state text buttons with content descriptions and compact status visibility.
+          p = Path(main)
+          text = p.read_text()
+          text = text.replace('updateButton.text = "Auf Updates prüfen"', 'updateButton.contentDescription = "Auf Updates prüfen"')
+          text = text.replace('updateButton.text = "Prüfe …"', 'updateButton.contentDescription = "Updateprüfung läuft"')
+          text = text.replace('updateButton.text = "Update herunterladen"', 'updateButton.contentDescription = "Update herunterladen"')
+          text = text.replace('updateButton.text = "Download läuft"', 'updateButton.contentDescription = "Update wird heruntergeladen"')
+          text = text.replace('updateButton.text = "Update installieren"', 'updateButton.contentDescription = "Update installieren"')
+          text = text.replace('updateButton.text = "Erneut prüfen"', 'updateButton.contentDescription = "Update erneut prüfen"')
+          p.write_text(text)
+          replace(
+              main,
+              '''        when (state) {
+''',
+              '''        when (state) {
+''',
+          )
+          # Insert visibility update at end of renderUpdateState().
+          replace(
+              main,
+              '''            }
+        }
+    }
+
+    private fun handleUpdateAction() {
+''',
+              '''            }
+        }
+        renderDeveloperInfoVisibility()
+    }
+
+    private fun renderDeveloperInfoVisibility() {
+        if (!::statusText.isInitialized) return
+        val hasDataError = repository.lastError()?.isNotBlank() == true
+        statusText.visibility = if (developerInfoVisible || hasDataError) View.VISIBLE else View.GONE
+        if (::updateStatusText.isInitialized && ::updateManager.isInitialized) {
+            val updateState = updateManager.state.value
+            val importantUpdateState = updateState is ServusUpdateState.Checking ||
+                updateState is ServusUpdateState.Available ||
+                updateState is ServusUpdateState.Downloading ||
+                updateState is ServusUpdateState.ReadyToInstall ||
+                updateState is ServusUpdateState.Error
+            updateStatusText.visibility = if (developerInfoVisible || importantUpdateState) View.VISIBLE else View.GONE
+        }
+    }
+
+    private fun buildIconButton(iconRes: Int, description: String): ImageButton = ImageButton(this).apply {
+        setImageResource(iconRes)
+        contentDescription = description
+        imageTintList = ColorStateList.valueOf(Color.WHITE)
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        setPadding(dp(10), dp(10), dp(10), dp(10))
+        isFocusable = true
+        isClickable = true
+        setUtilityButtonBackground(this, false)
+        setOnFocusChangeListener { view, focused -> setUtilityButtonBackground(view as ImageButton, focused) }
+    }
+
+    private fun utilityIconLayoutParams(): LinearLayout.LayoutParams =
+        LinearLayout.LayoutParams(dp(if (isTvDevice) 48 else 44), dp(if (isTvDevice) 48 else 44))
+
+    private fun setUtilityButtonBackground(button: ImageButton, focused: Boolean) {
+        button.background = GradientDrawable().apply {
+            cornerRadius = dp(12).toFloat()
+            setColor(if (focused) Color.rgb(58, 58, 58) else Color.rgb(22, 22, 22))
+            if (focused) setStroke(dp(2), Color.WHITE)
+        }
+        button.scaleX = if (focused && isTvDevice) 1.06f else 1f
+        button.scaleY = if (focused && isTvDevice) 1.06f else 1f
+    }
+
+    private fun handleUpdateAction() {
+''',
+          )
+
+          # ------------------------------------------------------------------
+          # Player: phone rotation + gear icon next to timeline
+          # ------------------------------------------------------------------
+          playback = "servustv-provider/src/main/java/com/andreassamitsch/servusprovider/ui/PlaybackActivity.kt"
+          replace(playback, "import android.app.Dialog\n", "import android.app.Dialog\nimport android.content.pm.ActivityInfo\nimport android.content.pm.PackageManager\nimport android.content.res.ColorStateList\n")
+          replace(playback, "import android.widget.Button\n", "import android.widget.Button\nimport android.widget.ImageButton\n")
+          replace(playback, "import com.andreassamitsch.servusprovider.api.ServusNetwork\n", "import com.andreassamitsch.servusprovider.R\nimport com.andreassamitsch.servusprovider.api.ServusNetwork\n")
+          replace(playback, "    private lateinit var settingsButton: Button\n", "    private lateinit var settingsButton: ImageButton\n")
+          replace(
+              playback,
+              '''    private var userSeeking = false
+
+    private val hideControlsRunnable = Runnable {
+''',
+              '''    private var userSeeking = false
+    private val isTvDevice: Boolean by lazy {
+        packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    }
+
+    private val hideControlsRunnable = Runnable {
+''',
+          )
+          replace(
+              playback,
+              '''    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+''',
+              '''    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        requestedOrientation = if (isTvDevice) {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        }
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+''',
+          )
+          replace(
+              playback,
+              '''        controlsContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(48), dp(18), dp(48), dp(30))
+        }
+''',
+              '''        controlsContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                dp(if (isTvDevice) 48 else 16),
+                dp(if (isTvDevice) 18 else 10),
+                dp(if (isTvDevice) 48 else 16),
+                dp(if (isTvDevice) 30 else 16),
+            )
+        }
+''',
+          )
+          replace(
+              playback,
+              '''        settingsButton = Button(this).apply {
+            text = "Einstellungen"
+            isAllCaps = false
+            setOnClickListener { showSettingsDialog() }
+            setOnFocusChangeListener { _, hasFocus ->
+                if (hasFocus) {
+                    controlsContainer.visibility = View.VISIBLE
+                    controlsFade.visibility = View.VISIBLE
+                }
+            }
+        }
+        infoRow.addView(
+            settingsButton,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)),
+        )
+        controlsContainer.addView(
+            infoRow,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
+        )
+
+        timeline = SeekBar(this).apply {
+''',
+              '''        controlsContainer.addView(
+            infoRow,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
+        )
+
+        val timelineRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        timeline = SeekBar(this).apply {
+''',
+          )
+          replace(
+              playback,
+              '''        controlsContainer.addView(
+            timeline,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(26)).apply {
+                topMargin = dp(2)
+            },
+        )
+''',
+              '''        timelineRow.addView(
+            timeline,
+            LinearLayout.LayoutParams(0, dp(26), 1f).apply {
+                topMargin = dp(2)
+            },
+        )
+        settingsButton = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_settings)
+            contentDescription = "Einstellungen"
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            scaleType = ImageButton.ScaleType.CENTER_INSIDE
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(Color.argb(160, 34, 34, 34))
+            }
+            setOnClickListener { showSettingsDialog() }
+            setOnFocusChangeListener { view, hasFocus ->
+                view.background = GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat()
+                    setColor(if (hasFocus) Color.rgb(72, 72, 72) else Color.argb(160, 34, 34, 34))
+                    if (hasFocus) setStroke(dp(2), Color.WHITE)
+                }
+                if (hasFocus) {
+                    controlsContainer.visibility = View.VISIBLE
+                    controlsFade.visibility = View.VISIBLE
+                }
+            }
+        }
+        timelineRow.addView(
+            settingsButton,
+            LinearLayout.LayoutParams(dp(if (isTvDevice) 46 else 42), dp(if (isTvDevice) 46 else 42)).apply {
+                marginStart = dp(10)
+            },
+        )
+        controlsContainer.addView(
+            timelineRow,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
+        )
+''',
+          )
+
+          manifest = "servustv-provider/src/main/AndroidManifest.xml"
+          replace(
+              manifest,
+              '''        <activity
+            android:name=".ui.PlaybackActivity"
+            android:exported="true"
+            android:screenOrientation="sensorLandscape">''',
+              '''        <activity
+            android:name=".ui.PlaybackActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize"
+            android:exported="true">''',
+          )
+
+          # ------------------------------------------------------------------
+          # Vector icons (local resources, no new dependency)
+          # ------------------------------------------------------------------
+          icons = {
+              "ic_refresh.xml": '''<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFFFF" android:pathData="M17.65,6.35C16.2,4.9 14.21,4 12,4c-4.09,0 -7.19,3.72 -6.39,7.69L3,9.08V16h6.92l-2.45,-2.45C6.37,10.92 8.3,8 12,8c2.21,0 4,1.79 4,4s-1.79,4 -4,4c-1.85,0 -3.41,-1.25 -3.87,-2.95H4.02C4.51,16.99 7.87,20 12,20c4.42,0 8,-3.58 8,-8 0,-2.21 -0.9,-4.2 -2.35,-5.65z"/></vector>''',
+              "ic_update.xml": '''<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFFFF" android:pathData="M12,16.5l4,-4h-3v-9h-2v9H8l4,4zM19,3h-4v2h4v14H5V5h4V3H5c-1.11,0 -2,0.9 -2,2v14c0,1.1 0.89,2 2,2h14c1.1,0 2,-0.9 2,-2V5c0,-1.1 -0.9,-2 -2,-2z"/></vector>''',
+              "ic_info.xml": '''<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFFFF" android:pathData="M11,17h2v-6h-2v6zM12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM12,20c-4.41,0 -8,-3.59 -8,-8s3.59,-8 8,-8 8,3.59 8,8 -3.59,8 -8,8zM11,9h2V7h-2v2z"/></vector>''',
+              "ic_settings.xml": '''<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFFFF" android:pathData="M19.43,12.98c0.04,-0.32 0.07,-0.65 0.07,-0.98s-0.02,-0.66 -0.07,-0.98l2.11,-1.65c0.19,-0.15 0.24,-0.42 0.12,-0.64l-2,-3.46c-0.12,-0.22 -0.37,-0.31 -0.6,-0.22l-2.49,1c-0.52,-0.4 -1.08,-0.73 -1.69,-0.98L14.5,2.42C14.47,2.18 14.25,2 14,2h-4c-0.25,0 -0.46,0.18 -0.5,0.42L9.12,5.07c-0.61,0.25 -1.17,0.59 -1.69,0.98l-2.49,-1c-0.23,-0.08 -0.48,0 -0.6,0.22l-2,3.46c-0.13,0.22 -0.07,0.49 0.12,0.64l2.11,1.65c-0.04,0.32 -0.08,0.66 -0.08,0.98s0.03,0.66 0.08,0.98l-2.11,1.65c-0.19,0.15 -0.24,0.42 -0.12,0.64l2,3.46c0.12,0.22 0.37,0.31 0.6,0.22l2.49,-1c0.52,0.4 1.08,0.73 1.69,0.98l0.38,2.65c0.04,0.24 0.25,0.42 0.5,0.42h4c0.25,0 0.46,-0.18 0.5,-0.42l0.38,-2.65c0.61,-0.25 1.17,-0.58 1.69,-0.98l2.49,1c0.23,0.08 0.48,0 0.6,-0.22l2,-3.46c0.12,-0.22 0.07,-0.49 -0.12,-0.64l-2.11,-1.65zM12,15.5A3.5,3.5 0,1 1,12,8a3.5,3.5 0,0 1,0,7.5z"/></vector>''',
+              "ic_star.xml": '''<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFFFF" android:pathData="M12,17.27L18.18,21l-1.64,-7.03L22,9.24l-7.19,-0.61L12,2 9.19,8.63 2,9.24l5.46,4.73L5.82,21z"/></vector>''',
+              "ic_tv.xml": '''<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFFFF" android:pathData="M21,3H3c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h5v2h8v-2h5c1.1,0 2,-0.9 2,-2V5c0,-1.1 -0.9,-2 -2,-2zM21,17H3V5h18v12z"/></vector>''',
+          }
+          for name, content in icons.items():
+              (res_dir / name).write_text(content + "\n")
+
+          # ------------------------------------------------------------------
+          # Tests
+          # ------------------------------------------------------------------
+          (test_dir / "ServusShowRefreshPolicyTest.kt").write_text(r'''package com.andreassamitsch.servusprovider.data
+
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class ServusShowRefreshPolicyTest {
+    @Test
+    fun `periodic refresh includes additional current shows and tv channel shows only`() {
+        val news = show("news", "Servus Nachrichten")
+        val weather = show("weather", "Servus Wetter")
+        val sport = show("sport", "Sport und Talk")
+        val categories = listOf(ServusCategory("c", "Sendungen", 0, listOf(news, weather, sport)))
+
+        val ids = ServusShowRefreshPolicy.periodicShowIds(
+            categories = categories,
+            currentSelectionConfigured = true,
+            currentSelectedIds = setOf("news", "weather"),
+            tvChannelSelectedIds = setOf("sport"),
+        )
+
+        assertEquals(linkedSetOf("weather", "sport"), ids)
+    }
+
+    @Test
+    fun `legacy current defaults do not add catalogue episode traffic before explicit configuration`() {
+        val categories = listOf(
+            ServusCategory("c", "Sendungen", 0, listOf(show("news", "Servus Nachrichten"), show("other", "Andere Sendung"))),
+        )
+
+        val ids = ServusShowRefreshPolicy.periodicShowIds(
+            categories = categories,
+            currentSelectionConfigured = false,
+            currentSelectedIds = setOf("news"),
+            tvChannelSelectedIds = emptySet(),
+        )
+
+        assertEquals(emptySet<String>(), ids)
+    }
+
+    private fun show(id: String, title: String) = ServusShow(
+        id = id,
+        title = title,
+        description = null,
+        categoryId = "c",
+        categoryTitle = "Sendungen",
+        artworkUri = null,
+        squareArtworkUri = null,
+        logoUri = null,
+        episodes = emptyList(),
+    )
+}
+''')
+
+          # ------------------------------------------------------------------
+          # Documentation
+          # ------------------------------------------------------------------
+          docs = "docs/SERVUSTV_NEWS_PROVIDER_PROTOTYPE.md"
+          replace(
+              docs,
+              '''Für jede Sendung wird gespeichert:
+
+- stabile ServusTV-ID
+- Titel und Beschreibung
+- Kategorie
+- Landscape-/Square-Artwork
+- Sendungslogo aus `rbtv_title_treatment`, sofern vorhanden
+- aktuelle abspielbare Folgen/Videos
+
+Auf Android TV erhält jede Sendung mit abspielbaren Inhalten einen eigenen Preview Channel mit stabiler interner ID `servus-show:<showId>`. Das Sendungslogo wird sowohl als Kanalbranding als auch über `PreviewProgram.logoUri` an die Programme weitergegeben, sodass I Launcher es über sein vorhandenes provider-neutrales `logoUri` übernehmen kann.
+''',
+              '''Für jede Sendung wird im Katalog zunächst nur die leichte Metadatenbasis gespeichert:
+
+- stabile ServusTV-ID
+- Titel und Beschreibung, soweit bereits auf der Katalogkarte vorhanden
+- Kategorie
+- Landscape-/Square-Artwork
+- bereits lokal bekannte Detail-/Logo-/Folgendaten bleiben erhalten
+
+Folgen werden bewusst **nicht mehr für jede Katalogsendung** geladen. Eine Sendung lädt ihre Detail-Collections und Folgen nur, wenn sie geöffnet wird, explizit zu `ServusTV Aktuelles` hinzugefügt wurde oder der Benutzer sie als eigenen Android-TV-Kanal aktiviert hat.
+
+Auf Android TV sind Sendungskanäle damit opt-in. Die Sendungsansicht besitzt eine dezente TV-Kanal-Aktion; nur ausgewählte Sendungen erhalten einen Preview Channel mit stabiler interner ID `servus-show:<showId>`. Beim Entfernen wird der zugehörige Preview Channel wieder aus dem TvProvider gelöscht.
+''',
+          )
+          replace(
+              docs,
+              '''Die Sendungs-Collections dienen dabei nur als Discovery-/Reihenfolgequelle. Für höchstens 20 plausible aktuelle Folgen pro Sendung werden die jeweiligen `products/v5.3/.../<contentId>`-Details nachgeladen, weil erst dort der verlässliche VOD-Zeitstempel `sunrise_timestamp` durchgehend vorhanden ist. Die Detailaufrufe sind global auf sechs parallele Requests begrenzt. Bereits lokal gecachte, von ServusTV stammende `publishedAtMillis`-Werte werden bei späteren Refreshes wiederverwendet; dadurch müssen im Normalfall nur neue bzw. bislang zeitstempellose Content-IDs erneut hydratisiert werden. `start_time`, `end_time` und Uhrzeiten aus Titeln bleiben ausdrücklich EPG-/Broadcastdaten und werden nicht als Veröffentlichungszeit verwendet.
+''',
+              '''Wenn Folgen für eine ausgewählte oder geöffnete Sendung tatsächlich benötigt werden, dienen deren Collections als Discovery-/Reihenfolgequelle. Für höchstens 20 plausible aktuelle Folgen werden die jeweiligen `products/v5.3/.../<contentId>`-Details nur dann nachgeladen, wenn Collection-Karte und lokaler Cache noch keinen belastbaren VOD-Zeitstempel liefern. Die Detailaufrufe sind global auf sechs parallele Requests begrenzt. `start_time`, `end_time` und Uhrzeiten aus Titeln bleiben ausdrücklich EPG-/Broadcastdaten und werden nicht als Veröffentlichungszeit verwendet.
+''',
+          )
+          replace(
+              docs,
+              '''Für explizit zu `Aktuelles` hinzugewählte Sendungen bleibt der leichte 15-Minuten-Refresh bestehen. Bei diesen Refreshes werden vorhandene ServusTV-Verfügbarkeitszeiten aus dem lokalen Sendungs-Cache wiederverwendet und nur neue bzw. noch nicht belastbar zeitgestempelte Folgen über den Produkt-Endpunkt nachgeladen.
+''',
+              '''Für explizit zu `Aktuelles` hinzugewählte Sendungen und für aktivierte Android-TV-Sendungskanäle bleibt ein leichter gezielter Refresh bestehen. Nur diese Sendungen werden bei einem normalen Hintergrund-/manuellen Refresh auf neue Folgen geprüft. Nicht ausgewählte Sendungen verursachen dabei keinen Folgen-/Produktdetail-Traffic; sie werden erst beim Öffnen ihrer Sendungsansicht on demand geladen.
+''',
+          )
+          replace(
+              docs,
+              '''- reduzierte untere Steuerleiste
+- Touch Play/Pause und Zeitleisten-Scrubbing
+- VOD beendet die PlaybackActivity bei `Player.STATE_ENDED`
+''',
+              '''- reduzierte untere Steuerleiste; Player-Einstellungen über ein kleines Zahnrad direkt neben der Zeitleiste
+- Touch Play/Pause und Zeitleisten-Scrubbing
+- auf Smartphone folgt der Player der Geräte-Rotation zwischen Hoch- und Querformat, ohne den Player wegen einer Konfigurationsänderung neu aufzubauen
+- VOD beendet die PlaybackActivity bei `Player.STATE_ENDED`
+''',
+          )
+          replace(
+              docs,
+              '''5. I Launcher prüfen: bestehendes `ServusTV Aktuelles` bleibt vorhanden, zusätzlich `ServusTV Live` und eigene Sendungs-Kanäle.
+6. Einen Sendungs-Kanal öffnen und mehrere Folgen direkt starten. Bei aktuellen Folgen muss die Reihenfolge anhand `sunrise_timestamp` plausibel sein; beispielsweise soll `Servus Wetter` den tatsächlichen VOD-Verfügbarkeitszeitpunkt statt nur der Dauer anzeigen, sofern ServusTV diesen liefert.
+''',
+              '''5. In einer Sendungsansicht den TV-Kanal per Symbol aktivieren. Erst danach muss diese Sendung als eigener Kanal im I Launcher erscheinen; eine nicht aktivierte Sendung darf keinen eigenen Preview Channel erzeugen.
+6. Den aktivierten Sendungs-Kanal öffnen und mehrere Folgen direkt starten. Bei aktuellen Folgen muss die Reihenfolge anhand `sunrise_timestamp` plausibel sein; beispielsweise soll `Servus Wetter` den tatsächlichen VOD-Verfügbarkeitszeitpunkt statt nur der Dauer anzeigen, sofern ServusTV diesen liefert.
+''',
+          )
+          replace(
+              docs,
+              '''3. Sendungsdetail per Touch öffnen und Folge starten.
+4. Live-Karte öffnen und Stream starten.
+5. Zurück-Navigation zwischen Player, Sendung und Hauptansicht prüfen.
+''',
+              '''3. Sendungsdetail per Touch öffnen: Folgen sollen erst hier on demand geladen werden; Aktuelles-/TV-Kanal-Aktionen sind kompakte Symbolbuttons.
+4. Folge starten und das Gerät zwischen Hoch- und Querformat drehen; Wiedergabe und Bedienung müssen der Rotation folgen.
+5. Live-Karte öffnen und Stream starten; Player-Einstellungen über das Zahnrad neben der Zeitleiste öffnen.
+6. Zurück-Navigation zwischen Player, Sendung und Hauptansicht prüfen.
+''',
+          )
+
+          # README wording: channels are explicitly user-selected, not bulk-published.
+          readme = "README.md"
+          replace(
+              readme,
+              "jede Sendung kann einen eigenen Android-TV-Preview-Channel erhalten und ServusTV-Live-Kanäle werden als eigene Live-Reihe veröffentlicht.",
+              "jede Sendung kann auf Wunsch einen eigenen Android-TV-Preview-Channel erhalten und ServusTV-Live-Kanäle werden als eigene Live-Reihe veröffentlicht.",
+          )
+          PY
+
+      - name: Test and build ServusTV
+        run: ./gradlew :servustv-provider:testDebugUnitTest :servustv-provider:assembleDebug --stacktrace
+
+      - name: Commit tested changes
+        shell: bash
+        run: |
+          rm .github/workflows/apply-servustv-demand-refresh.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(servustv): refresh show episodes on demand"
+          git push origin HEAD:feat/servustv-news-provider-prototype
