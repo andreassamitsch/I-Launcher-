@@ -209,6 +209,14 @@ object ServusCatalogPolicy {
         ?.toIntOrNull()
 
     fun titleTreatment(id: String, resources: List<String>): String? {
+        if (id == NEWS_90_SECONDS_SHOW_ID) {
+            val displayArt = resources.firstOrNull { name ->
+                name.equals("rbtv_display_art_landscape", ignoreCase = true)
+            }
+            if (displayArt != null) {
+                return "${ServusNetwork.ARTWORK_BASE_URL}$id/$displayArt/f_webp,c_fill,w_640,q_80?namespace=stv&refresh=true"
+            }
+        }
         val resource = resources.firstOrNull { name ->
             name.contains("title_treatment", ignoreCase = true)
         } ?: resources.firstOrNull { name ->
@@ -273,5 +281,6 @@ object ServusCatalogPolicy {
         .trim('-')
         .take(100)
 
+    const val NEWS_90_SECONDS_SHOW_ID = "AAYGF2URW6ALQYE42IJK"
     private const val MAX_SHOW_EPISODES = 18
 }

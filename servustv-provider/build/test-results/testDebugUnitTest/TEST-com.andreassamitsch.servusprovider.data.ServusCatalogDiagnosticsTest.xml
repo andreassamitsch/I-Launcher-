@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andreassamitsch.servusprovider.data.ServusCatalogDiagnosticsTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-09-03T17:30:35.282Z" hostname="runnervmejwal" time="0.085">
+<testsuite name="com.andreassamitsch.servusprovider.data.ServusCatalogDiagnosticsTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-09-03T19:15:28.975Z" hostname="runnervmejwal" time="0.072">
   <properties/>
-  <testcase name="diagnosticSanitizerRemovesUrlsAndLineBreaks" classname="com.andreassamitsch.servusprovider.data.ServusCatalogDiagnosticsTest" time="0.004"/>
-  <testcase name="categoryDiagnosticExposesCardAndShowCounts" classname="com.andreassamitsch.servusprovider.data.ServusCatalogDiagnosticsTest" time="0.053"/>
-  <testcase name="landingDiagnosticShowsCollectionTypeDistribution" classname="com.andreassamitsch.servusprovider.data.ServusCatalogDiagnosticsTest" time="0.028"/>
+  <testcase name="diagnosticSanitizerRemovesUrlsAndLineBreaks" classname="com.andreassamitsch.servusprovider.data.ServusCatalogDiagnosticsTest" time="0.002"/>
+  <testcase name="categoryDiagnosticExposesCardAndShowCounts" classname="com.andreassamitsch.servusprovider.data.ServusCatalogDiagnosticsTest" time="0.041"/>
+  <testcase name="landingDiagnosticShowsCollectionTypeDistribution" classname="com.andreassamitsch.servusprovider.data.ServusCatalogDiagnosticsTest" time="0.023"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

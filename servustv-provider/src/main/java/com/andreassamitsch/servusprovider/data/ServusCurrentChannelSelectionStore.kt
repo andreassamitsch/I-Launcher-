@@ -138,12 +138,15 @@ object ServusCurrentChannelPolicy {
 
         return when (ServusNewsPolicy.contentKind(episode)) {
             ServusContentKind.NEWS_90_SECONDS -> {
-                val dedicated90Shows = allShows.filter { normalize(it.title).contains("90 sekunden") }
-                if (dedicated90Shows.isNotEmpty()) {
-                    selectedShows.firstOrNull { normalize(it.title).contains("90 sekunden") }
-                } else {
-                    selectedShows.firstOrNull { normalize(it.title).contains("servus nachrichten") }
-                }
+                selectedShows.firstOrNull { it.id == ServusCatalogPolicy.NEWS_90_SECONDS_SHOW_ID }
+                    ?: run {
+                        val dedicated90Shows = allShows.filter { normalize(it.title).contains("90 sekunden") }
+                        if (dedicated90Shows.isNotEmpty()) {
+                            selectedShows.firstOrNull { normalize(it.title).contains("90 sekunden") }
+                        } else {
+                            selectedShows.firstOrNull { normalize(it.title).contains("servus nachrichten") }
+                        }
+                    }
             }
 
             ServusContentKind.FULL_NEWS -> selectedShows.firstOrNull { show ->

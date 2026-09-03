@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andreassamitsch.servusprovider.data.ServusShowRefreshPolicyTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-03T17:30:35.702Z" hostname="runnervmejwal" time="0.005">
+<testsuite name="com.andreassamitsch.servusprovider.data.ServusShowRefreshPolicyTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-03T19:15:29.299Z" hostname="runnervmejwal" time="0.006">
   <properties/>
-  <testcase name="legacy current defaults do not add catalogue episode traffic before explicit configuration" classname="com.andreassamitsch.servusprovider.data.ServusShowRefreshPolicyTest" time="0.003"/>
-  <testcase name="periodic refresh includes additional current shows and tv channel shows only" classname="com.andreassamitsch.servusprovider.data.ServusShowRefreshPolicyTest" time="0.001"/>
+  <testcase name="legacy current defaults do not add catalogue episode traffic before explicit configuration" classname="com.andreassamitsch.servusprovider.data.ServusShowRefreshPolicyTest" time="0.001"/>
+  <testcase name="periodic refresh includes additional current shows and tv channel shows only" classname="com.andreassamitsch.servusprovider.data.ServusShowRefreshPolicyTest" time="0.005"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

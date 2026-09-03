@@ -51,6 +51,17 @@ class ServusCatalogPolicyTest {
     }
 
     @Test
+    fun ninetySecondNewsUsesItsOwnDisplayArt() {
+        val uri = ServusCatalogPolicy.titleTreatment(
+            ServusCatalogPolicy.NEWS_90_SECONDS_SHOW_ID,
+            listOf("rbtv_background_landscape", "rbtv_display_art_landscape"),
+        )
+        assertNotNull(uri)
+        assertTrue(uri!!.contains("AAYGF2URW6ALQYE42IJK/rbtv_display_art_landscape"))
+        assertTrue(uri.contains("w_640"))
+    }
+
+    @Test
     fun unrelatedNewsCardIsNotAttachedToServusWetter() {
         val card = ServusCardDto(
             id = "NEWS",

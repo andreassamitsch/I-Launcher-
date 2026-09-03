@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-09-03T17:30:35.668Z" hostname="runnervmejwal" time="0.028">
+<testsuite name="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-09-03T19:15:29.278Z" hostname="runnervmejwal" time="0.016">
   <properties/>
   <testcase name="wegscheiderIsAccepted" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.0"/>
   <testcase name="visibleEditorialDateAndTimeAreNotUsedAsVodAvailability" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.0"/>
-  <testcase name="sameFullEditionWithDifferentContentIdsIsPublishedOnlyOnce" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.005"/>
-  <testcase name="full1920EditionIsAccepted" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.001"/>
-  <testcase name="multipleNinetySecondUpdatesOnSameDayRemainChronological" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.0"/>
+  <testcase name="sameFullEditionWithDifferentContentIdsIsPublishedOnlyOnce" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.001"/>
+  <testcase name="full1920EditionIsAccepted" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.003"/>
+  <testcase name="multipleNinetySecondUpdatesOnSameDayRemainChronological" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.001"/>
   <testcase name="ninetySecondEditionIsAcceptedButNormalNewsClipIsNot" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.0"/>
   <testcase name="ninetySecondLabelDoesNotLeakIntoFull1920Format" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.0"/>
   <testcase name="duplicateNinetySecondItemWithDifferentIdsIsCollapsed" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.0"/>
   <testcase name="vodUrlMatchesKodiAddonPattern" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.001"/>
-  <testcase name="mediaResourcesObjectReturnedByApiIsNormalised" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.019"/>
+  <testcase name="mediaResourcesObjectReturnedByApiIsNormalised" classname="com.andreassamitsch.servusprovider.data.ServusNewsPolicyTest" time="0.01"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>
