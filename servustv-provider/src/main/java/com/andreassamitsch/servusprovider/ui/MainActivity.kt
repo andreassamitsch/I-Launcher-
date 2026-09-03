@@ -188,8 +188,8 @@ class MainActivity : Activity() {
         val tvShowCount = repository.selectedShowChannelIds(categories).size
         statusText.text = buildString {
             append("Version ${BuildConfig.VERSION_NAME}")
+            append("\n")
             if (success > 0L) {
-                append("\n")
                 append("Letzte Aktualisierung: ")
                 append(DateFormat.getDateTimeInstance().format(Date(success)))
             } else {

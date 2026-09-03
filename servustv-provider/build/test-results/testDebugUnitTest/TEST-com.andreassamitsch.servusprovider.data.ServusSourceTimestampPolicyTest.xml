@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andreassamitsch.servusprovider.data.ServusSourceTimestampPolicyTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-09-03T13:20:15.723Z" hostname="runnervmejwal" time="0.002">
+<testsuite name="com.andreassamitsch.servusprovider.data.ServusSourceTimestampPolicyTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-09-03T13:25:41.693Z" hostname="runnervmgx7h7" time="0.001">
   <properties/>
   <testcase name="servusAvailabilityTimestampIsUsed" classname="com.andreassamitsch.servusprovider.data.ServusSourceTimestampPolicyTest" time="0.0"/>
   <testcase name="importTimeIsNeverUsedAsPublicationFallback" classname="com.andreassamitsch.servusprovider.data.ServusSourceTimestampPolicyTest" time="0.0"/>

@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andreassamitsch.servusprovider.api.ServusResilientApiTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-09-03T13:20:15.371Z" hostname="runnervmejwal" time="0.12">
+<testsuite name="com.andreassamitsch.servusprovider.api.ServusResilientApiTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-09-03T13:25:41.296Z" hostname="runnervmgx7h7" time="0.149">
   <properties/>
-  <testcase name="primarySearchRetriesTransient500AndRecovers" classname="com.andreassamitsch.servusprovider.api.ServusResilientApiTest" time="0.106"/>
-  <testcase name="exhaustedSecondarySearchPageBecomesEmptyPaginationPage" classname="com.andreassamitsch.servusprovider.api.ServusResilientApiTest" time="0.003"/>
-  <testcase name="exhaustedPrimarySearchPageStillFailsRefresh" classname="com.andreassamitsch.servusprovider.api.ServusResilientApiTest" time="0.002"/>
+  <testcase name="primarySearchRetriesTransient500AndRecovers" classname="com.andreassamitsch.servusprovider.api.ServusResilientApiTest" time="0.128"/>
+  <testcase name="exhaustedSecondarySearchPageBecomesEmptyPaginationPage" classname="com.andreassamitsch.servusprovider.api.ServusResilientApiTest" time="0.005"/>
+  <testcase name="exhaustedPrimarySearchPageStillFailsRefresh" classname="com.andreassamitsch.servusprovider.api.ServusResilientApiTest" time="0.004"/>
   <testcase name="transientStatusPolicyCoversServerAndRateLimitResponses" classname="com.andreassamitsch.servusprovider.api.ServusResilientApiTest" time="0.0"/>
   <testcase name="nonTransient403IsNeitherRetriedNorSuppressed" classname="com.andreassamitsch.servusprovider.api.ServusResilientApiTest" time="0.001"/>
-  <testcase name="productRequestsAlsoRetryTransientServerErrors" classname="com.andreassamitsch.servusprovider.api.ServusResilientApiTest" time="0.002"/>
+  <testcase name="productRequestsAlsoRetryTransientServerErrors" classname="com.andreassamitsch.servusprovider.api.ServusResilientApiTest" time="0.001"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

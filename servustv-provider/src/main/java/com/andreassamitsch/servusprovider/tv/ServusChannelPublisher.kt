@@ -95,6 +95,17 @@ class ServusChannelPublisher(context: Context) {
         if (currentSelectionStore.isConfigured()) {
             publish(newsStore.loadEpisodes())
         }
+        showChannelSelectionStore.markTvProviderSynced()
+    }
+
+    /** Removes one opted-out show channel immediately; the pending flag still reconciles later. */
+    fun removeShowChannel(showId: String) {
+        if (!isSupported()) return
+        helper.getAllChannels()
+            .firstOrNull { it.internalProviderId == showInternalId(showId) }
+            ?.let { channel ->
+                appContext.contentResolver.delete(TvContractCompat.buildChannelUri(channel.id), null, null)
+            }
     }
 
     /** One aggregate rail that contains every ServusTV live station as a directly playable card. */

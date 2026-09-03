@@ -60,6 +60,12 @@ class ServusNewsRepository(
             hubStore.findShow(showId)?.let { show -> observedAvailabilityStore.baseline(show.episodes) }
         }
         showChannelSelectionStore.setSelected(showId, selected)
+        if (!selected) {
+            runCatching { channelPublisher.removeShowChannel(showId) }
+                .onFailure { throwable ->
+                    Log.w(TAG, "Immediate show-channel removal skipped (${throwable.javaClass.simpleName})")
+                }
+        }
     }
 
     fun lastSuccessMillis(): Long = newsStore.lastSuccessMillis()
@@ -179,7 +185,10 @@ class ServusNewsRepository(
                         channelPublisher.publish(episodes)
                     }
                     if (liveChannels.isNotEmpty()) channelPublisher.publishLive(liveChannels)
-                    if ((catalogRefreshSucceeded || periodicShowsRefreshed) && categories.isNotEmpty()) {
+                    val showChannelSelectionChanged = showChannelSelectionStore.needsTvProviderSync()
+                    if ((catalogRefreshSucceeded || periodicShowsRefreshed || showChannelSelectionChanged) &&
+                        categories.isNotEmpty()
+                    ) {
                         channelPublisher.publishShows(categories)
                     }
                 }.onFailure { throwable ->

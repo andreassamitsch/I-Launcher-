@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" tests="13" skipped="0" failures="0" errors="0" timestamp="2026-09-03T13:20:15.554Z" hostname="runnervmejwal" time="0.098">
+<testsuite name="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" tests="13" skipped="0" failures="0" errors="0" timestamp="2026-09-03T13:25:41.489Z" hostname="runnervmgx7h7" time="0.099">
   <properties/>
-  <testcase name="sendungenCollectionMetadataIsParsed" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.045"/>
-  <testcase name="hydrationCandidatesPreferFullEpisodesAndUnknownTypesBeforeClips" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.017"/>
-  <testcase name="unrelatedNewsCardIsNotAttachedToServusWetter" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.009"/>
-  <testcase name="titleTreatmentIsExposedAsLogo" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.001"/>
+  <testcase name="sendungenCollectionMetadataIsParsed" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.04"/>
+  <testcase name="hydrationCandidatesPreferFullEpisodesAndUnknownTypesBeforeClips" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.015"/>
+  <testcase name="unrelatedNewsCardIsNotAttachedToServusWetter" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.012"/>
+  <testcase name="titleTreatmentIsExposedAsLogo" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.002"/>
   <testcase name="nextCollectionOffsetIsReadFromApiMetaLink" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.0"/>
-  <testcase name="productDetailHydrationAddsSunriseAndKeepsCollectionMembership" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.01"/>
-  <testcase name="liveDestinationUrlMatchesCurrentKodiAddonPattern" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.002"/>
+  <testcase name="productDetailHydrationAddsSunriseAndKeepsCollectionMembership" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.013"/>
+  <testcase name="liveDestinationUrlMatchesCurrentKodiAddonPattern" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.004"/>
   <testcase name="guideProgramUsesStartAndEndTime" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.001"/>
   <testcase name="clipsRemainFallbackWhenShowHasNoFullEpisodes" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.003"/>
   <testcase name="episodeTitleCanProvideStrongShowMembershipWhenShowNameIsMissing" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.001"/>
   <testcase name="onlyForbiddenCategoryCanBeSkipped" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.0"/>
   <testcase name="exactShowNameProvidesMembershipForGenericEpisodeTitle" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.0"/>
-  <testcase name="fullEpisodesWinOverClipsForShowChannel" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.001"/>
+  <testcase name="fullEpisodesWinOverClipsForShowChannel" classname="com.andreassamitsch.servusprovider.data.ServusCatalogPolicyTest" time="0.004"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>
