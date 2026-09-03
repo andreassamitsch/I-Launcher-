@@ -165,27 +165,39 @@ class ShowActivity : Activity() {
         }
         actions.addView(currentButton, iconLayoutParams())
 
-        if (repository.tvChannelSupported()) {
-            val tvButton = buildIconButton(R.drawable.ic_tv, "Als Android-TV-Kanal veröffentlichen")
-            fun renderTvButton() {
-                val selected = repository.isShowChannelSelected(show.id)
-                tvButton.contentDescription = if (selected) "Android-TV-Kanal entfernen" else "Als Android-TV-Kanal veröffentlichen"
-                setIconSelected(tvButton, selected)
+        val tvChannelSupported = repository.tvChannelSupported()
+        val tvButton = buildIconButton(R.drawable.ic_tv, "Als Android-TV-Kanal veröffentlichen")
+        fun renderTvButton() {
+            val selected = repository.isShowChannelSelected(show.id)
+            tvButton.contentDescription = when {
+                !tvChannelSupported -> "Android-TV-Kanal – nur auf Android TV verfügbar"
+                selected -> "Android-TV-Kanal entfernen"
+                else -> "Als Android-TV-Kanal veröffentlichen"
             }
-            renderTvButton()
-            tvButton.setOnClickListener {
-                val selected = repository.isShowChannelSelected(show.id)
-                repository.setShowChannelSelected(show.id, !selected)
-                renderTvButton()
-                ServusRefreshWorker.enqueueNow(applicationContext)
+            setIconSelected(tvButton, selected)
+            if (!tvChannelSupported) tvButton.alpha = 0.45f
+        }
+        renderTvButton()
+        tvButton.setOnClickListener {
+            if (!tvChannelSupported) {
                 Toast.makeText(
                     this,
-                    if (selected) "Android-TV-Kanal entfernt" else "Android-TV-Kanal aktiviert",
+                    "Android-TV-Kanäle sind nur auf Android TV verfügbar.",
                     Toast.LENGTH_SHORT,
                 ).show()
+                return@setOnClickListener
             }
-            actions.addView(tvButton, iconLayoutParams().apply { marginStart = dp(8) })
+            val selected = repository.isShowChannelSelected(show.id)
+            repository.setShowChannelSelected(show.id, !selected)
+            renderTvButton()
+            ServusRefreshWorker.enqueueNow(applicationContext)
+            Toast.makeText(
+                this,
+                if (selected) "Android-TV-Kanal entfernt" else "Android-TV-Kanal aktiviert",
+                Toast.LENGTH_SHORT,
+            ).show()
         }
+        actions.addView(tvButton, iconLayoutParams().apply { marginStart = dp(8) })
         info.addView(actions)
 
         header.addView(
