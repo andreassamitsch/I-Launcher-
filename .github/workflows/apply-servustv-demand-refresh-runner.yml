@@ -19,6 +19,23 @@ jobs:
           ref: feat/servustv-news-provider-prototype
           fetch-depth: 0
 
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.5.0"
+
       - name: Extract and apply patch
         shell: bash
         run: |
@@ -42,9 +59,6 @@ jobs:
                   in_triple = not in_triple
           script = '\n'.join(output) + '\n'
 
-          # This one MainActivity replacement is intentionally applied after the main patch with
-          # small token-level edits. Keeping it out of the large exact block avoids coupling to the
-          # preceding status-text rewrite.
           block_start = "replace(\n    main,\n    '''            if (repository.tvChannelSupported()) {"
           block_end = "replace(\n    main,\n    '''        val selected = currentSelectionStore.isSelected(show, categories)"
           start_idx = script.index(block_start)
@@ -68,14 +82,12 @@ jobs:
               'repository.lastError()?.takeIf { it.isNotBlank() }?.let { append("\\nLetzter Datenfehler: $it") }\n        }\n        renderDeveloperInfoVisibility()\n        renderContent()',
               1,
           )
-          # The embedded raw Python string intentionally had to escape YAML; normalize the Kotlin
-          # newline used before the first status line.
           text = text.replace('append("\\\\n")', 'append("\\n")')
           main.write_text(text)
           PY
 
       - name: Test and build ServusTV
-        run: ./gradlew :servustv-provider:testDebugUnitTest :servustv-provider:assembleDebug --stacktrace
+        run: gradle :servustv-provider:testDebugUnitTest :servustv-provider:assembleDebug --stacktrace
 
       - name: Commit tested changes
         shell: bash
