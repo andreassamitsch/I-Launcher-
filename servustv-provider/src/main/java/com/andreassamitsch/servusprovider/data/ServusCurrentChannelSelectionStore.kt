@@ -41,6 +41,10 @@ class ServusCurrentChannelSelectionStore(context: Context) {
      * At least the newest cached item of every selected show is reserved before the rail is cut to
      * its UI limit. This prevents timestamped 90-second updates from pushing a newly selected show
      * with no source timestamp completely out of the visible rail.
+     *
+     * Legacy fast-feed episodes are enriched with the matching catalogue show's identity and logo.
+     * This keeps the quick refresh cheap while still giving Android-TV launchers enough metadata to
+     * make mixed "Aktuelles" rows visually attributable to their originating show.
      */
     fun effectiveEpisodes(
         categories: List<ServusCategory>,
@@ -85,12 +89,20 @@ object ServusCurrentChannelPolicy {
     ): List<ServusNewsEpisode> {
         if (limit <= 0 || selectedShows.isEmpty()) return emptyList()
 
-        val filteredLegacy = legacyEpisodes.filter { episode ->
-            matchesSelectedShow(
+        val filteredLegacy = legacyEpisodes.mapNotNull { episode ->
+            matchingSelectedShow(
                 episode = episode,
                 selectedShows = selectedShows,
                 allShows = allShows,
-            )
+            )?.let { show ->
+                episode.copy(
+                    showId = episode.showId ?: show.id,
+                    showName = episode.showName?.takeIf { it.isNotBlank() } ?: show.title,
+                    logoUri = episode.logoUri ?: show.logoUri,
+                    categoryId = episode.categoryId ?: show.categoryId,
+                    categoryTitle = episode.categoryTitle ?: show.categoryTitle,
+                )
+            }
         }
         val selectedCatalogueEpisodes = selectedShows.flatMap { it.episodes }
         val merged = ServusNewsPolicy.deduplicateEpisodes(filteredLegacy + selectedCatalogueEpisodes)
@@ -113,37 +125,45 @@ object ServusCurrentChannelPolicy {
         episode: ServusNewsEpisode,
         selectedShows: List<ServusShow>,
         allShows: List<ServusShow>,
-    ): Boolean {
+    ): Boolean = matchingSelectedShow(episode, selectedShows, allShows) != null
+
+    fun matchingSelectedShow(
+        episode: ServusNewsEpisode,
+        selectedShows: List<ServusShow>,
+        allShows: List<ServusShow>,
+    ): ServusShow? {
         episode.showId?.let { showId ->
-            if (selectedShows.any { it.id == showId }) return true
+            selectedShows.firstOrNull { it.id == showId }?.let { return it }
         }
 
         return when (ServusNewsPolicy.contentKind(episode)) {
             ServusContentKind.NEWS_90_SECONDS -> {
                 val dedicated90Shows = allShows.filter { normalize(it.title).contains("90 sekunden") }
                 if (dedicated90Shows.isNotEmpty()) {
-                    selectedShows.any { normalize(it.title).contains("90 sekunden") }
+                    selectedShows.firstOrNull { normalize(it.title).contains("90 sekunden") }
                 } else {
-                    selectedShows.any { normalize(it.title).contains("servus nachrichten") }
+                    selectedShows.firstOrNull { normalize(it.title).contains("servus nachrichten") }
                 }
             }
 
-            ServusContentKind.FULL_NEWS -> selectedShows.any { show ->
+            ServusContentKind.FULL_NEWS -> selectedShows.firstOrNull { show ->
                 val title = normalize(show.title)
                 title.contains("servus nachrichten") && !title.contains("90 sekunden")
             }
 
-            ServusContentKind.WEGSCHEIDER -> selectedShows.any {
+            ServusContentKind.WEGSCHEIDER -> selectedShows.firstOrNull {
                 normalize(it.title).contains("wegscheider")
             }
 
             null -> {
                 val episodeShow = normalize(episode.showName.orEmpty())
-                episodeShow.isNotBlank() && selectedShows.any { show ->
-                    val showTitle = normalize(show.title)
-                    showTitle == episodeShow ||
-                        showTitle.contains(episodeShow) ||
-                        episodeShow.contains(showTitle)
+                episodeShow.takeIf { it.isNotBlank() }?.let { normalizedEpisodeShow ->
+                    selectedShows.firstOrNull { show ->
+                        val showTitle = normalize(show.title)
+                        showTitle == normalizedEpisodeShow ||
+                            showTitle.contains(normalizedEpisodeShow) ||
+                            normalizedEpisodeShow.contains(showTitle)
+                    }
                 }
             }
         }
