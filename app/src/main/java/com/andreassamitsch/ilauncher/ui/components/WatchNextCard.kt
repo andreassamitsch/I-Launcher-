@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -134,15 +136,23 @@ fun WatchNextCard(
                     }
 
                     item.logoUri?.takeIf { it.isNotBlank() }?.let { logoUri ->
-                        AsyncImage(
-                            model = logoUri,
-                            contentDescription = null,
-                            contentScale = ContentScale.Fit,
+                        Box(
                             modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(5.dp)
-                                .size(width = 46.dp, height = 20.dp),
-                        )
+                                .align(Alignment.TopStart)
+                                .padding(6.dp)
+                                .background(
+                                    color = Color.Black.copy(alpha = 0.58f),
+                                    shape = RoundedCornerShape(6.dp),
+                                )
+                                .padding(horizontal = 5.dp, vertical = 3.dp),
+                        ) {
+                            AsyncImage(
+                                model = logoUri,
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.size(width = 68.dp, height = 28.dp),
+                            )
+                        }
                     }
 
                     item.progressFraction?.let { progress ->
