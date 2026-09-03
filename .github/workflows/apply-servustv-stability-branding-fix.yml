@@ -26,78 +26,83 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.0'
-      - name: Apply branding patch
+      - name: Apply branding changes
         run: |
-          cat > /tmp/branding.patch <<'PATCH'
-          diff --git a/servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicy.kt b/servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicy.kt
-          --- a/servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicy.kt
-          +++ b/servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicy.kt
-          @@
-               fun titleTreatment(id: String, resources: List<String>): String? {
-          +        if (id == NEWS_90_SECONDS_SHOW_ID) {
-          +            val displayArt = resources.firstOrNull { name ->
-          +                name.equals("rbtv_display_art_landscape", ignoreCase = true)
-          +            }
-          +            if (displayArt != null) {
-          +                return "${ServusNetwork.ARTWORK_BASE_URL}$id/$displayArt/f_webp,c_fill,w_640,q_80?namespace=stv&refresh=true"
-          +            }
-          +        }
-                   val resource = resources.firstOrNull { name ->
-                       name.contains("title_treatment", ignoreCase = true)
-                   } ?: resources.firstOrNull { name ->
-          @@
-          -    private const val MAX_SHOW_EPISODES = 18
-          +    const val NEWS_90_SECONDS_SHOW_ID = "AAYGF2URW6ALQYE42IJK"
-          +    private const val MAX_SHOW_EPISODES = 18
-           }
-          diff --git a/servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCurrentChannelSelectionStore.kt b/servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCurrentChannelSelectionStore.kt
-          --- a/servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCurrentChannelSelectionStore.kt
-          +++ b/servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCurrentChannelSelectionStore.kt
-          @@
-                   return when (ServusNewsPolicy.contentKind(episode)) {
-                       ServusContentKind.NEWS_90_SECONDS -> {
-          -                val dedicated90Shows = allShows.filter { normalize(it.title).contains("90 sekunden") }
-          -                if (dedicated90Shows.isNotEmpty()) {
-          -                    selectedShows.firstOrNull { normalize(it.title).contains("90 sekunden") }
-          -                } else {
-          -                    selectedShows.firstOrNull { normalize(it.title).contains("servus nachrichten") }
-          -                }
-          +                selectedShows.firstOrNull { it.id == ServusCatalogPolicy.NEWS_90_SECONDS_SHOW_ID }
-          +                    ?: run {
-          +                        val dedicated90Shows = allShows.filter { normalize(it.title).contains("90 sekunden") }
-          +                        if (dedicated90Shows.isNotEmpty()) {
-          +                            selectedShows.firstOrNull { normalize(it.title).contains("90 sekunden") }
-          +                        } else {
-          +                            selectedShows.firstOrNull { normalize(it.title).contains("servus nachrichten") }
-          +                        }
-          +                    }
-                       }
-          diff --git a/servustv-provider/src/test/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicyTest.kt b/servustv-provider/src/test/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicyTest.kt
-          --- a/servustv-provider/src/test/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicyTest.kt
-          +++ b/servustv-provider/src/test/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicyTest.kt
-          @@
-               fun titleTreatmentIsExposedAsLogo() {
-                   val uri = ServusCatalogPolicy.titleTreatment(
-                       "SHOW-ID",
-                       listOf("rbtv_display_art_landscape", "rbtv_title_treatment"),
-                   )
-                   assertNotNull(uri)
-                   assertTrue(uri!!.contains("SHOW-ID/rbtv_title_treatment"))
-                   assertTrue(uri.contains("f_webp"))
-               }
-          +
-          +    @Test
-          +    fun ninetySecondNewsUsesItsOwnDisplayArt() {
-          +        val uri = ServusCatalogPolicy.titleTreatment(
-          +            ServusCatalogPolicy.NEWS_90_SECONDS_SHOW_ID,
-          +            listOf("rbtv_background_landscape", "rbtv_display_art_landscape"),
-          +        )
-          +        assertNotNull(uri)
-          +        assertTrue(uri!!.contains("AAYGF2URW6ALQYE42IJK/rbtv_display_art_landscape"))
-          +        assertTrue(uri.contains("w_640"))
-          +    }
-          PATCH
-          git apply /tmp/branding.patch
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicy.kt')
+          s = p.read_text()
+          needle = "    fun titleTreatment(id: String, resources: List<String>): String? {\n        val resource = resources.firstOrNull { name ->\n"
+          replacement = (
+              "    fun titleTreatment(id: String, resources: List<String>): String? {\n"
+              "        if (id == NEWS_90_SECONDS_SHOW_ID) {\n"
+              "            val displayArt = resources.firstOrNull { name ->\n"
+              "                name.equals(\"rbtv_display_art_landscape\", ignoreCase = true)\n"
+              "            }\n"
+              "            if (displayArt != null) {\n"
+              "                return \"${ServusNetwork.ARTWORK_BASE_URL}$id/$displayArt/f_webp,c_fill,w_640,q_80?namespace=stv&refresh=true\"\n"
+              "            }\n"
+              "        }\n"
+              "        val resource = resources.firstOrNull { name ->\n"
+          )
+          if needle not in s:
+              raise SystemExit('titleTreatment anchor not found')
+          s = s.replace(needle, replacement, 1)
+          marker = "    private const val MAX_SHOW_EPISODES = 18\n"
+          if marker not in s:
+              raise SystemExit('catalog constant anchor not found')
+          s = s.replace(marker, "    const val NEWS_90_SECONDS_SHOW_ID = \"AAYGF2URW6ALQYE42IJK\"\n" + marker, 1)
+          p.write_text(s)
+
+          p = Path('servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCurrentChannelSelectionStore.kt')
+          s = p.read_text()
+          old = (
+              "            ServusContentKind.NEWS_90_SECONDS -> {\n"
+              "                val dedicated90Shows = allShows.filter { normalize(it.title).contains(\"90 sekunden\") }\n"
+              "                if (dedicated90Shows.isNotEmpty()) {\n"
+              "                    selectedShows.firstOrNull { normalize(it.title).contains(\"90 sekunden\") }\n"
+              "                } else {\n"
+              "                    selectedShows.firstOrNull { normalize(it.title).contains(\"servus nachrichten\") }\n"
+              "                }\n"
+              "            }\n"
+          )
+          new = (
+              "            ServusContentKind.NEWS_90_SECONDS -> {\n"
+              "                selectedShows.firstOrNull { it.id == ServusCatalogPolicy.NEWS_90_SECONDS_SHOW_ID }\n"
+              "                    ?: run {\n"
+              "                        val dedicated90Shows = allShows.filter { normalize(it.title).contains(\"90 sekunden\") }\n"
+              "                        if (dedicated90Shows.isNotEmpty()) {\n"
+              "                            selectedShows.firstOrNull { normalize(it.title).contains(\"90 sekunden\") }\n"
+              "                        } else {\n"
+              "                            selectedShows.firstOrNull { normalize(it.title).contains(\"servus nachrichten\") }\n"
+              "                        }\n"
+              "                    }\n"
+              "            }\n"
+          )
+          if old not in s:
+              raise SystemExit('90-second selection anchor not found')
+          p.write_text(s.replace(old, new, 1))
+
+          p = Path('servustv-provider/src/test/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicyTest.kt')
+          s = p.read_text()
+          anchor = "    @Test\n    fun unrelatedNewsCardIsNotAttachedToServusWetter() {\n"
+          test = (
+              "    @Test\n"
+              "    fun ninetySecondNewsUsesItsOwnDisplayArt() {\n"
+              "        val uri = ServusCatalogPolicy.titleTreatment(\n"
+              "            ServusCatalogPolicy.NEWS_90_SECONDS_SHOW_ID,\n"
+              "            listOf(\"rbtv_background_landscape\", \"rbtv_display_art_landscape\"),\n"
+              "        )\n"
+              "        assertNotNull(uri)\n"
+              "        assertTrue(uri!!.contains(\"AAYGF2URW6ALQYE42IJK/rbtv_display_art_landscape\"))\n"
+              "        assertTrue(uri.contains(\"w_640\"))\n"
+              "    }\n\n"
+          )
+          if anchor not in s:
+              raise SystemExit('test anchor not found')
+          p.write_text(s.replace(anchor, test + anchor, 1))
+          PY
       - name: Test and build both apps
         run: gradle :servustv-provider:testDebugUnitTest :servustv-provider:assembleDebug :app:testDebugUnitTest :app:assembleDebug --stacktrace
       - name: Commit tested changes
