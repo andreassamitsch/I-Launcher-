@@ -1,0 +1,111 @@
+name: Apply ServusTV stability branding fix
+
+on:
+  push:
+    branches:
+      - feat/servustv-news-provider-prototype
+    paths:
+      - .github/workflows/apply-servustv-stability-branding-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/servustv-news-provider-prototype
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Apply branding patch
+        run: |
+          cat > /tmp/branding.patch <<'PATCH'
+          diff --git a/servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicy.kt b/servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicy.kt
+          --- a/servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicy.kt
+          +++ b/servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicy.kt
+          @@
+               fun titleTreatment(id: String, resources: List<String>): String? {
+          +        if (id == NEWS_90_SECONDS_SHOW_ID) {
+          +            val displayArt = resources.firstOrNull { name ->
+          +                name.equals("rbtv_display_art_landscape", ignoreCase = true)
+          +            }
+          +            if (displayArt != null) {
+          +                return "${ServusNetwork.ARTWORK_BASE_URL}$id/$displayArt/f_webp,c_fill,w_640,q_80?namespace=stv&refresh=true"
+          +            }
+          +        }
+                   val resource = resources.firstOrNull { name ->
+                       name.contains("title_treatment", ignoreCase = true)
+                   } ?: resources.firstOrNull { name ->
+          @@
+          -    private const val MAX_SHOW_EPISODES = 18
+          +    const val NEWS_90_SECONDS_SHOW_ID = "AAYGF2URW6ALQYE42IJK"
+          +    private const val MAX_SHOW_EPISODES = 18
+           }
+          diff --git a/servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCurrentChannelSelectionStore.kt b/servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCurrentChannelSelectionStore.kt
+          --- a/servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCurrentChannelSelectionStore.kt
+          +++ b/servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusCurrentChannelSelectionStore.kt
+          @@
+                   return when (ServusNewsPolicy.contentKind(episode)) {
+                       ServusContentKind.NEWS_90_SECONDS -> {
+          -                val dedicated90Shows = allShows.filter { normalize(it.title).contains("90 sekunden") }
+          -                if (dedicated90Shows.isNotEmpty()) {
+          -                    selectedShows.firstOrNull { normalize(it.title).contains("90 sekunden") }
+          -                } else {
+          -                    selectedShows.firstOrNull { normalize(it.title).contains("servus nachrichten") }
+          -                }
+          +                selectedShows.firstOrNull { it.id == ServusCatalogPolicy.NEWS_90_SECONDS_SHOW_ID }
+          +                    ?: run {
+          +                        val dedicated90Shows = allShows.filter { normalize(it.title).contains("90 sekunden") }
+          +                        if (dedicated90Shows.isNotEmpty()) {
+          +                            selectedShows.firstOrNull { normalize(it.title).contains("90 sekunden") }
+          +                        } else {
+          +                            selectedShows.firstOrNull { normalize(it.title).contains("servus nachrichten") }
+          +                        }
+          +                    }
+                       }
+          diff --git a/servustv-provider/src/test/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicyTest.kt b/servustv-provider/src/test/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicyTest.kt
+          --- a/servustv-provider/src/test/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicyTest.kt
+          +++ b/servustv-provider/src/test/java/com/andreassamitsch/servusprovider/data/ServusCatalogPolicyTest.kt
+          @@
+               fun titleTreatmentIsExposedAsLogo() {
+                   val uri = ServusCatalogPolicy.titleTreatment(
+                       "SHOW-ID",
+                       listOf("rbtv_display_art_landscape", "rbtv_title_treatment"),
+                   )
+                   assertNotNull(uri)
+                   assertTrue(uri!!.contains("SHOW-ID/rbtv_title_treatment"))
+                   assertTrue(uri.contains("f_webp"))
+               }
+          +
+          +    @Test
+          +    fun ninetySecondNewsUsesItsOwnDisplayArt() {
+          +        val uri = ServusCatalogPolicy.titleTreatment(
+          +            ServusCatalogPolicy.NEWS_90_SECONDS_SHOW_ID,
+          +            listOf("rbtv_background_landscape", "rbtv_display_art_landscape"),
+          +        )
+          +        assertNotNull(uri)
+          +        assertTrue(uri!!.contains("AAYGF2URW6ALQYE42IJK/rbtv_display_art_landscape"))
+          +        assertTrue(uri.contains("w_640"))
+          +    }
+          PATCH
+          git apply /tmp/branding.patch
+      - name: Test and build both apps
+        run: gradle :servustv-provider:testDebugUnitTest :servustv-provider:assembleDebug :app:testDebugUnitTest :app:assembleDebug --stacktrace
+      - name: Commit tested changes
+        run: |
+          rm -f .github/workflows/fix-servustv-tv-stability-branding.yml
+          rm -f .github/workflows/apply-servustv-stability-branding-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app servustv-provider .github/workflows
+          git commit -m "fix(servustv): improve TV stability and show branding"
+          git push origin HEAD:feat/servustv-news-provider-prototype
