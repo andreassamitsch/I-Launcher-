@@ -15,6 +15,7 @@ import androidx.tvprovider.media.tv.PreviewProgram
 import androidx.tvprovider.media.tv.TvContractCompat
 import com.andreassamitsch.servusprovider.R
 import com.andreassamitsch.servusprovider.api.ServusNetwork
+import com.andreassamitsch.servusprovider.data.ServusBranding
 import com.andreassamitsch.servusprovider.data.ServusCategory
 import com.andreassamitsch.servusprovider.data.ServusCurrentChannelSelectionStore
 import com.andreassamitsch.servusprovider.data.ServusHubStore
@@ -210,7 +211,9 @@ class ServusChannelPublisher(context: Context) {
             builder.setPosterArtUri(artwork)
             builder.setThumbnailUri(artwork)
         }
-        logoUri?.takeIf { it.isNotBlank() }?.let { builder.setLogoUri(Uri.parse(it)) }
+        ServusBranding.logoUriForEpisode(episode, logoUri ?: episode.logoUri)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { builder.setLogoUri(Uri.parse(it)) }
         return builder.build()
     }
 
@@ -254,7 +257,11 @@ class ServusChannelPublisher(context: Context) {
     }
 
     private fun createShowLogo(show: ServusShow): Bitmap {
-        val source = show.logoUri?.let(::downloadBitmap)
+        val source = if (show.id == ServusBranding.NEWS_90_SECONDS_SHOW_ID) {
+            BitmapFactory.decodeResource(appContext.resources, R.drawable.servus_news_90_logo)
+        } else {
+            show.logoUri?.let(::downloadBitmap)
+        }
             ?: show.squareArtworkUri?.let(::downloadBitmap)
             ?: show.artworkUri?.let(::downloadBitmap)
             ?: return createAppLogo()
