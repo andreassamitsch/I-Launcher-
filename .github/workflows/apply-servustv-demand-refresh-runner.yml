@@ -41,8 +41,37 @@ jobs:
               if line.count("'''") % 2 == 1:
                   in_triple = not in_triple
           script = '\n'.join(output) + '\n'
+
+          # This one MainActivity replacement is intentionally applied after the main patch with
+          # small token-level edits. Keeping it out of the large exact block avoids coupling to the
+          # preceding status-text rewrite.
+          block_start = "replace(\n    main,\n    '''            if (repository.tvChannelSupported()) {"
+          block_end = "replace(\n    main,\n    '''        val selected = currentSelectionStore.isSelected(show, categories)"
+          start_idx = script.index(block_start)
+          end_idx = script.index(block_end, start_idx)
+          script = script[:start_idx] + script[end_idx:]
+
           Path('/tmp/apply_servustv.py').write_text(script)
           subprocess.run(['python3', '/tmp/apply_servustv.py'], check=True)
+
+          main = Path('servustv-provider/src/main/java/com/andreassamitsch/servusprovider/ui/MainActivity.kt')
+          text = main.read_text()
+          text = text.replace(
+              'if (showCount > 0) append(" + $showCount Sendungskanäle")',
+              'if (tvShowCount > 0) append(" + $tvShowCount aktivierte Sendungskanäle")',
+          )
+          status_end = 'repository.lastError()?.takeIf { it.isNotBlank() }?.let { append("\\nLetzter Datenfehler: $it") }\n        }\n        renderContent()'
+          if status_end not in text:
+              raise SystemExit('MainActivity status end anchor missing')
+          text = text.replace(
+              status_end,
+              'repository.lastError()?.takeIf { it.isNotBlank() }?.let { append("\\nLetzter Datenfehler: $it") }\n        }\n        renderDeveloperInfoVisibility()\n        renderContent()',
+              1,
+          )
+          # The embedded raw Python string intentionally had to escape YAML; normalize the Kotlin
+          # newline used before the first status line.
+          text = text.replace('append("\\\\n")', 'append("\\n")')
+          main.write_text(text)
           PY
 
       - name: Test and build ServusTV
