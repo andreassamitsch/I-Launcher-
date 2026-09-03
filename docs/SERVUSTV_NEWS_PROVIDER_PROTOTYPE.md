@@ -18,20 +18,21 @@ Die interne Kanal-ID `servus-news-19-20` bleibt absichtlich erhalten, damit best
 
 Der vollständige Sendungskatalog wird nicht aus HTML gescrapt. Ausgangspunkt ist das aktuelle ServusTV-/Red-Bull-Produkt `sendungen`. Dessen Collections bilden die Kategorien der ServusTV-Sendungsseite ab und werden in Quellreihenfolge übernommen.
 
-Für jede Sendung wird gespeichert:
+Für jede Sendung wird im Katalog zunächst nur die leichte Metadatenbasis gespeichert:
 
 - stabile ServusTV-ID
-- Titel und Beschreibung
+- Titel und Beschreibung, soweit bereits auf der Katalogkarte vorhanden
 - Kategorie
 - Landscape-/Square-Artwork
-- Sendungslogo aus `rbtv_title_treatment`, sofern vorhanden
-- aktuelle abspielbare Folgen/Videos
+- bereits lokal bekannte Detail-/Logo-/Folgendaten bleiben erhalten
 
-Auf Android TV erhält jede Sendung mit abspielbaren Inhalten einen eigenen Preview Channel mit stabiler interner ID `servus-show:<showId>`. Das Sendungslogo wird sowohl als Kanalbranding als auch über `PreviewProgram.logoUri` an die Programme weitergegeben, sodass I Launcher es über sein vorhandenes provider-neutrales `logoUri` übernehmen kann.
+Folgen werden bewusst **nicht mehr für jede Katalogsendung** geladen. Eine Sendung lädt ihre Detail-Collections und Folgen nur, wenn sie geöffnet wird, explizit zu `ServusTV Aktuelles` hinzugefügt wurde oder der Benutzer sie als eigenen Android-TV-Kanal aktiviert hat.
+
+Auf Android TV sind Sendungskanäle damit opt-in. Die Sendungsansicht besitzt eine dezente TV-Kanal-Aktion; nur ausgewählte Sendungen erhalten einen Preview Channel mit stabiler interner ID `servus-show:<showId>`. Beim Entfernen wird der zugehörige Preview Channel wieder aus dem TvProvider gelöscht.
 
 Bei Sendungen mit echten `episode`-/`film`-Einträgen werden diese für den Kanal bevorzugt. Nur wenn eine Sendung keine solchen Vollinhalte liefert, dienen andere abspielbare Videos als Fallback. Pro Sendung werden aktuell höchstens 18 neueste Einträge veröffentlicht.
 
-Die Sendungs-Collections dienen dabei nur als Discovery-/Reihenfolgequelle. Für höchstens 20 plausible aktuelle Folgen pro Sendung werden die jeweiligen `products/v5.3/.../<contentId>`-Details nachgeladen, weil erst dort der verlässliche VOD-Zeitstempel `sunrise_timestamp` durchgehend vorhanden ist. Die Detailaufrufe sind global auf sechs parallele Requests begrenzt. Bereits lokal gecachte, von ServusTV stammende `publishedAtMillis`-Werte werden bei späteren Refreshes wiederverwendet; dadurch müssen im Normalfall nur neue bzw. bislang zeitstempellose Content-IDs erneut hydratisiert werden. `start_time`, `end_time` und Uhrzeiten aus Titeln bleiben ausdrücklich EPG-/Broadcastdaten und werden nicht als Veröffentlichungszeit verwendet.
+Wenn Folgen für eine ausgewählte oder geöffnete Sendung tatsächlich benötigt werden, dienen deren Collections als Discovery-/Reihenfolgequelle. Für höchstens 20 plausible aktuelle Folgen werden die jeweiligen `products/v5.3/.../<contentId>`-Details nur dann nachgeladen, wenn Collection-Karte und lokaler Cache noch keinen belastbaren VOD-Zeitstempel liefern. Die Detailaufrufe sind global auf sechs parallele Requests begrenzt. `start_time`, `end_time` und Uhrzeiten aus Titeln bleiben ausdrücklich EPG-/Broadcastdaten und werden nicht als Veröffentlichungszeit verwendet.
 
 ## App-Oberfläche
 
@@ -75,7 +76,7 @@ ServusTV liefert Media-Resources pro Produkt. Für Sendungsbranding wird bevorzu
 
 Auch `Aktuelles` arbeitet inkrementell: Die vier Suchbegriffe laden nur die vom Server über `meta.next` angekündigten Seiten (maximal drei pro Suchbegriff). Bereits lokal vollständig bekannte Content-IDs werden nicht bei jedem 15-Minuten- oder manuellen Refresh erneut über den Produkt-Endpunkt geladen; nur neue IDs werden hydratisiert. Ein getesteter `limit`-Queryparameter wurde vom aktuellen ServusTV-Endpunkt nicht eingehalten und wird deshalb bewusst nicht verwendet. Ein direktes Produkt `nachrichten` existiert im getesteten AT-Markt ebenfalls nicht.
 
-Für explizit zu `Aktuelles` hinzugewählte Sendungen bleibt der leichte 15-Minuten-Refresh bestehen. Bei diesen Refreshes werden vorhandene ServusTV-Verfügbarkeitszeiten aus dem lokalen Sendungs-Cache wiederverwendet und nur neue bzw. noch nicht belastbar zeitgestempelte Folgen über den Produkt-Endpunkt nachgeladen.
+Für explizit zu `Aktuelles` hinzugewählte Sendungen und für aktivierte Android-TV-Sendungskanäle bleibt ein leichter gezielter Refresh bestehen. Nur diese Sendungen werden bei einem normalen Hintergrund-/manuellen Refresh auf neue Folgen geprüft. Nicht ausgewählte Sendungen verursachen dabei keinen Folgen-/Produktdetail-Traffic; sie werden erst beim Öffnen ihrer Sendungsansicht on demand geladen.
 
 Der lokale Cache bleibt auch auf Smartphones ohne Android-TvProvider die primäre Datenquelle. Ein fehlender TvProvider darf Datenabruf und Standalone-App nicht scheitern lassen.
 
@@ -87,8 +88,9 @@ Die bereits auf TCL bestätigte Media3-Konfiguration bleibt bestehen:
 - Tunneling, sofern vom Gerät unterstützt
 - D-Pad links/rechts ±10 Sekunden
 - OK = Play/Pause
-- reduzierte untere Steuerleiste
+- reduzierte untere Steuerleiste; Player-Einstellungen über ein kleines Zahnrad direkt neben der Zeitleiste
 - Touch Play/Pause und Zeitleisten-Scrubbing
+- auf Smartphone folgt der Player der Geräte-Rotation zwischen Hoch- und Querformat, ohne den Player wegen einer Konfigurationsänderung neu aufzubauen
 - VOD beendet die PlaybackActivity bei `Player.STATE_ENDED`
 
 ## Noch ausstehender Gerätetest dieses Ausbaus
@@ -99,8 +101,8 @@ Die bereits auf TCL bestätigte Media3-Konfiguration bleibt bestehen:
 2. App prüfen: `Aktuelles`, `Live TV` und ServusTV-Kategorien müssen erscheinen.
 3. Kategorien und Sendungszuordnung stichprobenartig mit ServusTV vergleichen.
 4. Bei Sendungen mit `rbtv_title_treatment` muss das Logo sichtbar sein.
-5. I Launcher prüfen: bestehendes `ServusTV Aktuelles` bleibt vorhanden, zusätzlich `ServusTV Live` und eigene Sendungs-Kanäle.
-6. Einen Sendungs-Kanal öffnen und mehrere Folgen direkt starten. Bei aktuellen Folgen muss die Reihenfolge anhand `sunrise_timestamp` plausibel sein; beispielsweise soll `Servus Wetter` den tatsächlichen VOD-Verfügbarkeitszeitpunkt statt nur der Dauer anzeigen, sofern ServusTV diesen liefert.
+5. In einer Sendungsansicht den TV-Kanal per Symbol aktivieren. Erst danach muss diese Sendung als eigener Kanal im I Launcher erscheinen; eine nicht aktivierte Sendung darf keinen eigenen Preview Channel erzeugen.
+6. Den aktivierten Sendungs-Kanal öffnen und mehrere Folgen direkt starten. Bei aktuellen Folgen muss die Reihenfolge anhand `sunrise_timestamp` plausibel sein; beispielsweise soll `Servus Wetter` den tatsächlichen VOD-Verfügbarkeitszeitpunkt statt nur der Dauer anzeigen, sofern ServusTV diesen liefert.
 7. Prüfen, ob I Launcher das vom Preview Program gelieferte Sendungslogo in Hero/Anreicherung übernimmt.
 8. `ServusTV Live` prüfen: alle aktuell gelieferten Live-Kanäle erscheinen; laufender EPG-Titel wird angezeigt, sofern vom Guide geliefert.
 9. Haupt-ServusTV-Live und mindestens einen digitalen Live-Kanal starten.
@@ -110,8 +112,9 @@ Die bereits auf TCL bestätigte Media3-Konfiguration bleibt bestehen:
 
 1. App öffnen: kein TvProvider-Fehler.
 2. Kategorien und Sendungen müssen geladen werden.
-3. Sendungsdetail per Touch öffnen und Folge starten.
-4. Live-Karte öffnen und Stream starten.
-5. Zurück-Navigation zwischen Player, Sendung und Hauptansicht prüfen.
+3. Sendungsdetail per Touch öffnen: Folgen sollen erst hier on demand geladen werden; Aktuelles-/TV-Kanal-Aktionen sind kompakte Symbolbuttons.
+4. Folge starten und das Gerät zwischen Hoch- und Querformat drehen; Wiedergabe und Bedienung müssen der Rotation folgen.
+5. Live-Karte öffnen und Stream starten; Player-Einstellungen über das Zahnrad neben der Zeitleiste öffnen.
+6. Zurück-Navigation zwischen Player, Sendung und Hauptansicht prüfen.
 
 Dieser Ausbau gilt bis zu diesen Tests nur als kompiliert/automatisiert getestet, nicht als auf realer Hardware bestätigt.

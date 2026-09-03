@@ -84,10 +84,10 @@
 44-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:18:9-28:20
 45            android:name="com.andreassamitsch.servusprovider.ui.PlaybackActivity"
 45-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:19:13-48
-46            android:exported="true"
-46-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:20:13-36
-47            android:screenOrientation="sensorLandscape" >
-47-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:21:13-56
+46            android:configChanges="orientation|screenSize|smallestScreenSize"
+46-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:20:13-78
+47            android:exported="true" >
+47-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:21:13-36
 48            <intent-filter>
 48-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:22:13-27:29
 49                <action android:name="android.intent.action.VIEW" />

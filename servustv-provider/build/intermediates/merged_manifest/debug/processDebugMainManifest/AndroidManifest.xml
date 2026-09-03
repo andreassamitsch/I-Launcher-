@@ -43,8 +43,8 @@
         android:theme="@style/Theme.ServusProvider" >
         <activity
             android:name="com.andreassamitsch.servusprovider.ui.PlaybackActivity"
-            android:exported="true"
-            android:screenOrientation="sensorLandscape" >
+            android:configChanges="orientation|screenSize|smallestScreenSize"
+            android:exported="true" >
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 

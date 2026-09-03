@@ -22,6 +22,7 @@ import com.andreassamitsch.servusprovider.data.ServusLiveChannel
 import com.andreassamitsch.servusprovider.data.ServusNewsEpisode
 import com.andreassamitsch.servusprovider.data.ServusNewsStore
 import com.andreassamitsch.servusprovider.data.ServusShow
+import com.andreassamitsch.servusprovider.data.ServusShowChannelSelectionStore
 import com.andreassamitsch.servusprovider.ui.MainActivity
 import com.andreassamitsch.servusprovider.ui.PlaybackActivity
 import com.andreassamitsch.servusprovider.ui.ShowActivity
@@ -37,6 +38,7 @@ class ServusChannelPublisher(context: Context) {
     private val hubStore = ServusHubStore(appContext)
     private val newsStore = ServusNewsStore(appContext)
     private val currentSelectionStore = ServusCurrentChannelSelectionStore(appContext)
+    private val showChannelSelectionStore = ServusShowChannelSelectionStore(appContext)
 
     fun isSupported(): Boolean =
         appContext.packageManager.resolveContentProvider(TvContractCompat.AUTHORITY, 0) != null
@@ -67,21 +69,29 @@ class ServusChannelPublisher(context: Context) {
         })
     }
 
-    /** One stable Android-TV Preview Channel per show returned by ServusTV's `sendungen` catalogue. */
+    /** Synchronizes only shows explicitly opted into an Android-TV Preview Channel. */
     fun publishShows(categories: List<ServusCategory>) {
         if (!isSupported()) return
-        val shows = categories
-            .flatMap { it.shows }
-            .distinctBy { it.id }
-            .filter { it.episodes.isNotEmpty() }
-        val existingByInternalId = helper.getAllChannels()
+        val selectedIds = showChannelSelectionStore.effectiveSelectedShowIds(categories)
+        val selectedInternalIds = selectedIds.mapTo(hashSetOf(), ::showInternalId)
+        val existingShowChannels = helper.getAllChannels()
+            .filter { channel -> channel.internalProviderId?.startsWith(SHOW_CHANNEL_PREFIX) == true }
+
+        existingShowChannels
+            .filter { channel -> channel.internalProviderId !in selectedInternalIds }
+            .forEach { channel ->
+                appContext.contentResolver.delete(TvContractCompat.buildChannelUri(channel.id), null, null)
+            }
+
+        val existingByInternalId = existingShowChannels
             .mapNotNull { channel -> channel.internalProviderId?.let { it to channel.id } }
             .toMap()
-        shows.forEach { show -> publishShow(show, existingByInternalId[showInternalId(show.id)]) }
+        categories
+            .flatMap { it.shows }
+            .distinctBy { it.id }
+            .filter { it.id in selectedIds && it.episodes.isNotEmpty() }
+            .forEach { show -> publishShow(show, existingByInternalId[showInternalId(show.id)]) }
 
-        // A catalogue refresh can change episodes of a user-selected show without changing the
-        // fast legacy news feed. Republish the aggregate channel here as well so that those changes
-        // are visible immediately instead of waiting for an unrelated news item to change.
         if (currentSelectionStore.isConfigured()) {
             publish(newsStore.loadEpisodes())
         }

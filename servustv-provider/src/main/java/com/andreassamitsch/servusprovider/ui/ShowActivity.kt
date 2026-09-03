@@ -3,6 +3,7 @@ package com.andreassamitsch.servusprovider.ui
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -10,11 +11,14 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
+import android.widget.HorizontalScrollView
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
+import com.andreassamitsch.servusprovider.R
 import com.andreassamitsch.servusprovider.data.ServusCurrentChannelSelectionStore
 import com.andreassamitsch.servusprovider.data.ServusNewsEpisode
 import com.andreassamitsch.servusprovider.data.ServusNewsRepository
@@ -25,6 +29,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -49,7 +55,8 @@ class ShowActivity : Activity() {
             finish()
             return
         }
-        setContentView(buildUi(show))
+        setContentView(buildUi(show, loadingEpisodes = show.episodes.isEmpty()))
+        refreshOpenedShow(show)
     }
 
     override fun onDestroy() {
@@ -57,7 +64,23 @@ class ShowActivity : Activity() {
         super.onDestroy()
     }
 
-    private fun buildUi(show: ServusShow): ScrollView {
+    private fun refreshOpenedShow(cachedShow: ServusShow) {
+        scope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) { repository.refreshShow(cachedShow.id) }
+            }
+            if (isFinishing || isDestroyed) return@launch
+            val refreshed = result.getOrNull() ?: cachedShow
+            if (refreshed != cachedShow || cachedShow.episodes.isEmpty()) {
+                setContentView(buildUi(refreshed, loadingEpisodes = false))
+            }
+            result.exceptionOrNull()?.let {
+                Toast.makeText(this@ShowActivity, "Sendung konnte nicht aktualisiert werden.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun buildUi(show: ServusShow, loadingEpisodes: Boolean): ScrollView {
         val padding = dp(if (isTvDevice) 36 else 18)
         val scroll = ScrollView(this).apply {
             setBackgroundColor(Color.rgb(9, 9, 9))
@@ -115,43 +138,55 @@ class ShowActivity : Activity() {
             })
         }
 
-        val selectionButton = Button(this).apply {
-            isAllCaps = false
-            setPadding(dp(18), dp(8), dp(18), dp(8))
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            setPadding(0, dp(14), 0, 0)
         }
-        fun renderSelectionButton() {
+        val currentButton = buildIconButton(R.drawable.ic_star, "Zu Aktuelles hinzufügen")
+        fun renderCurrentButton() {
             val selected = currentSelectionStore.isSelected(show, repository.cachedCategories())
-            selectionButton.text = if (selected) {
-                "Aus Aktuelles entfernen"
-            } else {
-                "Zu Aktuelles hinzufügen"
-            }
+            currentButton.contentDescription = if (selected) "Aus Aktuelles entfernen" else "Zu Aktuelles hinzufügen"
+            setIconSelected(currentButton, selected)
         }
-        renderSelectionButton()
-        selectionButton.setOnClickListener {
+        renderCurrentButton()
+        currentButton.setOnClickListener {
             val categories = repository.cachedCategories()
             val selected = currentSelectionStore.isSelected(show, categories)
             repository.setCurrentShowSelected(show.id, !selected)
-            renderSelectionButton()
-            // Apply the cached local choice immediately. The worker then performs a lightweight
-            // selected-show refresh, so a user-added show does not wait for the six-hour full
-            // catalogue cycle before a newly available episode reaches Aktuelles.
+            renderCurrentButton()
             runCatching { channelPublisher.publish(repository.cachedEpisodes()) }
             ServusRefreshWorker.enqueueNow(applicationContext)
+            Toast.makeText(
+                this,
+                if (selected) "Aus Aktuelles entfernt" else "Zu Aktuelles hinzugefügt",
+                Toast.LENGTH_SHORT,
+            ).show()
         }
-        info.addView(
-            selectionButton,
-            LinearLayout.LayoutParams(
-                if (isTvDevice) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { topMargin = dp(16) },
-        )
-        info.addView(TextView(this).apply {
-            text = "Die Auswahl gilt lokal für den Kanal „ServusTV Aktuelles“ und kann jederzeit geändert werden."
-            textSize = if (isTvDevice) 13f else 12f
-            setTextColor(Color.GRAY)
-            setPadding(0, dp(6), 0, 0)
-        })
+        actions.addView(currentButton, iconLayoutParams())
+
+        if (repository.tvChannelSupported()) {
+            val tvButton = buildIconButton(R.drawable.ic_tv, "Als Android-TV-Kanal veröffentlichen")
+            fun renderTvButton() {
+                val selected = repository.isShowChannelSelected(show.id)
+                tvButton.contentDescription = if (selected) "Android-TV-Kanal entfernen" else "Als Android-TV-Kanal veröffentlichen"
+                setIconSelected(tvButton, selected)
+            }
+            renderTvButton()
+            tvButton.setOnClickListener {
+                val selected = repository.isShowChannelSelected(show.id)
+                repository.setShowChannelSelected(show.id, !selected)
+                renderTvButton()
+                ServusRefreshWorker.enqueueNow(applicationContext)
+                Toast.makeText(
+                    this,
+                    if (selected) "Android-TV-Kanal entfernt" else "Android-TV-Kanal aktiviert",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+            actions.addView(tvButton, iconLayoutParams().apply { marginStart = dp(8) })
+        }
+        info.addView(actions)
 
         header.addView(
             info,
@@ -170,18 +205,11 @@ class ShowActivity : Activity() {
             setPadding(0, dp(28), 0, dp(12))
         })
 
-        if (show.episodes.isEmpty()) {
-            content.addView(TextView(this).apply {
-                text = "Für diese Sendung sind aktuell keine abspielbaren Videos im Katalog verfügbar."
-                textSize = if (isTvDevice) 16f else 14f
-                setTextColor(Color.GRAY)
-            })
-            if (isTvDevice) selectionButton.requestFocus()
-        } else {
-            var first: View? = null
-            show.episodes.forEach { episode ->
+        var firstEpisode: View? = null
+        when {
+            show.episodes.isNotEmpty() -> show.episodes.forEach { episode ->
                 val card = buildEpisodeCard(episode)
-                if (first == null) first = card
+                if (firstEpisode == null) firstEpisode = card
                 content.addView(
                     card,
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -189,9 +217,58 @@ class ShowActivity : Activity() {
                     },
                 )
             }
-            if (isTvDevice) first?.requestFocus()
+            loadingEpisodes -> content.addView(TextView(this).apply {
+                text = "Folgen werden geladen …"
+                textSize = if (isTvDevice) 16f else 14f
+                setTextColor(Color.GRAY)
+            })
+            else -> content.addView(TextView(this).apply {
+                text = "Für diese Sendung sind aktuell keine abspielbaren Videos verfügbar."
+                textSize = if (isTvDevice) 16f else 14f
+                setTextColor(Color.GRAY)
+            })
         }
+        if (isTvDevice) firstEpisode?.requestFocus() ?: currentButton.requestFocus()
         return scroll
+    }
+
+    private fun buildIconButton(iconRes: Int, description: String): ImageButton = ImageButton(this).apply {
+        setImageResource(iconRes)
+        contentDescription = description
+        imageTintList = ColorStateList.valueOf(Color.WHITE)
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        setPadding(dp(11), dp(11), dp(11), dp(11))
+        isFocusable = true
+        isClickable = true
+        setIconBackground(this, focused = false)
+        setOnFocusChangeListener { view, focused -> setIconBackground(view as ImageButton, focused) }
+    }
+
+    private fun iconLayoutParams(): LinearLayout.LayoutParams =
+        LinearLayout.LayoutParams(dp(if (isTvDevice) 48 else 44), dp(if (isTvDevice) 48 else 44))
+
+    private fun setIconSelected(button: ImageButton, selected: Boolean) {
+        button.isSelected = selected
+        setIconBackground(button, button.hasFocus())
+    }
+
+    private fun setIconBackground(button: ImageButton, focused: Boolean) {
+        val selected = button.isSelected
+        button.background = GradientDrawable().apply {
+            cornerRadius = dp(12).toFloat()
+            setColor(
+                when {
+                    focused -> Color.rgb(62, 62, 62)
+                    selected -> Color.rgb(42, 42, 42)
+                    else -> Color.rgb(22, 22, 22)
+                },
+            )
+            if (focused) setStroke(dp(2), Color.WHITE)
+            else if (selected) setStroke(dp(1), Color.rgb(120, 120, 120))
+        }
+        button.alpha = if (selected || focused) 1f else 0.8f
+        button.scaleX = if (focused && isTvDevice) 1.06f else 1f
+        button.scaleY = if (focused && isTvDevice) 1.06f else 1f
     }
 
     private fun buildEpisodeCard(episode: ServusNewsEpisode): LinearLayout {
@@ -235,12 +312,8 @@ class ShowActivity : Activity() {
 
     private fun buildEpisodeMeta(episode: ServusNewsEpisode): String = buildList {
         when {
-            episode.observedAvailableAtMillis != null -> {
-                add("Online erkannt ${formatDate(episode.observedAvailableAtMillis)}")
-            }
-            episode.publishedAtMillis != null -> {
-                add("Verfügbar ab ${formatDate(episode.publishedAtMillis)}")
-            }
+            episode.observedAvailableAtMillis != null -> add("Online erkannt ${formatDate(episode.observedAvailableAtMillis)}")
+            episode.publishedAtMillis != null -> add("Verfügbar ab ${formatDate(episode.publishedAtMillis)}")
         }
         add(formatDuration(episode.durationMillis))
     }.joinToString(" · ")

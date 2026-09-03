@@ -23,6 +23,7 @@ class ServusNewsRepository(
     private val newsStore = ServusNewsStore(appContext)
     private val hubStore = ServusHubStore(appContext)
     private val currentSelectionStore = ServusCurrentChannelSelectionStore(appContext)
+    private val showChannelSelectionStore = ServusShowChannelSelectionStore(appContext)
     private val observedAvailabilityStore = ServusObservedAvailabilityStore(appContext)
     private val channelPublisher = ServusChannelPublisher(appContext)
     private val showEpisodeDetailSemaphore = Semaphore(SHOW_EPISODE_DETAIL_PARALLELISM)
@@ -49,6 +50,18 @@ class ServusNewsRepository(
         currentSelectionStore.setSelected(showId, selected, categories)
     }
 
+    fun isShowChannelSelected(showId: String): Boolean = showChannelSelectionStore.isSelected(showId)
+
+    fun selectedShowChannelIds(categories: List<ServusCategory> = hubStore.loadCategories()): Set<String> =
+        showChannelSelectionStore.effectiveSelectedShowIds(categories)
+
+    fun setShowChannelSelected(showId: String, selected: Boolean) {
+        if (selected) {
+            hubStore.findShow(showId)?.let { show -> observedAvailabilityStore.baseline(show.episodes) }
+        }
+        showChannelSelectionStore.setSelected(showId, selected)
+    }
+
     fun lastSuccessMillis(): Long = newsStore.lastSuccessMillis()
     fun catalogLastSuccessMillis(): Long = hubStore.catalogLastSuccessMillis()
     fun liveLastSuccessMillis(): Long = hubStore.liveLastSuccessMillis()
@@ -58,11 +71,10 @@ class ServusNewsRepository(
 
     /**
      * Fast data (Aktuelles + live guide) is refreshed on every run. The complete show catalogue is
-     * deliberately slower: initially, when stale, or on an explicit forced refresh. A normal manual
-     * update therefore stays on the fast path unless the catalogue itself is due. When the user
-     * configures additional shows for Aktuelles, only those non-legacy shows get a lightweight
-     * first-page refresh on the normal 15-minute worker cadence so newly available episodes do not
-     * wait up to six hours.
+     * metadata-only and deliberately slower: initially, when stale, or on an explicit forced refresh.
+     * Episode collections are not traversed for every catalogue show. Periodic episode traffic is
+     * limited to explicitly added Aktuelles shows and shows opted into an Android-TV channel. Any
+     * other show loads its episodes only when the user opens that show in the app.
      */
     suspend fun refresh(forceCatalog: Boolean = false): ServusRefreshResult {
         return try {
@@ -123,45 +135,51 @@ class ServusNewsRepository(
                 hubStore.loadCategories()
             }
 
-            var selectedShowsRefreshed = false
-            if (!catalogRefreshSucceeded && currentSelectionStore.isConfigured() && categories.isNotEmpty()) {
-                val targeted = refreshConfiguredAdditionalShows(market, categories, refreshNow)
+            val periodicShowIds = ServusShowRefreshPolicy.periodicShowIds(
+                categories = categories,
+                currentSelectionConfigured = currentSelectionStore.isConfigured(),
+                currentSelectedIds = currentSelectionStore.effectiveSelectedShowIds(categories),
+                tvChannelSelectedIds = showChannelSelectionStore.effectiveSelectedShowIds(categories),
+            )
+            var periodicShowsRefreshed = false
+            if (categories.isNotEmpty() && periodicShowIds.isNotEmpty()) {
+                val targeted = refreshSubscribedShows(market, categories, refreshNow, periodicShowIds)
                 categories = targeted.categories
-                selectedShowsRefreshed = targeted.changed
+                periodicShowsRefreshed = targeted.changed
             }
 
             val beforeAvailabilityAnnotation = categories
-            categories = annotateSelectedShowAvailability(
+            categories = annotateTrackedShowAvailability(
                 categories = categories,
+                trackedShowIds = periodicShowIds,
                 observedAtMillis = refreshNow,
                 detectNewItems = detectNewAvailability,
             )
-            val selectedAvailabilityChanged = categories != beforeAvailabilityAnnotation
+            val trackedAvailabilityChanged = categories != beforeAvailabilityAnnotation
 
             if (catalogRefreshSucceeded) {
                 hubStore.saveCatalog(categories, refreshNow)
-            } else if (selectedShowsRefreshed || selectedAvailabilityChanged) {
+            } else if (periodicShowsRefreshed || trackedAvailabilityChanged) {
                 hubStore.saveCatalogContent(categories)
             }
 
-            val selectedIds = currentSelectionStore.effectiveSelectedShowIds(categories)
-            val selectedCatalogueEpisodes = categories
+            val trackedCatalogueEpisodes = categories
                 .flatMap { it.shows }
-                .filter { it.id in selectedIds }
+                .filter { it.id in periodicShowIds }
                 .flatMap { it.episodes }
-            observedAvailabilityStore.finishSuccessfulRefresh(episodes + selectedCatalogueEpisodes)
+            observedAvailabilityStore.finishSuccessfulRefresh(episodes + trackedCatalogueEpisodes)
 
             if (channelPublisher.isSupported()) {
                 runCatching {
                     val contentChanged = previousEpisodes.map { ServusNewsPolicy.contentKey(it) to it.id } !=
                         episodes.map { ServusNewsPolicy.contentKey(it) to it.id }
                     val customCurrentChanged = currentSelectionStore.isConfigured() &&
-                        (catalogRefreshSucceeded || selectedShowsRefreshed || selectedAvailabilityChanged)
+                        (catalogRefreshSucceeded || periodicShowsRefreshed || trackedAvailabilityChanged)
                     if (contentChanged || customCurrentChanged || !channelPublisher.isPublished()) {
                         channelPublisher.publish(episodes)
                     }
                     if (liveChannels.isNotEmpty()) channelPublisher.publishLive(liveChannels)
-                    if (catalogRefreshSucceeded && categories.isNotEmpty()) {
+                    if ((catalogRefreshSucceeded || periodicShowsRefreshed) && categories.isNotEmpty()) {
                         channelPublisher.publishShows(categories)
                     }
                 }.onFailure { throwable ->
@@ -364,30 +382,14 @@ class ServusNewsRepository(
             )
         }
 
-        val cachedEpisodesByShowId = cachedCategories
+        val cachedShowsById = cachedCategories
             .flatMap { it.shows }
             .distinctBy { it.id }
-            .associate { show -> show.id to show.episodes }
-        val semaphore = Semaphore(SHOW_PARALLELISM)
-        val cores = try {
-            uniqueShowCards.values.map { card ->
-                async {
-                    semaphore.withPermit {
-                        val cachedEpisodes = card.id
-                            ?.let { showId -> cachedEpisodesByShowId[showId] }
-                            .orEmpty()
-                        loadShowCore(
-                            market = market,
-                            card = card,
-                            nowMillis = nowMillis,
-                            cachedEpisodes = cachedEpisodes,
-                        )
-                    }
-                }
-            }.awaitAll().filterNotNull().associateBy { it.id }
-        } catch (throwable: Throwable) {
-            throw diagnostics.failure("Sendungsdetails", throwable)
-        }
+            .associateBy { it.id }
+        val cores = uniqueShowCards.values.mapNotNull { card ->
+            val cachedShow = card.id?.let(cachedShowsById::get)
+            showMetadataFromCard(card, cachedShow)
+        }.associateBy { it.id }
 
         val categories = seeds.map { seed ->
             val shows = seed.cards.mapNotNull { card ->
@@ -431,23 +433,21 @@ class ServusNewsRepository(
         )
     }
 
-    private suspend fun refreshConfiguredAdditionalShows(
+    private suspend fun refreshSubscribedShows(
         market: String,
         categories: List<ServusCategory>,
         nowMillis: Long,
-    ): SelectedShowRefreshOutcome = coroutineScope {
-        val selectedIds = currentSelectionStore.effectiveSelectedShowIds(categories)
+        showIds: Set<String>,
+    ): SubscribedShowRefreshOutcome = coroutineScope {
         val selectedShows = categories
             .flatMap { it.shows }
             .distinctBy { it.id }
-            .filter { show ->
-                show.id in selectedIds && !ServusCurrentChannelPolicy.isLegacyDefaultTitle(show.title)
-            }
+            .filter { show -> show.id in showIds }
         if (selectedShows.isEmpty()) {
-            return@coroutineScope SelectedShowRefreshOutcome(categories, changed = false)
+            return@coroutineScope SubscribedShowRefreshOutcome(categories, changed = false)
         }
 
-        val semaphore = Semaphore(SELECTED_SHOW_PARALLELISM)
+        val semaphore = Semaphore(SUBSCRIBED_SHOW_PARALLELISM)
         val refreshedById = selectedShows.map { show ->
             async {
                 semaphore.withPermit {
@@ -462,7 +462,7 @@ class ServusNewsRepository(
                             market = market,
                             card = fallbackCard,
                             nowMillis = nowMillis,
-                            maxCollectionPages = MAX_SELECTED_SHOW_COLLECTION_PAGES,
+                            maxCollectionPages = MAX_SUBSCRIBED_SHOW_COLLECTION_PAGES,
                             cachedEpisodes = show.episodes,
                         )
                     }.getOrNull()?.let { show.id to it }
@@ -471,7 +471,7 @@ class ServusNewsRepository(
         }.awaitAll().filterNotNull().toMap()
 
         if (refreshedById.isEmpty()) {
-            return@coroutineScope SelectedShowRefreshOutcome(categories, changed = false)
+            return@coroutineScope SubscribedShowRefreshOutcome(categories, changed = false)
         }
 
         val updated = categories.map { category ->
@@ -489,22 +489,21 @@ class ServusNewsRepository(
                 },
             )
         }
-        SelectedShowRefreshOutcome(updated, changed = updated != categories)
+        SubscribedShowRefreshOutcome(updated, changed = updated != categories)
     }
 
-    private fun annotateSelectedShowAvailability(
+    private fun annotateTrackedShowAvailability(
         categories: List<ServusCategory>,
+        trackedShowIds: Set<String>,
         observedAtMillis: Long,
         detectNewItems: Boolean,
     ): List<ServusCategory> {
-        if (categories.isEmpty()) return categories
-        val selectedIds = currentSelectionStore.effectiveSelectedShowIds(categories)
-        if (selectedIds.isEmpty()) return categories
+        if (categories.isEmpty() || trackedShowIds.isEmpty()) return categories
 
         return categories.map { category ->
             category.copy(
                 shows = category.shows.map { show ->
-                    if (show.id !in selectedIds || show.episodes.isEmpty()) return@map show
+                    if (show.id !in trackedShowIds || show.episodes.isEmpty()) return@map show
                     show.copy(
                         episodes = observedAvailabilityStore.annotateNewlyObserved(
                             episodes = show.episodes,
@@ -515,6 +514,90 @@ class ServusNewsRepository(
                 },
             )
         }
+    }
+
+    suspend fun refreshShow(showId: String): ServusShow? {
+        val categories = hubStore.loadCategories()
+        val cachedShow = categories.asSequence()
+            .flatMap { it.shows.asSequence() }
+            .firstOrNull { it.id == showId }
+            ?: return null
+        val session = sessionStore.get()
+        val nowMillis = System.currentTimeMillis()
+        val core = loadShowCore(
+            market = session.countryCode,
+            card = ServusCardDto(
+                id = cachedShow.id,
+                type = "page",
+                title = cachedShow.title,
+                longDescription = cachedShow.description,
+            ),
+            nowMillis = nowMillis,
+            maxCollectionPages = MAX_SHOW_COLLECTION_PAGES,
+            cachedEpisodes = cachedShow.episodes,
+        ) ?: return cachedShow
+        val annotatedEpisodes = observedAvailabilityStore.annotateNewlyObserved(
+            episodes = core.episodes,
+            observedAtMillis = nowMillis,
+            detectNewItems = observedAvailabilityStore.isInitialized(),
+        )
+        val updatedCategories = categories.map { category ->
+            category.copy(
+                shows = category.shows.map { show ->
+                    if (show.id != showId) return@map show
+                    show.copy(
+                        title = core.title,
+                        description = core.description ?: show.description,
+                        artworkUri = core.artworkUri ?: show.artworkUri,
+                        squareArtworkUri = core.squareArtworkUri ?: show.squareArtworkUri,
+                        logoUri = core.logoUri ?: show.logoUri,
+                        episodes = annotatedEpisodes.map { episode ->
+                            episode.copy(
+                                categoryId = category.id,
+                                categoryTitle = category.title,
+                            )
+                        },
+                    )
+                },
+            )
+        }
+        hubStore.saveCatalogContent(updatedCategories)
+        observedAvailabilityStore.finishSuccessfulRefresh(annotatedEpisodes)
+
+        val refreshedShow = updatedCategories.asSequence()
+            .flatMap { it.shows.asSequence() }
+            .firstOrNull { it.id == showId }
+        if (channelPublisher.isSupported() && refreshedShow != null) {
+            runCatching {
+                if (currentSelectionStore.isSelected(refreshedShow, updatedCategories)) {
+                    channelPublisher.publish(newsStore.loadEpisodes())
+                }
+                if (showChannelSelectionStore.isSelected(showId)) {
+                    channelPublisher.publishShows(updatedCategories)
+                }
+            }.onFailure { throwable ->
+                Log.w(TAG, "TvProvider sync skipped after show refresh (${throwable.javaClass.simpleName})")
+            }
+        }
+        return refreshedShow
+    }
+
+    private fun showMetadataFromCard(card: ServusCardDto, cachedShow: ServusShow?): ShowCore? {
+        val id = card.id ?: return null
+        val title = card.title?.takeIf { it.isNotBlank() }
+            ?: cachedShow?.title?.takeIf { it.isNotBlank() }
+            ?: return null
+        return ShowCore(
+            id = id,
+            title = title,
+            description = card.longDescription?.takeIf { it.isNotBlank() }
+                ?: card.shortDescription?.takeIf { it.isNotBlank() }
+                ?: cachedShow?.description,
+            artworkUri = ServusCatalogPolicy.landscapeArtwork(id, card.mediaResources) ?: cachedShow?.artworkUri,
+            squareArtworkUri = ServusCatalogPolicy.squareArtwork(id, card.mediaResources) ?: cachedShow?.squareArtworkUri,
+            logoUri = ServusCatalogPolicy.titleTreatment(id, card.mediaResources) ?: cachedShow?.logoUri,
+            episodes = cachedShow?.episodes.orEmpty(),
+        )
     }
 
     private suspend fun loadShowCore(
@@ -593,7 +676,11 @@ class ServusNewsRepository(
                 else -> null
             }
         }
-        val episodes = ServusCatalogPolicy.selectChannelEpisodes(mapped)
+        val episodes = if (rawCards.isEmpty() && cachedEpisodes.isNotEmpty()) {
+            ServusCatalogPolicy.selectChannelEpisodes(cachedEpisodes)
+        } else {
+            ServusCatalogPolicy.selectChannelEpisodes(mapped)
+        }
         return ShowCore(
             id = id,
             title = title,
@@ -714,7 +801,7 @@ class ServusNewsRepository(
         val diagnostic: String,
     )
 
-    private data class SelectedShowRefreshOutcome(
+    private data class SubscribedShowRefreshOutcome(
         val categories: List<ServusCategory>,
         val changed: Boolean,
     )
@@ -755,14 +842,13 @@ class ServusNewsRepository(
         const val MAX_DETAIL_CANDIDATES = 72
         const val MAX_CURRENT_EPISODES = 40
 
-        const val SHOW_PARALLELISM = 4
         const val SHOW_EPISODE_DETAIL_PARALLELISM = 6
         const val MAX_SHOW_EPISODE_DETAIL_CANDIDATES = 20
         const val MAX_CATEGORY_PAGES = 20
         const val MAX_SHOW_COLLECTIONS = 5
         const val MAX_SHOW_COLLECTION_PAGES = 3
-        const val SELECTED_SHOW_PARALLELISM = 2
-        const val MAX_SELECTED_SHOW_COLLECTION_PAGES = 1
+        const val SUBSCRIBED_SHOW_PARALLELISM = 2
+        const val MAX_SUBSCRIBED_SHOW_COLLECTION_PAGES = 1
         const val MAX_LIVE_PAGES = 3
         const val LIVE_GUIDE_PARALLELISM = 4
         const val MAX_GUIDE_PROGRAMS = 8

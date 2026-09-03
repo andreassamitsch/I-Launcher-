@@ -2,6 +2,9 @@ package com.andreassamitsch.servusprovider.ui
 
 import android.app.Activity
 import android.app.Dialog
+import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
@@ -15,6 +18,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -30,6 +34,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
+import com.andreassamitsch.servusprovider.R
 import com.andreassamitsch.servusprovider.api.ServusNetwork
 import com.andreassamitsch.servusprovider.data.ServusPlaybackResolver
 import kotlinx.coroutines.CoroutineScope
@@ -53,10 +58,13 @@ class PlaybackActivity : Activity() {
     private lateinit var controlsContainer: LinearLayout
     private lateinit var timeline: SeekBar
     private lateinit var timeText: TextView
-    private lateinit var settingsButton: Button
+    private lateinit var settingsButton: ImageButton
     private var selectedVideoSummary = "wird ermittelt"
     private var selectedAudioSummary = "wird ermittelt"
     private var userSeeking = false
+    private val isTvDevice: Boolean by lazy {
+        packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    }
 
     private val hideControlsRunnable = Runnable {
         if (settingsDialog?.isShowing != true) {
@@ -74,6 +82,11 @@ class PlaybackActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedOrientation = if (isTvDevice) {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(buildUi())
         rootView.requestFocus()
@@ -203,7 +216,12 @@ class PlaybackActivity : Activity() {
 
         controlsContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(48), dp(18), dp(48), dp(30))
+            setPadding(
+                dp(if (isTvDevice) 48 else 16),
+                dp(if (isTvDevice) 18 else 10),
+                dp(if (isTvDevice) 48 else 16),
+                dp(if (isTvDevice) 30 else 16),
+            )
         }
         val infoRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -218,26 +236,15 @@ class PlaybackActivity : Activity() {
             timeText,
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
         )
-        settingsButton = Button(this).apply {
-            text = "Einstellungen"
-            isAllCaps = false
-            setOnClickListener { showSettingsDialog() }
-            setOnFocusChangeListener { _, hasFocus ->
-                if (hasFocus) {
-                    controlsContainer.visibility = View.VISIBLE
-                    controlsFade.visibility = View.VISIBLE
-                }
-            }
-        }
-        infoRow.addView(
-            settingsButton,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)),
-        )
         controlsContainer.addView(
             infoRow,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
         )
 
+        val timelineRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
         timeline = SeekBar(this).apply {
             max = TIMELINE_MAX
             progress = 0
@@ -270,11 +277,44 @@ class PlaybackActivity : Activity() {
                 },
             )
         }
-        controlsContainer.addView(
+        timelineRow.addView(
             timeline,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(26)).apply {
+            LinearLayout.LayoutParams(0, dp(26), 1f).apply {
                 topMargin = dp(2)
             },
+        )
+        settingsButton = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_settings)
+            contentDescription = "Einstellungen"
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(Color.argb(160, 34, 34, 34))
+            }
+            setOnClickListener { showSettingsDialog() }
+            setOnFocusChangeListener { view, hasFocus ->
+                view.background = GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat()
+                    setColor(if (hasFocus) Color.rgb(72, 72, 72) else Color.argb(160, 34, 34, 34))
+                    if (hasFocus) setStroke(dp(2), Color.WHITE)
+                }
+                if (hasFocus) {
+                    controlsContainer.visibility = View.VISIBLE
+                    controlsFade.visibility = View.VISIBLE
+                }
+            }
+        }
+        timelineRow.addView(
+            settingsButton,
+            LinearLayout.LayoutParams(dp(if (isTvDevice) 46 else 42), dp(if (isTvDevice) 46 else 42)).apply {
+                marginStart = dp(10)
+            },
+        )
+        controlsContainer.addView(
+            timelineRow,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
         )
         rootView.addView(
             controlsContainer,

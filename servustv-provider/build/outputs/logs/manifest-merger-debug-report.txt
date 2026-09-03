@@ -120,10 +120,10 @@ MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /home/runne
 		ADDED from /home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:16:9-52
 activity#com.andreassamitsch.servusprovider.ui.PlaybackActivity
 ADDED from /home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:18:9-28:20
-	android:screenOrientation
-		ADDED from /home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:21:13-56
 	android:exported
-		ADDED from /home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:20:13-36
+		ADDED from /home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:21:13-36
+	android:configChanges
+		ADDED from /home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:20:13-78
 	android:name
 		ADDED from /home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:19:13-48
 intent-filter#action:name:android.intent.action.VIEW+category:name:android.intent.category.BROWSABLE+category:name:android.intent.category.DEFAULT+data:host:play+data:scheme:iservus

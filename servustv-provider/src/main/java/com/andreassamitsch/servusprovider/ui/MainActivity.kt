@@ -2,6 +2,7 @@ package com.andreassamitsch.servusprovider.ui
 
 import android.app.Activity
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -10,7 +11,7 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
+import android.widget.ImageButton
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -18,6 +19,7 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import com.andreassamitsch.servusprovider.BuildConfig
+import com.andreassamitsch.servusprovider.R
 import com.andreassamitsch.servusprovider.data.ServusCategory
 import com.andreassamitsch.servusprovider.data.ServusCurrentChannelSelectionStore
 import com.andreassamitsch.servusprovider.data.ServusLiveChannel
@@ -55,9 +57,11 @@ class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var contentContainer: LinearLayout
     private lateinit var progress: ProgressBar
-    private lateinit var refreshButton: Button
+    private lateinit var refreshButton: ImageButton
     private lateinit var updateStatusText: TextView
-    private lateinit var updateButton: Button
+    private lateinit var updateButton: ImageButton
+    private lateinit var devInfoButton: ImageButton
+    private var developerInfoVisible = false
     private var updatePollingJob: Job? = null
     private var episodes: List<ServusNewsEpisode> = emptyList()
     private var categories: List<ServusCategory> = emptyList()
@@ -107,55 +111,61 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
         })
         content.addView(TextView(this).apply {
-            text = "Aktuelles · Live TV · Sendungen · ${BuildConfig.VERSION_NAME}"
+            text = "Aktuelles · Live TV · Sendungen"
             textSize = if (isTvDevice) 18f else 16f
             setTextColor(Color.LTGRAY)
             setPadding(0, dp(6), 0, dp(14))
         })
 
         statusText = TextView(this).apply {
-            textSize = if (isTvDevice) 16f else 14f
-            setTextColor(Color.LTGRAY)
+            textSize = if (isTvDevice) 14f else 12f
+            setTextColor(Color.GRAY)
+            visibility = View.GONE
         }
         content.addView(statusText)
 
-        progress = ProgressBar(this).apply { visibility = View.GONE }
-        content.addView(progress)
-
-        refreshButton = Button(this).apply {
-            text = "Jetzt aktualisieren"
+        val utilityRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            setPadding(0, dp(4), 0, dp(10))
+        }
+        refreshButton = buildIconButton(R.drawable.ic_refresh, "Aktualisieren").apply {
             setOnClickListener { refresh(forceCatalog = false) }
         }
-        content.addView(
-            refreshButton,
-            LinearLayout.LayoutParams(
-                if (isTvDevice) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply {
-                topMargin = dp(12)
-            },
-        )
-
-        updateStatusText = TextView(this).apply {
-            textSize = if (isTvDevice) 14f else 12f
-            setTextColor(Color.GRAY)
-            setPadding(0, dp(12), 0, dp(4))
-        }
-        content.addView(updateStatusText)
-
-        updateButton = Button(this).apply {
-            text = "Auf Updates prüfen"
+        updateButton = buildIconButton(R.drawable.ic_update, "Auf Updates prüfen").apply {
             setOnClickListener { handleUpdateAction() }
         }
-        content.addView(
-            updateButton,
-            LinearLayout.LayoutParams(
-                if (isTvDevice) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply {
-                bottomMargin = dp(20)
+        devInfoButton = buildIconButton(R.drawable.ic_info, "Technische Informationen anzeigen").apply {
+            setOnClickListener {
+                developerInfoVisible = !developerInfoVisible
+                contentDescription = if (developerInfoVisible) {
+                    "Technische Informationen ausblenden"
+                } else {
+                    "Technische Informationen anzeigen"
+                }
+                renderDeveloperInfoVisibility()
+            }
+        }
+        utilityRow.addView(refreshButton, utilityIconLayoutParams())
+        utilityRow.addView(updateButton, utilityIconLayoutParams().apply { marginStart = dp(8) })
+        utilityRow.addView(devInfoButton, utilityIconLayoutParams().apply { marginStart = dp(8) })
+        progress = ProgressBar(this).apply { visibility = View.GONE }
+        utilityRow.addView(
+            progress,
+            LinearLayout.LayoutParams(dp(32), dp(32)).apply {
+                marginStart = dp(12)
+                gravity = Gravity.CENTER_VERTICAL
             },
         )
+        content.addView(utilityRow)
+
+        updateStatusText = TextView(this).apply {
+            textSize = if (isTvDevice) 13f else 12f
+            setTextColor(Color.GRAY)
+            setPadding(0, 0, 0, dp(8))
+            visibility = View.GONE
+        }
+        content.addView(updateStatusText)
 
         contentContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(
@@ -174,10 +184,12 @@ class MainActivity : Activity() {
         )
         liveChannels = repository.cachedLiveChannels()
         val success = repository.lastSuccessMillis()
-        val showCount = categories.flatMap { it.shows }.distinctBy { it.id }.size
         val selectedShowCount = currentSelectionStore.effectiveSelectedShowIds(categories).size
+        val tvShowCount = repository.selectedShowChannelIds(categories).size
         statusText.text = buildString {
+            append("Version ${BuildConfig.VERSION_NAME}")
             if (success > 0L) {
+                append("\n")
                 append("Letzte Aktualisierung: ")
                 append(DateFormat.getDateTimeInstance().format(Date(success)))
             } else {
@@ -190,12 +202,13 @@ class MainActivity : Activity() {
             }
             if (repository.tvChannelSupported()) {
                 append("\nAndroid TV: Aktuelles + Live")
-                if (showCount > 0) append(" + $showCount Sendungskanäle")
+                if (tvShowCount > 0) append(" + $tvShowCount aktivierte Sendungskanäle")
             } else {
                 append("\nStandalone-Modus ohne Android-TV-Kanäle")
             }
             repository.lastError()?.takeIf { it.isNotBlank() }?.let { append("\nLetzter Datenfehler: $it") }
         }
+        renderDeveloperInfoVisibility()
         renderContent()
     }
 
@@ -298,10 +311,16 @@ class MainActivity : Activity() {
 
     private fun buildShowCard(show: ServusShow): View {
         val selected = currentSelectionStore.isSelected(show, categories)
+        val tvChannelSelected = repository.isShowChannelSelected(show.id)
         return buildMediaCard(
             artworkUri = show.artworkUri ?: show.squareArtworkUri,
             logoUri = show.logoUri,
-            eyebrow = if (selected) "AKTUELLES" else null,
+            eyebrow = when {
+                selected && tvChannelSelected -> "AKTUELLES · TV-KANAL"
+                selected -> "AKTUELLES"
+                tvChannelSelected -> "TV-KANAL"
+                else -> null
+            },
             title = show.title,
             meta = if (show.episodes.isEmpty()) "Mediathek" else "${show.episodes.size} aktuelle Videos",
             onClick = { openShow(show.id) },
@@ -383,6 +402,7 @@ class MainActivity : Activity() {
             if (result.isSuccess) {
                 renderCached()
             } else {
+                developerInfoVisible = true
                 renderCached()
                 val message = result.exceptionOrNull()?.message ?: "Unbekannter Fehler"
                 statusText.text = buildString {
@@ -408,41 +428,82 @@ class MainActivity : Activity() {
         when (state) {
             ServusUpdateState.Idle -> {
                 updateStatusText.text = "Version ${BuildConfig.VERSION_NAME}"
-                updateButton.text = "Auf Updates prüfen"
+                updateButton.contentDescription = "Auf Updates prüfen"
                 updateButton.isEnabled = true
             }
             ServusUpdateState.Checking -> {
                 updateStatusText.text = "Suche nach neuer Version …"
-                updateButton.text = "Prüfe …"
+                updateButton.contentDescription = "Updateprüfung läuft"
                 updateButton.isEnabled = false
             }
             is ServusUpdateState.UpToDate -> {
                 updateStatusText.text = "ServusTV ${state.versionName} ist aktuell."
-                updateButton.text = "Auf Updates prüfen"
+                updateButton.contentDescription = "Auf Updates prüfen"
                 updateButton.isEnabled = true
             }
             is ServusUpdateState.Available -> {
                 updateStatusText.text = "Update ${state.info.versionName} verfügbar."
-                updateButton.text = "Update herunterladen"
+                updateButton.contentDescription = "Update herunterladen"
                 updateButton.isEnabled = true
             }
             is ServusUpdateState.Downloading -> {
                 updateStatusText.text = state.progressPercent?.let { "Update wird heruntergeladen: $it %" }
                     ?: "Update wird heruntergeladen …"
-                updateButton.text = "Download läuft"
+                updateButton.contentDescription = "Update wird heruntergeladen"
                 updateButton.isEnabled = false
             }
             is ServusUpdateState.ReadyToInstall -> {
                 updateStatusText.text = "Update ${state.info.versionName} ist bereit."
-                updateButton.text = "Update installieren"
+                updateButton.contentDescription = "Update installieren"
                 updateButton.isEnabled = true
             }
             is ServusUpdateState.Error -> {
                 updateStatusText.text = "Update: ${state.message}"
-                updateButton.text = "Erneut prüfen"
+                updateButton.contentDescription = "Update erneut prüfen"
                 updateButton.isEnabled = true
             }
         }
+        renderDeveloperInfoVisibility()
+    }
+
+    private fun renderDeveloperInfoVisibility() {
+        if (!::statusText.isInitialized) return
+        val hasDataError = repository.lastError()?.isNotBlank() == true
+        statusText.visibility = if (developerInfoVisible || hasDataError) View.VISIBLE else View.GONE
+        if (::updateStatusText.isInitialized && ::updateManager.isInitialized) {
+            val updateState = updateManager.state.value
+            val importantUpdateState = updateState is ServusUpdateState.Checking ||
+                updateState is ServusUpdateState.Available ||
+                updateState is ServusUpdateState.Downloading ||
+                updateState is ServusUpdateState.ReadyToInstall ||
+                updateState is ServusUpdateState.Error
+            updateStatusText.visibility = if (developerInfoVisible || importantUpdateState) View.VISIBLE else View.GONE
+        }
+    }
+
+    private fun buildIconButton(iconRes: Int, description: String): ImageButton = ImageButton(this).apply {
+        setImageResource(iconRes)
+        contentDescription = description
+        imageTintList = ColorStateList.valueOf(Color.WHITE)
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        setPadding(dp(10), dp(10), dp(10), dp(10))
+        isFocusable = true
+        isClickable = true
+        setUtilityButtonBackground(this, false)
+        setOnFocusChangeListener { view, focused -> setUtilityButtonBackground(view as ImageButton, focused) }
+    }
+
+    private fun utilityIconLayoutParams(): LinearLayout.LayoutParams =
+        LinearLayout.LayoutParams(dp(if (isTvDevice) 48 else 44), dp(if (isTvDevice) 48 else 44))
+
+    private fun setUtilityButtonBackground(button: ImageButton, focused: Boolean) {
+        button.background = GradientDrawable().apply {
+            cornerRadius = dp(12).toFloat()
+            setColor(if (focused) Color.rgb(58, 58, 58) else Color.rgb(22, 22, 22))
+            if (focused) setStroke(dp(2), Color.WHITE)
+        }
+        button.scaleX = if (focused && isTvDevice) 1.06f else 1f
+        button.scaleY = if (focused && isTvDevice) 1.06f else 1f
     }
 
     private fun handleUpdateAction() {

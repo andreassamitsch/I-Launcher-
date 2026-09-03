@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andreassamitsch.servusprovider.update.ServusUpdatePolicyTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-01T17:51:15.817Z" hostname="runnervmgx7h7" time="0.009">
+<testsuite name="com.andreassamitsch.servusprovider.update.ServusUpdatePolicyTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-03T13:20:15.727Z" hostname="runnervmejwal" time="0.006">
   <properties/>
-  <testcase name="metadataUrlGetsCacheBuster" classname="com.andreassamitsch.servusprovider.update.ServusUpdatePolicyTest" time="0.005"/>
+  <testcase name="metadataUrlGetsCacheBuster" classname="com.andreassamitsch.servusprovider.update.ServusUpdatePolicyTest" time="0.003"/>
   <testcase name="onlyHigherVersionCodeIsAnUpdate" classname="com.andreassamitsch.servusprovider.update.ServusUpdatePolicyTest" time="0.001"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>

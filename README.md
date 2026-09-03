@@ -21,7 +21,7 @@ Der aktuelle Entwicklungsstand enthält den Google-TV-inspirierten Home-/Search-
 
 Die TMDB-Suche verwendet jetzt ein kombiniertes Ranking aus Titelrelevanz und gedeckelter Bekanntheit (`vote_count` / `popularity`). Dadurch bleiben exakte bzw. starke Titelmatches dominant, während etablierte Filme und Serien obskure Namenskollisionen sinnvoll überholen können. Der reale TCL-Test mit dem signierten Build `0.1.0-dev.420` wurde vom Benutzer als gut funktionierend bestätigt.
 
-Der separate `servustv-provider`-Prototyp dient als native ServusTV-Quelle ohne Kodi-Startpfad. Neben dem bereits getesteten Kanal `ServusTV Aktuelles` wird aktuell eine dynamische Katalog-/Live-Erweiterung erprobt: Kategorien und Sendungen stammen aus der ServusTV-API, jede Sendung kann einen eigenen Android-TV-Preview-Channel erhalten und ServusTV-Live-Kanäle werden als eigene Live-Reihe veröffentlicht. Dieser Ausbau ist erst nach erfolgreichem realen TV-/Smartphone-Test als bestätigt zu betrachten.
+Der separate `servustv-provider`-Prototyp dient als native ServusTV-Quelle ohne Kodi-Startpfad. Neben dem bereits getesteten Kanal `ServusTV Aktuelles` wird aktuell eine dynamische Katalog-/Live-Erweiterung erprobt: Kategorien und Sendungen stammen aus der ServusTV-API, jede Sendung kann auf Wunsch einen eigenen Android-TV-Preview-Channel erhalten und ServusTV-Live-Kanäle werden als eigene Live-Reihe veröffentlicht. Dieser Ausbau ist erst nach erfolgreichem realen TV-/Smartphone-Test als bestätigt zu betrachten.
 
 Die aus der Google-TV-Launcher-Analyse abgeleiteten Home-/Keyline-/Navigation-/Glow-Prinzipien sind dauerhaft in [`docs/reference/GOOGLE_TV_HOME_CONCEPT.md`](docs/reference/GOOGLE_TV_HOME_CONCEPT.md) dokumentiert.
 
