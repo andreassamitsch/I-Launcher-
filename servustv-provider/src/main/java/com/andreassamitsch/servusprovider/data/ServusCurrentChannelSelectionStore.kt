@@ -41,10 +41,6 @@ class ServusCurrentChannelSelectionStore(context: Context) {
      * At least the newest cached item of every selected show is reserved before the rail is cut to
      * its UI limit. This prevents timestamped 90-second updates from pushing a newly selected show
      * with no source timestamp completely out of the visible rail.
-     *
-     * Legacy fast-feed episodes are enriched with the matching catalogue show's identity and logo.
-     * This keeps the quick refresh cheap while still giving Android-TV launchers enough metadata to
-     * make mixed "Aktuelles" rows visually attributable to their originating show.
      */
     fun effectiveEpisodes(
         categories: List<ServusCategory>,
@@ -84,17 +80,9 @@ object ServusCurrentChannelPolicy {
         return normalized.contains("servus nachrichten") || normalized.contains("wegscheider")
     }
 
-    /**
-     * Canonical branding is applied even to an old cached feed. This intentionally overrides a
-     * stale generic Servus-Nachrichten logo on every recognised 90-second episode so upgrading the
-     * app fixes already cached cards immediately, without waiting for another API refresh.
-     */
+    /** Identity + logo are always repaired together for known news formats. */
     fun applyCanonicalBranding(episodes: List<ServusNewsEpisode>): List<ServusNewsEpisode> =
-        episodes.map { episode ->
-            episode.copy(
-                logoUri = ServusBranding.logoUriForEpisode(episode, episode.logoUri),
-            )
-        }
+        episodes.map(ServusBranding::canonicalizeEpisode)
 
     fun composeCurrentEpisodes(
         selectedShows: List<ServusShow>,
@@ -104,35 +92,43 @@ object ServusCurrentChannelPolicy {
     ): List<ServusNewsEpisode> {
         if (limit <= 0 || selectedShows.isEmpty()) return emptyList()
 
-        val filteredLegacy = legacyEpisodes.mapNotNull { episode ->
+        val filteredLegacy = legacyEpisodes.mapNotNull { rawEpisode ->
+            val episode = ServusBranding.canonicalizeEpisode(rawEpisode)
             matchingSelectedShow(
                 episode = episode,
                 selectedShows = selectedShows,
                 allShows = allShows,
             )?.let { show ->
-                val enriched = episode.copy(
-                    showId = show.id,
-                    showName = show.title,
-                    logoUri = episode.logoUri ?: show.logoUri,
-                    categoryId = episode.categoryId ?: show.categoryId,
-                    categoryTitle = episode.categoryTitle ?: show.categoryTitle,
-                )
-                enriched.copy(
-                    logoUri = ServusBranding.logoUriForEpisode(enriched, enriched.logoUri),
+                ServusBranding.canonicalizeEpisode(
+                    episode.copy(
+                        showId = when (ServusNewsPolicy.contentKind(episode)) {
+                            ServusContentKind.FULL_NEWS -> ServusBranding.NEWS_SHOW_ID
+                            ServusContentKind.NEWS_90_SECONDS -> ServusBranding.NEWS_90_SECONDS_SHOW_ID
+                            else -> show.id
+                        },
+                        showName = when (ServusNewsPolicy.contentKind(episode)) {
+                            ServusContentKind.FULL_NEWS -> ServusBranding.NEWS_SHOW_NAME
+                            ServusContentKind.NEWS_90_SECONDS -> ServusBranding.NEWS_90_SECONDS_SHOW_NAME
+                            else -> show.title
+                        },
+                        logoUri = episode.logoUri ?: show.logoUri,
+                        categoryId = episode.categoryId ?: show.categoryId,
+                        categoryTitle = episode.categoryTitle ?: show.categoryTitle,
+                    ),
                 )
             }
         }
         val selectedCatalogueEpisodes = selectedShows.flatMap { show ->
-            show.episodes.map { episode ->
-                val enriched = episode.copy(
-                    showId = episode.showId ?: show.id,
-                    showName = episode.showName?.takeIf { it.isNotBlank() } ?: show.title,
-                    logoUri = episode.logoUri ?: show.logoUri,
-                    categoryId = episode.categoryId ?: show.categoryId,
-                    categoryTitle = episode.categoryTitle ?: show.categoryTitle,
-                )
-                enriched.copy(
-                    logoUri = ServusBranding.logoUriForEpisode(enriched, enriched.logoUri),
+            show.episodes.map { rawEpisode ->
+                val episode = ServusBranding.canonicalizeEpisode(rawEpisode)
+                ServusBranding.canonicalizeEpisode(
+                    episode.copy(
+                        showId = episode.showId ?: show.id,
+                        showName = episode.showName?.takeIf { it.isNotBlank() } ?: show.title,
+                        logoUri = episode.logoUri ?: show.logoUri,
+                        categoryId = episode.categoryId ?: show.categoryId,
+                        categoryTitle = episode.categoryTitle ?: show.categoryTitle,
+                    ),
                 )
             }
         }
@@ -163,13 +159,12 @@ object ServusCurrentChannelPolicy {
         selectedShows: List<ServusShow>,
         allShows: List<ServusShow>,
     ): ServusShow? {
-        episode.showId?.let { showId ->
-            selectedShows.firstOrNull { it.id == showId }?.let { return it }
-        }
-
+        // Format identity wins over a stale showId. dev34 could write a 90-second topical clip into
+        // the generic Servus-Nachrichten show; trusting showId first is what made that corruption
+        // self-perpetuating after the user opened the show.
         return when (ServusNewsPolicy.contentKind(episode)) {
             ServusContentKind.NEWS_90_SECONDS -> {
-                selectedShows.firstOrNull { it.id == ServusCatalogPolicy.NEWS_90_SECONDS_SHOW_ID }
+                selectedShows.firstOrNull { it.id == ServusBranding.NEWS_90_SECONDS_SHOW_ID }
                     ?: run {
                         val dedicated90Shows = allShows.filter { normalize(it.title).contains("90 sekunden") }
                         if (dedicated90Shows.isNotEmpty()) {
@@ -181,8 +176,10 @@ object ServusCurrentChannelPolicy {
             }
 
             ServusContentKind.FULL_NEWS -> selectedShows.firstOrNull { show ->
-                val title = normalize(show.title)
-                title.contains("servus nachrichten") && !title.contains("90 sekunden")
+                show.id == ServusBranding.NEWS_SHOW_ID || run {
+                    val title = normalize(show.title)
+                    title.contains("servus nachrichten") && !title.contains("90 sekunden")
+                }
             }
 
             ServusContentKind.WEGSCHEIDER -> selectedShows.firstOrNull {
@@ -190,6 +187,9 @@ object ServusCurrentChannelPolicy {
             }
 
             null -> {
+                episode.showId?.let { showId ->
+                    selectedShows.firstOrNull { it.id == showId }?.let { return it }
+                }
                 val episodeShow = normalize(episode.showName.orEmpty())
                 episodeShow.takeIf { it.isNotBlank() }?.let { normalizedEpisodeShow ->
                     selectedShows.firstOrNull { show ->
