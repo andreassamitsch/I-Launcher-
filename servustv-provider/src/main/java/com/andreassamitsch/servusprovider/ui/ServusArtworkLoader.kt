@@ -1,7 +1,9 @@
 package com.andreassamitsch.servusprovider.ui
 
+import android.content.ContentResolver
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.util.LruCache
 import android.widget.ImageView
 import com.andreassamitsch.servusprovider.api.ServusNetwork
@@ -25,6 +27,18 @@ object ServusArtworkLoader {
 
     fun load(scope: CoroutineScope, imageView: ImageView, url: String?) {
         if (url.isNullOrBlank()) return
+
+        val uri = runCatching { Uri.parse(url) }.getOrNull()
+        if (uri?.scheme == ContentResolver.SCHEME_ANDROID_RESOURCE) {
+            // Canonical show logos bundled with this APK must not go through OkHttp. Apart from
+            // failing on android.resource://, doing so would also make local branding depend on
+            // network availability. Updating the tag prevents an older async network request from
+            // overwriting the resource if the same ImageView is rebound.
+            imageView.tag = url
+            imageView.setImageURI(uri)
+            return
+        }
+
         val targetPx = targetDimension(imageView)
         val cacheKey = "$url#$targetPx"
         imageView.tag = cacheKey
