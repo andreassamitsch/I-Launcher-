@@ -258,7 +258,7 @@ class ServusChannelPublisher(context: Context) {
 
     private fun createShowLogo(show: ServusShow): Bitmap {
         val source = if (show.id == ServusBranding.NEWS_90_SECONDS_SHOW_ID) {
-            BitmapFactory.decodeResource(appContext.resources, R.drawable.servus_news_90_logo)
+            drawableToBitmap(R.drawable.servus_news_90_logo)
         } else {
             show.logoUri?.let(::downloadBitmap)
         }
@@ -266,6 +266,18 @@ class ServusChannelPublisher(context: Context) {
             ?: show.artworkUri?.let(::downloadBitmap)
             ?: return createAppLogo()
         return fitOnDarkCanvas(source)
+    }
+
+    /** Vector and bitmap resources share the same safe rasterization path for TvProvider channel logos. */
+    private fun drawableToBitmap(resourceId: Int): Bitmap? {
+        val drawable = appContext.getDrawable(resourceId) ?: return null
+        val width = drawable.intrinsicWidth.coerceAtLeast(1)
+        val height = drawable.intrinsicHeight.coerceAtLeast(1)
+        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+            val canvas = Canvas(bitmap)
+            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            drawable.draw(canvas)
+        }
     }
 
     private fun downloadBitmap(url: String): Bitmap? {
