@@ -50,7 +50,10 @@ class ServusCurrentChannelSelectionStore(context: Context) {
         categories: List<ServusCategory>,
         legacyEpisodes: List<ServusNewsEpisode>,
     ): List<ServusNewsEpisode> {
-        if (!isConfigured()) return legacyEpisodes.take(MAX_CURRENT_EPISODES)
+        if (!isConfigured()) {
+            return ServusCurrentChannelPolicy.applyCanonicalBranding(legacyEpisodes)
+                .take(MAX_CURRENT_EPISODES)
+        }
 
         val allShows = categories.flatMap { it.shows }.distinctBy { it.id }
         val selectedIds = effectiveSelectedShowIds(categories)
@@ -81,6 +84,18 @@ object ServusCurrentChannelPolicy {
         return normalized.contains("servus nachrichten") || normalized.contains("wegscheider")
     }
 
+    /**
+     * Canonical branding is applied even to an old cached feed. This intentionally overrides a
+     * stale generic Servus-Nachrichten logo on every recognised 90-second episode so upgrading the
+     * app fixes already cached cards immediately, without waiting for another API refresh.
+     */
+    fun applyCanonicalBranding(episodes: List<ServusNewsEpisode>): List<ServusNewsEpisode> =
+        episodes.map { episode ->
+            episode.copy(
+                logoUri = ServusBranding.logoUriForEpisode(episode, episode.logoUri),
+            )
+        }
+
     fun composeCurrentEpisodes(
         selectedShows: List<ServusShow>,
         allShows: List<ServusShow>,
@@ -95,16 +110,32 @@ object ServusCurrentChannelPolicy {
                 selectedShows = selectedShows,
                 allShows = allShows,
             )?.let { show ->
-                episode.copy(
+                val enriched = episode.copy(
+                    showId = show.id,
+                    showName = show.title,
+                    logoUri = episode.logoUri ?: show.logoUri,
+                    categoryId = episode.categoryId ?: show.categoryId,
+                    categoryTitle = episode.categoryTitle ?: show.categoryTitle,
+                )
+                enriched.copy(
+                    logoUri = ServusBranding.logoUriForEpisode(enriched, enriched.logoUri),
+                )
+            }
+        }
+        val selectedCatalogueEpisodes = selectedShows.flatMap { show ->
+            show.episodes.map { episode ->
+                val enriched = episode.copy(
                     showId = episode.showId ?: show.id,
                     showName = episode.showName?.takeIf { it.isNotBlank() } ?: show.title,
                     logoUri = episode.logoUri ?: show.logoUri,
                     categoryId = episode.categoryId ?: show.categoryId,
                     categoryTitle = episode.categoryTitle ?: show.categoryTitle,
                 )
+                enriched.copy(
+                    logoUri = ServusBranding.logoUriForEpisode(enriched, enriched.logoUri),
+                )
             }
         }
-        val selectedCatalogueEpisodes = selectedShows.flatMap { it.episodes }
         val merged = ServusNewsPolicy.deduplicateEpisodes(filteredLegacy + selectedCatalogueEpisodes)
         if (merged.size <= limit) return merged
 
