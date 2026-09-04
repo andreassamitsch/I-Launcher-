@@ -1,6 +1,8 @@
 package com.andreassamitsch.ilauncher.data.tv
 
 import android.media.tv.TvContract
+import com.andreassamitsch.ilauncher.BuildConfig
+import com.andreassamitsch.ilauncher.R
 import com.andreassamitsch.ilauncher.model.AppContentChannel
 import com.andreassamitsch.ilauncher.model.AppContentProgram
 import com.andreassamitsch.ilauncher.model.MediaItem
@@ -108,7 +110,7 @@ internal object PreviewChannelsMapper {
             seasonNumber = season,
             episodeNumber = episode,
             episodeTitle = episodeTitle,
-            logoUri = logoUri,
+            logoUri = localizePreviewLogoUri(effectivePackageName, logoUri),
             sourceArtworkUri = thumbnailUri?.takeIf { it.isNotBlank() }
                 ?: posterArtUri?.takeIf { it.isNotBlank() },
             durationMillis = durationMillis,
@@ -121,6 +123,18 @@ internal object PreviewChannelsMapper {
         )
     }
 
+    /**
+     * The ServusTV companion APK owns the canonical 90-second logo and publishes a content URI.
+     * Real-TV testing showed that relying on that cross-process image fetch is not stable enough
+     * for launcher chrome. I Launcher therefore mirrors this one verified companion asset locally.
+     * Coil 3 supports numeric Android resource URIs, so the returned URI remains a normal model for
+     * all existing AsyncImage call sites without introducing provider-specific UI branches.
+     */
+    internal fun localizePreviewLogoUri(packageName: String?, logoUri: String?): String? {
+        if (packageName != SERVUS_PROVIDER_PACKAGE || logoUri !in SERVUS_90_LOGO_URIS) return logoUri
+        return "android.resource://${BuildConfig.APPLICATION_ID}/${R.drawable.servus_news_90_logo}"
+    }
+
     private fun Int?.toMediaType(): MediaType = when (this) {
         TvContract.PreviewPrograms.TYPE_MOVIE -> MediaType.Movie
         TvContract.PreviewPrograms.TYPE_TV_SERIES,
@@ -129,4 +143,14 @@ internal object PreviewChannelsMapper {
         TvContract.PreviewPrograms.TYPE_TV_EPISODE -> MediaType.Episode
         else -> MediaType.Unknown
     }
+
+    private const val SERVUS_PROVIDER_PACKAGE = "com.andreassamitsch.servusprovider"
+    private const val SERVUS_90_CONTENT_LOGO_URI =
+        "content://com.andreassamitsch.servusprovider.branding/servus_news_90_logo.png"
+    private const val SERVUS_90_LEGACY_LOGO_URI =
+        "android.resource://com.andreassamitsch.servusprovider/drawable/servus_news_90_logo"
+    private val SERVUS_90_LOGO_URIS = setOf(
+        SERVUS_90_CONTENT_LOGO_URI,
+        SERVUS_90_LEGACY_LOGO_URI,
+    )
 }
