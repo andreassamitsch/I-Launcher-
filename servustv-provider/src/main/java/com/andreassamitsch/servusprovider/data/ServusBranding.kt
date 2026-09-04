@@ -4,8 +4,10 @@ package com.andreassamitsch.servusprovider.data
  * Canonical show identity/branding for the news formats whose ServusTV API structure is known.
  *
  * These values are deliberately independent from the mutable catalogue cache. The generic news
- * product exposes a stable `rbtv_title_treatment`, while the 90-second show needs the verified local
- * vector logo because the API currently exposes no title-treatment resource for that show.
+ * product exposes a stable `rbtv_title_treatment`. The 90-second show has no title-treatment in
+ * the API, so its verified local logo is exposed through our exported read-only branding provider.
+ * A content URI is intentional here: unlike android.resource:// it is safely readable by other
+ * processes such as I Launcher when the URI is carried through Android TvProvider.
  */
 object ServusBranding {
     const val NEWS_SHOW_ID = "AA-1Y5RJCD1H2111"
@@ -16,7 +18,7 @@ object ServusBranding {
     const val NEWS_LOGO_URI =
         "https://resources.redbull.tv/AA-1Y5RJCD1H2111/rbtv_title_treatment/f_webp,c_fill,h_180,q_75?namespace=stv&refresh=true"
     const val NEWS_90_SECONDS_LOGO_URI =
-        "android.resource://com.andreassamitsch.servusprovider/drawable/servus_news_90_logo"
+        "content://com.andreassamitsch.servusprovider.branding/servus_news_90_logo.png"
 
     fun logoUriForShow(showId: String?, fallback: String?): String? = when (showId) {
         NEWS_SHOW_ID -> NEWS_LOGO_URI
