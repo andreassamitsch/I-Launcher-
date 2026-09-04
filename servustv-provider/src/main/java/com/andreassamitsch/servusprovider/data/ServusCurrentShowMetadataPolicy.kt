@@ -11,21 +11,32 @@ object ServusCurrentShowMetadataPolicy {
         categories: List<ServusCategory>,
     ): List<ServusNewsEpisode> {
         val shows = categories.flatMap { it.shows }.distinctBy { it.id }
-        if (shows.isEmpty()) return episodes
+        if (shows.isEmpty()) return ServusCurrentChannelPolicy.applyCanonicalBranding(episodes)
 
         return episodes.map { episode ->
-            val kind = ServusNewsPolicy.contentKind(episode) ?: return@map episode
+            val kind = ServusNewsPolicy.contentKind(episode)
+                ?: return@map episode.copy(
+                    logoUri = ServusBranding.logoUriForEpisode(episode, episode.logoUri),
+                )
             val show = shows
                 .map { candidate -> candidate to matchScore(kind, candidate.title) }
                 .filter { (_, score) -> score > 0 }
                 .maxByOrNull { (_, score) -> score }
                 ?.first
-                ?: return@map episode
+                ?: return@map episode.copy(
+                    logoUri = ServusBranding.logoUriForEpisode(episode, episode.logoUri),
+                )
 
-            episode.copy(
-                showId = episode.showId?.takeIf { it.isNotBlank() } ?: show.id,
+            // For supported formats the content kind is stronger evidence than stale cached show
+            // metadata. In particular a 90-second episode must never retain the generic news show
+            // ID/logo merely because an older cache already populated those fields.
+            val enriched = episode.copy(
+                showId = show.id,
                 showName = show.title,
                 logoUri = episode.logoUri?.takeIf { it.isNotBlank() } ?: show.logoUri,
+            )
+            enriched.copy(
+                logoUri = ServusBranding.logoUriForEpisode(enriched, enriched.logoUri),
             )
         }
     }
