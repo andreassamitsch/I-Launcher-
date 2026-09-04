@@ -15,6 +15,12 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ServusProvider">
 
+        <provider
+            android:name=".tv.ServusBrandingProvider"
+            android:authorities="${applicationId}.branding"
+            android:exported="true"
+            android:grantUriPermissions="false" />
+
         <activity
             android:name=".ui.PlaybackActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize"
