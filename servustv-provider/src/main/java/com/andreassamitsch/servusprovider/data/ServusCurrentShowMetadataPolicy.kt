@@ -3,7 +3,9 @@ package com.andreassamitsch.servusprovider.data
 import java.util.Locale
 
 /**
- * Adds show identity and logo metadata to the lightweight Aktuelles feed without another API call.
+ * Adds stable show identity and branding to the lightweight Aktuelles feed without another API call.
+ * Known news formats are canonicalized atomically; they are never re-parented merely because a
+ * mutable catalogue cache happens to contain a generic show/logo.
  */
 object ServusCurrentShowMetadataPolicy {
     fun enrich(
@@ -11,32 +13,47 @@ object ServusCurrentShowMetadataPolicy {
         categories: List<ServusCategory>,
     ): List<ServusNewsEpisode> {
         val shows = categories.flatMap { it.shows }.distinctBy { it.id }
-        if (shows.isEmpty()) return ServusCurrentChannelPolicy.applyCanonicalBranding(episodes)
+        val dedicated90EpisodeIds = shows
+            .firstOrNull { it.id == ServusBranding.NEWS_90_SECONDS_SHOW_ID }
+            ?.episodes
+            .orEmpty()
+            .mapTo(hashSetOf()) { it.id }
 
         return episodes.map { episode ->
-            val kind = ServusNewsPolicy.contentKind(episode)
-                ?: return@map episode.copy(
-                    logoUri = ServusBranding.logoUriForEpisode(episode, episode.logoUri),
+            // Exact membership in the dedicated 90-second show repairs old dev34 caches where
+            // opening the generic news show had already overwritten showId/showName/logo.
+            val kind = if (episode.id in dedicated90EpisodeIds) {
+                ServusContentKind.NEWS_90_SECONDS
+            } else {
+                ServusNewsPolicy.contentKind(episode)
+            }
+
+            if (kind == ServusContentKind.FULL_NEWS || kind == ServusContentKind.NEWS_90_SECONDS) {
+                return@map ServusBranding.canonicalizeEpisode(
+                    episode.copy(contentKindHint = kind),
                 )
+            }
+
+            if (kind == null) {
+                return@map ServusBranding.canonicalizeEpisode(episode)
+            }
+
             val show = shows
                 .map { candidate -> candidate to matchScore(kind, candidate.title) }
                 .filter { (_, score) -> score > 0 }
                 .maxByOrNull { (_, score) -> score }
                 ?.first
-                ?: return@map episode.copy(
-                    logoUri = ServusBranding.logoUriForEpisode(episode, episode.logoUri),
+                ?: return@map ServusBranding.canonicalizeEpisode(
+                    episode.copy(contentKindHint = kind),
                 )
 
-            // For supported formats the content kind is stronger evidence than stale cached show
-            // metadata. In particular a 90-second episode must never retain the generic news show
-            // ID/logo merely because an older cache already populated those fields.
-            val enriched = episode.copy(
-                showId = show.id,
-                showName = show.title,
-                logoUri = episode.logoUri?.takeIf { it.isNotBlank() } ?: show.logoUri,
-            )
-            enriched.copy(
-                logoUri = ServusBranding.logoUriForEpisode(enriched, enriched.logoUri),
+            ServusBranding.canonicalizeEpisode(
+                episode.copy(
+                    showId = show.id,
+                    showName = show.title,
+                    logoUri = show.logoUri ?: episode.logoUri,
+                    contentKindHint = kind,
+                ),
             )
         }
     }
