@@ -1,0 +1,1 @@
+The Servus Nachrichten in 90 Sekunden logo is exposed cross-process via ServusBrandingProvider. The canonical binary asset is res/drawable-nodpi/servus_news_90_logo.png.
