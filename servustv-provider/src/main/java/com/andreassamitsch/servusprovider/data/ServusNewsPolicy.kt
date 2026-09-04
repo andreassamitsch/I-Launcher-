@@ -39,34 +39,42 @@ object ServusNewsPolicy {
             text.contains("wegscheider")
     }
 
+    /** Classification while the original API card still carries its textual context. */
+    fun contentKind(card: ServusCardDto): ServusContentKind? = contentKind(searchableText(card))
+
     /** Kept as a narrow helper for existing tests and callers that explicitly need the 19:20 format. */
     fun toFullNewsEpisode(
         card: ServusCardDto,
         nowMillis: Long = System.currentTimeMillis(),
     ): ServusNewsEpisode? {
-        if (contentKind(searchableText(card)) != ServusContentKind.FULL_NEWS) return null
+        if (contentKind(card) != ServusContentKind.FULL_NEWS) return null
         return toSupportedEpisode(card, nowMillis)
     }
 
     fun toSupportedEpisode(
         card: ServusCardDto,
         nowMillis: Long = System.currentTimeMillis(),
+        contentKindHint: ServusContentKind? = null,
     ): ServusNewsEpisode? {
         val id = card.id?.takeIf { it.isNotBlank() } ?: return null
         val title = card.title?.trim()?.takeIf { it.isNotBlank() } ?: return null
         val text = searchableText(card)
-        val kind = contentKind(text) ?: return null
+        val kind = contentKindHint ?: contentKind(text) ?: return null
         val duration = card.duration ?: return null
 
         if (card.playable == false) return null
         when (kind) {
             ServusContentKind.FULL_NEWS -> {
+                // A collection hint is useful to classify topical cards, but Aktuelles should still
+                // contain the actual 19:20 edition and not arbitrary special items from that rail.
                 if (!text.contains("19:20")) return null
                 if (excludedFullNewsFragments.any(text::contains)) return null
                 if (duration < MIN_FULL_EDITION_MILLIS) return null
             }
 
             ServusContentKind.NEWS_90_SECONDS -> {
+                // Current 90-second products often have only a topical title and no show_name. The
+                // source collection therefore supplies the format hint; duration validates it.
                 if (duration !in MIN_90_SECONDS_MILLIS..MAX_90_SECONDS_MILLIS) return null
             }
 
@@ -75,7 +83,7 @@ object ServusNewsPolicy {
             }
         }
 
-        return ServusNewsEpisode(
+        val episode = ServusNewsEpisode(
             id = id,
             title = title,
             showName = canonicalShowName(kind, card),
@@ -84,15 +92,28 @@ object ServusNewsPolicy {
             durationMillis = duration,
             publishedAtMillis = ServusSourceTimestampPolicy.resolve(card, nowMillis),
             artworkUri = landscapeArtwork(id, card.mediaResources),
+            contentKindHint = kind,
         )
+        return ServusBranding.canonicalizeEpisode(episode)
     }
 
-    fun contentKind(episode: ServusNewsEpisode): ServusContentKind? = contentKind(
-        listOfNotNull(episode.title, episode.showName)
-            .joinToString(" ")
-            .lowercase(Locale.GERMAN)
-            .replace('–', '-'),
-    )
+    /**
+     * Prefer the persisted format identity. Text is only a backwards-compatible fallback for old
+     * caches. The dedicated 90-second show ID is also authoritative; the generic news show ID alone
+     * is deliberately not, because older buggy caches attached 90-second clips to that show.
+     */
+    fun contentKind(episode: ServusNewsEpisode): ServusContentKind? {
+        episode.contentKindHint?.let { return it }
+        if (episode.showId == ServusBranding.NEWS_90_SECONDS_SHOW_ID) {
+            return ServusContentKind.NEWS_90_SECONDS
+        }
+        return contentKind(
+            listOfNotNull(episode.title, episode.showName)
+                .joinToString(" ")
+                .lowercase(Locale.GERMAN)
+                .replace('–', '-'),
+        )
+    }
 
     fun displayLabel(episode: ServusNewsEpisode): String = when (contentKind(episode)) {
         ServusContentKind.FULL_NEWS -> "Servus Nachrichten 19:20"
@@ -188,8 +209,8 @@ object ServusNewsPolicy {
     private fun canonicalShowName(kind: ServusContentKind, card: ServusCardDto): String {
         val supplied = card.showName?.trim()?.takeIf { it.isNotBlank() }
         return when (kind) {
-            ServusContentKind.FULL_NEWS -> supplied ?: "Servus Nachrichten"
-            ServusContentKind.NEWS_90_SECONDS -> "Servus Nachrichten in 90 Sekunden"
+            ServusContentKind.FULL_NEWS -> supplied ?: ServusBranding.NEWS_SHOW_NAME
+            ServusContentKind.NEWS_90_SECONDS -> ServusBranding.NEWS_90_SECONDS_SHOW_NAME
             ServusContentKind.WEGSCHEIDER -> "Der Wegscheider"
         }
     }
