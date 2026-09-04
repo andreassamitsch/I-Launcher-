@@ -8,6 +8,18 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeParseException
 import java.util.Locale
 
+/**
+ * A playable card together with the collection that supplied it. Collection context is editorial
+ * metadata: ServusTV's generic "Servus Nachrichten" product intentionally links separate rails for
+ * 19:20, 90 seconds and individual reports, while the cards themselves can omit show_name entirely.
+ */
+data class ServusSourcedCard(
+    val card: ServusCardDto,
+    val sourceCollectionId: String? = null,
+    val sourceCollectionLabel: String? = null,
+    val contentKindHint: ServusContentKind? = null,
+)
+
 object ServusCatalogPolicy {
     private val nextOffsetPattern = Regex("""(?:[?&]offset=)(\d+)""")
 
@@ -48,9 +60,31 @@ object ServusCatalogPolicy {
             categoryTitle = categoryTitle,
             artworkUri = landscapeArtwork(id, resources),
             squareArtworkUri = squareArtwork(id, resources),
-            logoUri = titleTreatment(id, resources),
+            logoUri = ServusBranding.logoUriForShow(id, titleTreatment(id, resources)),
             episodes = episodes,
         )
+    }
+
+    /**
+     * Classifies only collections whose editorial role is explicit enough to be trusted. This is
+     * intentionally not a duration heuristic: generic "Einzelbeiträge" can also be around 90s.
+     */
+    fun contentKindForCollection(
+        ownerShowId: String?,
+        ownerShowTitle: String?,
+        collectionLabel: String?,
+    ): ServusContentKind? {
+        val label = normalizeWords(collectionLabel.orEmpty())
+        val owner = normalizeWords(ownerShowTitle.orEmpty())
+        return when {
+            label.contains("90 sekunden") -> ServusContentKind.NEWS_90_SECONDS
+            label.contains("19 20") && label.contains("nachrichten") -> ServusContentKind.FULL_NEWS
+            ownerShowId == ServusBranding.NEWS_90_SECONDS_SHOW_ID &&
+                label == "aktuelle sendungen" -> ServusContentKind.NEWS_90_SECONDS
+            owner.contains("nachrichten in 90 sekunden") &&
+                label == "aktuelle sendungen" -> ServusContentKind.NEWS_90_SECONDS
+            else -> null
+        }
     }
 
     /**
@@ -72,6 +106,16 @@ object ServusCatalogPolicy {
 
         val episodeTitle = normalizeWords(card.title.orEmpty())
         return episodeTitle.isNotBlank() && episodeTitle.contains(targetTitle)
+    }
+
+    /** Source-aware membership prevents the generic news page from claiming its 90-second rail. */
+    fun belongsToShow(candidate: ServusSourcedCard, showId: String, showTitle: String): Boolean {
+        return when (candidate.contentKindHint) {
+            ServusContentKind.NEWS_90_SECONDS -> showId == ServusBranding.NEWS_90_SECONDS_SHOW_ID
+            ServusContentKind.FULL_NEWS -> showId == ServusBranding.NEWS_SHOW_ID ||
+                belongsToShow(candidate.card, showId, showTitle)
+            ServusContentKind.WEGSCHEIDER, null -> belongsToShow(candidate.card, showId, showTitle)
+        }
     }
 
     /**
@@ -102,12 +146,45 @@ object ServusCatalogPolicy {
             .distinctBy { it.id }
             .toList()
 
-        val full = eligible.filter(::isFullEpisodeCard)
-        val unknown = eligible.filter { it.contentType.isNullOrBlank() }
-        val fallback = eligible.filterNot { card ->
+        return prioritizeCards(eligible, limit)
+    }
+
+    /** Same selection, but preserving the source collection and its trusted format hint. */
+    fun selectSourcedEpisodeCardsForHydration(
+        candidates: List<ServusSourcedCard>,
+        showId: String,
+        showTitle: String,
+        limit: Int,
+    ): List<ServusSourcedCard> {
+        if (limit <= 0) return emptyList()
+        val eligible = candidates.asSequence()
+            .filter { candidate ->
+                val card = candidate.card
+                card.id?.isNotBlank() == true &&
+                    card.title?.isNotBlank() == true &&
+                    card.playable != false &&
+                    isVideoLike(card) &&
+                    belongsToShow(candidate, showId, showTitle)
+            }
+            .distinctBy { it.card.id }
+            .toList()
+
+        val full = eligible.filter { isFullEpisodeCard(it.card) }
+        val unknown = eligible.filter { it.card.contentType.isNullOrBlank() }
+        val fallback = eligible.filterNot { candidate ->
+            isFullEpisodeCard(candidate.card) || candidate.card.contentType.isNullOrBlank()
+        }
+        return (full + unknown + fallback)
+            .distinctBy { it.card.id }
+            .take(limit)
+    }
+
+    private fun prioritizeCards(cards: List<ServusCardDto>, limit: Int): List<ServusCardDto> {
+        val full = cards.filter(::isFullEpisodeCard)
+        val unknown = cards.filter { it.contentType.isNullOrBlank() }
+        val fallback = cards.filterNot { card ->
             isFullEpisodeCard(card) || card.contentType.isNullOrBlank()
         }
-
         return (full + unknown + fallback)
             .distinctBy { it.id }
             .take(limit)
@@ -149,15 +226,34 @@ object ServusCatalogPolicy {
         categoryTitle: String,
         showLogoUri: String?,
         nowMillis: Long,
+    ): ServusNewsEpisode? = toShowEpisode(
+        candidate = ServusSourcedCard(card = card),
+        showId = showId,
+        showTitle = showTitle,
+        categoryId = categoryId,
+        categoryTitle = categoryTitle,
+        showLogoUri = showLogoUri,
+        nowMillis = nowMillis,
+    )
+
+    fun toShowEpisode(
+        candidate: ServusSourcedCard,
+        showId: String,
+        showTitle: String,
+        categoryId: String,
+        categoryTitle: String,
+        showLogoUri: String?,
+        nowMillis: Long,
     ): ServusNewsEpisode? {
+        val card = candidate.card
         val id = card.id?.takeIf { it.isNotBlank() } ?: return null
         val title = card.title?.trim()?.takeIf { it.isNotBlank() } ?: return null
         val duration = card.duration?.takeIf { it > 0L } ?: return null
         if (card.playable == false) return null
         if (card.type != "video" && card.contentType != "film") return null
-        if (!belongsToShow(card, showId, showTitle)) return null
+        if (!belongsToShow(candidate, showId, showTitle)) return null
 
-        return ServusNewsEpisode(
+        val episode = ServusNewsEpisode(
             id = id,
             title = title,
             showName = card.showName?.takeIf { it.isNotBlank() } ?: showTitle,
@@ -167,11 +263,13 @@ object ServusCatalogPolicy {
             publishedAtMillis = ServusSourceTimestampPolicy.resolve(card, nowMillis),
             artworkUri = landscapeArtwork(id, card.mediaResources),
             showId = showId,
-            logoUri = showLogoUri,
+            logoUri = ServusBranding.logoUriForShow(showId, showLogoUri),
             categoryId = categoryId,
             categoryTitle = categoryTitle,
             contentType = card.contentType,
+            contentKindHint = candidate.contentKindHint,
         )
+        return ServusBranding.canonicalizeEpisode(episode)
     }
 
     /** Prefer full episodes for a show. If a show exposes no episode/film cards, keep playable videos. */
@@ -209,21 +307,19 @@ object ServusCatalogPolicy {
         ?.toIntOrNull()
 
     fun titleTreatment(id: String, resources: List<String>): String? {
-        if (id == NEWS_90_SECONDS_SHOW_ID) {
-            val displayArt = resources.firstOrNull { name ->
-                name.equals("rbtv_display_art_landscape", ignoreCase = true)
-            }
-            if (displayArt != null) {
-                return "${ServusNetwork.ARTWORK_BASE_URL}$id/$displayArt/f_webp,c_fill,w_640,q_80?namespace=stv&refresh=true"
-            }
+        if (id == ServusBranding.NEWS_90_SECONDS_SHOW_ID) {
+            return ServusBranding.NEWS_90_SECONDS_LOGO_URI
         }
         val resource = resources.firstOrNull { name ->
             name.contains("title_treatment", ignoreCase = true)
         } ?: resources.firstOrNull { name ->
             name.contains("treatment", ignoreCase = true) &&
                 !name.contains("background", ignoreCase = true)
-        } ?: return null
-        return "${ServusNetwork.ARTWORK_BASE_URL}$id/$resource/f_webp,c_fill,h_180,q_75?namespace=stv&refresh=true"
+        }
+        val remote = resource?.let {
+            "${ServusNetwork.ARTWORK_BASE_URL}$id/$it/f_webp,c_fill,h_180,q_75?namespace=stv&refresh=true"
+        }
+        return ServusBranding.logoUriForShow(id, remote)
     }
 
     fun landscapeArtwork(id: String, resources: List<String>): String? = artwork(id, resources, "landscape", 1280)
@@ -281,6 +377,7 @@ object ServusCatalogPolicy {
         .trim('-')
         .take(100)
 
-    const val NEWS_90_SECONDS_SHOW_ID = "AAYGF2URW6ALQYE42IJK"
+    const val NEWS_90_SECONDS_SHOW_ID = ServusBranding.NEWS_90_SECONDS_SHOW_ID
+    const val NEWS_SHOW_ID = ServusBranding.NEWS_SHOW_ID
     private const val MAX_SHOW_EPISODES = 18
 }
