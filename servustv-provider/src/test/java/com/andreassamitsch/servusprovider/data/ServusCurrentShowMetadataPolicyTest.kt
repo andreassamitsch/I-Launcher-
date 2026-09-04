@@ -14,7 +14,7 @@ class ServusCurrentShowMetadataPolicyTest {
                 order = 0,
                 shows = listOf(
                     show("full", "Servus Nachrichten 19:20", "https://cdn/full-logo.webp"),
-                    show("short", "Servus Nachrichten in 90 Sekunden", "https://cdn/short-logo.webp"),
+                    show(ServusBranding.NEWS_90_SECONDS_SHOW_ID, "Servus Nachrichten in 90 Sekunden", "https://cdn/short-logo.webp"),
                     show("weg", "Der Wegscheider", "https://cdn/weg-logo.webp"),
                 ),
             ),
@@ -29,10 +29,43 @@ class ServusCurrentShowMetadataPolicyTest {
 
         assertEquals("full", result[0].showId)
         assertEquals("https://cdn/full-logo.webp", result[0].logoUri)
-        assertEquals("short", result[1].showId)
-        assertEquals("https://cdn/short-logo.webp", result[1].logoUri)
+        assertEquals(ServusBranding.NEWS_90_SECONDS_SHOW_ID, result[1].showId)
+        assertEquals(ServusBranding.NEWS_90_SECONDS_LOGO_URI, result[1].logoUri)
         assertEquals("weg", result[2].showId)
         assertEquals("https://cdn/weg-logo.webp", result[2].logoUri)
+    }
+
+    @Test
+    fun ninetySecondMetadataOverridesStaleGenericNewsIdentityAndLogo() {
+        val categories = listOf(
+            ServusCategory(
+                id = "news",
+                title = "Nachrichten",
+                order = 0,
+                shows = listOf(
+                    show("generic-news", "Servus Nachrichten 19:20", "https://cdn/generic.webp"),
+                    show(
+                        ServusBranding.NEWS_90_SECONDS_SHOW_ID,
+                        "Servus Nachrichten in 90 Sekunden",
+                        "https://cdn/old-short.webp",
+                    ),
+                ),
+            ),
+        )
+        val stale = episode(
+            "b",
+            "Frau in Graz getötet",
+            "Servus Nachrichten in 90 Sekunden",
+            90_000L,
+        ).copy(
+            showId = "generic-news",
+            logoUri = "https://cdn/generic.webp",
+        )
+
+        val result = ServusCurrentShowMetadataPolicy.enrich(listOf(stale), categories).single()
+
+        assertEquals(ServusBranding.NEWS_90_SECONDS_SHOW_ID, result.showId)
+        assertEquals(ServusBranding.NEWS_90_SECONDS_LOGO_URI, result.logoUri)
     }
 
     @Test
