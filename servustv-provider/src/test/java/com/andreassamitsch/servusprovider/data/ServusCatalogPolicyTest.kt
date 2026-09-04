@@ -51,14 +51,102 @@ class ServusCatalogPolicyTest {
     }
 
     @Test
-    fun ninetySecondNewsUsesItsOwnDisplayArt() {
+    fun ninetySecondNewsUsesVerifiedLocalTitleLogo() {
         val uri = ServusCatalogPolicy.titleTreatment(
             ServusCatalogPolicy.NEWS_90_SECONDS_SHOW_ID,
             listOf("rbtv_background_landscape", "rbtv_display_art_landscape"),
         )
-        assertNotNull(uri)
-        assertTrue(uri!!.contains("AAYGF2URW6ALQYE42IJK/rbtv_display_art_landscape"))
-        assertTrue(uri.contains("w_640"))
+        assertEquals(ServusBranding.NEWS_90_SECONDS_LOGO_URI, uri)
+    }
+
+    @Test
+    fun apiNewsCollectionLabelsResolveToSeparateFormats() {
+        assertEquals(
+            ServusContentKind.NEWS_90_SECONDS,
+            ServusCatalogPolicy.contentKindForCollection(
+                ownerShowId = ServusBranding.NEWS_SHOW_ID,
+                ownerShowTitle = "Servus Nachrichten",
+                collectionLabel = "Servus Nachrichten in 90 Sekunden",
+            ),
+        )
+        assertEquals(
+            ServusContentKind.FULL_NEWS,
+            ServusCatalogPolicy.contentKindForCollection(
+                ownerShowId = ServusBranding.NEWS_SHOW_ID,
+                ownerShowTitle = "Servus Nachrichten",
+                collectionLabel = "Servus Nachrichten 19:20",
+            ),
+        )
+        assertNull(
+            ServusCatalogPolicy.contentKindForCollection(
+                ownerShowId = ServusBranding.NEWS_SHOW_ID,
+                ownerShowTitle = "Servus Nachrichten",
+                collectionLabel = "Servus Nachrichten: Einzelbeiträge",
+            ),
+        )
+    }
+
+    @Test
+    fun genericNewsShowCannotClaimNinetySecondCollectionCard() {
+        val candidate = ServusSourcedCard(
+            card = ServusCardDto(
+                id = "AA0HN7PRG6IMJ12WPCB2",
+                type = "video",
+                contentType = "clip",
+                title = "Paukenschlag bei VW",
+                duration = 89_800L,
+                playable = true,
+            ),
+            sourceCollectionId = "f7c25019-f876-44ee-ab56-02e0d7bd231e",
+            sourceCollectionLabel = "Servus Nachrichten in 90 Sekunden",
+            contentKindHint = ServusContentKind.NEWS_90_SECONDS,
+        )
+
+        assertFalse(
+            ServusCatalogPolicy.belongsToShow(
+                candidate,
+                ServusBranding.NEWS_SHOW_ID,
+                ServusBranding.NEWS_SHOW_NAME,
+            ),
+        )
+        assertTrue(
+            ServusCatalogPolicy.belongsToShow(
+                candidate,
+                ServusBranding.NEWS_90_SECONDS_SHOW_ID,
+                ServusBranding.NEWS_90_SECONDS_SHOW_NAME,
+            ),
+        )
+    }
+
+    @Test
+    fun sourcedNinetySecondEpisodeGetsCanonicalIdentity() {
+        val candidate = ServusSourcedCard(
+            card = ServusCardDto(
+                id = "AA0HN7PRG6IMJ12WPCB2",
+                type = "video",
+                contentType = "clip",
+                title = "Paukenschlag bei VW",
+                duration = 89_800L,
+                playable = true,
+            ),
+            sourceCollectionLabel = "Aktuelle Sendungen",
+            contentKindHint = ServusContentKind.NEWS_90_SECONDS,
+        )
+
+        val episode = ServusCatalogPolicy.toShowEpisode(
+            candidate = candidate,
+            showId = ServusBranding.NEWS_90_SECONDS_SHOW_ID,
+            showTitle = ServusBranding.NEWS_90_SECONDS_SHOW_NAME,
+            categoryId = "NEWS",
+            categoryTitle = "News",
+            showLogoUri = null,
+            nowMillis = Instant.parse("2026-09-04T06:55:00Z").toEpochMilli(),
+        )
+
+        assertNotNull(episode)
+        assertEquals(ServusContentKind.NEWS_90_SECONDS, episode!!.contentKindHint)
+        assertEquals(ServusBranding.NEWS_90_SECONDS_SHOW_ID, episode.showId)
+        assertEquals(ServusBranding.NEWS_90_SECONDS_LOGO_URI, episode.logoUri)
     }
 
     @Test
