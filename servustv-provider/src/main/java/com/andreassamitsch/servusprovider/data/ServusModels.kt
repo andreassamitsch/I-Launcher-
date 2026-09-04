@@ -32,6 +32,14 @@ data class ServusNewsEpisode(
      * but it tells us when the app actually observed the VOD online without inventing a source time.
      */
     val observedAvailableAtMillis: Long? = null,
+    /**
+     * Stable editorial format identity captured while the API still exposes enough context to know
+     * it reliably (for example the source collection `Servus Nachrichten in 90 Sekunden`).
+     *
+     * Titles, `show_name` and show caches are mutable and can be incomplete. Persisting this hint
+     * prevents a later show refresh from silently turning a 90-second item into generic 19:20 news.
+     */
+    val contentKindHint: ServusContentKind? = null,
 )
 
 data class ServusRefreshResult(
