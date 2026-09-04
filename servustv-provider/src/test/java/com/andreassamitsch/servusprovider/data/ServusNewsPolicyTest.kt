@@ -29,6 +29,8 @@ class ServusNewsPolicyTest {
         assertNotNull(episode)
         assertEquals("AA123", episode?.id)
         assertEquals(ServusContentKind.FULL_NEWS, episode?.let(ServusNewsPolicy::contentKind))
+        assertEquals(ServusBranding.NEWS_SHOW_ID, episode?.showId)
+        assertEquals(ServusBranding.NEWS_LOGO_URI, episode?.logoUri)
         assertTrue(episode?.artworkUri?.contains("f_webp") == true)
     }
 
@@ -60,6 +62,50 @@ class ServusNewsPolicyTest {
         assertNotNull(shortEdition)
         assertEquals(ServusContentKind.NEWS_90_SECONDS, shortEdition?.let(ServusNewsPolicy::contentKind))
         assertNull(normalClip)
+    }
+
+    @Test
+    fun topicalNinetySecondCardUsesTrustedCollectionHint() {
+        val episode = ServusNewsPolicy.toSupportedEpisode(
+            card = ServusCardDto(
+                id = "AA0HN7PRG6IMJ12WPCB2",
+                type = "video",
+                contentType = "clip",
+                title = "Paukenschlag bei VW",
+                showName = null,
+                duration = 89_800L,
+                playable = true,
+            ),
+            contentKindHint = ServusContentKind.NEWS_90_SECONDS,
+        )
+
+        assertNotNull(episode)
+        assertEquals(ServusContentKind.NEWS_90_SECONDS, episode?.contentKindHint)
+        assertEquals(ServusBranding.NEWS_90_SECONDS_SHOW_ID, episode?.showId)
+        assertEquals(ServusBranding.NEWS_90_SECONDS_SHOW_NAME, episode?.showName)
+        assertEquals(ServusBranding.NEWS_90_SECONDS_LOGO_URI, episode?.logoUri)
+    }
+
+    @Test
+    fun persistedNinetySecondHintSurvivesGenericMetadataOverwrite() {
+        val corrupted = ServusNewsEpisode(
+            id = "AA0HN7PRG6IMJ12WPCB2",
+            title = "Paukenschlag bei VW",
+            showName = ServusBranding.NEWS_SHOW_NAME,
+            description = null,
+            durationMillis = 89_800L,
+            publishedAtMillis = null,
+            artworkUri = null,
+            showId = ServusBranding.NEWS_SHOW_ID,
+            logoUri = ServusBranding.NEWS_LOGO_URI,
+            contentKindHint = ServusContentKind.NEWS_90_SECONDS,
+        )
+
+        val repaired = ServusBranding.canonicalizeEpisode(corrupted)
+
+        assertEquals(ServusContentKind.NEWS_90_SECONDS, ServusNewsPolicy.contentKind(repaired))
+        assertEquals(ServusBranding.NEWS_90_SECONDS_SHOW_ID, repaired.showId)
+        assertEquals(ServusBranding.NEWS_90_SECONDS_LOGO_URI, repaired.logoUri)
     }
 
     @Test
