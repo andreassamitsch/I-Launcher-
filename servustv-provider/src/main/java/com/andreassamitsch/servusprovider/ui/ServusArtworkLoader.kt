@@ -6,7 +6,9 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.LruCache
 import android.widget.ImageView
+import com.andreassamitsch.servusprovider.R
 import com.andreassamitsch.servusprovider.api.ServusNetwork
+import com.andreassamitsch.servusprovider.data.ServusBranding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -28,13 +30,20 @@ object ServusArtworkLoader {
     fun load(scope: CoroutineScope, imageView: ImageView, url: String?) {
         if (url.isNullOrBlank()) return
 
+        if (ServusBranding.isNinetySecondLogoUri(url)) {
+            // The 90-second logo is part of this APK. Never make ServusTV's own UI depend on the
+            // exported ContentProvider that exists only to transport branding through TvProvider.
+            // Recognising the legacy resource URI also keeps pre-update cached catalogue rows safe.
+            imageView.tag = url
+            imageView.setImageResource(R.drawable.servus_news_90_logo)
+            return
+        }
+
         val uri = runCatching { Uri.parse(url) }.getOrNull()
         if (
             uri?.scheme == ContentResolver.SCHEME_ANDROID_RESOURCE ||
             uri?.scheme == ContentResolver.SCHEME_CONTENT
         ) {
-            // Bundled/cross-process local branding must never go through OkHttp. The content URI is
-            // also the exact URI passed to TvProvider, so ServusTV and I Launcher render one source.
             imageView.tag = url
             imageView.setImageURI(uri)
             return
