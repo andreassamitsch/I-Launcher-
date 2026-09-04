@@ -65,6 +65,7 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.media.tv.action.INITIALIZE_PROGRAMS" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
     </application>
