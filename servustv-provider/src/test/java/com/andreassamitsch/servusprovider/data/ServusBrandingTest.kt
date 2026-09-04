@@ -42,7 +42,7 @@ class ServusBrandingTest {
     }
 
     @Test
-    fun fullNewsKeepsItsOwnLogo() {
+    fun fullNewsAlwaysUsesCanonicalApiTitleTreatment() {
         val episode = ServusNewsEpisode(
             id = "FULL",
             title = "Servus Nachrichten 19:20",
@@ -54,8 +54,29 @@ class ServusBrandingTest {
         )
 
         assertEquals(
-            "https://example.test/full-news-logo.webp",
-            ServusBranding.logoUriForEpisode(episode, "https://example.test/full-news-logo.webp"),
+            ServusBranding.NEWS_LOGO_URI,
+            ServusBranding.logoUriForEpisode(episode, "https://wrong.example/full-news-logo.webp"),
         )
+    }
+
+    @Test
+    fun canonicalizationRepairsFullNewsIdNameAndLogoTogether() {
+        val repaired = ServusBranding.canonicalizeEpisode(
+            ServusNewsEpisode(
+                id = "FULL",
+                title = "Nachrichten 19:20 | 03.09.",
+                showName = null,
+                description = null,
+                durationMillis = 800_000L,
+                publishedAtMillis = null,
+                artworkUri = null,
+                logoUri = null,
+            ),
+        )
+
+        assertEquals(ServusContentKind.FULL_NEWS, repaired.contentKindHint)
+        assertEquals(ServusBranding.NEWS_SHOW_ID, repaired.showId)
+        assertEquals(ServusBranding.NEWS_SHOW_NAME, repaired.showName)
+        assertEquals(ServusBranding.NEWS_LOGO_URI, repaired.logoUri)
     }
 }
