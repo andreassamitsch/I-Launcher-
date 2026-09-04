@@ -23,6 +23,14 @@ class ServusBrandingTest {
     }
 
     @Test
+    fun ninetySecondLogoUsesCrossProcessContentUri() {
+        assertEquals(
+            "content://com.andreassamitsch.servusprovider.branding/servus_news_90_logo.png",
+            ServusBranding.NEWS_90_SECONDS_LOGO_URI,
+        )
+    }
+
+    @Test
     fun exactNinetySecondShowIdOverridesAmbiguousEpisodeMetadata() {
         val episode = ServusNewsEpisode(
             id = "NEWS90-ID",
