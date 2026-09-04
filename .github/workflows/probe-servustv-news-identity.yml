@@ -9,7 +9,7 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe search and show metadata
+      - name: Probe search and show collections
         shell: bash
         run: |
           python3 - <<'PY'
@@ -23,33 +23,28 @@ jobs:
           }
           def get(url):
             req=urllib.request.Request(url, headers=HEADERS)
-            with urllib.request.urlopen(req, timeout=20) as r:
-              return json.load(r)
+            with urllib.request.urlopen(req, timeout=20) as r: return json.load(r)
           def brief(card):
-            return {k:card.get(k) for k in ('id','type','content_type','title','show_name','duration','playable','collections','media_resources')}
+            return {k:card.get(k) for k in ('id','type','content_type','title','show_name','duration','playable','collections')}
 
-          q=urllib.parse.quote('Servus Nachrichten')
-          data=get(f'https://tv-api.redbull.com/search/v5/stv/de/at/top_results?q={q}&offset=0')
-          print('SEARCH_RESPONSE')
-          print(json.dumps({'id':data.get('id'),'label':data.get('label'),'cards':[brief(x) for x in data.get('cards',[])]},ensure_ascii=False,indent=2))
+          show_ids=['AA-1Y5RJCD1H2111','AAYGF2URW6ALQYE42IJK']
+          for show_id in show_ids:
+            product=get(f'https://tv-api.redbull.com/products/v5.3/stv/de/at/{show_id}')
+            print('\nSHOW',show_id,product.get('title'))
+            print('SHOW_RESOURCES',json.dumps(product.get('media_resources'),ensure_ascii=False))
+            for ref in product.get('collections') or []:
+              cid=ref.get('id')
+              if not cid: continue
+              try:
+                collection=get(f'https://tv-api.redbull.com/collections/v5.3/stv/de/at/{cid}?offset=0')
+              except Exception as exc:
+                print('COLLECTION_ERROR',cid,repr(exc)); continue
+              print('COLLECTION',cid,'label=',collection.get('label'),'list_type=',collection.get('list_type'))
+              cards=collection.get('cards') or []
+              print(json.dumps([brief(x) for x in cards[:40]],ensure_ascii=False,indent=2))
 
-          show_id='AAYGF2URW6ALQYE42IJK'
-          product=get(f'https://tv-api.redbull.com/products/v5.3/stv/de/at/{show_id}')
-          print('SHOW_PRODUCT',show_id)
-          print(json.dumps(brief(product),ensure_ascii=False,indent=2))
-
-          seen=set()
-          for card in data.get('cards',[]):
-            cid=card.get('id')
-            title=(card.get('title') or '').lower()
-            if not cid or cid in seen or 'nachricht' not in title:
-              continue
-            seen.add(cid)
-            try:
-              p=get(f'https://tv-api.redbull.com/products/v5.3/stv/de/at/{cid}')
-            except Exception as exc:
-              print('PRODUCT_ERROR',cid,repr(exc))
-              continue
-            print('SEARCH_PRODUCT',cid)
+          for episode_id in ['AAS7HKP8NZLHXLY5SJHM']:
+            p=get(f'https://tv-api.redbull.com/products/v5.3/stv/de/at/{episode_id}')
+            print('\nEPISODE_PRODUCT',episode_id)
             print(json.dumps(brief(p),ensure_ascii=False,indent=2))
           PY
