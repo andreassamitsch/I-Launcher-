@@ -1,0 +1,55 @@
+name: Probe ServusTV news identity
+on:
+  push:
+    branches: [probe/servustv-news-logo-identity]
+    paths: [.github/workflows/probe-servustv-news-identity.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe search and show metadata
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request
+          HEADERS={
+            'User-Agent':'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:153.0) Gecko/20100101 Firefox/153.0',
+            'Accept':'application/json, text/plain, */*',
+            'Accept-Language':'de-DE,de;q=0.9,en;q=0.8',
+            'Origin':'https://www.servustv.com',
+            'Referer':'https://www.servustv.com/'
+          }
+          def get(url):
+            req=urllib.request.Request(url, headers=HEADERS)
+            with urllib.request.urlopen(req, timeout=20) as r:
+              return json.load(r)
+          def brief(card):
+            return {k:card.get(k) for k in ('id','type','content_type','title','show_name','duration','playable','collections','media_resources')}
+
+          q=urllib.parse.quote('Servus Nachrichten')
+          data=get(f'https://tv-api.redbull.com/search/v5/stv/de/at/top_results?q={q}&offset=0')
+          print('SEARCH_RESPONSE')
+          print(json.dumps({'id':data.get('id'),'label':data.get('label'),'cards':[brief(x) for x in data.get('cards',[])]},ensure_ascii=False,indent=2))
+
+          show_id='AAYGF2URW6ALQYE42IJK'
+          product=get(f'https://tv-api.redbull.com/products/v5.3/stv/de/at/{show_id}')
+          print('SHOW_PRODUCT',show_id)
+          print(json.dumps(brief(product),ensure_ascii=False,indent=2))
+
+          seen=set()
+          for card in data.get('cards',[]):
+            cid=card.get('id')
+            title=(card.get('title') or '').lower()
+            if not cid or cid in seen or 'nachricht' not in title:
+              continue
+            seen.add(cid)
+            try:
+              p=get(f'https://tv-api.redbull.com/products/v5.3/stv/de/at/{cid}')
+            except Exception as exc:
+              print('PRODUCT_ERROR',cid,repr(exc))
+              continue
+            print('SEARCH_PRODUCT',cid)
+            print(json.dumps(brief(p),ensure_ascii=False,indent=2))
+          PY
