@@ -1,5 +1,5 @@
 name: Publish ServusTV APK
-# Publication touch: TV artwork memory and 90-second show branding fix.
+# Publication touch: approved 90-second episode logo propagation.
 
 on:
   push:
