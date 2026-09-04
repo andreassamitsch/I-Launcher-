@@ -50,6 +50,47 @@ class ServusCurrentChannelPolicyTest {
     }
 
     @Test
+    fun canonicalBrandingOverridesStaleGenericLogoInCachedNinetySecondEpisode() {
+        val stale = episode(
+            id = "90",
+            title = "Frau in Graz getötet",
+            showName = "Servus Nachrichten in 90 Sekunden",
+        ).copy(
+            logoUri = "https://cdn.example/servus-nachrichten.webp",
+        )
+
+        val result = ServusCurrentChannelPolicy.applyCanonicalBranding(listOf(stale)).single()
+
+        assertEquals(ServusBranding.NEWS_90_SECONDS_LOGO_URI, result.logoUri)
+    }
+
+    @Test
+    fun composeCurrentEpisodesOverridesWrongLogoBeforePublishingOrRendering() {
+        val news90 = show(
+            ServusBranding.NEWS_90_SECONDS_SHOW_ID,
+            "Servus Nachrichten in 90 Sekunden",
+        )
+        val stale = episode(
+            id = "90",
+            title = "Frau in Graz getötet",
+            showName = "Servus Nachrichten in 90 Sekunden",
+        ).copy(
+            showId = "generic-news",
+            logoUri = "https://cdn.example/servus-nachrichten.webp",
+        )
+
+        val result = ServusCurrentChannelPolicy.composeCurrentEpisodes(
+            selectedShows = listOf(news90),
+            allShows = listOf(news90),
+            legacyEpisodes = listOf(stale),
+            limit = 20,
+        ).single()
+
+        assertEquals(ServusBranding.NEWS_90_SECONDS_SHOW_ID, result.showId)
+        assertEquals(ServusBranding.NEWS_90_SECONDS_LOGO_URI, result.logoUri)
+    }
+
+    @Test
     fun episodeWithExplicitShowIdFollowsUserSelection() {
         val selected = show("selected", "Eine Sendung")
         val episode = episode(
