@@ -9,6 +9,7 @@ on:
       - "build.gradle.kts"
       - "settings.gradle.kts"
       - "gradle.properties"
+      - ".github/workflows/publish-main.yml"
 
 permissions:
   actions: write
