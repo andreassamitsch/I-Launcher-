@@ -1,3 +1,4 @@
+# Keep Actions storage bounded; updater payloads live on dedicated download branches.
 name: Cleanup Actions artifacts
 
 on:
