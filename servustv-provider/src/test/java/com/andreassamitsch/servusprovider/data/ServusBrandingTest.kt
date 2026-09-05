@@ -50,6 +50,28 @@ class ServusBrandingTest {
     }
 
     @Test
+    fun canonicalizationRepairsLegacyNinetySecondEpisodeWithoutLogo() {
+        val repaired = ServusBranding.canonicalizeEpisode(
+            ServusNewsEpisode(
+                id = "NEWS90-CACHED",
+                title = "Attersee-Obduktionsergebnis ist da",
+                showName = ServusBranding.NEWS_90_SECONDS_SHOW_NAME,
+                description = null,
+                durationMillis = 90_000L,
+                publishedAtMillis = null,
+                artworkUri = null,
+                showId = null,
+                logoUri = null,
+            ),
+        )
+
+        assertEquals(ServusContentKind.NEWS_90_SECONDS, repaired.contentKindHint)
+        assertEquals(ServusBranding.NEWS_90_SECONDS_SHOW_ID, repaired.showId)
+        assertEquals(ServusBranding.NEWS_90_SECONDS_SHOW_NAME, repaired.showName)
+        assertEquals(ServusBranding.NEWS_90_SECONDS_LOGO_URI, repaired.logoUri)
+    }
+
+    @Test
     fun fullNewsAlwaysUsesCanonicalApiTitleTreatment() {
         val episode = ServusNewsEpisode(
             id = "FULL",
