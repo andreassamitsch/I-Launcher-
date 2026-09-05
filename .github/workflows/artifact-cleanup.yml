@@ -18,8 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      KEEP_NEWEST: "5"
-      GRACE_MINUTES: "120"
+      KEEP_NEWEST: "1"
+      GRACE_MINUTES: "30"
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Delete old Actions artifacts
