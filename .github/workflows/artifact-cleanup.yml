@@ -2,8 +2,16 @@ name: Cleanup Actions artifacts
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - "Android CI"
+      - "Build CloudStream I Launcher Bridge"
+      - "TV Visual Smoke"
+      - "Settings Touch Smoke"
+      - "TV Discovery Visual Smoke"
+    types: [completed]
   schedule:
-    - cron: "17 */4 * * *"
+    - cron: "17 3 * * *"
   push:
     branches: [main]
     paths:
