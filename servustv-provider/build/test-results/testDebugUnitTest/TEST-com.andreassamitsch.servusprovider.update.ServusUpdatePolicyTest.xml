@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.andreassamitsch.servusprovider.update.ServusUpdatePolicyTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-03T19:15:29.311Z" hostname="runnervmejwal" time="0.007">
+  <properties/>
+  <testcase name="metadataUrlGetsCacheBuster" classname="com.andreassamitsch.servusprovider.update.ServusUpdatePolicyTest" time="0.002"/>
+  <testcase name="onlyHigherVersionCodeIsAnUpdate" classname="com.andreassamitsch.servusprovider.update.ServusUpdatePolicyTest" time="0.005"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

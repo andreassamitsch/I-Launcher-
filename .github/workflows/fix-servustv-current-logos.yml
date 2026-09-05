@@ -1,0 +1,116 @@
+name: Fix ServusTV current logos
+
+on:
+  push:
+    branches:
+      - feat/servustv-news-provider-prototype
+    paths:
+      - ".github/workflows/fix-servustv-current-logos.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/servustv-news-provider-prototype
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.5.0"
+      - name: Patch publisher
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("servustv-provider/src/main/java/com/andreassamitsch/servusprovider/tv/ServusChannelPublisher.kt")
+          text = path.read_text()
+
+          old = "import com.andreassamitsch.servusprovider.data.ServusCurrentChannelSelectionStore\n"
+          new = old + "import com.andreassamitsch.servusprovider.data.ServusCurrentShowMetadataPolicy\n"
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = "    private val showChannelSelectionStore = ServusShowChannelSelectionStore(appContext)\n"
+          new = old + "    private val publishPreferences = appContext.getSharedPreferences(PUBLISH_PREFS, Context.MODE_PRIVATE)\n"
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = '''    fun isPublished(): Boolean {
+              if (!isSupported()) return false
+              return helper.getAllChannels().any { it.internalProviderId == CURRENT_CHANNEL_ID }
+          }
+          '''
+          new = '''    fun isPublished(): Boolean {
+              if (!isSupported()) return false
+              if (publishPreferences.getInt(KEY_CURRENT_METADATA_VERSION, 0) < CURRENT_METADATA_VERSION) return false
+              return helper.getAllChannels().any { it.internalProviderId == CURRENT_CHANNEL_ID }
+          }
+          '''
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = '''        val effectiveEpisodes = currentSelectionStore.effectiveEpisodes(
+              categories = hubStore.loadCategories(),
+              legacyEpisodes = episodes,
+          )
+          '''
+          new = '''        val categories = hubStore.loadCategories()
+              val effectiveEpisodes = ServusCurrentShowMetadataPolicy.enrich(
+                  episodes = currentSelectionStore.effectiveEpisodes(
+                      categories = categories,
+                      legacyEpisodes = episodes,
+                  ),
+                  categories = categories,
+              )
+          '''
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = '''        replacePrograms(channelId, effectiveEpisodes.mapIndexed { index, episode ->
+              buildEpisodeProgram(channelId, episode, effectiveEpisodes.size - index, episode.logoUri)
+          })
+          '''
+          new = '''        replacePrograms(channelId, effectiveEpisodes.mapIndexed { index, episode ->
+              buildEpisodeProgram(channelId, episode, effectiveEpisodes.size - index, episode.logoUri)
+          })
+              if (effectiveEpisodes.any { !it.logoUri.isNullOrBlank() }) {
+                  publishPreferences.edit().putInt(KEY_CURRENT_METADATA_VERSION, CURRENT_METADATA_VERSION).apply()
+              }
+          '''
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = '''        const val CHANNEL_LOGO_SIZE_PX = 256
+              const val CHANNEL_LOGO_PADDING_PX = 16
+          '''
+          new = '''        const val CHANNEL_LOGO_SIZE_PX = 256
+              const val CHANNEL_LOGO_PADDING_PX = 16
+              private const val PUBLISH_PREFS = "servus_tv_publish"
+              private const val KEY_CURRENT_METADATA_VERSION = "current_metadata_version"
+              private const val CURRENT_METADATA_VERSION = 1
+          '''
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+      - name: Test and build
+        run: gradle :servustv-provider:testDebugUnitTest :servustv-provider:assembleDebug :app:testDebugUnitTest :app:assembleDebug --stacktrace
+      - name: Commit tested fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-servustv-current-logos.yml
+          git add servustv-provider/src/main/java/com/andreassamitsch/servusprovider/tv/ServusChannelPublisher.kt
+          git commit -m "fix(servustv): republish current show logos"
+          git push origin HEAD:feat/servustv-news-provider-prototype

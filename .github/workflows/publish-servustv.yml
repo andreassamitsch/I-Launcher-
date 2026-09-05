@@ -1,0 +1,120 @@
+name: Publish ServusTV APK
+# Publication touch: approved 90-second episode logo propagation.
+
+on:
+  push:
+    branches:
+      - feat/servustv-news-provider-prototype
+    paths:
+      - "servustv-provider/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/publish-servustv.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: publish-servustv-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish-servustv:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Define ServusTV development version
+        run: |
+          VERSION_CODE=$((26100000 + GITHUB_RUN_NUMBER))
+          VERSION_NAME="0.2.0-dev.${GITHUB_RUN_NUMBER}"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+
+      - name: Configure required stable signing
+        env:
+          DEV_KEYSTORE_BASE64: ${{ secrets.IL_DEV_KEYSTORE_BASE64 }}
+          DEV_STORE_PASSWORD: ${{ secrets.IL_DEV_STORE_PASSWORD }}
+          DEV_KEY_ALIAS: ${{ secrets.IL_DEV_KEY_ALIAS }}
+          DEV_KEY_PASSWORD: ${{ secrets.IL_DEV_KEY_PASSWORD }}
+        run: |
+          if [ -z "$DEV_KEYSTORE_BASE64" ] || \
+             [ -z "$DEV_STORE_PASSWORD" ] || \
+             [ -z "$DEV_KEY_ALIAS" ] || \
+             [ -z "$DEV_KEY_PASSWORD" ]; then
+            echo "::error::Stable development signing secrets are required for ServusTV publishing."
+            exit 1
+          fi
+          echo "$DEV_KEYSTORE_BASE64" | base64 --decode > /tmp/servustv-development.jks
+          echo "IL_SIGNING_STORE_FILE=/tmp/servustv-development.jks" >> "$GITHUB_ENV"
+          echo "IL_SIGNING_STORE_PASSWORD=$DEV_STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "IL_SIGNING_KEY_ALIAS=$DEV_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "IL_SIGNING_KEY_PASSWORD=$DEV_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Test and build signed ServusTV APK
+        run: |
+          gradle :servustv-provider:testDebugUnitTest :servustv-provider:assembleDebug \
+            -PservusVersionCode="$VERSION_CODE" \
+            -PservusVersionName="$VERSION_NAME" \
+            --stacktrace
+
+      - name: Prepare APK and update manifest
+        run: |
+          cp servustv-provider/build/outputs/apk/debug/servustv-provider-debug.apk /tmp/ServusTV-debug.apk
+          SHA256=$(sha256sum /tmp/ServusTV-debug.apk | awk '{print $1}')
+          cat > /tmp/update.json <<EOF
+          {
+            "versionCode": $VERSION_CODE,
+            "versionName": "$VERSION_NAME",
+            "apkUrl": "https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/servustv-downloads/ServusTV-debug.apk",
+            "sha256": "$SHA256",
+            "sourceSha": "$GITHUB_SHA"
+          }
+          EOF
+
+      - name: Upload signed ServusTV artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ServusTV-signed-development
+          path: /tmp/ServusTV-debug.apk
+
+      - name: Publish ServusTV download branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan servustv-publish
+          git rm -rf .
+          cp /tmp/ServusTV-debug.apk ServusTV-debug.apk
+          cp /tmp/update.json update.json
+          printf '%s\n' \
+            '# ServusTV App Download' \
+            'Diese Branch enthält die stabil signierte Development-APK und das Update-Manifest für den ServusTV-In-App-Updater.' \
+            '' \
+            'Direktdownload: https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/servustv-downloads/ServusTV-debug.apk' \
+            'Update-Manifest: https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/servustv-downloads/update.json' \
+            > README.md
+          touch .nojekyll
+          git add ServusTV-debug.apk update.json README.md .nojekyll
+          git commit -m "chore: publish ServusTV $VERSION_NAME"
+          git push origin HEAD:servustv-downloads --force

@@ -1,0 +1,376 @@
+package com.andreassamitsch.servusprovider.data
+
+import com.andreassamitsch.servusprovider.api.SearchResponseDto
+import com.andreassamitsch.servusprovider.api.ServusCardDto
+import com.andreassamitsch.servusprovider.api.ServusCollectionRefDto
+import com.google.gson.Gson
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.time.Instant
+
+class ServusCatalogPolicyTest {
+    @Test
+    fun sendungenCollectionMetadataIsParsed() {
+        val response = Gson().fromJson(
+            """
+            {
+              "id":"category-news",
+              "label":"News & Magazine",
+              "list_type":"standard",
+              "cards":[]
+            }
+            """.trimIndent(),
+            SearchResponseDto::class.java,
+        )
+        assertEquals("category-news", response.id)
+        assertEquals("News & Magazine", response.label)
+        assertEquals("standard", response.listType)
+    }
+
+    @Test
+    fun onlyForbiddenCategoryCanBeSkipped() {
+        assertTrue(ServusCatalogPolicy.canSkipCategoryHttpCode(403))
+        assertFalse(ServusCatalogPolicy.canSkipCategoryHttpCode(401))
+        assertFalse(ServusCatalogPolicy.canSkipCategoryHttpCode(404))
+        assertFalse(ServusCatalogPolicy.canSkipCategoryHttpCode(500))
+    }
+
+    @Test
+    fun titleTreatmentIsExposedAsLogo() {
+        val uri = ServusCatalogPolicy.titleTreatment(
+            "SHOW-ID",
+            listOf("rbtv_display_art_landscape", "rbtv_title_treatment"),
+        )
+        assertNotNull(uri)
+        assertTrue(uri!!.contains("SHOW-ID/rbtv_title_treatment"))
+        assertTrue(uri.contains("f_webp"))
+    }
+
+    @Test
+    fun ninetySecondNewsUsesVerifiedLocalTitleLogo() {
+        val uri = ServusCatalogPolicy.titleTreatment(
+            ServusCatalogPolicy.NEWS_90_SECONDS_SHOW_ID,
+            listOf("rbtv_background_landscape", "rbtv_display_art_landscape"),
+        )
+        assertEquals(ServusBranding.NEWS_90_SECONDS_LOGO_URI, uri)
+    }
+
+    @Test
+    fun apiNewsCollectionLabelsResolveToSeparateFormats() {
+        assertEquals(
+            ServusContentKind.NEWS_90_SECONDS,
+            ServusCatalogPolicy.contentKindForCollection(
+                ownerShowId = ServusBranding.NEWS_SHOW_ID,
+                ownerShowTitle = "Servus Nachrichten",
+                collectionLabel = "Servus Nachrichten in 90 Sekunden",
+            ),
+        )
+        assertEquals(
+            ServusContentKind.FULL_NEWS,
+            ServusCatalogPolicy.contentKindForCollection(
+                ownerShowId = ServusBranding.NEWS_SHOW_ID,
+                ownerShowTitle = "Servus Nachrichten",
+                collectionLabel = "Servus Nachrichten 19:20",
+            ),
+        )
+        assertNull(
+            ServusCatalogPolicy.contentKindForCollection(
+                ownerShowId = ServusBranding.NEWS_SHOW_ID,
+                ownerShowTitle = "Servus Nachrichten",
+                collectionLabel = "Servus Nachrichten: Einzelbeiträge",
+            ),
+        )
+    }
+
+    @Test
+    fun genericNewsShowCannotClaimNinetySecondCollectionCard() {
+        val candidate = ServusSourcedCard(
+            card = ServusCardDto(
+                id = "AA0HN7PRG6IMJ12WPCB2",
+                type = "video",
+                contentType = "clip",
+                title = "Paukenschlag bei VW",
+                duration = 89_800L,
+                playable = true,
+            ),
+            sourceCollectionId = "f7c25019-f876-44ee-ab56-02e0d7bd231e",
+            sourceCollectionLabel = "Servus Nachrichten in 90 Sekunden",
+            contentKindHint = ServusContentKind.NEWS_90_SECONDS,
+        )
+
+        assertFalse(
+            ServusCatalogPolicy.belongsToShow(
+                candidate,
+                ServusBranding.NEWS_SHOW_ID,
+                ServusBranding.NEWS_SHOW_NAME,
+            ),
+        )
+        assertTrue(
+            ServusCatalogPolicy.belongsToShow(
+                candidate,
+                ServusBranding.NEWS_90_SECONDS_SHOW_ID,
+                ServusBranding.NEWS_90_SECONDS_SHOW_NAME,
+            ),
+        )
+    }
+
+    @Test
+    fun sourcedNinetySecondEpisodeGetsCanonicalIdentity() {
+        val candidate = ServusSourcedCard(
+            card = ServusCardDto(
+                id = "AA0HN7PRG6IMJ12WPCB2",
+                type = "video",
+                contentType = "clip",
+                title = "Paukenschlag bei VW",
+                duration = 89_800L,
+                playable = true,
+            ),
+            sourceCollectionLabel = "Aktuelle Sendungen",
+            contentKindHint = ServusContentKind.NEWS_90_SECONDS,
+        )
+
+        val episode = ServusCatalogPolicy.toShowEpisode(
+            candidate = candidate,
+            showId = ServusBranding.NEWS_90_SECONDS_SHOW_ID,
+            showTitle = ServusBranding.NEWS_90_SECONDS_SHOW_NAME,
+            categoryId = "NEWS",
+            categoryTitle = "News",
+            showLogoUri = null,
+            nowMillis = Instant.parse("2026-09-04T06:55:00Z").toEpochMilli(),
+        )
+
+        assertNotNull(episode)
+        assertEquals(ServusContentKind.NEWS_90_SECONDS, episode!!.contentKindHint)
+        assertEquals(ServusBranding.NEWS_90_SECONDS_SHOW_ID, episode.showId)
+        assertEquals(ServusBranding.NEWS_90_SECONDS_LOGO_URI, episode.logoUri)
+    }
+
+    @Test
+    fun unrelatedNewsCardIsNotAttachedToServusWetter() {
+        val card = ServusCardDto(
+            id = "NEWS",
+            type = "video",
+            contentType = "episode",
+            title = "Nachrichten 19:20 | 31.08.",
+            showName = "Servus Nachrichten",
+            duration = 12 * 60 * 1000L,
+            playable = true,
+        )
+
+        assertFalse(ServusCatalogPolicy.belongsToShow(card, "WEATHER", "Servus Wetter"))
+        assertNull(
+            ServusCatalogPolicy.toShowEpisode(
+                card, "WEATHER", "Servus Wetter", "CAT", "News & Magazine", null,
+                Instant.parse("2026-09-01T10:00:00Z").toEpochMilli(),
+            ),
+        )
+    }
+
+    @Test
+    fun episodeTitleCanProvideStrongShowMembershipWhenShowNameIsMissing() {
+        val card = ServusCardDto(
+            id = "WEATHER-31",
+            type = "video",
+            contentType = "episode",
+            title = "31.08. | Servus Wetter",
+            duration = 4 * 60 * 1000L,
+            playable = true,
+        )
+
+        assertTrue(ServusCatalogPolicy.belongsToShow(card, "WEATHER", "Servus Wetter"))
+        assertNotNull(
+            ServusCatalogPolicy.toShowEpisode(
+                card, "WEATHER", "Servus Wetter", "CAT", "News & Magazine", null,
+                Instant.parse("2026-09-01T10:00:00Z").toEpochMilli(),
+            ),
+        )
+    }
+
+    @Test
+    fun exactShowNameProvidesMembershipForGenericEpisodeTitle() {
+        val card = ServusCardDto(
+            id = "GENERIC",
+            type = "video",
+            contentType = "episode",
+            title = "Folge vom 31.08.",
+            showName = "Servus am Abend",
+            duration = 24 * 60 * 1000L,
+            playable = true,
+        )
+
+        assertTrue(ServusCatalogPolicy.belongsToShow(card, "EVENING", "Servus am Abend"))
+    }
+
+    @Test
+    fun hydrationCandidatesPreferFullEpisodesAndUnknownTypesBeforeClips() {
+        val cards = listOf(
+            ServusCardDto(
+                id = "OTHER",
+                type = "video",
+                contentType = "episode",
+                title = "Andere Sendung",
+                showName = "Andere Sendung",
+                playable = true,
+            ),
+            ServusCardDto(
+                id = "CLIP",
+                type = "video",
+                contentType = "clip",
+                title = "Servus Wetter kompakt",
+                showName = "Servus Wetter",
+                playable = true,
+            ),
+            ServusCardDto(
+                id = "UNKNOWN",
+                type = "video",
+                title = "31.08. | Servus Wetter",
+                showName = "Servus Wetter",
+                playable = true,
+            ),
+            ServusCardDto(
+                id = "FULL",
+                type = "video",
+                contentType = "episode",
+                title = "01.09. | Servus Wetter",
+                showName = "Servus Wetter",
+                playable = true,
+            ),
+        )
+
+        val candidates = ServusCatalogPolicy.selectEpisodeCardsForHydration(
+            cards = cards,
+            showId = "WEATHER",
+            showTitle = "Servus Wetter",
+            limit = 2,
+        )
+
+        assertEquals(listOf("FULL", "UNKNOWN"), candidates.map { it.id })
+    }
+
+    @Test
+    fun productDetailHydrationAddsSunriseAndKeepsCollectionMembership() {
+        val collectionCard = ServusCardDto(
+            id = "WEATHER-01",
+            type = "video",
+            title = "Folge vom 01.09.",
+            duration = 4 * 60 * 1000L,
+            playable = true,
+            mediaResources = listOf("collection_landscape"),
+            collections = listOf(ServusCollectionRefDto(id = "WEATHER")),
+        )
+        val productDetail = ServusCardDto(
+            id = "WEATHER-01",
+            type = "video",
+            contentType = "episode",
+            title = "Folge vom 01.09.",
+            sunriseTimestamp = "2026-09-01T14:45:00Z",
+            sunsetTimestamp = "2026-09-08T14:54:42Z",
+            mediaResources = listOf("detail_landscape"),
+        )
+
+        val merged = ServusCatalogPolicy.mergeEpisodeProduct(collectionCard, productDetail)
+        val episode = ServusCatalogPolicy.toShowEpisode(
+            card = merged,
+            showId = "WEATHER",
+            showTitle = "Servus Wetter",
+            categoryId = "CAT",
+            categoryTitle = "News & Magazine",
+            showLogoUri = null,
+            nowMillis = Instant.parse("2026-09-01T16:00:00Z").toEpochMilli(),
+        )
+
+        assertTrue(ServusCatalogPolicy.belongsToShow(merged, "WEATHER", "Servus Wetter"))
+        assertTrue(merged.mediaResources.containsAll(listOf("detail_landscape", "collection_landscape")))
+        assertNotNull(episode)
+        assertEquals(
+            Instant.parse("2026-09-01T14:45:00Z").toEpochMilli(),
+            episode!!.publishedAtMillis,
+        )
+    }
+
+    @Test
+    fun fullEpisodesWinOverClipsForShowChannel() {
+        val now = Instant.parse("2026-09-01T06:00:00Z").toEpochMilli()
+        val full = ServusCatalogPolicy.toShowEpisode(
+            ServusCardDto(
+                id = "EP",
+                type = "video",
+                contentType = "episode",
+                title = "Ganze Folge",
+                showName = "Test",
+                duration = 30 * 60 * 1000L,
+                playable = true,
+                sunriseTimestamp = "2026-09-01T05:00:00Z",
+            ),
+            "SHOW", "Test", "CAT", "Wissen", null, now,
+        )!!
+        val clip = ServusCatalogPolicy.toShowEpisode(
+            ServusCardDto(
+                id = "CLIP",
+                type = "video",
+                contentType = "clip",
+                title = "Clip",
+                showName = "Test",
+                duration = 3 * 60 * 1000L,
+                playable = true,
+                sunriseTimestamp = "2026-09-01T05:30:00Z",
+            ),
+            "SHOW", "Test", "CAT", "Wissen", null, now,
+        )!!
+
+        val result = ServusCatalogPolicy.selectChannelEpisodes(listOf(clip, full))
+        assertEquals(listOf("EP"), result.map { it.id })
+    }
+
+    @Test
+    fun clipsRemainFallbackWhenShowHasNoFullEpisodes() {
+        val clip = ServusNewsEpisode(
+            id = "CLIP",
+            title = "Clip",
+            showName = "Test",
+            description = null,
+            durationMillis = 120_000L,
+            publishedAtMillis = 1000L,
+            artworkUri = null,
+            showId = "SHOW",
+            contentType = "clip",
+        )
+        assertEquals(listOf("CLIP"), ServusCatalogPolicy.selectChannelEpisodes(listOf(clip)).map { it.id })
+    }
+
+    @Test
+    fun nextCollectionOffsetIsReadFromApiMetaLink() {
+        assertEquals(30, ServusCatalogPolicy.nextOffset("/collections/v5.3/stv/de/at/x?offset=30"))
+        assertEquals(null, ServusCatalogPolicy.nextOffset(null))
+    }
+
+    @Test
+    fun liveDestinationUrlMatchesCurrentKodiAddonPattern() {
+        assertEquals(
+            "https://dms.redbull.tv/v5/destination/stv/PN123/personal_computer/http/de/at/playlist.m3u8",
+            ServusPlaybackResolver.buildLiveDestinationUrl("PN123", "at"),
+        )
+        assertTrue(ServusPlaybackResolver.isMainServusLive("ServusTV Live"))
+        assertTrue(ServusPlaybackResolver.isMainServusLive("ServusTV: Der Livestream"))
+        assertFalse(ServusPlaybackResolver.isMainServusLive("Wissen On"))
+    }
+
+    @Test
+    fun guideProgramUsesStartAndEndTime() {
+        val program = ServusCatalogPolicy.liveProgram(
+            ServusCardDto(
+                id = "P1",
+                title = "Dokumentation",
+                subheading = "Folge 1",
+                startTime = "2026-09-01T05:00:00Z",
+                endTime = "2026-09-01T06:00:00Z",
+            ),
+        )
+        assertNotNull(program)
+        assertEquals(Instant.parse("2026-09-01T05:00:00Z").toEpochMilli(), program!!.startAtMillis)
+    }
+}

@@ -138,10 +138,11 @@ fun WatchNextCard(
                             model = logoUri,
                             contentDescription = null,
                             contentScale = ContentScale.Fit,
+                            alignment = Alignment.TopStart,
                             modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(5.dp)
-                                .size(width = 46.dp, height = 20.dp),
+                                .align(Alignment.TopStart)
+                                .padding(6.dp)
+                                .size(width = 78.dp, height = 32.dp),
                         )
                     }
 

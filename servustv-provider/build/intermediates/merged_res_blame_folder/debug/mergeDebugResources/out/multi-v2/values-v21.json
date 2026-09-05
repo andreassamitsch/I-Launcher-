@@ -1,0 +1,20 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.andreassamitsch.servusprovider.servustv-provider-mergeDebugResources-33:/values-v21/values-v21.xml",
+            "map": [
+                {
+                    "source": "/home/runner/.gradle/caches/9.5.0/transforms/3c340fc6b2b82962acb3ef53f895d005/transformed/media3-ui-1.10.1/res/values-v21/values-v21.xml",
+                    "from": {
+                        "startLines": "2,3",
+                        "startColumns": "4,4",
+                        "startOffsets": "55,114",
+                        "endLines": "2,7",
+                        "endColumns": "58,10",
+                        "endOffsets": "109,396"
+                    }
+                }
+            ]
+        }
+    ]
+}

@@ -1,8 +1,11 @@
 package com.andreassamitsch.ilauncher.data.tv
 
 import android.media.tv.TvContract
+import com.andreassamitsch.ilauncher.BuildConfig
+import com.andreassamitsch.ilauncher.R
 import com.andreassamitsch.ilauncher.model.MediaType
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -141,6 +144,59 @@ class PreviewChannelsMapperTest {
     }
 
     @Test
+    fun `uses bundled Servus 90-second logo when TvProvider logo uri is missing`() {
+        val mapped = PreviewChannelsMapper.map(
+            listOf(
+                channel(
+                    id = 90,
+                    sourceOrder = 0,
+                    name = "ServusTV Aktuelles",
+                    packageName = SERVUS_PROVIDER_PACKAGE,
+                    programs = listOf(
+                        program(
+                            id = 9001,
+                            sourceOrder = 0,
+                            title = "Attersee-Obduktionsergebnis ist da",
+                            shortDescription = SERVUS_90_SHOW_NAME,
+                            logoUri = null,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            "android.resource://${BuildConfig.APPLICATION_ID}/${R.drawable.servus_news_90_logo}",
+            mapped.single().programs.single().media.logoUri,
+        )
+    }
+
+    @Test
+    fun `does not infer Servus branding for another provider`() {
+        val mapped = PreviewChannelsMapper.map(
+            listOf(
+                channel(
+                    id = 90,
+                    sourceOrder = 0,
+                    name = "Andere App",
+                    packageName = "example.package",
+                    programs = listOf(
+                        program(
+                            id = 9001,
+                            sourceOrder = 0,
+                            title = "Attersee-Obduktionsergebnis ist da",
+                            shortDescription = SERVUS_90_SHOW_NAME,
+                            logoUri = null,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertNull(mapped.single().programs.single().media.logoUri)
+    }
+
+    @Test
     fun `uses Android preview program weight descending query`() {
         assertEquals("weight DESC", PreviewChannelsRepository.PROGRAM_SORT_ORDER)
     }
@@ -167,13 +223,14 @@ class PreviewChannelsMapperTest {
         id: Long,
         sourceOrder: Int,
         name: String,
+        packageName: String = "example.package",
         browsable: Int? = 1,
         type: String? = TvContract.Channels.TYPE_PREVIEW,
         programs: List<PreviewProgramRawRow>,
     ) = PreviewChannelRawRow(
         id = id,
         sourceOrder = sourceOrder,
-        packageName = "example.package",
+        packageName = packageName,
         displayName = name,
         appLinkIntentUri = null,
         browsable = browsable,
@@ -190,6 +247,8 @@ class PreviewChannelsMapperTest {
         episode: String? = null,
         episodeTitle: String? = null,
         releaseDate: String? = null,
+        shortDescription: String? = null,
+        logoUri: String? = null,
         weight: Int? = null,
         browsable: Int? = 1,
         searchable: Int? = 1,
@@ -203,14 +262,19 @@ class PreviewChannelsMapperTest {
         seasonDisplayNumber = season,
         episodeDisplayNumber = episode,
         episodeTitle = episodeTitle,
-        shortDescription = null,
+        shortDescription = shortDescription,
         posterArtUri = null,
         thumbnailUri = null,
-        logoUri = null,
+        logoUri = logoUri,
         intentUri = "intent:#Intent;end",
         durationMillis = null,
         weight = weight,
         browsable = browsable,
         searchable = searchable,
     )
+
+    private companion object {
+        const val SERVUS_PROVIDER_PACKAGE = "com.andreassamitsch.servusprovider"
+        const val SERVUS_90_SHOW_NAME = "Servus Nachrichten in 90 Sekunden"
+    }
 }

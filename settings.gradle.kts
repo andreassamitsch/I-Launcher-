@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "I Launcher"
 include(":app")
+include(":servustv-provider")

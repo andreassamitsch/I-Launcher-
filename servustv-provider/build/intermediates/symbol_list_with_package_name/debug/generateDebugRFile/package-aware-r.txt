@@ -1,0 +1,10 @@
+com.andreassamitsch.servusprovider
+drawable ic_info
+drawable ic_launcher
+drawable ic_refresh
+drawable ic_settings
+drawable ic_star
+drawable ic_tv
+drawable ic_update
+drawable tv_banner
+style Theme_ServusProvider
