@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 20
     env:
       KEEP_NEWEST: "1"
-      GRACE_MINUTES: "30"
+      GRACE_MINUTES: "0"
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Delete old Actions artifacts
@@ -73,4 +73,4 @@ jobs:
           deleted=$(wc -l < /tmp/delete-artifacts.txt | tr -d ' ')
           echo "Artifacts before cleanup: ${total}"
           echo "Artifacts deleted: ${deleted}"
-          echo "Policy: keep newest ${KEEP_NEWEST}; additionally protect artifacts younger than ${GRACE_MINUTES} minutes."
+          echo "Policy: keep newest ${KEEP_NEWEST}; grace period ${GRACE_MINUTES} minutes."
