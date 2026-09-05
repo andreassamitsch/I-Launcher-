@@ -13,21 +13,28 @@ class ServusNewsStore(context: Context) {
         val episodes = runCatching {
             ServusNetwork.gson.fromJson<List<ServusNewsEpisode>>(raw, episodeListType).orEmpty()
         }.getOrDefault(emptyList())
-        if (episodes.isEmpty() || preferences.getInt(KEY_TIME_SCHEMA, 1) >= CURRENT_TIME_SCHEMA) {
-            return episodes
-        }
+        if (episodes.isEmpty()) return episodes
 
-        val migrated = episodes.map { it.copy(publishedAtMillis = null) }
-        preferences.edit()
-            .putString(KEY_EPISODES, ServusNetwork.gson.toJson(migrated))
-            .putInt(KEY_TIME_SCHEMA, CURRENT_TIME_SCHEMA)
-            .apply()
-        return migrated
+        val timeMigrated = if (preferences.getInt(KEY_TIME_SCHEMA, 1) >= CURRENT_TIME_SCHEMA) {
+            episodes
+        } else {
+            episodes.map { it.copy(publishedAtMillis = null) }
+        }
+        val canonical = timeMigrated.map(ServusBranding::canonicalizeEpisode)
+
+        if (canonical != episodes || preferences.getInt(KEY_TIME_SCHEMA, 1) < CURRENT_TIME_SCHEMA) {
+            preferences.edit()
+                .putString(KEY_EPISODES, ServusNetwork.gson.toJson(canonical))
+                .putInt(KEY_TIME_SCHEMA, CURRENT_TIME_SCHEMA)
+                .apply()
+        }
+        return canonical
     }
 
     fun save(result: ServusRefreshResult) {
+        val canonicalEpisodes = result.episodes.map(ServusBranding::canonicalizeEpisode)
         preferences.edit()
-            .putString(KEY_EPISODES, ServusNetwork.gson.toJson(result.episodes))
+            .putString(KEY_EPISODES, ServusNetwork.gson.toJson(canonicalEpisodes))
             .putLong(KEY_LAST_SUCCESS, result.refreshedAtMillis)
             .putInt(KEY_TIME_SCHEMA, CURRENT_TIME_SCHEMA)
             .remove(KEY_LAST_ERROR)
