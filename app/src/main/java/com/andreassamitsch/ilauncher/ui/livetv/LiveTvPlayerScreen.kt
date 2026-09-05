@@ -42,6 +42,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -99,6 +100,14 @@ internal fun LiveTvPlayerScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val hostView = LocalView.current
+    DisposableEffect(hostView) {
+        val previousKeepScreenOn = hostView.keepScreenOn
+        hostView.keepScreenOn = true
+        onDispose {
+            hostView.keepScreenOn = previousKeepScreenOn
+        }
+    }
     val initialIndex = LiveTvZapping.indexForServiceReference(
         serviceReferences = channels.map(LiveTvChannel::serviceReference),
         currentServiceReference = initialServiceReference,
@@ -427,6 +436,7 @@ internal fun LiveTvPlayerScreen(
                 PlayerView(viewContext).apply {
                     useController = false
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    keepScreenOn = true
                     this.player = player
                     isClickable = true
                     setOnClickListener {
@@ -435,6 +445,7 @@ internal fun LiveTvPlayerScreen(
                 }
             },
             update = {
+                it.keepScreenOn = true
                 it.player = player
                 it.setOnClickListener {
                     if (!showEpg && !showExitConfirmation) openChannelOverview()
