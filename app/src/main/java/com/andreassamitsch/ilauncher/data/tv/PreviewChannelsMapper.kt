@@ -110,7 +110,12 @@ internal object PreviewChannelsMapper {
             seasonNumber = season,
             episodeNumber = episode,
             episodeTitle = episodeTitle,
-            logoUri = localizePreviewLogoUri(effectivePackageName, logoUri),
+            logoUri = localizePreviewLogoUri(
+                packageName = effectivePackageName,
+                logoUri = logoUri,
+                title = displayTitle,
+                shortDescription = shortDescription,
+            ),
             sourceArtworkUri = thumbnailUri?.takeIf { it.isNotBlank() }
                 ?: posterArtUri?.takeIf { it.isNotBlank() },
             durationMillis = durationMillis,
@@ -127,13 +132,28 @@ internal object PreviewChannelsMapper {
      * The ServusTV companion APK owns the canonical 90-second logo and publishes a content URI.
      * Real-TV testing showed that relying on that cross-process image fetch is not stable enough
      * for launcher chrome. I Launcher therefore mirrors this one verified companion asset locally.
-     * Coil 3 supports numeric Android resource URIs, so the returned URI remains a normal model for
-     * all existing AsyncImage call sites without introducing provider-specific UI branches.
+     *
+     * Some Android-TV providers keep the visible programme description but omit COLUMN_LOGO_URI.
+     * The source package plus the canonical show label is therefore an equally valid identity
+     * signal. This keeps old/stale TvProvider rows working without making generic preview-channel
+     * rendering depend on a cross-process resource URI.
      */
-    internal fun localizePreviewLogoUri(packageName: String?, logoUri: String?): String? {
-        if (packageName != SERVUS_PROVIDER_PACKAGE || logoUri !in SERVUS_90_LOGO_URIS) return logoUri
+    internal fun localizePreviewLogoUri(
+        packageName: String?,
+        logoUri: String?,
+        title: String? = null,
+        shortDescription: String? = null,
+    ): String? {
+        if (packageName != SERVUS_PROVIDER_PACKAGE) return logoUri
+        val isNinetySecondNews = logoUri in SERVUS_90_LOGO_URIS ||
+            title.hasServus90Label() ||
+            shortDescription.hasServus90Label()
+        if (!isNinetySecondNews) return logoUri
         return "android.resource://${BuildConfig.APPLICATION_ID}/${R.drawable.servus_news_90_logo}"
     }
+
+    private fun String?.hasServus90Label(): Boolean =
+        this?.contains(SERVUS_90_SHOW_NAME, ignoreCase = true) == true
 
     private fun Int?.toMediaType(): MediaType = when (this) {
         TvContract.PreviewPrograms.TYPE_MOVIE -> MediaType.Movie
@@ -145,6 +165,7 @@ internal object PreviewChannelsMapper {
     }
 
     private const val SERVUS_PROVIDER_PACKAGE = "com.andreassamitsch.servusprovider"
+    private const val SERVUS_90_SHOW_NAME = "Servus Nachrichten in 90 Sekunden"
     private const val SERVUS_90_CONTENT_LOGO_URI =
         "content://com.andreassamitsch.servusprovider.branding/servus_news_90_logo.png"
     private const val SERVUS_90_LEGACY_LOGO_URI =
