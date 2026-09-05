@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 108 108" role="img" aria-labelledby="title desc">
+  <title id="title">I Launcher App Icon</title>
+  <desc id="desc">A minimal person shaped like a lowercase i standing in front of a television.</desc>
+  <defs>
+    <linearGradient id="bg" x1="12" y1="8" x2="92" y2="102" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2467C8"/>
+      <stop offset="1" stop-color="#03133F"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="104" height="104" rx="20" fill="url(#bg)"/>
+  <rect x="17" y="30" width="74" height="43" rx="8" fill="none" stroke="#EAF6FF" stroke-width="4"/>
+  <path d="M29 73 22 80M79 73 86 80" fill="none" stroke="#EAF6FF" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="54" cy="43" r="7" fill="#F4FAFF"/>
+  <rect x="42" y="53" width="24" height="37" rx="6" fill="#F4FAFF"/>
+</svg>
