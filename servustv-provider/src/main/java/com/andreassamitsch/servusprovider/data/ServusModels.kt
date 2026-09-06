@@ -26,6 +26,9 @@ data class ServusNewsEpisode(
     val categoryId: String? = null,
     val categoryTitle: String? = null,
     val contentType: String? = null,
+    /** Episode metadata supplied by ServusTV where the format has numbered seasons/episodes. */
+    val seasonNumber: Int? = null,
+    val episodeNumber: Int? = null,
     /**
      * Local first observation of this content ID during a periodic refresh. This is intentionally
      * separate from `publishedAtMillis`: it is an approximation (bounded by the refresh interval),
