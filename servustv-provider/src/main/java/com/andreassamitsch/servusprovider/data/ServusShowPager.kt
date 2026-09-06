@@ -54,8 +54,12 @@ class ServusShowPager(
                 ?: cachedShow.squareArtworkUri,
             logoUri = logo,
         )
+
+        // Some current ServusTV web pages expose their actual episode rail as list_type=reference.
+        // We can safely follow those links for an explicitly opened show because every returned card
+        // still passes conservative show-membership checks before it is hydrated or rendered.
         val cursors = detail?.collections.orEmpty()
-            .filter { it.listType != "reference" && !it.id.isNullOrBlank() }
+            .filter(ServusEditorialShowPolicy::includeOpenedShowCollection)
             .take(MAX_SHOW_COLLECTIONS)
             .map { ref ->
                 CollectionCursor(
@@ -89,6 +93,15 @@ class ServusShowPager(
             if (added == 0) break
             eligible = eligibleCandidates(state)
             guard++
+        }
+
+        // A few ServusTV On pages visibly contain an episode rail on the public website while their
+        // product response exposes no usable collection cards to this client. Only in that empty
+        // state do we query the existing ServusTV search endpoint by the exact show identity. The
+        // returned cards are subjected to the same membership checks as normal collection cards.
+        if (eligible.isEmpty() && !hasMoreSourcePages(state) && !state.searchFallbackAttempted) {
+            fetchSearchFallback(state)
+            eligible = eligibleCandidates(state)
         }
 
         val batch = eligible.take(ServusShowPagingPolicy.PAGE_SIZE)
@@ -140,6 +153,36 @@ class ServusShowPager(
             }
         }.awaitAll().flatten()
 
+        addSourceCards(state, loaded)
+    }
+
+    private suspend fun fetchSearchFallback(state: PagingState) {
+        state.searchFallbackAttempted = true
+        val loaded = mutableListOf<ServusSourcedCard>()
+
+        ServusEditorialShowPolicy.fallbackSearchQueries(state.show).forEach { query ->
+            var offset = 0
+            val seenOffsets = mutableSetOf<Int>()
+            var page = 0
+            while (seenOffsets.add(offset) && page < MAX_SEARCH_FALLBACK_PAGES) {
+                val response = runCatching { api.search(state.market, query, offset) }.getOrNull() ?: break
+                response.cards.forEach { card ->
+                    loaded += ServusSourcedCard(
+                        card = card,
+                        sourceCollectionLabel = "Suche: ${state.show.title}",
+                        contentKindHint = ServusNewsPolicy.contentKind(card),
+                    )
+                }
+                val next = ServusCatalogPolicy.nextOffset(response.meta?.next) ?: break
+                offset = next
+                page++
+            }
+        }
+
+        addSourceCards(state, loaded)
+    }
+
+    private fun addSourceCards(state: PagingState, loaded: List<ServusSourcedCard>): Int {
         val known = state.sourceCards.mapNotNullTo(mutableSetOf()) { it.card.id }
         var added = 0
         loaded.forEach { candidate ->
@@ -149,7 +192,7 @@ class ServusShowPager(
                 added++
             }
         }
-        added
+        return added
     }
 
     private fun eligibleCandidates(state: PagingState): List<ServusSourcedCard> {
@@ -175,6 +218,7 @@ class ServusShowPager(
 
     private fun belongsToOpenedShow(candidate: ServusSourcedCard, show: ServusShow): Boolean {
         if (ServusCatalogPolicy.belongsToShow(candidate, show.id, show.title)) return true
+        if (ServusEditorialShowPolicy.matchesKnownAlias(candidate, show)) return true
         if (show.id != ServusBranding.WEATHER_90_SECONDS_SHOW_ID) return false
 
         // ServusTV's dedicated weather-90 page exposes an editorial "Aktuelle Sendungen" rail.
@@ -195,17 +239,24 @@ class ServusShowPager(
                     val id = card.id ?: return@withPermit null
                     val detail = runCatching { api.product(state.market, id) }.getOrNull()
                     val merged = detail?.let { ServusCatalogPolicy.mergeEpisodeProduct(card, it) } ?: card
-                    val canonicalCard = if (
+                    val canonicalCard = when {
                         state.show.id == ServusBranding.WEATHER_90_SECONDS_SHOW_ID &&
-                        isAuthoritativeWeatherCollection(candidate) &&
-                        !ServusCatalogPolicy.belongsToShow(merged, state.show.id, state.show.title)
-                    ) {
-                        // Preserve the verified parent-format identity at the mapping boundary. Some
-                        // weather cards still say only "Servus Wetter" even though they came from the
-                        // dedicated 90-second product's own "Aktuelle Sendungen" collection.
-                        merged.copy(showName = state.show.title)
-                    } else {
-                        merged
+                            isAuthoritativeWeatherCollection(candidate) &&
+                            !ServusCatalogPolicy.belongsToShow(merged, state.show.id, state.show.title) -> {
+                            // Preserve the verified parent-format identity at the mapping boundary. Some
+                            // weather cards still say only "Servus Wetter" even though they came from the
+                            // dedicated 90-second product's own "Aktuelle Sendungen" collection.
+                            merged.copy(showName = state.show.title)
+                        }
+                        state.show.id == ServusBranding.FLEISCHHACKER_SHOW_ID &&
+                            ServusEditorialShowPolicy.matchesKnownAlias(candidate.copy(card = merged), state.show) &&
+                            !ServusCatalogPolicy.belongsToShow(merged, state.show.id, state.show.title) -> {
+                            // Search/reference cards can use the shorter web-hub wording "Servus Kommentar
+                            // mit Michael Fleischhacker". Once that stable editorial alias is verified, map
+                            // it back to the opened product title so the normal episode mapper remains strict.
+                            merged.copy(showName = state.show.title)
+                        }
+                        else -> merged
                     }
                     val mergedCandidate = candidate.copy(card = canonicalCard)
                     val fresh = ServusCatalogPolicy.toShowEpisode(
@@ -275,6 +326,7 @@ class ServusShowPager(
         val cursors: MutableList<CollectionCursor>,
         val sourceCards: MutableList<ServusSourcedCard>,
         val hydratedIds: MutableSet<String>,
+        var searchFallbackAttempted: Boolean = false,
     )
 
     private data class CollectionCursor(
@@ -288,8 +340,9 @@ class ServusShowPager(
 
     private companion object {
         const val DETAIL_PARALLELISM = 4
-        const val MAX_SHOW_COLLECTIONS = 5
+        const val MAX_SHOW_COLLECTIONS = 8
         const val MAX_PAGES_PER_COLLECTION = 12
         const val MAX_FETCH_ROUNDS_PER_PAGE = 4
+        const val MAX_SEARCH_FALLBACK_PAGES = 3
     }
 }
