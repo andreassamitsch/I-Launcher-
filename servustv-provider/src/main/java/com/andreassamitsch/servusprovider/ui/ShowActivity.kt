@@ -46,6 +46,7 @@ class ShowActivity : Activity() {
     private lateinit var currentSelectionStore: ServusCurrentChannelSelectionStore
     private lateinit var channelPublisher: ServusChannelPublisher
 
+    private lateinit var scrollView: ScrollView
     private lateinit var artworkView: ImageView
     private lateinit var logoView: ImageView
     private lateinit var titleView: TextView
@@ -97,6 +98,7 @@ class ShowActivity : Activity() {
                 updateHeader(page.show)
                 replaceEpisodeCards(page.show.episodes, focusId)
                 updateLoadState()
+                scrollView.post { maybeLoadMoreFromScroll() }
             } else {
                 hasMoreEpisodes = false
                 updateLoadState()
@@ -127,20 +129,22 @@ class ShowActivity : Activity() {
                 Toast.makeText(this@ShowActivity, "Weitere Folgen konnten nicht geladen werden.", Toast.LENGTH_SHORT).show()
             }
             updateLoadState()
+            scrollView.post { maybeLoadMoreFromScroll() }
         }
     }
 
     private fun buildUi(show: ServusShow, loadingEpisodes: Boolean): ScrollView {
         val padding = dp(if (isTvDevice) 36 else 18)
-        val scroll = ScrollView(this).apply {
+        scrollView = ScrollView(this).apply {
             setBackgroundColor(Color.rgb(9, 9, 9))
             isFillViewport = true
+            setOnScrollChangeListener { _, _, _, _, _ -> maybeLoadMoreFromScroll() }
         }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(padding, padding, padding, padding)
         }
-        scroll.addView(content, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        scrollView.addView(content, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
 
         val header = LinearLayout(this).apply {
             orientation = if (isTvDevice) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
@@ -288,7 +292,7 @@ class ShowActivity : Activity() {
         if (isTvDevice) {
             episodeCardsContainer.getChildAt(0)?.requestFocus() ?: currentButton.requestFocus()
         }
-        return scroll
+        return scrollView
     }
 
     private fun updateHeader(show: ServusShow) {
@@ -320,6 +324,22 @@ class ShowActivity : Activity() {
         focusTarget?.post { focusTarget?.requestFocus() }
     }
 
+    private fun maybeLoadMoreFromScroll() {
+        if (!::scrollView.isInitialized || loadingMore || !hasMoreEpisodes) return
+        val content = scrollView.getChildAt(0) ?: return
+        if (scrollView.height <= 0 || content.height <= 0) return
+        val remainingScrollPx = content.height - (scrollView.scrollY + scrollView.height)
+        if (
+            ServusShowPagingPolicy.shouldPrefetchFromScroll(
+                remainingScrollPx = remainingScrollPx,
+                thresholdPx = dp(SCROLL_PREFETCH_DISTANCE_DP),
+                hasMore = hasMoreEpisodes,
+            )
+        ) {
+            loadMoreEpisodes()
+        }
+    }
+
     private fun updateLoadState() {
         val show = currentShow
         when {
@@ -336,7 +356,7 @@ class ShowActivity : Activity() {
                 loadStateText.visibility = View.VISIBLE
             }
             hasMoreEpisodes -> {
-                loadStateText.text = "Weitere Folgen werden beim Weiterblättern automatisch geladen."
+                loadStateText.text = "Weitere Folgen werden automatisch nachgeladen."
                 loadStateText.visibility = View.VISIBLE
             }
             else -> loadStateText.visibility = View.GONE
@@ -484,4 +504,8 @@ class ShowActivity : Activity() {
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private companion object {
+        const val SCROLL_PREFETCH_DISTANCE_DP = 360
+    }
 }
