@@ -15,6 +15,31 @@ class ServusShowPagingPolicyTest {
     }
 
     @Test
+    fun touchScrollPrefetchStartsNearBottom() {
+        assertFalse(
+            ServusShowPagingPolicy.shouldPrefetchFromScroll(
+                remainingScrollPx = 900,
+                thresholdPx = 320,
+                hasMore = true,
+            ),
+        )
+        assertTrue(
+            ServusShowPagingPolicy.shouldPrefetchFromScroll(
+                remainingScrollPx = 250,
+                thresholdPx = 320,
+                hasMore = true,
+            ),
+        )
+        assertFalse(
+            ServusShowPagingPolicy.shouldPrefetchFromScroll(
+                remainingScrollPx = 0,
+                thresholdPx = 320,
+                hasMore = false,
+            ),
+        )
+    }
+
+    @Test
     fun mergeKeepsMoreThanTvChannelLimitAndPrefersHydratedMetadata() {
         val cached = (1..24).map { index -> episode(index, description = null) }
         val hydrated = listOf(
