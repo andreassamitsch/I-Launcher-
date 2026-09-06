@@ -9,6 +9,7 @@ import android.widget.ImageView
 import com.andreassamitsch.servusprovider.R
 import com.andreassamitsch.servusprovider.api.ServusNetwork
 import com.andreassamitsch.servusprovider.data.ServusBranding
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -21,6 +22,7 @@ object ServusArtworkLoader {
     private const val DEFAULT_TARGET_PX = 640
     private const val MIN_TARGET_PX = 256
     private const val MAX_TARGET_PX = 1024
+    private const val MIN_TITLE_TREATMENT_HEIGHT_DP = 56
     private val decodeSemaphore = Semaphore(3)
 
     private val cache = object : LruCache<String, Bitmap>(12 * 1024) {
@@ -29,6 +31,10 @@ object ServusArtworkLoader {
 
     fun load(scope: CoroutineScope, imageView: ImageView, url: String?) {
         if (url.isNullOrBlank()) return
+
+        if (isTitleTreatment(url)) {
+            prepareTitleTreatmentView(imageView)
+        }
 
         if (ServusBranding.isNinetySecondLogoUri(url)) {
             // The 90-second logo is part of this APK. Never make ServusTV's own UI depend on the
@@ -62,6 +68,32 @@ object ServusArtworkLoader {
             } ?: return@launch
             cache.put(cacheKey, bitmap)
             if (imageView.tag == cacheKey) imageView.setImageBitmap(bitmap)
+        }
+    }
+
+    private fun isTitleTreatment(url: String): Boolean =
+        ServusBranding.isNinetySecondLogoUri(url) ||
+            url.contains("title_treatment", ignoreCase = true) ||
+            url.contains("title-treatment", ignoreCase = true)
+
+    /**
+     * Title treatments are logos, not artwork crops. Some ServusTV treatments (notably Servus
+     * Wetter) are considerably taller than the generic news wordmark. Keep their full aspect ratio
+     * and give compact cards enough vertical room instead of squeezing them into the old 34/42dp
+     * slot where the script treatment appeared visually clipped.
+     */
+    private fun prepareTitleTreatmentView(imageView: ImageView) {
+        imageView.scaleType = ImageView.ScaleType.CENTER_INSIDE
+        imageView.adjustViewBounds = false
+        val padding = (4 * imageView.resources.displayMetrics.density).roundToInt()
+        imageView.setPadding(0, padding, 0, padding)
+
+        val params = imageView.layoutParams ?: return
+        val minHeight = (MIN_TITLE_TREATMENT_HEIGHT_DP * imageView.resources.displayMetrics.density).roundToInt()
+        if (params.height in 1 until minHeight) {
+            params.height = minHeight
+            imageView.layoutParams = params
+            imageView.requestLayout()
         }
     }
 
