@@ -103,7 +103,7 @@ class ServusHubStore(context: Context) {
                 },
             )
         }
-        return ServusCatalogAugmentation.withNinetySecondNewsShow(
+        return ServusCatalogAugmentation.withEditorialShows(
             categories = canonical,
             currentEpisodes = newsStore.loadEpisodes(),
         )

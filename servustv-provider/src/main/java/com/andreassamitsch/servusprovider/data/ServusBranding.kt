@@ -1,10 +1,10 @@
 package com.andreassamitsch.servusprovider.data
 
 /**
- * Canonical show identity/branding for the news formats whose ServusTV API structure is known.
+ * Canonical show identity/branding for editorial formats whose ServusTV API structure is known.
  *
  * These values are deliberately independent from the mutable catalogue cache. The generic news
- * product exposes a stable `rbtv_title_treatment`. The 90-second show has no title-treatment in
+ * product exposes a stable `rbtv_title_treatment`. The 90-second news show has no title-treatment in
  * the API, so its verified bundled logo is used locally. `NEWS_90_SECONDS_LOGO_URI` is the stable
  * transport marker written to Android TvProvider; ServusTV itself renders the bundled drawable
  * directly and must never depend on resolving that cross-process URI for its own UI.
@@ -14,6 +14,12 @@ object ServusBranding {
     const val NEWS_SHOW_NAME = "Servus Nachrichten"
     const val NEWS_90_SECONDS_SHOW_ID = "AAYGF2URW6ALQYE42IJK"
     const val NEWS_90_SECONDS_SHOW_NAME = "Servus Nachrichten in 90 Sekunden"
+
+    /** Dedicated ServusTV-On product which is not reliably present in the generic Sendungen rail. */
+    const val WEATHER_90_SECONDS_SHOW_ID = "AA90VBHT0KRB2CMU1AHQ"
+    const val WEATHER_90_SECONDS_SHOW_NAME = "Servus Wetter in 90 Sekunden"
+    const val WEATHER_90_SECONDS_DESCRIPTION =
+        "Das Servus Wetter in 90 Sekunden: Ab 6:00 Uhr mehrmals täglich bei ServusTV On!"
 
     const val NEWS_LOGO_URI =
         "https://resources.redbull.tv/AA-1Y5RJCD1H2111/rbtv_title_treatment/f_webp,c_fill,h_180,q_75?namespace=stv&refresh=true"
