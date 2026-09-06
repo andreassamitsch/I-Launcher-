@@ -2,7 +2,7 @@ package com.andreassamitsch.servusprovider.data
 
 import java.util.Locale
 
-/** Pure paging helpers kept separate from Android/UI code so focus-triggered lazy loading is testable. */
+/** Pure paging helpers kept separate from Android/UI code so lazy-loading triggers are testable. */
 internal object ServusShowPagingPolicy {
     const val PAGE_SIZE = 8
     const val PREFETCH_DISTANCE = 3
@@ -16,6 +16,17 @@ internal object ServusShowPagingPolicy {
         if (!hasMore || focusedIndex < 0 || itemCount <= 0) return false
         return focusedIndex >= (itemCount - prefetchDistance.coerceAtLeast(1)).coerceAtLeast(0)
     }
+
+    /**
+     * Touch devices do not move Android focus while the user scrolls a ScrollView. The original
+     * focus-only trigger therefore never requested the next batch on phones/tablets. Keep the same
+     * lazy behaviour by prefetching once the remaining scroll distance reaches a small threshold.
+     */
+    fun shouldPrefetchFromScroll(
+        remainingScrollPx: Int,
+        thresholdPx: Int,
+        hasMore: Boolean,
+    ): Boolean = hasMore && remainingScrollPx <= thresholdPx.coerceAtLeast(0)
 
     /**
      * Freshly hydrated entries win over cached entries with the same ID. The result deliberately has

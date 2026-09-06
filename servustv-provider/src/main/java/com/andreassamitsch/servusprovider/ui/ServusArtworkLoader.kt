@@ -74,13 +74,17 @@ object ServusArtworkLoader {
     private fun isTitleTreatment(url: String): Boolean =
         ServusBranding.isNinetySecondLogoUri(url) ||
             url.contains("title_treatment", ignoreCase = true) ||
-            url.contains("title-treatment", ignoreCase = true)
+            url.contains("title-treatment", ignoreCase = true) ||
+            url.contains("treatment", ignoreCase = true) ||
+            url.contains("wordmark", ignoreCase = true) ||
+            url.contains("_logo", ignoreCase = true) ||
+            url.contains("/logo", ignoreCase = true)
 
     /**
-     * Title treatments are logos, not artwork crops. Some ServusTV treatments (notably Servus
-     * Wetter) are considerably taller than the generic news wordmark. Keep their full aspect ratio
-     * and give compact cards enough vertical room instead of squeezing them into the old 34/42dp
-     * slot where the script treatment appeared visually clipped.
+     * Title treatments, wordmarks and show logos are logos, not artwork crops. Some ServusTV
+     * treatments (notably Servus Wetter) are considerably taller than the generic news wordmark.
+     * Keep their full aspect ratio and give compact cards enough vertical room instead of squeezing
+     * them into the old 34/42dp slot where script treatments appeared visually clipped.
      */
     private fun prepareTitleTreatmentView(imageView: ImageView) {
         imageView.scaleType = ImageView.ScaleType.CENTER_INSIDE

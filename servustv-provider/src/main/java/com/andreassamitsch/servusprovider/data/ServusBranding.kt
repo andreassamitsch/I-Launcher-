@@ -22,7 +22,7 @@ object ServusBranding {
         "Das Servus Wetter in 90 Sekunden: Ab 6:00 Uhr mehrmals täglich bei ServusTV On!"
 
     const val NEWS_LOGO_URI =
-        "https://resources.redbull.tv/AA-1Y5RJCD1H2111/rbtv_title_treatment/f_webp,c_fill,h_180,q_75?namespace=stv&refresh=true"
+        "https://resources.redbull.tv/AA-1Y5RJCD1H2111/rbtv_title_treatment/f_webp,h_180,q_80?namespace=stv&refresh=true"
     const val NEWS_90_SECONDS_LOGO_URI =
         "content://com.andreassamitsch.servusprovider.branding/servus_news_90_logo.png"
     const val NEWS_90_SECONDS_LEGACY_RESOURCE_URI =
