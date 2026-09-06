@@ -113,16 +113,20 @@ class ServusBrandingTest {
     }
 
     @Test
-    fun legacyCroppedTitleTreatmentIsNormalizedWithoutChangingArtwork() {
+    fun brandingTransformsAreCanonicalFitWithoutChangingArtwork() {
         val croppedLogo =
             "https://resources.redbull.tv/WEATHER/rbtv_title_treatment/f_webp,c_fill,h_180,q_75?namespace=stv&refresh=true"
+        val heightOnlyLogo =
+            "https://resources.redbull.tv/WEATHER/rbtv_wordmark/f_webp,h_180,q_80?namespace=stv&refresh=true"
         val artwork =
             "https://resources.redbull.tv/WEATHER/rbtv_display_art_landscape/f_webp,c_fill,w_1280,q_72?namespace=stv&refresh=true"
+        val expectedTreatment =
+            "https://resources.redbull.tv/WEATHER/rbtv_title_treatment/f_webp,c_fit,w_720,h_220,q_85?namespace=stv&refresh=true"
+        val expectedWordmark =
+            "https://resources.redbull.tv/WEATHER/rbtv_wordmark/f_webp,c_fit,w_720,h_220,q_85?namespace=stv&refresh=true"
 
-        assertEquals(
-            "https://resources.redbull.tv/WEATHER/rbtv_title_treatment/f_webp,h_180,q_75?namespace=stv&refresh=true",
-            ServusBranding.normalizeLogoUri(croppedLogo),
-        )
+        assertEquals(expectedTreatment, ServusBranding.normalizeLogoUri(croppedLogo))
+        assertEquals(expectedWordmark, ServusBranding.normalizeLogoUri(heightOnlyLogo))
         assertEquals(artwork, ServusBranding.normalizeLogoUri(artwork))
     }
 
