@@ -1,7 +1,6 @@
 package com.andreassamitsch.servusprovider.data
 
 import android.content.Context
-import com.andreassamitsch.servusprovider.api.SearchResponseDto
 import com.andreassamitsch.servusprovider.api.ServusApi
 import com.andreassamitsch.servusprovider.api.ServusCardDto
 import com.andreassamitsch.servusprovider.api.ServusNetwork
@@ -112,7 +111,7 @@ class ServusShowPager(
         val active = state.cursors.filter { !it.exhausted }
         if (active.isEmpty()) return@coroutineScope 0
 
-        active.map { cursor ->
+        val loaded = active.map { cursor ->
             async {
                 val offset = cursor.nextOffset ?: return@async emptyList<ServusSourcedCard>()
                 val response = runCatching { api.collection(state.market, cursor.id, offset) }.getOrNull()
@@ -139,13 +138,18 @@ class ServusShowPager(
                     )
                 }
             }
-        }.awaitAll().flatten().also { loaded ->
-            val known = state.sourceCards.mapNotNullTo(mutableSetOf()) { it.card.id }
-            loaded.forEach { candidate ->
-                val id = candidate.card.id
-                if (id == null || known.add(id)) state.sourceCards += candidate
+        }.awaitAll().flatten()
+
+        val known = state.sourceCards.mapNotNullTo(mutableSetOf()) { it.card.id }
+        var added = 0
+        loaded.forEach { candidate ->
+            val id = candidate.card.id
+            if (id == null || known.add(id)) {
+                state.sourceCards += candidate
+                added++
             }
-        }.size
+        }
+        added
     }
 
     private fun eligibleCandidates(state: PagingState): List<ServusSourcedCard> {
@@ -176,8 +180,7 @@ class ServusShowPager(
         // ServusTV's dedicated weather-90 page exposes an editorial "Aktuelle Sendungen" rail.
         // That collection is authoritative even when individual cards still use "Servus Wetter"
         // as show_name, which would otherwise make the generic exact-name membership check reject it.
-        val source = normalizeWords(candidate.sourceCollectionLabel.orEmpty())
-        return source == "aktuelle sendungen"
+        return isAuthoritativeWeatherCollection(candidate)
     }
 
     private suspend fun hydrateBatch(
@@ -191,8 +194,20 @@ class ServusShowPager(
                     val card = candidate.card
                     val id = card.id ?: return@withPermit null
                     val detail = runCatching { api.product(state.market, id) }.getOrNull()
-                    val mergedCard = detail?.let { ServusCatalogPolicy.mergeEpisodeProduct(card, it) } ?: card
-                    val mergedCandidate = candidate.copy(card = mergedCard)
+                    val merged = detail?.let { ServusCatalogPolicy.mergeEpisodeProduct(card, it) } ?: card
+                    val canonicalCard = if (
+                        state.show.id == ServusBranding.WEATHER_90_SECONDS_SHOW_ID &&
+                        isAuthoritativeWeatherCollection(candidate) &&
+                        !ServusCatalogPolicy.belongsToShow(merged, state.show.id, state.show.title)
+                    ) {
+                        // Preserve the verified parent-format identity at the mapping boundary. Some
+                        // weather cards still say only "Servus Wetter" even though they came from the
+                        // dedicated 90-second product's own "Aktuelle Sendungen" collection.
+                        merged.copy(showName = state.show.title)
+                    } else {
+                        merged
+                    }
+                    val mergedCandidate = candidate.copy(card = canonicalCard)
                     val fresh = ServusCatalogPolicy.toShowEpisode(
                         candidate = mergedCandidate,
                         showId = state.show.id,
@@ -208,8 +223,8 @@ class ServusShowPager(
                         fresh.copy(
                             description = fresh.description ?: cached?.description,
                             publishedAtMillis = fresh.publishedAtMillis ?: cached?.publishedAtMillis,
-                            seasonNumber = mergedCard.seasonNumber ?: cached?.seasonNumber,
-                            episodeNumber = mergedCard.episodeNumber ?: cached?.episodeNumber,
+                            seasonNumber = canonicalCard.seasonNumber ?: cached?.seasonNumber,
+                            episodeNumber = canonicalCard.episodeNumber ?: cached?.episodeNumber,
                         ),
                     )
                 }
@@ -232,6 +247,9 @@ class ServusShowPager(
         }
         if (changed) hubStore.saveCatalogContent(updated)
     }
+
+    private fun isAuthoritativeWeatherCollection(candidate: ServusSourcedCard): Boolean =
+        normalizeWords(candidate.sourceCollectionLabel.orEmpty()) == "aktuelle sendungen"
 
     private fun hasMoreSourcePages(state: PagingState): Boolean = state.cursors.any { !it.exhausted }
 
