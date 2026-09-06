@@ -21,8 +21,12 @@ object ServusBranding {
     const val WEATHER_90_SECONDS_DESCRIPTION =
         "Das Servus Wetter in 90 Sekunden: Ab 6:00 Uhr mehrmals täglich bei ServusTV On!"
 
+    /** Official ServusTV On page currently exposes episodes under this stable product ID. */
+    const val FLEISCHHACKER_SHOW_ID = "AA95DDIZGB942P3W94TM"
+    const val FLEISCHHACKER_SHOW_NAME = "Der Servus Kommentar von Michael Fleischhacker"
+
     const val NEWS_LOGO_URI =
-        "https://resources.redbull.tv/AA-1Y5RJCD1H2111/rbtv_title_treatment/f_webp,h_180,q_80?namespace=stv&refresh=true"
+        "https://resources.redbull.tv/AA-1Y5RJCD1H2111/rbtv_title_treatment/f_webp,c_fit,w_720,h_220,q_85?namespace=stv&refresh=true"
     const val NEWS_90_SECONDS_LOGO_URI =
         "content://com.andreassamitsch.servusprovider.branding/servus_news_90_logo.png"
     const val NEWS_90_SECONDS_LEGACY_RESOURCE_URI =
@@ -30,23 +34,29 @@ object ServusBranding {
 
     private const val LAZY_LOGO_PREFIX = "iservus-branding://show/"
     private const val ARTWORK_HOST_PREFIX = "https://resources.redbull.tv/"
+    private val brandingTransformPattern = Regex("/f_[^?]+(?=\\?)", RegexOption.IGNORE_CASE)
 
     fun isNinetySecondLogoUri(uri: String?): Boolean =
         uri == NEWS_90_SECONDS_LOGO_URI || uri == NEWS_90_SECONDS_LEGACY_RESOURCE_URI
 
     /**
-     * Canonicalises a resolved logo URI. Older development builds requested title treatments with
-     * the CDN crop transform `c_fill`; that crop is destructive for transparent wordmarks and can
-     * visibly cut off tall scripts such as Servus Wetter. Strip the crop only for actual branding
-     * resources, never for normal artwork.
+     * Canonicalises a resolved ServusTV branding URI.
+     *
+     * `c_fill` was visibly destructive for several transparent show wordmarks. Merely deleting it
+     * still left the CDN free to interpret a one-dimensional height transform differently between
+     * assets. All real Red Bull/ServusTV branding resources therefore use one explicit `c_fit`
+     * bounding box. Normal artwork URLs are deliberately untouched.
      */
     fun normalizeLogoUri(uri: String?): String? {
         val value = uri?.trim()?.takeIf { it.isNotBlank() } ?: return null
         if (!value.startsWith(ARTWORK_HOST_PREFIX, ignoreCase = true)) return value
         if (!looksLikeBrandingResource(value)) return value
-        return value
-            .replace(",c_fill", "", ignoreCase = true)
-            .replace("%2Cc_fill", "", ignoreCase = true)
+
+        return if (brandingTransformPattern.containsMatchIn(value)) {
+            brandingTransformPattern.replace(value, "/f_webp,c_fit,w_720,h_220,q_85")
+        } else {
+            value
+        }
     }
 
     fun logoUriForShow(showId: String?, fallback: String?): String? = when (showId) {
