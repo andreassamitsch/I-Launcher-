@@ -1,22 +1,36 @@
 package com.andreassamitsch.servusprovider.data
 
+import java.util.Locale
+
 /**
- * Adds editorially verified ServusTV formats that are available through the current/news APIs but
- * are not necessarily exposed as standalone cards by the generic `sendungen` catalogue.
+ * Adds editorially verified ServusTV formats that are available through dedicated ServusTV-On
+ * products but are not necessarily exposed as standalone cards by the generic `sendungen` catalogue.
  *
- * `Servus Nachrichten in 90 Sekunden` is such a format: ServusTV exposes a dedicated product and
- * current episodes, while the generic catalogue can omit the show card. Keeping the augmentation
- * at the catalogue boundary makes the show available consistently to the standalone UI, show
- * details, user selections and TvProvider publishing without duplicating it when ServusTV starts
- * returning the show normally.
+ * Keep this augmentation at the cache boundary so standalone UI, show pages, user selections and
+ * TvProvider publishing all see the same identities without creating duplicates when ServusTV later
+ * starts returning one of these products in the generic catalogue itself.
  */
 internal object ServusCatalogAugmentation {
-    fun withNinetySecondNewsShow(
+    fun withEditorialShows(
         categories: List<ServusCategory>,
         currentEpisodes: List<ServusNewsEpisode>,
     ): List<ServusCategory> {
         if (categories.isEmpty()) return categories
+        return addWeatherNinetySecondShow(
+            addNewsNinetySecondShow(categories, currentEpisodes),
+        )
+    }
 
+    /** Backwards-compatible helper retained for existing callers/tests from the first augmentation. */
+    fun withNinetySecondNewsShow(
+        categories: List<ServusCategory>,
+        currentEpisodes: List<ServusNewsEpisode>,
+    ): List<ServusCategory> = withEditorialShows(categories, currentEpisodes)
+
+    private fun addNewsNinetySecondShow(
+        categories: List<ServusCategory>,
+        currentEpisodes: List<ServusNewsEpisode>,
+    ): List<ServusCategory> {
         val targetCategoryIndex = categories.indexOfFirst { category ->
             category.shows.any { show ->
                 show.id == ServusBranding.NEWS_SHOW_ID ||
@@ -79,16 +93,84 @@ internal object ServusCatalogAugmentation {
             val mainNewsIndex = targetCategory.shows.indexOfFirst {
                 it.id == ServusBranding.NEWS_SHOW_ID
             }
-            val insertionIndex = if (mainNewsIndex >= 0) mainNewsIndex + 1 else targetCategory.shows.size
-            buildList {
-                addAll(targetCategory.shows.take(insertionIndex))
-                add(show)
-                addAll(targetCategory.shows.drop(insertionIndex))
-            }
+            insertAfter(targetCategory.shows, mainNewsIndex, show)
         }
 
         return categories.mapIndexed { index, category ->
             if (index == targetCategoryIndex) category.copy(shows = updatedShows) else category
         }
     }
+
+    private fun addWeatherNinetySecondShow(categories: List<ServusCategory>): List<ServusCategory> {
+        val targetCategoryIndex = categories.indexOfFirst { category ->
+            category.shows.any { show ->
+                show.id == ServusBranding.WEATHER_90_SECONDS_SHOW_ID || isMainWeatherShow(show)
+            }
+        }
+        if (targetCategoryIndex < 0) return categories
+
+        val category = categories[targetCategoryIndex]
+        val existingIndex = category.shows.indexOfFirst {
+            it.id == ServusBranding.WEATHER_90_SECONDS_SHOW_ID
+        }
+        val mainWeatherIndex = category.shows.indexOfFirst(::isMainWeatherShow)
+        val mainWeather = category.shows.getOrNull(mainWeatherIndex)
+
+        val updatedShows = if (existingIndex >= 0) {
+            category.shows.mapIndexed { index, show ->
+                if (index != existingIndex) return@mapIndexed show
+                show.copy(
+                    title = ServusBranding.WEATHER_90_SECONDS_SHOW_NAME,
+                    description = show.description ?: ServusBranding.WEATHER_90_SECONDS_DESCRIPTION,
+                    categoryId = category.id,
+                    categoryTitle = category.title,
+                    artworkUri = show.artworkUri ?: mainWeather?.artworkUri,
+                    squareArtworkUri = show.squareArtworkUri ?: mainWeather?.squareArtworkUri,
+                    logoUri = show.logoUri ?: mainWeather?.logoUri,
+                )
+            }
+        } else {
+            val synthetic = ServusShow(
+                id = ServusBranding.WEATHER_90_SECONDS_SHOW_ID,
+                title = ServusBranding.WEATHER_90_SECONDS_SHOW_NAME,
+                description = ServusBranding.WEATHER_90_SECONDS_DESCRIPTION,
+                categoryId = category.id,
+                categoryTitle = category.title,
+                // Use the official main-weather artwork as a temporary catalogue fallback. Opening
+                // the show lazily replaces it with the dedicated product metadata when available.
+                artworkUri = mainWeather?.artworkUri,
+                squareArtworkUri = mainWeather?.squareArtworkUri,
+                logoUri = mainWeather?.logoUri,
+                episodes = emptyList(),
+            )
+            insertAfter(category.shows, mainWeatherIndex, synthetic)
+        }
+
+        return categories.mapIndexed { index, value ->
+            if (index == targetCategoryIndex) value.copy(shows = updatedShows) else value
+        }
+    }
+
+    private fun isMainWeatherShow(show: ServusShow): Boolean {
+        if (show.id == ServusBranding.WEATHER_90_SECONDS_SHOW_ID) return false
+        return normalize(show.title) == "servus wetter"
+    }
+
+    private fun insertAfter(
+        shows: List<ServusShow>,
+        anchorIndex: Int,
+        show: ServusShow,
+    ): List<ServusShow> {
+        val insertionIndex = if (anchorIndex >= 0) anchorIndex + 1 else shows.size
+        return buildList {
+            addAll(shows.take(insertionIndex))
+            add(show)
+            addAll(shows.drop(insertionIndex))
+        }
+    }
+
+    private fun normalize(value: String): String = value
+        .lowercase(Locale.GERMAN)
+        .replace(Regex("""[^a-z0-9äöüß]+"""), " ")
+        .trim()
 }
