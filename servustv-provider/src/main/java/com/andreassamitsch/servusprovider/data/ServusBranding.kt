@@ -28,14 +28,58 @@ object ServusBranding {
     const val NEWS_90_SECONDS_LEGACY_RESOURCE_URI =
         "android.resource://com.andreassamitsch.servusprovider/drawable/servus_news_90_logo"
 
+    private const val LAZY_LOGO_PREFIX = "iservus-branding://show/"
+    private const val ARTWORK_HOST_PREFIX = "https://resources.redbull.tv/"
+
     fun isNinetySecondLogoUri(uri: String?): Boolean =
         uri == NEWS_90_SECONDS_LOGO_URI || uri == NEWS_90_SECONDS_LEGACY_RESOURCE_URI
+
+    /**
+     * Canonicalises a resolved logo URI. Older development builds requested title treatments with
+     * the CDN crop transform `c_fill`; that crop is destructive for transparent wordmarks and can
+     * visibly cut off tall scripts such as Servus Wetter. Strip the crop only for actual branding
+     * resources, never for normal artwork.
+     */
+    fun normalizeLogoUri(uri: String?): String? {
+        val value = uri?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        if (!value.startsWith(ARTWORK_HOST_PREFIX, ignoreCase = true)) return value
+        if (!looksLikeBrandingResource(value)) return value
+        return value
+            .replace(",c_fill", "", ignoreCase = true)
+            .replace("%2Cc_fill", "", ignoreCase = true)
+    }
 
     fun logoUriForShow(showId: String?, fallback: String?): String? = when (showId) {
         NEWS_SHOW_ID -> NEWS_LOGO_URI
         NEWS_90_SECONDS_SHOW_ID -> NEWS_90_SECONDS_LOGO_URI
-        else -> fallback
+        else -> normalizeLogoUri(fallback)
     }
+
+    /**
+     * Catalogue cards are Local First. If the lightweight catalogue card has no logo metadata, keep
+     * a stable lazy marker instead of guessing a resource filename. The artwork loader resolves that
+     * marker from the official product detail only when the card becomes visible.
+     */
+    fun catalogueLogoUriForShow(showId: String?, fallback: String?): String? =
+        logoUriForShow(showId, fallback)
+            ?: showId?.trim()?.takeIf { it.isNotBlank() }?.let(::lazyLogoUri)
+
+    fun isLazyLogoUri(uri: String?): Boolean = uri?.startsWith(LAZY_LOGO_PREFIX) == true
+
+    fun showIdFromLazyLogoUri(uri: String?): String? = uri
+        ?.takeIf(::isLazyLogoUri)
+        ?.removePrefix(LAZY_LOGO_PREFIX)
+        ?.takeIf { it.isNotBlank() }
+
+    private fun lazyLogoUri(showId: String): String = "$LAZY_LOGO_PREFIX$showId"
+
+    private fun looksLikeBrandingResource(uri: String): Boolean =
+        uri.contains("title_treatment", ignoreCase = true) ||
+            uri.contains("title-treatment", ignoreCase = true) ||
+            uri.contains("treatment", ignoreCase = true) ||
+            uri.contains("wordmark", ignoreCase = true) ||
+            uri.contains("_logo", ignoreCase = true) ||
+            uri.contains("/logo", ignoreCase = true)
 
     fun logoUriForEpisode(episode: ServusNewsEpisode, fallback: String?): String? = when {
         ServusNewsPolicy.contentKind(episode) == ServusContentKind.NEWS_90_SECONDS ->
@@ -43,7 +87,7 @@ object ServusBranding {
         ServusNewsPolicy.contentKind(episode) == ServusContentKind.FULL_NEWS -> NEWS_LOGO_URI
         episode.showId == NEWS_90_SECONDS_SHOW_ID -> NEWS_90_SECONDS_LOGO_URI
         episode.showId == NEWS_SHOW_ID -> NEWS_LOGO_URI
-        else -> fallback
+        else -> normalizeLogoUri(fallback)
     }
 
     /**

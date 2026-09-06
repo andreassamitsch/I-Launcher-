@@ -1,6 +1,8 @@
 package com.andreassamitsch.servusprovider.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ServusBrandingTest {
@@ -108,5 +110,28 @@ class ServusBrandingTest {
         assertEquals(ServusBranding.NEWS_SHOW_ID, repaired.showId)
         assertEquals(ServusBranding.NEWS_SHOW_NAME, repaired.showName)
         assertEquals(ServusBranding.NEWS_LOGO_URI, repaired.logoUri)
+    }
+
+    @Test
+    fun legacyCroppedTitleTreatmentIsNormalizedWithoutChangingArtwork() {
+        val croppedLogo =
+            "https://resources.redbull.tv/WEATHER/rbtv_title_treatment/f_webp,c_fill,h_180,q_75?namespace=stv&refresh=true"
+        val artwork =
+            "https://resources.redbull.tv/WEATHER/rbtv_display_art_landscape/f_webp,c_fill,w_1280,q_72?namespace=stv&refresh=true"
+
+        assertEquals(
+            "https://resources.redbull.tv/WEATHER/rbtv_title_treatment/f_webp,h_180,q_75?namespace=stv&refresh=true",
+            ServusBranding.normalizeLogoUri(croppedLogo),
+        )
+        assertEquals(artwork, ServusBranding.normalizeLogoUri(artwork))
+    }
+
+    @Test
+    fun missingGenericShowLogoUsesResolvableLazyMarker() {
+        val uri = ServusBranding.catalogueLogoUriForShow("SHOW-123", null)
+
+        assertTrue(ServusBranding.isLazyLogoUri(uri))
+        assertEquals("SHOW-123", ServusBranding.showIdFromLazyLogoUri(uri))
+        assertFalse(ServusBranding.isLazyLogoUri("https://resources.redbull.tv/logo.webp"))
     }
 }

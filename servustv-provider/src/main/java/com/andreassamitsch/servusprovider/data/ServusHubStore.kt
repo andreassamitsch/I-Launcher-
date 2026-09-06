@@ -64,6 +64,29 @@ class ServusHubStore(context: Context) {
             .apply()
     }
 
+    /**
+     * Persists a branding resource discovered lazily from a show's official product detail. This is
+     * intentionally metadata-only and therefore must not advance the complete catalogue refresh time.
+     */
+    fun updateShowLogo(showId: String, logoUri: String) {
+        val resolved = ServusBranding.logoUriForShow(showId, logoUri) ?: return
+        val categories = loadCategories()
+        var changed = false
+        val updated = categories.map { category ->
+            category.copy(
+                shows = category.shows.map { show ->
+                    if (show.id != showId || show.logoUri == resolved) {
+                        show
+                    } else {
+                        changed = true
+                        show.copy(logoUri = resolved)
+                    }
+                },
+            )
+        }
+        if (changed) saveCatalogContent(updated)
+    }
+
     fun saveCatalogDiagnostic(message: String) {
         preferences.edit()
             .putString(KEY_CATALOG_DIAGNOSTIC, ServusCatalogDiagnosticBuilder.sanitize(message))
@@ -97,7 +120,7 @@ class ServusHubStore(context: Context) {
             category.copy(
                 shows = category.shows.map { show ->
                     show.copy(
-                        logoUri = ServusBranding.logoUriForShow(show.id, show.logoUri),
+                        logoUri = ServusBranding.catalogueLogoUriForShow(show.id, show.logoUri),
                         episodes = show.episodes.map(ServusBranding::canonicalizeEpisode),
                     )
                 },
