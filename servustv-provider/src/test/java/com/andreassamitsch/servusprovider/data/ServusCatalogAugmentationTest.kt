@@ -60,7 +60,7 @@ class ServusCatalogAugmentationTest {
                 episode(
                     id = "OLD",
                     kind = ServusContentKind.NEWS_90_SECONDS,
-                    publishedAtMillis = 1_000L,
+                    publishedAtMillis = 60_000L,
                 ),
             ),
         )
@@ -79,7 +79,7 @@ class ServusCatalogAugmentationTest {
                 episode(
                     id = "NEW",
                     kind = ServusContentKind.NEWS_90_SECONDS,
-                    publishedAtMillis = 2_000L,
+                    publishedAtMillis = 120_000L,
                     artworkUri = "https://example.invalid/new.webp",
                 ),
             ),
