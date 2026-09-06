@@ -11,6 +11,7 @@
         android:allowBackup="false"
         android:banner="@drawable/tv_banner"
         android:icon="@drawable/ic_launcher"
+        android:roundIcon="@drawable/ic_launcher"
         android:label="ServusTV"
         android:supportsRtl="true"
         android:theme="@style/Theme.ServusProvider">
