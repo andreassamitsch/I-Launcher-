@@ -14,11 +14,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.andreassamitsch.ilauncher.system.androidSystemSettingsIntent
 import com.andreassamitsch.ilauncher.ui.components.TouchButton
 
 internal val GoogleTvTopNavigationHeight = 58.dp
@@ -30,6 +32,7 @@ internal fun GoogleTvTopNavigation(
     onOpenSectionSettings: (LauncherSection) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val selectedSection = when (activeSection) {
         LauncherSection.LiveTv -> LauncherSection.Settings
         LauncherSection.Apps -> null
@@ -115,6 +118,15 @@ internal fun GoogleTvTopNavigation(
                     compact = true,
                     glyph = NavGlyph.Settings,
                 )
+                NavDestination(
+                    null,
+                    LauncherSection.Settings,
+                    false,
+                    null,
+                    { context.startActivity(androidSystemSettingsIntent()) },
+                    compact = true,
+                    glyph = NavGlyph.AndroidSystem,
+                )
             }
         }
         GoogleTvCollapsedNavigationCue(
@@ -146,7 +158,7 @@ internal fun GoogleTvCollapsedNavigationCue(modifier: Modifier = Modifier) {
     }
 }
 
-private enum class NavGlyph { Home, Search, Settings }
+private enum class NavGlyph { Home, Search, Settings, AndroidSystem }
 
 @Suppress("UNUSED_PARAMETER")
 @Composable
@@ -190,6 +202,7 @@ private fun NavDestination(
             NavGlyph.Home -> HomeGlyph(glyphColor)
             NavGlyph.Search -> SearchGlyph(glyphColor)
             NavGlyph.Settings -> SettingsGlyph(glyphColor)
+            NavGlyph.AndroidSystem -> AndroidSystemGlyph(glyphColor)
             null -> Unit
         }
         label?.let { Text(it, style = MaterialTheme.typography.labelLarge, maxLines = 1) }
@@ -256,6 +269,50 @@ private fun SettingsGlyph(color: Color) {
             size.minDimension * .15f,
             androidx.compose.ui.geometry.Offset(centerX, centerY),
             style = Stroke(stroke),
+        )
+    }
+}
+
+@Composable
+private fun AndroidSystemGlyph(color: Color) {
+    Canvas(Modifier.size(18.dp)) {
+        val stroke = 1.55.dp.toPx()
+        val left = size.width * .22f
+        val right = size.width * .78f
+        val top = size.height * .36f
+        val bottom = size.height * .76f
+        val corner = size.minDimension * .10f
+
+        drawRoundRect(
+            color = color,
+            topLeft = androidx.compose.ui.geometry.Offset(left, top),
+            size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(corner, corner),
+            style = Stroke(stroke),
+        )
+        drawLine(
+            color,
+            androidx.compose.ui.geometry.Offset(size.width * .34f, top),
+            androidx.compose.ui.geometry.Offset(size.width * .25f, size.height * .20f),
+            stroke,
+            StrokeCap.Round,
+        )
+        drawLine(
+            color,
+            androidx.compose.ui.geometry.Offset(size.width * .66f, top),
+            androidx.compose.ui.geometry.Offset(size.width * .75f, size.height * .20f),
+            stroke,
+            StrokeCap.Round,
+        )
+        drawCircle(
+            color,
+            radius = size.minDimension * .035f,
+            center = androidx.compose.ui.geometry.Offset(size.width * .39f, size.height * .53f),
+        )
+        drawCircle(
+            color,
+            radius = size.minDimension * .035f,
+            center = androidx.compose.ui.geometry.Offset(size.width * .61f, size.height * .53f),
         )
     }
 }
