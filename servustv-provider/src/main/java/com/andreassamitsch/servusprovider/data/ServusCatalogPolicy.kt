@@ -306,18 +306,27 @@ object ServusCatalogPolicy {
         ?.getOrNull(1)
         ?.toIntOrNull()
 
+    /**
+     * ServusTV uses several names for transparent show-brand assets. `title_treatment` remains the
+     * preferred source, but current products can also expose generic treatments, wordmarks or logo
+     * resources. Keep the selector conservative and never fall back to ordinary landscape artwork.
+     */
     fun titleTreatment(id: String, resources: List<String>): String? {
         if (id == ServusBranding.NEWS_90_SECONDS_SHOW_ID) {
             return ServusBranding.NEWS_90_SECONDS_LOGO_URI
         }
         val resource = resources.firstOrNull { name ->
-            name.contains("title_treatment", ignoreCase = true)
+            name.contains("title_treatment", ignoreCase = true) ||
+                name.contains("title-treatment", ignoreCase = true)
         } ?: resources.firstOrNull { name ->
             name.contains("treatment", ignoreCase = true) &&
                 !name.contains("background", ignoreCase = true)
-        }
+        } ?: resources.firstOrNull { name ->
+            name.contains("wordmark", ignoreCase = true)
+        } ?: resources.firstOrNull(::isLogoResource)
+
         val remote = resource?.let {
-            "${ServusNetwork.ARTWORK_BASE_URL}$id/$it/f_webp,c_fill,h_180,q_75?namespace=stv&refresh=true"
+            "${ServusNetwork.ARTWORK_BASE_URL}$id/$it/f_webp,h_180,q_80?namespace=stv&refresh=true"
         }
         return ServusBranding.logoUriForShow(id, remote)
     }
@@ -333,6 +342,16 @@ object ServusCatalogPolicy {
                 !name.contains("treatment_", ignoreCase = true)
         } ?: return null
         return "${ServusNetwork.ARTWORK_BASE_URL}$id/$resource/f_webp,c_fill,w_$width,q_72?namespace=stv&refresh=true"
+    }
+
+    private fun isLogoResource(name: String): Boolean {
+        if (!name.contains("logo", ignoreCase = true)) return false
+        val lower = name.lowercase(Locale.ROOT)
+        return !lower.contains("background") &&
+            !lower.contains("landscape") &&
+            !lower.contains("portrait") &&
+            !lower.contains("square") &&
+            !lower.contains("icon")
     }
 
     private fun episodeKey(episode: ServusNewsEpisode): String {
