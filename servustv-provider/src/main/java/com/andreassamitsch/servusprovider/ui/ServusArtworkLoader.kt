@@ -30,7 +30,7 @@ object ServusArtworkLoader {
     private const val DEFAULT_TARGET_PX = 640
     private const val MIN_TARGET_PX = 256
     private const val MAX_TARGET_PX = 1024
-    private const val MIN_TITLE_TREATMENT_HEIGHT_DP = 72
+    private const val MIN_TITLE_TREATMENT_HEIGHT_DP = 88
     private val decodeSemaphore = Semaphore(3)
     private val lazyLogoSemaphore = Semaphore(3)
     private val resolvedLazyLogos = ConcurrentHashMap<String, String>()
@@ -211,8 +211,8 @@ object ServusArtworkLoader {
     private fun prepareTitleTreatmentView(imageView: ImageView) {
         imageView.scaleType = ImageView.ScaleType.CENTER_INSIDE
         imageView.adjustViewBounds = false
-        val padding = (4 * imageView.resources.displayMetrics.density).roundToInt()
-        imageView.setPadding(0, padding, 0, padding)
+        val padding = (6 * imageView.resources.displayMetrics.density).roundToInt()
+        imageView.setPadding(padding, padding, padding, padding)
 
         val params = imageView.layoutParams ?: return
         val minHeight = (MIN_TITLE_TREATMENT_HEIGHT_DP * imageView.resources.displayMetrics.density).roundToInt()
