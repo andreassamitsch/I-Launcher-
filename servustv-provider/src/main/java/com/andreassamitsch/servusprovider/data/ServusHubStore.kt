@@ -5,7 +5,9 @@ import com.andreassamitsch.servusprovider.api.ServusNetwork
 import com.google.gson.reflect.TypeToken
 
 class ServusHubStore(context: Context) {
-    private val preferences = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val preferences = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val newsStore = ServusNewsStore(appContext)
     private val categoryListType = object : TypeToken<List<ServusCategory>>() {}.type
     private val liveListType = object : TypeToken<List<ServusLiveChannel>>() {}.type
 
@@ -90,8 +92,8 @@ class ServusHubStore(context: Context) {
     fun findLiveChannel(channelId: String): ServusLiveChannel? = loadLiveChannels()
         .firstOrNull { it.id == channelId }
 
-    private fun canonicalizeCategories(categories: List<ServusCategory>): List<ServusCategory> =
-        categories.map { category ->
+    private fun canonicalizeCategories(categories: List<ServusCategory>): List<ServusCategory> {
+        val canonical = categories.map { category ->
             category.copy(
                 shows = category.shows.map { show ->
                     show.copy(
@@ -101,6 +103,11 @@ class ServusHubStore(context: Context) {
                 },
             )
         }
+        return ServusCatalogAugmentation.withNinetySecondNewsShow(
+            categories = canonical,
+            currentEpisodes = newsStore.loadEpisodes(),
+        )
+    }
 
     private fun <T> loadList(key: String, type: java.lang.reflect.Type): List<T> {
         val raw = preferences.getString(key, null) ?: return emptyList()
