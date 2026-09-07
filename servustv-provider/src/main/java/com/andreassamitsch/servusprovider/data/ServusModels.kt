@@ -29,6 +29,9 @@ data class ServusNewsEpisode(
     /** Episode metadata supplied by ServusTV where the format has numbered seasons/episodes. */
     val seasonNumber: Int? = null,
     val episodeNumber: Int? = null,
+    /** The concrete show-page collection that supplied this item. */
+    val sourceCollectionId: String? = null,
+    val sourceCollectionTitle: String? = null,
     /**
      * Local first observation of this content ID during a periodic refresh. This is intentionally
      * separate from `publishedAtMillis`: it is an approximation (bounded by the refresh interval),
@@ -50,6 +53,32 @@ data class ServusRefreshResult(
     val refreshedAtMillis: Long,
 )
 
+enum class ServusCollectionRole {
+    CONTENT,
+    RECOMMENDATION,
+    INFO,
+    UNKNOWN,
+}
+
+/**
+ * One editorial rail below a ServusTV show page.
+ *
+ * Collections remain first-class so users can opt a complete show or a specific editorial rail into
+ * `Aktuelles` / Android TV. Recommendation and Playnet/info rails are kept as metadata but never
+ * traversed as episode sources.
+ */
+data class ServusShowCollection(
+    val id: String,
+    val title: String,
+    val listType: String? = null,
+    val type: String? = null,
+    val role: ServusCollectionRole = ServusCollectionRole.UNKNOWN,
+    /** Parent show identity carried by the collection's actual episode products where known. */
+    val contentShowId: String? = null,
+    val contentShowTitle: String? = null,
+    val episodes: List<ServusNewsEpisode> = emptyList(),
+)
+
 data class ServusShow(
     val id: String,
     val title: String,
@@ -60,6 +89,7 @@ data class ServusShow(
     val squareArtworkUri: String?,
     val logoUri: String?,
     val episodes: List<ServusNewsEpisode>,
+    val collections: List<ServusShowCollection> = emptyList(),
 )
 
 data class ServusCategory(

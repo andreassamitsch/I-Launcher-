@@ -2,6 +2,7 @@ package com.andreassamitsch.servusprovider.data
 
 import com.andreassamitsch.servusprovider.api.SearchResponseDto
 import com.andreassamitsch.servusprovider.api.ServusCardDto
+import com.andreassamitsch.servusprovider.api.ServusMediaResourceDto
 import com.google.gson.Gson
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -22,7 +23,7 @@ class ServusNewsPolicyTest {
                 duration = 12 * 60 * 1000L,
                 playable = true,
                 sunriseTimestamp = "2026-08-30T17:20:00Z",
-                mediaResources = listOf("rbtv_display_art_landscape"),
+                mediaResources = mapOf("rbtv_display_art_landscape" to ServusMediaResourceDto()),
             ),
         )
 
@@ -240,7 +241,7 @@ class ServusNewsPolicyTest {
         )
 
         val card = response.cards.single()
-        assertTrue(card.mediaResources.contains("rbtv_display_art_landscape"))
+        assertTrue(card.mediaResources.containsKey("rbtv_display_art_landscape"))
         assertNotNull(ServusNewsPolicy.toSupportedEpisode(card))
     }
 

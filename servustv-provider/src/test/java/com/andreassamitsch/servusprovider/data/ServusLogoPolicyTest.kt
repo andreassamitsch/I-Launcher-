@@ -1,5 +1,6 @@
 package com.andreassamitsch.servusprovider.data
 
+import com.andreassamitsch.servusprovider.api.ServusMediaResourceDto
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -11,7 +12,10 @@ class ServusLogoPolicyTest {
     fun wordmarkIsAcceptedAsShowLogoWithoutCropTransform() {
         val uri = ServusCatalogPolicy.titleTreatment(
             id = "SHOW-WORDMARK",
-            resources = listOf("rbtv_display_art_landscape", "rbtv_wordmark"),
+            resources = mapOf(
+                "rbtv_display_art_landscape" to ServusMediaResourceDto(),
+                "rbtv_wordmark" to ServusMediaResourceDto(),
+            ),
         )
 
         assertNotNull(uri)
@@ -23,7 +27,10 @@ class ServusLogoPolicyTest {
     fun plainLogoResourceIsAcceptedAsFallback() {
         val uri = ServusCatalogPolicy.titleTreatment(
             id = "SHOW-LOGO",
-            resources = listOf("rbtv_display_art_landscape", "rbtv_logo"),
+            resources = mapOf(
+                "rbtv_display_art_landscape" to ServusMediaResourceDto(),
+                "rbtv_logo" to ServusMediaResourceDto(),
+            ),
         )
 
         assertNotNull(uri)
@@ -34,7 +41,10 @@ class ServusLogoPolicyTest {
     fun artworkLikeLogoResourceIsNotMistakenForTransparentWordmark() {
         val uri = ServusCatalogPolicy.titleTreatment(
             id = "SHOW-ART",
-            resources = listOf("rbtv_logo_landscape", "rbtv_display_art_landscape"),
+            resources = mapOf(
+                "rbtv_logo_landscape" to ServusMediaResourceDto(),
+                "rbtv_display_art_landscape" to ServusMediaResourceDto(),
+            ),
         )
 
         assertNull(uri)

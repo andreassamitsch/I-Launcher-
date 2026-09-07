@@ -16,6 +16,7 @@ data class SearchResponseDto(
     val id: String? = null,
     val label: String? = null,
     @SerializedName("list_type") val listType: String? = null,
+    val type: String? = null,
     val cards: List<ServusCardDto> = emptyList(),
     val collections: List<ServusCollectionRefDto> = emptyList(),
     val meta: ServusMetaDto? = null,
@@ -23,12 +24,19 @@ data class SearchResponseDto(
 
 data class ServusMetaDto(
     val next: String? = null,
+    val total: Int? = null,
 )
 
 data class ServusCollectionRefDto(
     val id: String? = null,
     @SerializedName("list_type") val listType: String? = null,
     val label: String? = null,
+    @SerializedName("device_categories") val deviceCategories: List<String> = emptyList(),
+)
+
+data class ServusMediaResourceDto(
+    val url: String? = null,
+    val orientation: String? = null,
 )
 
 data class ServusCardDto(
@@ -38,9 +46,11 @@ data class ServusCardDto(
     val title: String? = null,
     @SerializedName("show_name") val showName: String? = null,
     val subheading: String? = null,
+    val label: String? = null,
     @SerializedName("short_description") val shortDescription: String? = null,
     @SerializedName("long_description") val longDescription: String? = null,
     val duration: Long? = null,
+    @SerializedName("formatted_duration") val formattedDuration: String? = null,
     val playable: Boolean? = null,
     @SerializedName("sunrise_timestamp") val sunriseTimestamp: String? = null,
     @SerializedName("sunset_timestamp") val sunsetTimestamp: String? = null,
@@ -48,48 +58,94 @@ data class ServusCardDto(
     @SerializedName("end_time") val endTime: String? = null,
     @SerializedName("season_number") val seasonNumber: Int? = null,
     @SerializedName("episode_number") val episodeNumber: Int? = null,
+    val season: String? = null,
+    val chapter: String? = null,
+    @SerializedName("deeplink_playlist") val deeplinkPlaylist: String? = null,
+    @SerializedName("next_playlist") val nextPlaylist: String? = null,
+    @SerializedName("share_url") val shareUrl: String? = null,
+    @SerializedName("detail_page_id") val detailPageId: String? = null,
+    val tags: List<String> = emptyList(),
+    val vertical: List<String> = emptyList(),
     @SerializedName("media_resources")
     @JsonAdapter(MediaResourcesDeserializer::class)
-    val mediaResources: List<String> = emptyList(),
+    val mediaResources: Map<String, ServusMediaResourceDto> = emptyMap(),
     val collections: List<ServusCollectionRefDto> = emptyList(),
 )
 
 /**
- * ServusTV currently returns `media_resources` in more than one JSON shape.
+ * Keeps the ServusTV media resource map intact instead of throwing away the API-provided URLs.
  *
- * Some endpoints/cards use an array of resource names while others use an object whose keys
- * are the resource names and whose values contain resource metadata. Normalising both forms at
- * the DTO boundary keeps repositories and artwork selection independent from that API detail.
+ * The normal v5.3 product/collection shape is an object keyed by resource type, e.g.
+ * `rbtv_title_treatment_landscape -> { url, orientation }`. A few legacy surfaces can still return
+ * strings/arrays; those are retained as keys with an empty metadata object so callers can remain
+ * forward/backward compatible without inventing URLs.
  */
-class MediaResourcesDeserializer : JsonDeserializer<List<String>> {
+class MediaResourcesDeserializer : JsonDeserializer<Map<String, ServusMediaResourceDto>> {
     override fun deserialize(
         json: JsonElement?,
         typeOfT: Type?,
         context: JsonDeserializationContext?,
-    ): List<String> = collectResourceNames(json).distinct()
+    ): Map<String, ServusMediaResourceDto> {
+        if (json == null || json.isJsonNull) return emptyMap()
 
-    private fun collectResourceNames(element: JsonElement?): List<String> {
-        if (element == null || element.isJsonNull) return emptyList()
-
-        return when {
-            element.isJsonPrimitive && element.asJsonPrimitive.isString -> listOf(element.asString)
-            element.isJsonArray -> element.asJsonArray.flatMap(::collectResourceNames)
-            element.isJsonObject -> buildList {
-                element.asJsonObject.entrySet().forEach { (key, value) ->
-                    add(key)
-                    addAll(collectResourceNames(value))
+        if (json.isJsonObject) {
+            return buildMap {
+                json.asJsonObject.entrySet().forEach { (name, value) ->
+                    if (name.isBlank()) return@forEach
+                    val metadata = when {
+                        value.isJsonObject -> ServusMediaResourceDto(
+                            url = value.asJsonObject.get("url")
+                                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                                ?.asString,
+                            orientation = value.asJsonObject.get("orientation")
+                                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                                ?.asString,
+                        )
+                        value.isJsonPrimitive && value.asJsonPrimitive.isString -> {
+                            val raw = value.asString
+                            if (raw.startsWith("http://") || raw.startsWith("https://")) {
+                                ServusMediaResourceDto(url = raw)
+                            } else {
+                                ServusMediaResourceDto()
+                            }
+                        }
+                        else -> ServusMediaResourceDto()
+                    }
+                    put(name, metadata)
                 }
             }
-            else -> emptyList()
         }
+
+        val names = buildList {
+            fun collect(element: JsonElement?) {
+                if (element == null || element.isJsonNull) return
+                when {
+                    element.isJsonPrimitive && element.asJsonPrimitive.isString -> add(element.asString)
+                    element.isJsonArray -> element.asJsonArray.forEach(::collect)
+                }
+            }
+            collect(json)
+        }
+        return names.filter { it.isNotBlank() }.distinct().associateWith { ServusMediaResourceDto() }
     }
 }
 
 data class DynamicProductDto(
+    val id: String? = null,
     val links: List<DynamicLinkDto> = emptyList(),
+    val playable: Boolean? = null,
+    @SerializedName("header_badges") val headerBadges: List<ServusBadgeDto> = emptyList(),
 )
 
 data class DynamicLinkDto(
     val action: String? = null,
     val id: String? = null,
+    val label: String? = null,
+    val type: String? = null,
+)
+
+data class ServusBadgeDto(
+    val value: String? = null,
+    val type: String? = null,
+    val display: String? = null,
 )
