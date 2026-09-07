@@ -1,6 +1,7 @@
 package com.andreassamitsch.servusprovider.data
 
 import com.andreassamitsch.servusprovider.api.ServusCardDto
+import com.andreassamitsch.servusprovider.api.ServusMediaResourceDto
 import com.andreassamitsch.servusprovider.api.ServusNetwork
 import java.time.Instant
 import java.time.LocalDateTime
@@ -8,20 +9,21 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeParseException
 import java.util.Locale
 
-/**
- * A playable card together with the collection that supplied it. Collection context is editorial
- * metadata: ServusTV's generic "Servus Nachrichten" product intentionally links separate rails for
- * 19:20, 90 seconds and individual reports, while the cards themselves can omit show_name entirely.
- */
+/** A playable card together with the collection that supplied it. */
 data class ServusSourcedCard(
     val card: ServusCardDto,
     val sourceCollectionId: String? = null,
     val sourceCollectionLabel: String? = null,
     val contentKindHint: ServusContentKind? = null,
+    /** Actual editorial parent of the collection, which can differ from the opened umbrella page. */
+    val contentShowId: String? = null,
+    val contentShowTitle: String? = null,
 )
 
 object ServusCatalogPolicy {
     private val nextOffsetPattern = Regex("""(?:[?&]offset=)(\d+)""")
+    private val episodeNumberPattern = Regex("""(?i)\bepisode\s+(\d+)\b""")
+    private val seasonNumberPattern = Regex("""(?i)\bseason\s+(\d+)\b""")
 
     fun isShowCard(card: ServusCardDto): Boolean =
         card.id?.isNotBlank() == true &&
@@ -29,12 +31,6 @@ object ServusCatalogPolicy {
             card.type == "page" &&
             card.contentType != "film"
 
-    /**
-     * ServusTV can expose market-/rights-specific catalogue collections that are present on the
-     * landing page but deliberately reject access. Only that explicit 403 is safe to ignore.
-     * Network failures, server errors and unexpected response codes must still fail the catalogue
-     * refresh so an incomplete snapshot does not overwrite the last good cache.
-     */
     fun canSkipCategoryHttpCode(statusCode: Int): Boolean = statusCode == 403
 
     fun buildShow(
@@ -48,7 +44,7 @@ object ServusCatalogPolicy {
         val title = detail?.title?.takeIf { !it.isNullOrBlank() }
             ?: card.title?.takeIf { it.isNotBlank() }
             ?: return null
-        val resources = (detail?.mediaResources.orEmpty() + card.mediaResources).distinct()
+        val resources = mergeMediaResources(card.mediaResources, detail?.mediaResources.orEmpty())
         return ServusShow(
             id = id,
             title = title,
@@ -65,10 +61,6 @@ object ServusCatalogPolicy {
         )
     }
 
-    /**
-     * Classifies only collections whose editorial role is explicit enough to be trusted. This is
-     * intentionally not a duration heuristic: generic "Einzelbeiträge" can also be around 90s.
-     */
     fun contentKindForCollection(
         ownerShowId: String?,
         ownerShowTitle: String?,
@@ -77,28 +69,24 @@ object ServusCatalogPolicy {
         val label = normalizeWords(collectionLabel.orEmpty())
         val owner = normalizeWords(ownerShowTitle.orEmpty())
         return when {
-            label.contains("90 sekunden") -> ServusContentKind.NEWS_90_SECONDS
+            label.contains("servus nachrichten") && label.contains("90 sekunden") ->
+                ServusContentKind.NEWS_90_SECONDS
             label.contains("19 20") && label.contains("nachrichten") -> ServusContentKind.FULL_NEWS
-            ownerShowId == ServusBranding.NEWS_90_SECONDS_SHOW_ID &&
-                label == "aktuelle sendungen" -> ServusContentKind.NEWS_90_SECONDS
-            owner.contains("nachrichten in 90 sekunden") &&
-                label == "aktuelle sendungen" -> ServusContentKind.NEWS_90_SECONDS
+            ownerShowId == ServusBranding.NEWS_90_SECONDS_SHOW_ID && label == "aktuelle sendungen" ->
+                ServusContentKind.NEWS_90_SECONDS
+            owner.contains("nachrichten in 90 sekunden") && label == "aktuelle sendungen" ->
+                ServusContentKind.NEWS_90_SECONDS
             else -> null
         }
     }
 
-    /**
-     * A show product can reference editorial/recommendation collections that contain videos from
-     * other shows. Never attach every playable card blindly to the opened show.
-     *
-     * Strong membership evidence is, in order: an exact normalised `show_name`, an explicit parent
-     * collection reference to the show ID, or the target show title contained in the episode title.
-     * If none of those is present, reject the card rather than showing a confidently wrong episode.
-     */
+    /** Strong API parent identity wins over all text heuristics. */
     fun belongsToShow(card: ServusCardDto, showId: String, showTitle: String): Boolean {
+        val playlist = "$showId:all_episodes"
+        if (card.deeplinkPlaylist == playlist || card.nextPlaylist == playlist) return true
+
         val targetTitle = normalizeWords(showTitle)
         if (targetTitle.isBlank()) return false
-
         card.showName?.takeIf { it.isNotBlank() }?.let { suppliedShow ->
             return normalizeWords(suppliedShow) == targetTitle
         }
@@ -108,8 +96,10 @@ object ServusCatalogPolicy {
         return episodeTitle.isNotBlank() && episodeTitle.contains(targetTitle)
     }
 
-    /** Source-aware membership prevents the generic news page from claiming its 90-second rail. */
     fun belongsToShow(candidate: ServusSourcedCard, showId: String, showTitle: String): Boolean {
+        candidate.contentShowId?.let { parentId ->
+            return parentId == showId
+        }
         return when (candidate.contentKindHint) {
             ServusContentKind.NEWS_90_SECONDS -> showId == ServusBranding.NEWS_90_SECONDS_SHOW_ID
             ServusContentKind.FULL_NEWS -> showId == ServusBranding.NEWS_SHOW_ID ||
@@ -118,15 +108,6 @@ object ServusCatalogPolicy {
         }
     }
 
-    /**
-     * Selects the small set of collection cards whose product details are worth hydrating.
-     *
-     * Collection responses are discovery/order sources and can omit duration, content type or the
-     * VOD `sunrise_timestamp`. We therefore keep candidates even when those detail-only fields are
-     * missing, but still require strong show membership and a video-like identity. Known full
-     * episodes/films come first, unknown content types second and explicit clips last. Relative API
-     * order is preserved inside every group.
-     */
     fun selectEpisodeCardsForHydration(
         cards: List<ServusCardDto>,
         showId: String,
@@ -134,7 +115,6 @@ object ServusCatalogPolicy {
         limit: Int,
     ): List<ServusCardDto> {
         if (limit <= 0) return emptyList()
-
         val eligible = cards.asSequence()
             .filter { card ->
                 card.id?.isNotBlank() == true &&
@@ -145,11 +125,9 @@ object ServusCatalogPolicy {
             }
             .distinctBy { it.id }
             .toList()
-
         return prioritizeCards(eligible, limit)
     }
 
-    /** Same selection, but preserving the source collection and its trusted format hint. */
     fun selectSourcedEpisodeCardsForHydration(
         candidates: List<ServusSourcedCard>,
         showId: String,
@@ -160,42 +138,30 @@ object ServusCatalogPolicy {
         val eligible = candidates.asSequence()
             .filter { candidate ->
                 val card = candidate.card
+                val effectiveId = candidate.contentShowId ?: showId
+                val effectiveTitle = candidate.contentShowTitle ?: showTitle
                 card.id?.isNotBlank() == true &&
                     card.title?.isNotBlank() == true &&
                     card.playable != false &&
                     isVideoLike(card) &&
-                    belongsToShow(candidate, showId, showTitle)
+                    belongsToShow(candidate, effectiveId, effectiveTitle)
             }
             .distinctBy { it.card.id }
             .toList()
 
         val full = eligible.filter { isFullEpisodeCard(it.card) }
         val unknown = eligible.filter { it.card.contentType.isNullOrBlank() }
-        val fallback = eligible.filterNot { candidate ->
-            isFullEpisodeCard(candidate.card) || candidate.card.contentType.isNullOrBlank()
-        }
-        return (full + unknown + fallback)
-            .distinctBy { it.card.id }
-            .take(limit)
+        val fallback = eligible.filterNot { isFullEpisodeCard(it.card) || it.card.contentType.isNullOrBlank() }
+        return (full + unknown + fallback).distinctBy { it.card.id }.take(limit)
     }
 
     private fun prioritizeCards(cards: List<ServusCardDto>, limit: Int): List<ServusCardDto> {
         val full = cards.filter(::isFullEpisodeCard)
         val unknown = cards.filter { it.contentType.isNullOrBlank() }
-        val fallback = cards.filterNot { card ->
-            isFullEpisodeCard(card) || card.contentType.isNullOrBlank()
-        }
-        return (full + unknown + fallback)
-            .distinctBy { it.id }
-            .take(limit)
+        val fallback = cards.filterNot { isFullEpisodeCard(it) || it.contentType.isNullOrBlank() }
+        return (full + unknown + fallback).distinctBy { it.id }.take(limit)
     }
 
-    /**
-     * Product details are authoritative for VOD availability and detailed metadata, while the
-     * collection card can carry show membership/artwork fields that the product response omits.
-     * Merge both instead of replacing the collection card so hydration cannot accidentally detach
-     * a valid episode from its show.
-     */
     fun mergeEpisodeProduct(collectionCard: ServusCardDto, detail: ServusCardDto): ServusCardDto =
         ServusCardDto(
             id = prefer(detail.id, collectionCard.id),
@@ -204,17 +170,31 @@ object ServusCatalogPolicy {
             title = prefer(detail.title, collectionCard.title),
             showName = prefer(detail.showName, collectionCard.showName),
             subheading = prefer(detail.subheading, collectionCard.subheading),
+            label = prefer(detail.label, collectionCard.label),
             shortDescription = prefer(detail.shortDescription, collectionCard.shortDescription),
             longDescription = prefer(detail.longDescription, collectionCard.longDescription),
             duration = detail.duration ?: collectionCard.duration,
+            formattedDuration = prefer(detail.formattedDuration, collectionCard.formattedDuration),
             playable = detail.playable ?: collectionCard.playable,
             sunriseTimestamp = prefer(detail.sunriseTimestamp, collectionCard.sunriseTimestamp),
             sunsetTimestamp = prefer(detail.sunsetTimestamp, collectionCard.sunsetTimestamp),
             startTime = prefer(detail.startTime, collectionCard.startTime),
             endTime = prefer(detail.endTime, collectionCard.endTime),
-            seasonNumber = detail.seasonNumber ?: collectionCard.seasonNumber,
-            episodeNumber = detail.episodeNumber ?: collectionCard.episodeNumber,
-            mediaResources = (detail.mediaResources + collectionCard.mediaResources).distinct(),
+            seasonNumber = detail.seasonNumber
+                ?: parseNumber(detail.season, seasonNumberPattern)
+                ?: collectionCard.seasonNumber,
+            episodeNumber = detail.episodeNumber
+                ?: parseNumber(detail.chapter, episodeNumberPattern)
+                ?: collectionCard.episodeNumber,
+            season = prefer(detail.season, collectionCard.season),
+            chapter = prefer(detail.chapter, collectionCard.chapter),
+            deeplinkPlaylist = prefer(detail.deeplinkPlaylist, collectionCard.deeplinkPlaylist),
+            nextPlaylist = prefer(detail.nextPlaylist, collectionCard.nextPlaylist),
+            shareUrl = prefer(detail.shareUrl, collectionCard.shareUrl),
+            detailPageId = prefer(detail.detailPageId, collectionCard.detailPageId),
+            tags = (detail.tags + collectionCard.tags).distinct(),
+            vertical = (detail.vertical + collectionCard.vertical).distinct(),
+            mediaResources = mergeMediaResources(collectionCard.mediaResources, detail.mediaResources),
             collections = (detail.collections + collectionCard.collections).distinct(),
         )
 
@@ -249,39 +229,44 @@ object ServusCatalogPolicy {
         val id = card.id?.takeIf { it.isNotBlank() } ?: return null
         val title = card.title?.trim()?.takeIf { it.isNotBlank() } ?: return null
         val duration = card.duration?.takeIf { it > 0L } ?: return null
-        if (card.playable == false) return null
-        if (card.type != "video" && card.contentType != "film") return null
-        if (!belongsToShow(candidate, showId, showTitle)) return null
+        if (card.playable == false || !isVideoLike(card)) return null
+
+        val effectiveShowId = candidate.contentShowId ?: showId
+        val effectiveShowTitle = candidate.contentShowTitle ?: showTitle
+        if (!belongsToShow(candidate, effectiveShowId, effectiveShowTitle)) return null
 
         val episode = ServusNewsEpisode(
             id = id,
             title = title,
-            showName = card.showName?.takeIf { it.isNotBlank() } ?: showTitle,
+            showName = card.showName?.takeIf { it.isNotBlank() }
+                ?: card.subheading?.takeIf { it.isNotBlank() }
+                ?: effectiveShowTitle,
             description = card.longDescription?.takeIf { it.isNotBlank() }
                 ?: card.shortDescription?.takeIf { it.isNotBlank() },
             durationMillis = duration,
             publishedAtMillis = ServusSourceTimestampPolicy.resolve(card, nowMillis),
             artworkUri = landscapeArtwork(id, card.mediaResources),
-            showId = showId,
-            logoUri = ServusBranding.logoUriForShow(showId, showLogoUri),
+            showId = effectiveShowId,
+            logoUri = ServusBranding.logoUriForShow(effectiveShowId, showLogoUri),
             categoryId = categoryId,
             categoryTitle = categoryTitle,
             contentType = card.contentType,
+            seasonNumber = card.seasonNumber ?: parseNumber(card.season, seasonNumberPattern),
+            episodeNumber = card.episodeNumber ?: parseNumber(card.chapter, episodeNumberPattern),
+            sourceCollectionId = candidate.sourceCollectionId,
+            sourceCollectionTitle = candidate.sourceCollectionLabel,
             contentKindHint = candidate.contentKindHint,
         )
         return ServusBranding.canonicalizeEpisode(episode)
     }
 
-    /** Prefer full episodes for a show. If a show exposes no episode/film cards, keep playable videos. */
     fun selectChannelEpisodes(episodes: List<ServusNewsEpisode>): List<ServusNewsEpisode> {
         val deduplicated = episodes
             .distinctBy { it.id }
             .groupBy(::episodeKey)
             .values
             .mapNotNull { values -> values.maxByOrNull { it.durationMillis } }
-            .sortedWith(
-                compareByDescending<ServusNewsEpisode> { ServusNewsPolicy.recencyMillis(it) ?: Long.MIN_VALUE },
-            )
+            .sortedWith(compareByDescending<ServusNewsEpisode> { ServusNewsPolicy.recencyMillis(it) ?: Long.MIN_VALUE })
         val full = deduplicated.filter { it.contentType == "episode" || it.contentType == "film" }
         return (full.ifEmpty { deduplicated }).take(MAX_SHOW_EPISODES)
     }
@@ -302,56 +287,76 @@ object ServusCatalogPolicy {
     }
 
     fun nextOffset(next: String?): Int? = nextOffsetPattern.find(next.orEmpty())
-        ?.groupValues
-        ?.getOrNull(1)
-        ?.toIntOrNull()
+        ?.groupValues?.getOrNull(1)?.toIntOrNull()
 
-    /**
-     * ServusTV uses several names for transparent show-brand assets. `title_treatment` remains the
-     * preferred source, but current products can also expose generic treatments, wordmarks or logo
-     * resources. Keep the selector conservative and never fall back to ordinary landscape artwork.
-     */
-    fun titleTreatment(id: String, resources: List<String>): String? {
-        if (id == ServusBranding.NEWS_90_SECONDS_SHOW_ID) {
+    /** Uses the concrete media URL from the API; no resource path is guessed. */
+    fun titleTreatment(id: String, resources: Map<String, ServusMediaResourceDto>): String? {
+        if (id == ServusBranding.NEWS_90_SECONDS_SHOW_ID && resources.isEmpty()) {
             return ServusBranding.NEWS_90_SECONDS_LOGO_URI
         }
-        val resource = resources.firstOrNull { name ->
-            name.contains("title_treatment", ignoreCase = true) ||
-                name.contains("title-treatment", ignoreCase = true)
-        } ?: resources.firstOrNull { name ->
-            name.contains("treatment", ignoreCase = true) &&
-                !name.contains("background", ignoreCase = true)
-        } ?: resources.firstOrNull { name ->
-            name.contains("wordmark", ignoreCase = true)
-        } ?: resources.firstOrNull(::isLogoResource)
-
-        val remote = resource?.let {
-            "${ServusNetwork.ARTWORK_BASE_URL}$id/$it/f_webp,h_180,q_80?namespace=stv&refresh=true"
+        val entry = preferredResource(
+            resources,
+            listOf("rbtv_title_treatment_landscape", "rbtv_title_treatment"),
+        ) ?: resources.entries.firstOrNull { (name, _) ->
+            val lower = name.lowercase(Locale.ROOT)
+            (lower.contains("title_treatment") || lower.contains("wordmark") || lower.contains("logo")) &&
+                !lower.contains("background")
         }
+        val remote = entry?.let { resolveMediaUrl(id, it.key, it.value, BRANDING_TRANSFORM) }
         return ServusBranding.logoUriForShow(id, remote)
     }
 
-    fun landscapeArtwork(id: String, resources: List<String>): String? = artwork(id, resources, "landscape", 1280)
-
-    fun squareArtwork(id: String, resources: List<String>): String? = artwork(id, resources, "square", 600)
-
-    private fun artwork(id: String, resources: List<String>, type: String, width: Int): String? {
-        val resource = resources.firstOrNull { name ->
-            name.contains(type, ignoreCase = true) &&
-                !name.contains("cover_", ignoreCase = true) &&
-                !name.contains("treatment_", ignoreCase = true)
-        } ?: return null
-        return "${ServusNetwork.ARTWORK_BASE_URL}$id/$resource/f_webp,c_fill,w_$width,q_72?namespace=stv&refresh=true"
+    fun landscapeArtwork(id: String, resources: Map<String, ServusMediaResourceDto>): String? {
+        val entry = preferredResource(
+            resources,
+            listOf("rbtv_display_art_landscape", "rbtv_background_landscape"),
+        ) ?: return null
+        return resolveMediaUrl(id, entry.key, entry.value, LANDSCAPE_TRANSFORM)
     }
 
-    private fun isLogoResource(name: String): Boolean {
-        if (!name.contains("logo", ignoreCase = true)) return false
-        val lower = name.lowercase(Locale.ROOT)
-        return !lower.contains("background") &&
-            !lower.contains("landscape") &&
-            !lower.contains("portrait") &&
-            !lower.contains("square") &&
-            !lower.contains("icon")
+    fun squareArtwork(id: String, resources: Map<String, ServusMediaResourceDto>): String? {
+        val entry = preferredResource(
+            resources,
+            listOf("rbtv_display_art_square", "rbtv_background_square"),
+        ) ?: return null
+        return resolveMediaUrl(id, entry.key, entry.value, SQUARE_TRANSFORM)
+    }
+
+    fun portraitArtwork(id: String, resources: Map<String, ServusMediaResourceDto>): String? {
+        val entry = preferredResource(
+            resources,
+            listOf("rbtv_cover_art_portrait", "rbtv_display_art_portrait", "rbtv_background_portrait"),
+        ) ?: return null
+        return resolveMediaUrl(id, entry.key, entry.value, PORTRAIT_TRANSFORM)
+    }
+
+    fun previewVideo(resources: Map<String, ServusMediaResourceDto>): String? =
+        resources["short_preview_mp4_high"]?.url?.takeIf { it.isNotBlank() }
+
+    fun mergeMediaResources(
+        fallback: Map<String, ServusMediaResourceDto>,
+        authoritative: Map<String, ServusMediaResourceDto>,
+    ): Map<String, ServusMediaResourceDto> = fallback + authoritative
+
+    private fun preferredResource(
+        resources: Map<String, ServusMediaResourceDto>,
+        names: List<String>,
+    ): Map.Entry<String, ServusMediaResourceDto>? = names.firstNotNullOfOrNull { name ->
+        resources.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }
+    }
+
+    private fun resolveMediaUrl(
+        id: String,
+        resourceName: String,
+        resource: ServusMediaResourceDto,
+        transform: String,
+    ): String? {
+        val apiUrl = resource.url?.trim()?.takeIf { it.isNotBlank() }
+        if (apiUrl != null) {
+            return if (apiUrl.contains("{im}")) apiUrl.replace("{im}", transform) else apiUrl
+        }
+        // Compatibility only for legacy API shapes that returned a bare resource name.
+        return "${ServusNetwork.ARTWORK_BASE_URL}$id/$resourceName/$transform?namespace=stv&refresh=true"
     }
 
     private fun episodeKey(episode: ServusNewsEpisode): String {
@@ -364,15 +369,21 @@ object ServusCatalogPolicy {
         try {
             return Instant.parse(value).toEpochMilli()
         } catch (_: DateTimeParseException) {
-            // The guide API has historically also emitted ISO timestamps without a zone suffix.
+            // Some guide payloads omit a zone suffix.
         }
         return runCatching {
             LocalDateTime.parse(value.take(19)).toInstant(ZoneOffset.UTC).toEpochMilli()
         }.getOrNull()
     }
 
+    private fun parseNumber(value: String?, pattern: Regex): Int? = value
+        ?.let(pattern::find)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toIntOrNull()
+
     private fun isVideoLike(card: ServusCardDto): Boolean =
-        card.type == "video" ||
+        card.type.equals("video", ignoreCase = true) ||
             card.contentType.equals("episode", ignoreCase = true) ||
             card.contentType.equals("film", ignoreCase = true) ||
             card.contentType.equals("clip", ignoreCase = true)
@@ -399,4 +410,8 @@ object ServusCatalogPolicy {
     const val NEWS_90_SECONDS_SHOW_ID = ServusBranding.NEWS_90_SECONDS_SHOW_ID
     const val NEWS_SHOW_ID = ServusBranding.NEWS_SHOW_ID
     private const val MAX_SHOW_EPISODES = 18
+    private const val BRANDING_TRANSFORM = "f_webp,c_fit,w_720,h_220,q_85"
+    private const val LANDSCAPE_TRANSFORM = "f_webp,c_fill,w_1280,q_72"
+    private const val SQUARE_TRANSFORM = "f_webp,c_fill,w_600,q_72"
+    private const val PORTRAIT_TRANSFORM = "f_webp,c_fill,w_600,q_72"
 }
