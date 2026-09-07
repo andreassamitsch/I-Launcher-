@@ -3,6 +3,7 @@ package com.andreassamitsch.servusprovider.data
 import com.andreassamitsch.servusprovider.api.SearchResponseDto
 import com.andreassamitsch.servusprovider.api.ServusCardDto
 import com.andreassamitsch.servusprovider.api.ServusCollectionRefDto
+import com.andreassamitsch.servusprovider.api.ServusMediaResourceDto
 import com.google.gson.Gson
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -43,7 +44,10 @@ class ServusCatalogPolicyTest {
     fun titleTreatmentIsExposedAsLogo() {
         val uri = ServusCatalogPolicy.titleTreatment(
             "SHOW-ID",
-            listOf("rbtv_display_art_landscape", "rbtv_title_treatment"),
+            mapOf(
+                "rbtv_display_art_landscape" to ServusMediaResourceDto(),
+                "rbtv_title_treatment" to ServusMediaResourceDto(),
+            ),
         )
         assertNotNull(uri)
         assertTrue(uri!!.contains("SHOW-ID/rbtv_title_treatment"))
@@ -51,12 +55,51 @@ class ServusCatalogPolicyTest {
     }
 
     @Test
+    fun apiTitleTreatmentUrlWinsOverConstructedFallback() {
+        val apiUrl =
+            "https://resources.redbull.tv/API-SHOW/rbtv_title_treatment_landscape/{im}?namespace=stv"
+        val uri = ServusCatalogPolicy.titleTreatment(
+            "SHOW-ID",
+            mapOf(
+                "rbtv_title_treatment_landscape" to ServusMediaResourceDto(
+                    url = apiUrl,
+                    orientation = "landscape",
+                ),
+            ),
+        )
+
+        assertNotNull(uri)
+        assertTrue(uri!!.startsWith("https://resources.redbull.tv/API-SHOW/"))
+        assertTrue(uri.contains("f_webp,c_fit,w_720,h_220,q_85"))
+        assertFalse(uri.contains("SHOW-ID/rbtv_title_treatment"))
+    }
+
+    @Test
     fun ninetySecondNewsUsesVerifiedLocalTitleLogo() {
         val uri = ServusCatalogPolicy.titleTreatment(
             ServusCatalogPolicy.NEWS_90_SECONDS_SHOW_ID,
-            listOf("rbtv_background_landscape", "rbtv_display_art_landscape"),
+            mapOf(
+                "rbtv_background_landscape" to ServusMediaResourceDto(),
+                "rbtv_display_art_landscape" to ServusMediaResourceDto(),
+            ),
         )
         assertEquals(ServusBranding.NEWS_90_SECONDS_LOGO_URI, uri)
+    }
+
+    @Test
+    fun officialNinetySecondNewsTreatmentOverridesLocalFallback() {
+        val official =
+            "https://resources.redbull.tv/${ServusBranding.NEWS_90_SECONDS_SHOW_ID}/rbtv_title_treatment_landscape/{im}?namespace=stv"
+        val uri = ServusCatalogPolicy.titleTreatment(
+            ServusBranding.NEWS_90_SECONDS_SHOW_ID,
+            mapOf(
+                "rbtv_title_treatment_landscape" to ServusMediaResourceDto(url = official),
+            ),
+        )
+
+        assertNotNull(uri)
+        assertTrue(uri!!.startsWith("https://resources.redbull.tv/"))
+        assertFalse(ServusBranding.isNinetySecondLogoUri(uri))
     }
 
     @Test
@@ -259,7 +302,7 @@ class ServusCatalogPolicyTest {
             title = "Folge vom 01.09.",
             duration = 4 * 60 * 1000L,
             playable = true,
-            mediaResources = listOf("collection_landscape"),
+            mediaResources = mapOf("collection_landscape" to ServusMediaResourceDto()),
             collections = listOf(ServusCollectionRefDto(id = "WEATHER")),
         )
         val productDetail = ServusCardDto(
@@ -269,7 +312,7 @@ class ServusCatalogPolicyTest {
             title = "Folge vom 01.09.",
             sunriseTimestamp = "2026-09-01T14:45:00Z",
             sunsetTimestamp = "2026-09-08T14:54:42Z",
-            mediaResources = listOf("detail_landscape"),
+            mediaResources = mapOf("detail_landscape" to ServusMediaResourceDto()),
         )
 
         val merged = ServusCatalogPolicy.mergeEpisodeProduct(collectionCard, productDetail)
@@ -284,7 +327,7 @@ class ServusCatalogPolicyTest {
         )
 
         assertTrue(ServusCatalogPolicy.belongsToShow(merged, "WEATHER", "Servus Wetter"))
-        assertTrue(merged.mediaResources.containsAll(listOf("detail_landscape", "collection_landscape")))
+        assertTrue(merged.mediaResources.keys.containsAll(listOf("detail_landscape", "collection_landscape")))
         assertNotNull(episode)
         assertEquals(
             Instant.parse("2026-09-01T14:45:00Z").toEpochMilli(),
