@@ -109,11 +109,11 @@ internal object PreviewChannelsMapper {
             episodeTitle?.takeIf { it.isNotBlank() && it != displayTitle },
         ).joinToString(" · ").ifBlank { null }
 
-        // ServusTV's aggregate "Aktuelles" channel deliberately transports two
-        // different 16:9 images in one TvProvider row:
-        // - posterArtUri: show-level display art (stable row/card branding)
-        // - thumbnailUri: episode-level display art (specific Hero artwork)
-        // Dedicated show/collection channels keep their existing episode artwork.
+        // ServusTV's aggregate "Aktuelles" channel transports two distinct 16:9 assets:
+        // - posterArtUri: parent-show rbtv_display_art_landscape for the rail card
+        // - thumbnailUri: concrete episode rbtv_display_art_landscape for the Hero
+        // The explicit Hero field keeps this provider-neutral in the UI. Dedicated show/collection
+        // channels retain their normal episode-image behavior.
         val showArtworkUri = posterArtUri?.takeIf { it.isNotBlank() }
         val episodeArtworkUri = thumbnailUri?.takeIf { it.isNotBlank() }
         val sourceArtworkUri = if (isServusCurrentChannel) {
@@ -134,24 +134,19 @@ internal object PreviewChannelsMapper {
             subtitle = subtitle,
             overview = shortDescription,
             releaseYear = releaseDate?.take(4)?.toIntOrNull(),
+            releaseDate = releaseDate?.takeIf { it.isNotBlank() },
             seasonNumber = season,
             episodeNumber = episode,
             episodeTitle = episodeTitle,
             backdropUri = heroArtworkUri,
             heroBackdropUri = heroArtworkUri,
-            logoUri = if (isServusCurrentChannel) {
-                // The show display art already carries editorial branding. Avoid a
-                // second title-treatment overlay because some Servus assets are
-                // cropped at source.
-                null
-            } else {
-                localizePreviewLogoUri(
-                    packageName = effectivePackageName,
-                    logoUri = logoUri,
-                    title = displayTitle,
-                    shortDescription = shortDescription,
-                )
-            },
+            episodeStillUri = if (isServusCurrentChannel) episodeArtworkUri else null,
+            logoUri = localizePreviewLogoUri(
+                packageName = effectivePackageName,
+                logoUri = logoUri,
+                title = displayTitle,
+                shortDescription = shortDescription,
+            ),
             sourceArtworkUri = sourceArtworkUri,
             durationMillis = durationMillis,
             source = MediaSource(
