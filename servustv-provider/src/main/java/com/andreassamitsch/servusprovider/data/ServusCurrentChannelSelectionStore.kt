@@ -188,7 +188,31 @@ object ServusCurrentChannelPolicy {
             }
         }
         val selectedCatalogueEpisodes = selectedShows.flatMap { it.episodes }
-        return ServusNewsPolicy.deduplicateEpisodes(filteredLegacy + selectedCatalogueEpisodes).take(limit)
+        val merged = ServusNewsPolicy.deduplicateEpisodes(filteredLegacy + selectedCatalogueEpisodes)
+        if (merged.size <= limit) return merged
+
+        // A high-frequency source (for example 90-second news) must not evict every item from a
+        // second explicitly selected show merely because that show's latest card lacks a timestamp.
+        // Keep the newest merged item for each selected show, then fill the remaining slots in the
+        // existing canonical order. No additional API data is needed for this balancing step.
+        val anchorIds = selectedShows.mapNotNullTo(linkedSetOf()) { selectedShow ->
+            merged.firstOrNull { episode ->
+                matchingSelectedShow(
+                    episode = episode,
+                    selectedShows = listOf(selectedShow),
+                    allShows = allShows,
+                ) != null
+            }?.id
+        }.take(limit).toSet()
+
+        val selectedIds = linkedSetOf<String>().apply {
+            addAll(anchorIds)
+            merged.asSequence()
+                .filterNot { it.id in anchorIds }
+                .take(limit - size)
+                .mapTo(this) { it.id }
+        }
+        return merged.filter { it.id in selectedIds }
     }
 
     fun matchesSelectedShow(
