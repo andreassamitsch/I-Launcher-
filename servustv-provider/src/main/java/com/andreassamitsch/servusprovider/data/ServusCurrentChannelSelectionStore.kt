@@ -3,45 +3,64 @@ package com.andreassamitsch.servusprovider.data
 import android.content.Context
 import java.util.Locale
 
-/**
- * Local user selection for the aggregate "ServusTV Aktuelles" channel.
- *
- * Before the user changes anything, the existing legacy news discovery remains authoritative.
- * The first explicit toggle starts from the catalogue shows that correspond to the previous
- * defaults (Servus Nachrichten / 90 Sekunden / Der Wegscheider), so updating the app does not
- * unexpectedly empty the channel.
- */
+/** Local user selection for the aggregate `ServusTV Aktuelles` channel. */
 class ServusCurrentChannelSelectionStore(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun isConfigured(): Boolean = preferences.contains(KEY_SELECTED_SHOW_IDS)
+    fun isConfigured(): Boolean = preferences.contains(KEY_SELECTED_SOURCE_KEYS)
 
-    fun effectiveSelectedShowIds(categories: List<ServusCategory>): Set<String> {
+    fun selectedSourceKeys(): Set<String> =
+        preferences.getStringSet(KEY_SELECTED_SOURCE_KEYS, emptySet()).orEmpty().toSet()
+
+    fun effectiveSelectedSourceKeys(categories: List<ServusCategory>): Set<String> {
         if (!isConfigured()) return ServusCurrentChannelPolicy.defaultSelectedShowIds(categories)
-        return preferences.getStringSet(KEY_SELECTED_SHOW_IDS, emptySet()).orEmpty().toSet()
+        val valid = ServusSourceKey.validKeys(categories)
+        return selectedSourceKeys().filterTo(linkedSetOf()) { it in valid }
     }
 
-    fun isSelected(show: ServusShow, categories: List<ServusCategory>): Boolean =
-        show.id in effectiveSelectedShowIds(categories)
+    /** Parent show IDs that require a targeted refresh. */
+    fun effectiveSelectedShowIds(categories: List<ServusCategory>): Set<String> =
+        effectiveSelectedSourceKeys(categories)
+            .mapNotNullTo(linkedSetOf(), ServusSourceKey::parentShowId)
 
-    fun setSelected(
+    fun selectedCollectionParentShowIds(categories: List<ServusCategory>): Set<String> =
+        ServusSourceKey.collectionParentShowIds(effectiveSelectedSourceKeys(categories))
+
+    fun selectedCollectionIdsForShow(showId: String, categories: List<ServusCategory>): Set<String> =
+        effectiveSelectedSourceKeys(categories).asSequence()
+            .filter(ServusSourceKey::isCollection)
+            .filter { ServusSourceKey.parentShowId(it) == showId }
+            .mapNotNull(ServusSourceKey::collectionId)
+            .toCollection(linkedSetOf())
+
+    fun isSelected(show: ServusShow, categories: List<ServusCategory>): Boolean =
+        ServusSourceKey.show(show.id) in effectiveSelectedSourceKeys(categories)
+
+    fun isCollectionSelected(
         showId: String,
+        collectionId: String,
+        categories: List<ServusCategory>,
+    ): Boolean = ServusSourceKey.collection(showId, collectionId) in effectiveSelectedSourceKeys(categories)
+
+    fun setSelected(showId: String, selected: Boolean, categories: List<ServusCategory>) {
+        setSourceSelected(ServusSourceKey.show(showId), selected, categories)
+    }
+
+    fun setCollectionSelected(
+        showId: String,
+        collectionId: String,
         selected: Boolean,
         categories: List<ServusCategory>,
     ) {
-        val current = effectiveSelectedShowIds(categories).toMutableSet()
-        if (selected) current += showId else current -= showId
-        preferences.edit()
-            .putStringSet(KEY_SELECTED_SHOW_IDS, current)
-            .apply()
+        setSourceSelected(ServusSourceKey.collection(showId, collectionId), selected, categories)
     }
 
-    /**
-     * Builds the visible aggregate rail from the fast legacy feed plus selected catalogue shows.
-     * At least the newest cached item of every selected show is reserved before the rail is cut to
-     * its UI limit. This prevents timestamped 90-second updates from pushing a newly selected show
-     * with no source timestamp completely out of the visible rail.
-     */
+    private fun setSourceSelected(key: String, selected: Boolean, categories: List<ServusCategory>) {
+        val current = effectiveSelectedSourceKeys(categories).toMutableSet()
+        if (selected) current += key else current -= key
+        preferences.edit().putStringSet(KEY_SELECTED_SOURCE_KEYS, current).apply()
+    }
+
     fun effectiveEpisodes(
         categories: List<ServusCategory>,
         legacyEpisodes: List<ServusNewsEpisode>,
@@ -52,19 +71,76 @@ class ServusCurrentChannelSelectionStore(context: Context) {
         }
 
         val allShows = categories.flatMap { it.shows }.distinctBy { it.id }
-        val selectedIds = effectiveSelectedShowIds(categories)
-        val selectedShows = allShows.filter { it.id in selectedIds }
-        return ServusCurrentChannelPolicy.composeCurrentEpisodes(
-            selectedShows = selectedShows,
-            allShows = allShows,
-            legacyEpisodes = legacyEpisodes,
-            limit = MAX_CURRENT_EPISODES,
-        )
+        val selectedKeys = effectiveSelectedSourceKeys(categories)
+        val selectedWholeShows = allShows.filter { ServusSourceKey.show(it.id) in selectedKeys }
+        val selectedCollectionSources = allShows.flatMap { show ->
+            show.collections
+                .filter { collection ->
+                    collection.role == ServusCollectionRole.CONTENT &&
+                        ServusSourceKey.collection(show.id, collection.id) in selectedKeys
+                }
+                .map { collection -> show to collection }
+        }
+
+        val filteredLegacy = legacyEpisodes.mapNotNull { rawEpisode ->
+            val episode = ServusBranding.canonicalizeEpisode(rawEpisode)
+            matchingSelectedShow(
+                episode = episode,
+                selectedShows = selectedWholeShows,
+                allShows = allShows,
+            )?.let { show -> episodeForShow(episode, show) }
+        }
+        val wholeShowEpisodes = selectedWholeShows.flatMap { show ->
+            show.episodes.map { episodeForShow(ServusBranding.canonicalizeEpisode(it), show) }
+        }
+        val collectionEpisodes = selectedCollectionSources.flatMap { (show, collection) ->
+            collection.episodes.map { raw ->
+                val episode = ServusBranding.canonicalizeEpisode(raw)
+                episode.copy(
+                    categoryId = episode.categoryId ?: show.categoryId,
+                    categoryTitle = episode.categoryTitle ?: show.categoryTitle,
+                    sourceCollectionId = episode.sourceCollectionId ?: collection.id,
+                    sourceCollectionTitle = episode.sourceCollectionTitle ?: collection.title,
+                )
+            }
+        }
+
+        val merged = ServusNewsPolicy.deduplicateEpisodes(filteredLegacy + wholeShowEpisodes + collectionEpisodes)
+        if (merged.size <= MAX_CURRENT_EPISODES) return merged
+
+        val anchorIds = buildSet {
+            selectedWholeShows.mapNotNullTo(this) { it.episodes.firstOrNull()?.id }
+            selectedCollectionSources.mapNotNullTo(this) { it.second.episodes.firstOrNull()?.id }
+        }
+        val anchors = merged.filter { it.id in anchorIds }.take(MAX_CURRENT_EPISODES)
+        if (anchors.size >= MAX_CURRENT_EPISODES) return sortByAvailability(anchors)
+        val filler = merged.filterNot { it.id in anchorIds }.take(MAX_CURRENT_EPISODES - anchors.size)
+        return sortByAvailability(filler + anchors)
     }
+
+    private fun episodeForShow(episode: ServusNewsEpisode, show: ServusShow): ServusNewsEpisode =
+        ServusBranding.canonicalizeEpisode(
+            episode.copy(
+                showId = when (ServusNewsPolicy.contentKind(episode)) {
+                    ServusContentKind.FULL_NEWS -> ServusBranding.NEWS_SHOW_ID
+                    ServusContentKind.NEWS_90_SECONDS -> ServusBranding.NEWS_90_SECONDS_SHOW_ID
+                    else -> episode.showId ?: show.id
+                },
+                showName = when (ServusNewsPolicy.contentKind(episode)) {
+                    ServusContentKind.FULL_NEWS -> ServusBranding.NEWS_SHOW_NAME
+                    ServusContentKind.NEWS_90_SECONDS -> ServusBranding.NEWS_90_SECONDS_SHOW_NAME
+                    else -> episode.showName?.takeIf { it.isNotBlank() } ?: show.title
+                },
+                logoUri = episode.logoUri ?: show.logoUri,
+                categoryId = episode.categoryId ?: show.categoryId,
+                categoryTitle = episode.categoryTitle ?: show.categoryTitle,
+            ),
+        )
 
     private companion object {
         const val PREFS_NAME = "servus_current_channel_selection"
-        const val KEY_SELECTED_SHOW_IDS = "selected_show_ids"
+        // Keep the old preference key so upgrades retain existing whole-show selections.
+        const val KEY_SELECTED_SOURCE_KEYS = "selected_show_ids"
         const val MAX_CURRENT_EPISODES = 20
     }
 }
@@ -80,7 +156,6 @@ object ServusCurrentChannelPolicy {
         return normalized.contains("servus nachrichten") || normalized.contains("wegscheider")
     }
 
-    /** Identity + logo are always repaired together for known news formats. */
     fun applyCanonicalBranding(episodes: List<ServusNewsEpisode>): List<ServusNewsEpisode> =
         episodes.map(ServusBranding::canonicalizeEpisode)
 
@@ -91,36 +166,9 @@ object ServusCurrentChannelPolicy {
         limit: Int,
     ): List<ServusNewsEpisode> {
         if (limit <= 0 || selectedShows.isEmpty()) return emptyList()
-
         val filteredLegacy = legacyEpisodes.mapNotNull { rawEpisode ->
             val episode = ServusBranding.canonicalizeEpisode(rawEpisode)
-            matchingSelectedShow(
-                episode = episode,
-                selectedShows = selectedShows,
-                allShows = allShows,
-            )?.let { show ->
-                ServusBranding.canonicalizeEpisode(
-                    episode.copy(
-                        showId = when (ServusNewsPolicy.contentKind(episode)) {
-                            ServusContentKind.FULL_NEWS -> ServusBranding.NEWS_SHOW_ID
-                            ServusContentKind.NEWS_90_SECONDS -> ServusBranding.NEWS_90_SECONDS_SHOW_ID
-                            else -> show.id
-                        },
-                        showName = when (ServusNewsPolicy.contentKind(episode)) {
-                            ServusContentKind.FULL_NEWS -> ServusBranding.NEWS_SHOW_NAME
-                            ServusContentKind.NEWS_90_SECONDS -> ServusBranding.NEWS_90_SECONDS_SHOW_NAME
-                            else -> show.title
-                        },
-                        logoUri = episode.logoUri ?: show.logoUri,
-                        categoryId = episode.categoryId ?: show.categoryId,
-                        categoryTitle = episode.categoryTitle ?: show.categoryTitle,
-                    ),
-                )
-            }
-        }
-        val selectedCatalogueEpisodes = selectedShows.flatMap { show ->
-            show.episodes.map { rawEpisode ->
-                val episode = ServusBranding.canonicalizeEpisode(rawEpisode)
+            matchingSelectedShow(episode, selectedShows, allShows)?.let { show ->
                 ServusBranding.canonicalizeEpisode(
                     episode.copy(
                         showId = episode.showId ?: show.id,
@@ -132,20 +180,8 @@ object ServusCurrentChannelPolicy {
                 )
             }
         }
-        val merged = ServusNewsPolicy.deduplicateEpisodes(filteredLegacy + selectedCatalogueEpisodes)
-        if (merged.size <= limit) return merged
-
-        val anchorIds = selectedShows
-            .mapNotNull { it.episodes.firstOrNull()?.id }
-            .toSet()
-        val anchors = merged.filter { it.id in anchorIds }
-            .take(limit)
-        if (anchors.size >= limit) return sortByAvailability(anchors)
-
-        val filler = merged
-            .filterNot { it.id in anchorIds }
-            .take(limit - anchors.size)
-        return sortByAvailability(filler + anchors)
+        val selectedCatalogueEpisodes = selectedShows.flatMap { it.episodes }
+        return ServusNewsPolicy.deduplicateEpisodes(filteredLegacy + selectedCatalogueEpisodes).take(limit)
     }
 
     fun matchesSelectedShow(
@@ -159,9 +195,6 @@ object ServusCurrentChannelPolicy {
         selectedShows: List<ServusShow>,
         allShows: List<ServusShow>,
     ): ServusShow? {
-        // Format identity wins over a stale showId. dev34 could write a 90-second topical clip into
-        // the generic Servus-Nachrichten show; trusting showId first is what made that corruption
-        // self-perpetuating after the user opened the show.
         return when (ServusNewsPolicy.contentKind(episode)) {
             ServusContentKind.NEWS_90_SECONDS -> {
                 selectedShows.firstOrNull { it.id == ServusBranding.NEWS_90_SECONDS_SHOW_ID }
@@ -174,18 +207,15 @@ object ServusCurrentChannelPolicy {
                         }
                     }
             }
-
             ServusContentKind.FULL_NEWS -> selectedShows.firstOrNull { show ->
                 show.id == ServusBranding.NEWS_SHOW_ID || run {
                     val title = normalize(show.title)
                     title.contains("servus nachrichten") && !title.contains("90 sekunden")
                 }
             }
-
             ServusContentKind.WEGSCHEIDER -> selectedShows.firstOrNull {
                 normalize(it.title).contains("wegscheider")
             }
-
             null -> {
                 episode.showId?.let { showId ->
                     selectedShows.firstOrNull { it.id == showId }?.let { return it }
@@ -204,9 +234,7 @@ object ServusCurrentChannelPolicy {
     }
 
     private fun sortByAvailability(episodes: List<ServusNewsEpisode>): List<ServusNewsEpisode> =
-        episodes.sortedWith(
-            compareByDescending<ServusNewsEpisode> { ServusNewsPolicy.recencyMillis(it) ?: Long.MIN_VALUE },
-        )
+        episodes.sortedWith(compareByDescending<ServusNewsEpisode> { ServusNewsPolicy.recencyMillis(it) ?: Long.MIN_VALUE })
 
     private fun normalize(value: String): String = value
         .lowercase(Locale.GERMAN)
