@@ -23,6 +23,14 @@ data class ServusNewsEpisode(
     val artworkUri: String?,
     val showId: String? = null,
     val logoUri: String? = null,
+    /**
+     * Parent-show landscape artwork resolved from the already cached show product.
+     *
+     * This stays separate from [artworkUri], which is the concrete episode landscape. It lets the
+     * aggregate `ServusTV Aktuelles` channel publish stable show art for the rail card while still
+     * publishing the episode image for the focused Hero, without any extra API request.
+     */
+    val showArtworkUri: String? = null,
     val categoryId: String? = null,
     val categoryTitle: String? = null,
     val contentType: String? = null,
