@@ -91,6 +91,32 @@ class ServusCurrentChannelPolicyTest {
     }
 
     @Test
+    fun enrichEpisodeForShowCarriesParentArtworkWithoutReplacingEpisodeArtwork() {
+        val show = show(
+            id = "weather",
+            title = "Servus Wetter",
+            artworkUri = "https://cdn.example/weather-show-landscape.webp",
+            logoUri = "https://cdn.example/weather-title-treatment.webp",
+        )
+        val episode = episode(
+            id = "weather-episode",
+            title = "07.09. | Servus Wetter",
+            showName = "Servus Wetter",
+        ).copy(
+            artworkUri = "https://cdn.example/weather-episode-landscape.webp",
+            showId = null,
+            logoUri = null,
+        )
+
+        val enriched = ServusCurrentChannelPolicy.enrichEpisodeForShow(episode, show)
+
+        assertEquals("weather", enriched.showId)
+        assertEquals("https://cdn.example/weather-show-landscape.webp", enriched.showArtworkUri)
+        assertEquals("https://cdn.example/weather-episode-landscape.webp", enriched.artworkUri)
+        assertEquals("https://cdn.example/weather-title-treatment.webp", enriched.logoUri)
+    }
+
+    @Test
     fun episodeWithExplicitShowIdFollowsUserSelection() {
         val selected = show("selected", "Eine Sendung")
         val episode = episode(
@@ -172,15 +198,17 @@ class ServusCurrentChannelPolicyTest {
         id: String,
         title: String,
         episodes: List<ServusNewsEpisode> = emptyList(),
+        artworkUri: String? = null,
+        logoUri: String? = null,
     ) = ServusShow(
         id = id,
         title = title,
         description = null,
         categoryId = "category",
         categoryTitle = "Kategorie",
-        artworkUri = null,
+        artworkUri = artworkUri,
         squareArtworkUri = null,
-        logoUri = null,
+        logoUri = logoUri,
         episodes = episodes,
     )
 

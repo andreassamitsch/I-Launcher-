@@ -31,6 +31,8 @@ data class MediaItem(
     val subtitle: String? = null,
     val overview: String? = null,
     val releaseYear: Int? = null,
+    /** Provider-supplied release/publication date in ISO form where available. */
+    val releaseDate: String? = null,
     val tmdbId: Int? = null,
     val tmdbEpisodeId: Int? = null,
     val seasonNumber: Int? = null,
@@ -38,6 +40,7 @@ data class MediaItem(
     val episodeTitle: String? = null,
     val posterUri: String? = null,
     val backdropUri: String? = null,
+    /** Explicit wide image intended for the Home Hero. */
     val heroBackdropUri: String? = null,
     val logoUri: String? = null,
     val episodeStillUri: String? = null,

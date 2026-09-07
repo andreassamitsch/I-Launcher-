@@ -73,16 +73,18 @@ class ServusChannelPublisher(context: Context) {
             logo = createAppLogo(),
         )
         replacePrograms(channelId, effectiveEpisodes.mapIndexed { index, episode ->
-            val showArtwork = episode.showId
-                ?.let(showArtworkById::get)
+            val parentShowArtwork = episode.showArtworkUri
                 ?.takeIf { it.isNotBlank() }
+                ?: episode.showId
+                    ?.let(showArtworkById::get)
+                    ?.takeIf { it.isNotBlank() }
             buildEpisodeProgram(
                 channelId = channelId,
                 episode = episode,
                 weight = effectiveEpisodes.size - index,
                 logoUri = episode.logoUri,
-                posterArtworkUri = showArtwork ?: episode.artworkUri,
-                includeLogo = false,
+                posterArtworkUri = parentShowArtwork ?: episode.artworkUri,
+                includeLogo = true,
             )
         })
     }
