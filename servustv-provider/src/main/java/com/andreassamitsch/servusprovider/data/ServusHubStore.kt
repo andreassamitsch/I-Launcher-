@@ -12,18 +12,29 @@ class ServusHubStore(context: Context) {
     private val liveListType = object : TypeToken<List<ServusLiveChannel>>() {}.type
 
     fun loadCategories(): List<ServusCategory> {
+        // Gson cannot safely apply Kotlin default values to reference-allocated legacy data classes.
+        // Drop only the provider metadata cache once when introducing first-class collections; user
+        // selections live in separate stores and survive. The next normal refresh rebuilds metadata.
+        if (preferences.getInt(KEY_DATA_SCHEMA, 0) < CURRENT_DATA_SCHEMA) {
+            preferences.edit()
+                .remove(KEY_CATEGORIES)
+                .putLong(KEY_CATALOG_SUCCESS, 0L)
+                .putInt(KEY_DATA_SCHEMA, CURRENT_DATA_SCHEMA)
+                .putInt(KEY_TIME_SCHEMA, CURRENT_TIME_SCHEMA)
+                .apply()
+            return emptyList()
+        }
+
         val categories = loadList<ServusCategory>(KEY_CATEGORIES, categoryListType)
         if (categories.isEmpty()) return categories
 
         if (preferences.getInt(KEY_TIME_SCHEMA, 1) < CURRENT_TIME_SCHEMA) {
-            // dev.2 could attach recommendation/news cards to unrelated shows and could also store
-            // broadcast/title times as publishedAtMillis. Those cached episode records cannot be repaired
-            // reliably after the fact. Keep the show/category metadata, drop only episode snapshots and
-            // force one full catalogue refresh with the corrected membership/timestamp policy.
             val migrated = canonicalizeCategories(
                 categories.map { category ->
                     category.copy(
-                        shows = category.shows.map { show -> show.copy(episodes = emptyList()) },
+                        shows = category.shows.map { show ->
+                            show.copy(episodes = emptyList(), collections = emptyList())
+                        },
                     )
                 },
             )
@@ -31,6 +42,7 @@ class ServusHubStore(context: Context) {
                 .putString(KEY_CATEGORIES, ServusNetwork.gson.toJson(migrated))
                 .putLong(KEY_CATALOG_SUCCESS, 0L)
                 .putInt(KEY_TIME_SCHEMA, CURRENT_TIME_SCHEMA)
+                .putInt(KEY_DATA_SCHEMA, CURRENT_DATA_SCHEMA)
                 .apply()
             return migrated
         }
@@ -52,22 +64,19 @@ class ServusHubStore(context: Context) {
             .putString(KEY_CATEGORIES, ServusNetwork.gson.toJson(canonical))
             .putLong(KEY_CATALOG_SUCCESS, refreshedAtMillis)
             .putInt(KEY_TIME_SCHEMA, CURRENT_TIME_SCHEMA)
+            .putInt(KEY_DATA_SCHEMA, CURRENT_DATA_SCHEMA)
             .apply()
     }
 
-    /** Saves targeted selected-show updates without pretending the complete catalogue was refreshed. */
     fun saveCatalogContent(categories: List<ServusCategory>) {
         val canonical = canonicalizeCategories(categories)
         preferences.edit()
             .putString(KEY_CATEGORIES, ServusNetwork.gson.toJson(canonical))
             .putInt(KEY_TIME_SCHEMA, CURRENT_TIME_SCHEMA)
+            .putInt(KEY_DATA_SCHEMA, CURRENT_DATA_SCHEMA)
             .apply()
     }
 
-    /**
-     * Persists a branding resource discovered lazily from a show's official product detail. This is
-     * intentionally metadata-only and therefore must not advance the complete catalogue refresh time.
-     */
     fun updateShowLogo(showId: String, logoUri: String) {
         val resolved = ServusBranding.logoUriForShow(showId, logoUri) ?: return
         val categories = loadCategories()
@@ -119,9 +128,15 @@ class ServusHubStore(context: Context) {
         val canonical = categories.map { category ->
             category.copy(
                 shows = category.shows.map { show ->
+                    val canonicalEpisodes = show.episodes.map(ServusBranding::canonicalizeEpisode)
                     show.copy(
                         logoUri = ServusBranding.catalogueLogoUriForShow(show.id, show.logoUri),
-                        episodes = show.episodes.map(ServusBranding::canonicalizeEpisode),
+                        episodes = canonicalEpisodes,
+                        collections = show.collections.map { collection ->
+                            collection.copy(
+                                episodes = collection.episodes.map(ServusBranding::canonicalizeEpisode),
+                            )
+                        },
                     )
                 },
             )
@@ -147,6 +162,8 @@ class ServusHubStore(context: Context) {
         const val KEY_LIVE_SUCCESS = "live_success"
         const val KEY_CATALOG_DIAGNOSTIC = "catalog_diagnostic"
         const val KEY_TIME_SCHEMA = "availability_time_schema"
+        const val KEY_DATA_SCHEMA = "hub_data_schema"
         const val CURRENT_TIME_SCHEMA = 2
+        const val CURRENT_DATA_SCHEMA = 3
     }
 }
