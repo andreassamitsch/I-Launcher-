@@ -22,6 +22,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
+private const val CATEGORY_RESULT_PREFIX = "search:tmdb-category:"
+
 /**
  * UI-facing adapter for TMDB discovery, relations, series seasons and people details.
  *
@@ -47,6 +49,17 @@ class TmdbDiscoveryLoader(
                 items = section.items.map(::toSearchItem),
             )
         }
+
+    suspend fun browseCategory(
+        type: MediaType,
+        sourceRowKey: String,
+    ): List<SearchBrowseSection> = repository.browseCategory(type, sourceRowKey).map { section ->
+        SearchBrowseSection(
+            key = section.key,
+            title = section.title,
+            items = section.items.map { media -> toSearchItem(media, sourceRowKey) },
+        )
+    }
 
     fun peekDetails(item: MediaItem): MediaItem? = detailKey(item)?.let(prefetchedDetails::get)
 
@@ -104,8 +117,15 @@ class TmdbDiscoveryLoader(
         }
     }
 
-    private fun toSearchItem(media: MediaItem): SearchItem = SearchItem(
-        id = "search:tmdb:${media.type}:${media.tmdbId}",
+    private fun toSearchItem(
+        media: MediaItem,
+        categoryKey: String? = null,
+    ): SearchItem = SearchItem(
+        id = if (categoryKey == null) {
+            "search:tmdb:${media.type}:${media.tmdbId}"
+        } else {
+            "$CATEGORY_RESULT_PREFIX$categoryKey:${media.type}:${media.tmdbId}"
+        },
         kind = SearchResultKind.Tmdb,
         title = media.title,
         subtitle = media.releaseYear?.toString(),
@@ -118,6 +138,13 @@ class TmdbDiscoveryLoader(
         const val PREFETCH_CONCURRENCY = 3
         const val MAX_PREFETCHED_DETAILS = 64
     }
+}
+
+internal fun discoveryCategoryKeyFromResultId(resultId: String?): String? {
+    if (resultId == null || !resultId.startsWith(CATEGORY_RESULT_PREFIX)) return null
+    return resultId.removePrefix(CATEGORY_RESULT_PREFIX)
+        .substringBefore(':')
+        .takeIf(String::isNotBlank)
 }
 
 val LocalTmdbDiscoveryLoader = staticCompositionLocalOf<TmdbDiscoveryLoader?> { null }

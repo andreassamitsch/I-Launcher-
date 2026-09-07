@@ -9,13 +9,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbDiscoveryCatalog
+import com.andreassamitsch.ilauncher.data.tmdb.TmdbDiscoveryPreferences
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbDiscoveryRowDefinition
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbDiscoveryRowKind
 import com.andreassamitsch.ilauncher.model.MediaType
@@ -31,6 +35,10 @@ fun ContentDiscoverySettingsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val preferences = remember(context) { TmdbDiscoveryPreferences(context) }
+    val hideAnime by preferences.hideAnime.collectAsState()
+    val kidsMode by preferences.kidsMode.collectAsState()
     val scrollState = rememberScrollState()
     val allRows = remember(mediaType) { TmdbDiscoveryCatalog.rows(mediaType) }
     val rowsByKey = remember(allRows) { allRows.associateBy(TmdbDiscoveryRowDefinition::key) }
@@ -65,6 +73,50 @@ fun ContentDiscoverySettingsScreen(
             "Diese Optionen sind absichtlich nur über langes OK auf „$pageName“ in der Navigation erreichbar.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        Text("Globale Inhaltsfilter", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "Diese beiden Optionen gelten gemeinsam für Filme und Serien sowie deren „Mehr“-Unterseiten.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Anime außerhalb Animation ausblenden", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Japanische Animation wird aus normalen Genres und Listen entfernt. In „Animation“ bleibt sie sichtbar.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            TouchButton(onClick = { preferences.setHideAnime(!hideAnime) }) {
+                Text(if (hideAnime) "An" else "Aus")
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Kindermodus", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Zeigt nur konservativ gefilterte Kinder-/Familieninhalte. Filme: deutsche Freigabe bis FSK 6; Serien: Kinder-/Familiengenres.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            TouchButton(onClick = { preferences.setKidsMode(!kidsMode) }) {
+                Text(if (kidsMode) "An" else "Aus")
+            }
+        }
+        if (kidsMode) {
+            Text(
+                "Im Kindermodus bleibt deine normale Reihen-Auswahl gespeichert. Sichtbar sind vorübergehend nur sichere allgemeine Listen sowie Familie, Kinder und Animation.",
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
 
         Text("Sichtbare TMDB-Reihen", style = MaterialTheme.typography.headlineSmall)
         Text(

@@ -1,0 +1,296 @@
+package com.andreassamitsch.ilauncher.data.tmdb
+
+import com.andreassamitsch.ilauncher.model.MediaItem
+import com.andreassamitsch.ilauncher.model.MediaSource
+import com.andreassamitsch.ilauncher.model.MediaType
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class TmdbDiscoveryContentPolicyTest {
+    @Test
+    fun comedyAffinityPrefersFamilyAnimationOverCrimeThrillerComedy() {
+        val pulpLike = TmdbSearchResultDto(
+            id = 1,
+            title = "Crime comedy",
+            genreIds = listOf(35, 80, 53, 18),
+        )
+        val toyStoryLike = TmdbSearchResultDto(
+            id = 2,
+            title = "Family animation comedy",
+            genreIds = listOf(16, 12, 10751, 35),
+        )
+
+        val ranked = TmdbDiscoveryContentPolicy.rankForGenre(
+            listOf(pulpLike, toyStoryLike),
+            genreId = "35",
+        )
+
+        assertEquals(2, ranked.first().id)
+        assertEquals(1, ranked.last().id)
+    }
+
+    @Test
+    fun comedyDiscoveryRejectsClearlySecondaryComedyMixes() {
+        val thorLike = TmdbSearchResultDto(
+            id = 1,
+            title = "Superhero action adventure",
+            genreIds = listOf(28, 12, 14, 878, 35),
+        )
+        val pulpLike = TmdbSearchResultDto(
+            id = 2,
+            title = "Crime thriller comedy",
+            genreIds = listOf(80, 53, 18, 35),
+        )
+        val backToFutureLike = TmdbSearchResultDto(
+            id = 3,
+            title = "Adventure sci-fi comedy",
+            genreIds = listOf(12, 35, 878),
+        )
+        val directComedy = TmdbSearchResultDto(
+            id = 4,
+            title = "Comedy",
+            genreIds = listOf(35),
+        )
+        val adventureComedy = TmdbSearchResultDto(
+            id = 5,
+            title = "Adventure comedy",
+            genreIds = listOf(35, 12),
+        )
+
+        val filtered = TmdbDiscoveryContentPolicy.prepareDiscoverResults(
+            type = MediaType.Movie,
+            results = listOf(thorLike, pulpLike, backToFutureLike, directComedy, adventureComedy),
+            settings = TmdbDiscoveryFilterSettings(hideAnime = false),
+            genreId = "35",
+            movieCertificationApplied = false,
+        )
+
+        assertEquals(setOf(4, 5), filtered.map(TmdbSearchResultDto::id).toSet())
+    }
+
+    @Test
+    fun ambiguousForeignTitleRequiresExactGermanTranslationLookup() {
+        val spanishUnchanged = TmdbSearchResultDto(
+            id = 30,
+            title = "Socias por accidente",
+            originalTitle = "Socias por accidente",
+            originalLanguage = "es",
+        )
+        val spanishLocalized = TmdbSearchResultDto(
+            id = 31,
+            title = "Partnerinnen aus Versehen",
+            originalTitle = "Socias por accidente",
+            originalLanguage = "es",
+        )
+        val englishUnchanged = TmdbSearchResultDto(
+            id = 32,
+            title = "Avatar",
+            originalTitle = "Avatar",
+            originalLanguage = "en",
+        )
+        val germanOriginal = TmdbSearchResultDto(
+            id = 33,
+            title = "Das Leben der Anderen",
+            originalTitle = "Das Leben der Anderen",
+            originalLanguage = "de",
+        )
+
+        assertTrue(TmdbDiscoveryContentPolicy.requiresGermanMovieTranslationLookup(spanishUnchanged))
+        assertFalse(TmdbDiscoveryContentPolicy.requiresGermanMovieTranslationLookup(spanishLocalized))
+        assertFalse(TmdbDiscoveryContentPolicy.requiresGermanMovieTranslationLookup(englishUnchanged))
+        assertFalse(TmdbDiscoveryContentPolicy.requiresGermanMovieTranslationLookup(germanOriginal))
+    }
+
+    @Test
+    fun exactTranslationResponseRequiresGermanMovieTitle() {
+        val german = TmdbMovieTranslationsDto(
+            id = 1,
+            translations = listOf(
+                TmdbMovieTranslationDto(
+                    countryCode = "DE",
+                    languageCode = "de",
+                    data = TmdbMovieTranslationDataDto(title = "Deutscher Titel"),
+                ),
+            ),
+        )
+        val englishOnly = TmdbMovieTranslationsDto(
+            id = 2,
+            translations = listOf(
+                TmdbMovieTranslationDto(
+                    countryCode = "US",
+                    languageCode = "en",
+                    data = TmdbMovieTranslationDataDto(title = "English title"),
+                ),
+            ),
+        )
+        val emptyGerman = TmdbMovieTranslationsDto(
+            id = 3,
+            translations = listOf(
+                TmdbMovieTranslationDto(
+                    countryCode = "DE",
+                    languageCode = "de",
+                    data = TmdbMovieTranslationDataDto(title = ""),
+                ),
+            ),
+        )
+
+        assertTrue(TmdbDiscoveryContentPolicy.hasGermanMovieTranslation(german))
+        assertFalse(TmdbDiscoveryContentPolicy.hasGermanMovieTranslation(englishOnly))
+        assertFalse(TmdbDiscoveryContentPolicy.hasGermanMovieTranslation(emptyGerman))
+    }
+
+    @Test
+    fun animeIsHiddenOutsideAnimationButKeptInsideAnimation() {
+        val anime = TmdbSearchResultDto(
+            id = 10,
+            name = "Anime",
+            genreIds = listOf(16, 10765),
+            originalLanguage = "ja",
+            originCountry = listOf("JP"),
+        )
+        val settings = TmdbDiscoveryFilterSettings(hideAnime = true)
+
+        val normal = TmdbDiscoveryContentPolicy.prepareDiscoverResults(
+            type = MediaType.Series,
+            results = listOf(anime),
+            settings = settings,
+            genreId = "10765",
+            movieCertificationApplied = false,
+        )
+        val animation = TmdbDiscoveryContentPolicy.prepareDiscoverResults(
+            type = MediaType.Series,
+            results = listOf(anime),
+            settings = settings,
+            genreId = "16",
+            movieCertificationApplied = false,
+        )
+
+        assertTrue(normal.isEmpty())
+        assertEquals(listOf(10), animation.map(TmdbSearchResultDto::id))
+    }
+
+    @Test
+    fun japaneseLiveActionIsNotMisclassifiedAsAnime() {
+        val liveAction = TmdbSearchResultDto(
+            id = 11,
+            title = "Japanese drama",
+            genreIds = listOf(18),
+            originalLanguage = "ja",
+            originCountry = listOf("JP"),
+        )
+
+        val filtered = TmdbDiscoveryContentPolicy.prepareFeedResults(
+            type = MediaType.Movie,
+            results = listOf(liveAction),
+            settings = TmdbDiscoveryFilterSettings(hideAnime = true),
+        )
+
+        assertEquals(listOf(11), filtered.map(TmdbSearchResultDto::id))
+    }
+
+    @Test
+    fun kidsModeReplacesNormalRowsWithSafeDiscoveryRows() {
+        val movieRows = TmdbDiscoveryContentPolicy.effectiveRows(
+            type = MediaType.Movie,
+            requested = TmdbDiscoveryCatalog.rows(MediaType.Movie),
+            settings = TmdbDiscoveryFilterSettings(kidsMode = true),
+        )
+        val seriesRows = TmdbDiscoveryContentPolicy.effectiveRows(
+            type = MediaType.Series,
+            requested = TmdbDiscoveryCatalog.rows(MediaType.Series),
+            settings = TmdbDiscoveryFilterSettings(kidsMode = true),
+        )
+
+        assertEquals(
+            listOf("movie-popular", "movie-top-rated", "movie-genre-10751", "movie-genre-16"),
+            movieRows.map(TmdbDiscoveryRowDefinition::key),
+        )
+        assertEquals(
+            listOf(
+                "series-popular",
+                "series-top-rated",
+                "series-genre-10762",
+                "series-genre-10751",
+                "series-genre-16",
+            ),
+            seriesRows.map(TmdbDiscoveryRowDefinition::key),
+        )
+    }
+
+    @Test
+    fun movieDiscoveryUsesGermanMarketInNormalAndKidsMode() {
+        assertEquals(
+            "DE",
+            TmdbDiscoveryContentPolicy.movieRegion(TmdbDiscoveryFilterSettings(kidsMode = false)),
+        )
+        assertEquals(
+            "DE",
+            TmdbDiscoveryContentPolicy.movieRegion(TmdbDiscoveryFilterSettings(kidsMode = true)),
+        )
+    }
+
+    @Test
+    fun kidsModeUsesGermanMovieCertificationUpToFskSix() {
+        val settings = TmdbDiscoveryFilterSettings(kidsMode = true)
+
+        assertEquals("DE", TmdbDiscoveryContentPolicy.movieCertificationCountry(settings))
+        assertEquals("6", TmdbDiscoveryContentPolicy.movieCertificationLte(settings))
+    }
+
+    @Test
+    fun kidsModeRejectsGeneralSeriesButKeepsFamilySeries() {
+        val general = TmdbSearchResultDto(id = 20, name = "General", genreIds = listOf(18))
+        val family = TmdbSearchResultDto(id = 21, name = "Family", genreIds = listOf(10751, 35))
+
+        val filtered = TmdbDiscoveryContentPolicy.prepareDiscoverResults(
+            type = MediaType.Series,
+            results = listOf(general, family),
+            settings = TmdbDiscoveryFilterSettings(kidsMode = true),
+            genreId = null,
+            movieCertificationApplied = false,
+        )
+
+        assertEquals(listOf(21), filtered.map(TmdbSearchResultDto::id))
+    }
+
+    @Test
+    fun categoryDiversificationKeepsLeadingCardsDifferentAcrossRows() {
+        val first = TmdbBrowseSection(
+            key = "first",
+            title = "First",
+            items = (1..10).map(::media),
+        )
+        val second = TmdbBrowseSection(
+            key = "second",
+            title = "Second",
+            items = (1..5).map(::media) + (11..15).map(::media),
+        )
+
+        val diversified = TmdbDiscoveryContentPolicy.diversifyCategorySections(
+            sections = listOf(first, second),
+            distinctLeadCount = 5,
+        )
+
+        assertEquals(listOf(1, 2, 3, 4, 5), diversified[0].items.take(5).mapNotNull(MediaItem::tmdbId))
+        assertEquals(listOf(11, 12, 13, 14, 15), diversified[1].items.take(5).mapNotNull(MediaItem::tmdbId))
+        assertFalse(diversified[1].items.take(5).any { it.tmdbId in 1..5 })
+    }
+
+    @Test
+    fun animeKeywordExclusionIsDisabledForAnimationGenre() {
+        val settings = TmdbDiscoveryFilterSettings(hideAnime = true)
+
+        assertEquals(TmdbDiscoveryContentPolicy.ANIME_KEYWORD_ID, TmdbDiscoveryContentPolicy.withoutKeywords(settings, "35"))
+        assertEquals(null, TmdbDiscoveryContentPolicy.withoutKeywords(settings, "16"))
+    }
+
+    private fun media(id: Int): MediaItem = MediaItem(
+        id = "media:$id",
+        type = MediaType.Movie,
+        title = "Movie $id",
+        tmdbId = id,
+        source = MediaSource(provider = "test", sourceId = "test:$id"),
+    )
+}

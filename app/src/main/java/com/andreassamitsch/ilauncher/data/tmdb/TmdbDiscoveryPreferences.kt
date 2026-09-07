@@ -155,6 +155,16 @@ class TmdbDiscoveryPreferences(context: Context) {
     private val _seriesRowKeys = MutableStateFlow(load(MediaType.Series))
     val seriesRowKeys: StateFlow<List<String>> = _seriesRowKeys.asStateFlow()
 
+    private val _hideAnime = MutableStateFlow(
+        preferences.getBoolean(KEY_HIDE_ANIME, DEFAULT_HIDE_ANIME),
+    )
+    val hideAnime: StateFlow<Boolean> = _hideAnime.asStateFlow()
+
+    private val _kidsMode = MutableStateFlow(
+        preferences.getBoolean(KEY_KIDS_MODE, DEFAULT_KIDS_MODE),
+    )
+    val kidsMode: StateFlow<Boolean> = _kidsMode.asStateFlow()
+
     fun setVisible(type: MediaType, key: String, visible: Boolean) {
         val available = TmdbDiscoveryCatalog.rows(type).map(TmdbDiscoveryRowDefinition::key)
         if (key !in available) return
@@ -189,6 +199,22 @@ class TmdbDiscoveryPreferences(context: Context) {
         state(type).value = TmdbDiscoveryCatalog.defaultRowKeys(type)
     }
 
+    fun setHideAnime(hidden: Boolean) {
+        preferences.edit().putBoolean(KEY_HIDE_ANIME, hidden).apply()
+        _hideAnime.value = hidden
+    }
+
+    fun setKidsMode(enabled: Boolean) {
+        preferences.edit().putBoolean(KEY_KIDS_MODE, enabled).apply()
+        _kidsMode.value = enabled
+    }
+
+    /** Reads the shared preference directly so repository instances always see the latest value. */
+    fun filterSettings(): TmdbDiscoveryFilterSettings = TmdbDiscoveryFilterSettings(
+        hideAnime = preferences.getBoolean(KEY_HIDE_ANIME, DEFAULT_HIDE_ANIME),
+        kidsMode = preferences.getBoolean(KEY_KIDS_MODE, DEFAULT_KIDS_MODE),
+    )
+
     private fun load(type: MediaType): List<String> {
         val available = TmdbDiscoveryCatalog.rows(type).map(TmdbDiscoveryRowDefinition::key)
         val defaults = TmdbDiscoveryCatalog.defaultRowKeys(type)
@@ -222,6 +248,10 @@ class TmdbDiscoveryPreferences(context: Context) {
         const val PREFS_NAME = "tmdb_discovery_preferences"
         const val KEY_MOVIE_ROWS = "movie_rows"
         const val KEY_SERIES_ROWS = "series_rows"
+        const val KEY_HIDE_ANIME = "hide_anime"
+        const val KEY_KIDS_MODE = "kids_mode"
+        const val DEFAULT_HIDE_ANIME = true
+        const val DEFAULT_KIDS_MODE = false
         const val SEPARATOR = "\u001F"
 
         fun encode(items: List<String>): String = items.joinToString(SEPARATOR)

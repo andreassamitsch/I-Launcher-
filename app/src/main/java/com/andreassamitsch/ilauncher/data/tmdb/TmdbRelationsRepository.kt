@@ -20,7 +20,8 @@ class TmdbRelationsRepository(
     private val appContext = context.applicationContext
     private val network = TmdbNetworkClient(readAccessToken)
     private val imageConfigurationStore = TmdbImageConfigurationStore(appContext)
-    private val cache = LinkedHashMap<String, CachedRelations>()
+    private val discoveryPreferences = TmdbDiscoveryPreferences(appContext)
+    private val cache = LinkedHashMap<RelationsCacheKey, CachedRelations>()
 
     suspend fun load(item: MediaItem): MediaRelatedContent = withContext(Dispatchers.IO) {
         val tmdbId = item.tmdbId ?: return@withContext MediaRelatedContent.Empty
@@ -33,7 +34,8 @@ class TmdbRelationsRepository(
         }
         if (!network.isConfigured || tmdbId <= 0) return@withContext MediaRelatedContent.Empty
 
-        val key = "${relationType.name}:$tmdbId"
+        val filterSettings = discoveryPreferences.filterSettings()
+        val key = RelationsCacheKey(relationType, tmdbId, filterSettings)
         val now = System.currentTimeMillis()
         cache[key]
             ?.takeIf { now - it.updatedAtUtcMillis <= CACHE_MILLIS }
@@ -46,10 +48,24 @@ class TmdbRelationsRepository(
                 MediaType.Series -> network.api.tvRelations(tmdbId, LANGUAGE)
                 else -> return@runCatching MediaRelatedContent.Empty
             }
+            val sourceGenreIds = relations.genres.map(TmdbGenreDto::id)
+            val allowAnime = TmdbDiscoveryContentPolicy.ANIMATION_GENRE_ID in sourceGenreIds
+            val recommendations = TmdbDiscoveryContentPolicy.prepareRelatedResults(
+                type = relationType,
+                results = relations.recommendations?.results.orEmpty(),
+                settings = filterSettings,
+                allowAnime = allowAnime,
+            )
+            val similarCandidates = TmdbDiscoveryContentPolicy.prepareRelatedResults(
+                type = relationType,
+                results = relations.similar?.results.orEmpty(),
+                settings = filterSettings,
+                allowAnime = allowAnime,
+            )
             val relatedCandidates = selectTmdbRelatedCandidates(
-                recommendations = relations.recommendations?.results.orEmpty(),
-                similar = relations.similar?.results.orEmpty(),
-                sourceGenreIds = relations.genres.map(TmdbGenreDto::id),
+                recommendations = recommendations,
+                similar = similarCandidates,
+                sourceGenreIds = sourceGenreIds,
                 currentTmdbId = tmdbId,
             )
             val similar = mapTmdbRelationItems(
@@ -60,7 +76,13 @@ class TmdbRelationsRepository(
                 limit = SIMILAR_LIMIT,
             )
             val collection = if (relationType == MediaType.Movie) {
-                loadMovieCollection(relations.belongsToCollection, tmdbId, images)
+                loadMovieCollection(
+                    reference = relations.belongsToCollection,
+                    currentTmdbId = tmdbId,
+                    images = images,
+                    filterSettings = filterSettings,
+                    allowAnime = allowAnime,
+                )
             } else {
                 null
             }
@@ -78,6 +100,8 @@ class TmdbRelationsRepository(
         reference: TmdbCollectionRefDto?,
         currentTmdbId: Int,
         images: TmdbImageConfiguration?,
+        filterSettings: TmdbDiscoveryFilterSettings,
+        allowAnime: Boolean,
     ): MediaCollection? {
         val collectionId = reference?.id?.takeIf { it > 0 } ?: return null
         return runCatching {
@@ -85,8 +109,14 @@ class TmdbRelationsRepository(
             val title = details.name?.takeIf(String::isNotBlank)
                 ?: reference.name?.takeIf(String::isNotBlank)
                 ?: return@runCatching null
-            val items = mapTmdbRelationItems(
+            val filteredParts = TmdbDiscoveryContentPolicy.prepareRelatedResults(
+                type = MediaType.Movie,
                 results = details.parts,
+                settings = filterSettings,
+                allowAnime = allowAnime,
+            )
+            val items = mapTmdbRelationItems(
+                results = filteredParts,
                 type = MediaType.Movie,
                 currentTmdbId = currentTmdbId,
                 imageConfiguration = images,
@@ -112,6 +142,12 @@ class TmdbRelationsRepository(
             cache.keys.firstOrNull()?.let(cache::remove) ?: return
         }
     }
+
+    private data class RelationsCacheKey(
+        val type: MediaType,
+        val tmdbId: Int,
+        val filterSettings: TmdbDiscoveryFilterSettings,
+    )
 
     private data class CachedRelations(
         val content: MediaRelatedContent,
