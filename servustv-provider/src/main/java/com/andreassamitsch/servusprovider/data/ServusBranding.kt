@@ -56,7 +56,7 @@ object ServusBranding {
     fun logoUriForShow(showId: String?, official: String?): String? = when (showId) {
         NEWS_SHOW_ID -> normalizeLogoUri(official) ?: NEWS_LOGO_URI
         NEWS_90_SECONDS_SHOW_ID -> normalizeLogoUri(official) ?: NEWS_90_SECONDS_LOGO_URI
-        else -> normalizeLogoUri(official)
+        else -> normalizeLogoUri(official)?.takeUnless(::isArtworkLikeLogoResource)
     }
 
     fun catalogueLogoUriForShow(showId: String?, official: String?): String? =
@@ -79,6 +79,16 @@ object ServusBranding {
             uri.contains("wordmark", ignoreCase = true) ||
             uri.contains("_logo", ignoreCase = true) ||
             uri.contains("/logo", ignoreCase = true)
+
+    private fun isArtworkLikeLogoResource(uri: String): Boolean {
+        val lower = uri.lowercase()
+        return lower.contains("_logo_landscape/") ||
+            lower.contains("_logo_portrait/") ||
+            lower.contains("_logo_square/") ||
+            lower.contains("/logo_landscape/") ||
+            lower.contains("/logo_portrait/") ||
+            lower.contains("/logo_square/")
+    }
 
     private fun canonicalCachedLogo(showId: String, uri: String?): String? {
         val normalized = normalizeLogoUri(uri) ?: return null
