@@ -17,6 +17,7 @@ import com.andreassamitsch.servusprovider.R
 import com.andreassamitsch.servusprovider.api.ServusNetwork
 import com.andreassamitsch.servusprovider.data.ServusBranding
 import com.andreassamitsch.servusprovider.data.ServusCategory
+import com.andreassamitsch.servusprovider.data.ServusCollectionRole
 import com.andreassamitsch.servusprovider.data.ServusCurrentChannelSelectionStore
 import com.andreassamitsch.servusprovider.data.ServusHubStore
 import com.andreassamitsch.servusprovider.data.ServusLiveChannel
@@ -24,6 +25,8 @@ import com.andreassamitsch.servusprovider.data.ServusNewsEpisode
 import com.andreassamitsch.servusprovider.data.ServusNewsStore
 import com.andreassamitsch.servusprovider.data.ServusShow
 import com.andreassamitsch.servusprovider.data.ServusShowChannelSelectionStore
+import com.andreassamitsch.servusprovider.data.ServusShowCollection
+import com.andreassamitsch.servusprovider.data.ServusSourceKey
 import com.andreassamitsch.servusprovider.ui.MainActivity
 import com.andreassamitsch.servusprovider.ui.PlaybackActivity
 import com.andreassamitsch.servusprovider.ui.ShowActivity
@@ -49,7 +52,6 @@ class ServusChannelPublisher(context: Context) {
         return helper.getAllChannels().any { it.internalProviderId == CURRENT_CHANNEL_ID }
     }
 
-    /** Keeps the original aggregate channel and its stable internal ID. */
     fun publish(episodes: List<ServusNewsEpisode>) {
         if (!isSupported()) return
         val effectiveEpisodes = currentSelectionStore.effectiveEpisodes(
@@ -70,46 +72,65 @@ class ServusChannelPublisher(context: Context) {
         })
     }
 
-    /** Synchronizes only shows explicitly opted into an Android-TV Preview Channel. */
+    /** Synchronizes whole-show and sub-collection channels selected by the user. */
     fun publishShows(categories: List<ServusCategory>) {
         if (!isSupported()) return
-        val selectedIds = showChannelSelectionStore.effectiveSelectedShowIds(categories)
-        val selectedInternalIds = selectedIds.mapTo(hashSetOf(), ::showInternalId)
-        val existingShowChannels = helper.getAllChannels()
-            .filter { channel -> channel.internalProviderId?.startsWith(SHOW_CHANNEL_PREFIX) == true }
-
-        existingShowChannels
-            .filter { channel -> channel.internalProviderId !in selectedInternalIds }
-            .forEach { channel ->
-                appContext.contentResolver.delete(TvContractCompat.buildChannelUri(channel.id), null, null)
+        val selectedKeys = showChannelSelectionStore.effectiveSelectedSourceKeys(categories)
+        val desiredInternalIds = selectedKeys.mapNotNullTo(hashSetOf()) { key ->
+            if (ServusSourceKey.isCollection(key)) {
+                val showId = ServusSourceKey.parentShowId(key) ?: return@mapNotNullTo null
+                val collectionId = ServusSourceKey.collectionId(key) ?: return@mapNotNullTo null
+                collectionInternalId(showId, collectionId)
+            } else {
+                showInternalId(key)
             }
-
-        val existingByInternalId = existingShowChannels
-            .mapNotNull { channel -> channel.internalProviderId?.let { it to channel.id } }
-            .toMap()
-        categories
-            .flatMap { it.shows }
-            .distinctBy { it.id }
-            .filter { it.id in selectedIds && it.episodes.isNotEmpty() }
-            .forEach { show -> publishShow(show, existingByInternalId[showInternalId(show.id)]) }
-
-        if (currentSelectionStore.isConfigured()) {
-            publish(newsStore.loadEpisodes())
         }
+        val existingChannels = helper.getAllChannels().filter { channel ->
+            channel.internalProviderId?.startsWith(SHOW_CHANNEL_PREFIX) == true ||
+                channel.internalProviderId?.startsWith(COLLECTION_CHANNEL_PREFIX) == true
+        }
+        existingChannels.filter { it.internalProviderId !in desiredInternalIds }.forEach { channel ->
+            appContext.contentResolver.delete(TvContractCompat.buildChannelUri(channel.id), null, null)
+        }
+        val existingByInternalId = existingChannels.mapNotNull { channel ->
+            channel.internalProviderId?.let { it to channel.id }
+        }.toMap()
+
+        categories.flatMap { it.shows }.distinctBy { it.id }.forEach { show ->
+            if (ServusSourceKey.show(show.id) in selectedKeys && show.episodes.isNotEmpty()) {
+                publishShow(show, existingByInternalId[showInternalId(show.id)])
+            }
+            show.collections.filter { it.role == ServusCollectionRole.CONTENT }.forEach { collection ->
+                val key = ServusSourceKey.collection(show.id, collection.id)
+                if (key in selectedKeys && collection.episodes.isNotEmpty()) {
+                    publishCollection(
+                        show = show,
+                        collection = collection,
+                        existingChannelId = existingByInternalId[collectionInternalId(show.id, collection.id)],
+                    )
+                }
+            }
+        }
+
+        if (currentSelectionStore.isConfigured()) publish(newsStore.loadEpisodes())
         showChannelSelectionStore.markTvProviderSynced()
     }
 
-    /** Removes one opted-out show channel immediately; the pending flag still reconciles later. */
     fun removeShowChannel(showId: String) {
-        if (!isSupported()) return
-        helper.getAllChannels()
-            .firstOrNull { it.internalProviderId == showInternalId(showId) }
-            ?.let { channel ->
-                appContext.contentResolver.delete(TvContractCompat.buildChannelUri(channel.id), null, null)
-            }
+        removeChannelByInternalId(showInternalId(showId))
     }
 
-    /** One aggregate rail that contains every ServusTV live station as a directly playable card. */
+    fun removeCollectionChannel(showId: String, collectionId: String) {
+        removeChannelByInternalId(collectionInternalId(showId, collectionId))
+    }
+
+    private fun removeChannelByInternalId(internalId: String) {
+        if (!isSupported()) return
+        helper.getAllChannels().firstOrNull { it.internalProviderId == internalId }?.let { channel ->
+            appContext.contentResolver.delete(TvContractCompat.buildChannelUri(channel.id), null, null)
+        }
+    }
+
     fun publishLive(channels: List<ServusLiveChannel>) {
         if (!isSupported() || channels.isEmpty()) return
         val channelId = findOrCreateChannel(
@@ -121,10 +142,9 @@ class ServusChannelPublisher(context: Context) {
                 .setData(Uri.parse("iservus://channel/live")),
             logo = createAppLogo(),
         )
-        val programs = channels.mapIndexed { index, live ->
+        replacePrograms(channelId, channels.mapIndexed { index, live ->
             buildLiveProgram(channelId, live, channels.size - index)
-        }
-        replacePrograms(channelId, programs)
+        })
     }
 
     private fun publishShow(show: ServusShow, existingChannelId: Long?) {
@@ -132,17 +152,42 @@ class ServusChannelPublisher(context: Context) {
             internalId = showInternalId(show.id),
             displayName = show.title,
             description = show.description ?: "${show.title} bei ServusTV",
-            appIntent = Intent(appContext, ShowActivity::class.java)
-                .setAction(Intent.ACTION_VIEW)
-                .setData(Uri.parse("iservus://show/${Uri.encode(show.id)}")),
+            appIntent = showIntent(show.id),
             logo = createShowLogo(show),
             existingChannelId = existingChannelId,
         )
-        val programs = show.episodes.mapIndexed { index, episode ->
+        replacePrograms(channelId, show.episodes.mapIndexed { index, episode ->
             buildEpisodeProgram(channelId, episode, show.episodes.size - index, show.logoUri)
-        }
-        replacePrograms(channelId, programs)
+        })
     }
+
+    private fun publishCollection(
+        show: ServusShow,
+        collection: ServusShowCollection,
+        existingChannelId: Long?,
+    ) {
+        val displayName = if (collection.title.equals("Aktuelle Sendungen", ignoreCase = true)) {
+            show.title
+        } else {
+            collection.title
+        }
+        val logoUri = collection.episodes.firstNotNullOfOrNull { it.logoUri } ?: show.logoUri
+        val channelId = findOrCreateChannel(
+            internalId = collectionInternalId(show.id, collection.id),
+            displayName = displayName,
+            description = "${collection.title} · ${show.title}",
+            appIntent = showIntent(show.id),
+            logo = createSourceLogo(show, logoUri),
+            existingChannelId = existingChannelId,
+        )
+        replacePrograms(channelId, collection.episodes.mapIndexed { index, episode ->
+            buildEpisodeProgram(channelId, episode, collection.episodes.size - index, logoUri)
+        })
+    }
+
+    private fun showIntent(showId: String): Intent = Intent(appContext, ShowActivity::class.java)
+        .setAction(Intent.ACTION_VIEW)
+        .setData(Uri.parse("iservus://show/${Uri.encode(showId)}"))
 
     private fun findOrCreateChannel(
         internalId: String,
@@ -202,10 +247,7 @@ class ServusChannelPublisher(context: Context) {
             .setWeight(weight)
             .setBrowsable(true)
             .setSearchable(true)
-
-        episode.publishedAtMillis?.let { sourceTimestamp ->
-            builder.setReleaseDate(RELEASE_DATE_FORMAT.format(Date(sourceTimestamp)))
-        }
+        episode.publishedAtMillis?.let { builder.setReleaseDate(RELEASE_DATE_FORMAT.format(Date(it))) }
         episode.artworkUri?.let { uri ->
             val artwork = Uri.parse(uri)
             builder.setPosterArtUri(artwork)
@@ -217,11 +259,7 @@ class ServusChannelPublisher(context: Context) {
         return builder.build()
     }
 
-    private fun buildLiveProgram(
-        channelId: Long,
-        live: ServusLiveChannel,
-        weight: Int,
-    ): PreviewProgram {
+    private fun buildLiveProgram(channelId: Long, live: ServusLiveChannel, weight: Int): PreviewProgram {
         val playbackIntentUri = Uri.parse(
             Intent(appContext, PlaybackActivity::class.java)
                 .setAction(Intent.ACTION_VIEW)
@@ -232,7 +270,7 @@ class ServusChannelPublisher(context: Context) {
         val description = buildString {
             current?.let {
                 append(it.title)
-                it.subtitle?.takeIf { value -> value.isNotBlank() }?.let { subtitle -> append(" · $subtitle") }
+                it.subtitle?.takeIf(String::isNotBlank)?.let { subtitle -> append(" · $subtitle") }
             }
             if (isEmpty()) append(live.description ?: "ServusTV Live")
         }
@@ -246,7 +284,6 @@ class ServusChannelPublisher(context: Context) {
             .setWeight(weight)
             .setBrowsable(true)
             .setSearchable(true)
-
         live.artworkUri?.let { uri ->
             val artwork = Uri.parse(uri)
             builder.setPosterArtUri(artwork)
@@ -256,19 +293,20 @@ class ServusChannelPublisher(context: Context) {
         return builder.build()
     }
 
-    private fun createShowLogo(show: ServusShow): Bitmap {
-        val source = if (show.id == ServusBranding.NEWS_90_SECONDS_SHOW_ID) {
-            drawableToBitmap(R.drawable.servus_news_90_logo)
-        } else {
-            show.logoUri?.let(::downloadBitmap)
-        }
-            ?: show.squareArtworkUri?.let(::downloadBitmap)
+    private fun createShowLogo(show: ServusShow): Bitmap = createSourceLogo(show, show.logoUri)
+
+    private fun createSourceLogo(show: ServusShow, logoUri: String?): Bitmap {
+        val source = when {
+            show.id == ServusBranding.NEWS_90_SECONDS_SHOW_ID &&
+                ServusBranding.isNinetySecondLogoUri(logoUri) -> drawableToBitmap(R.drawable.servus_news_90_logo)
+            ServusBranding.isNinetySecondLogoUri(logoUri) -> drawableToBitmap(R.drawable.servus_news_90_logo)
+            else -> logoUri?.let(::downloadBitmap)
+        } ?: show.squareArtworkUri?.let(::downloadBitmap)
             ?: show.artworkUri?.let(::downloadBitmap)
             ?: return createAppLogo()
         return fitOnDarkCanvas(source)
     }
 
-    /** Vector and bitmap resources share the same safe rasterization path for TvProvider channel logos. */
     private fun drawableToBitmap(resourceId: Int): Bitmap? {
         val drawable = appContext.getDrawable(resourceId) ?: return null
         val width = drawable.intrinsicWidth.coerceAtLeast(1)
@@ -318,11 +356,7 @@ class ServusChannelPublisher(context: Context) {
         val drawable = checkNotNull(appContext.getDrawable(R.drawable.ic_launcher)) {
             "Kanal-Logo konnte nicht aus den App-Ressourcen geladen werden"
         }
-        return Bitmap.createBitmap(
-            CHANNEL_LOGO_SIZE_PX,
-            CHANNEL_LOGO_SIZE_PX,
-            Bitmap.Config.ARGB_8888,
-        ).also { bitmap ->
+        return Bitmap.createBitmap(CHANNEL_LOGO_SIZE_PX, CHANNEL_LOGO_SIZE_PX, Bitmap.Config.ARGB_8888).also { bitmap ->
             val canvas = Canvas(bitmap)
             drawable.setBounds(0, 0, canvas.width, canvas.height)
             drawable.draw(canvas)
@@ -335,10 +369,13 @@ class ServusChannelPublisher(context: Context) {
         const val LIVE_CHANNEL_ID = "servus-live"
         const val LIVE_CHANNEL_NAME = "ServusTV Live"
         const val SHOW_CHANNEL_PREFIX = "servus-show:"
+        const val COLLECTION_CHANNEL_PREFIX = "servus-collection:"
         const val CHANNEL_LOGO_SIZE_PX = 256
         const val CHANNEL_LOGO_PADDING_PX = 16
 
         fun showInternalId(showId: String): String = "$SHOW_CHANNEL_PREFIX$showId"
+        fun collectionInternalId(showId: String, collectionId: String): String =
+            "$COLLECTION_CHANNEL_PREFIX$showId:$collectionId"
 
         private val RELEASE_DATE_FORMAT = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
     }
