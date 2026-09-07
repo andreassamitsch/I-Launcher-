@@ -58,6 +58,41 @@ private data class DetailsFocusTarget(val rowKey: String, val itemKey: String)
 internal fun detailMediaFocusKey(media: MediaItem): String =
     "${media.type}:${media.tmdbId ?: media.id}"
 
+/**
+ * TMDB stores the parent series id in MediaItem.tmdbId and the concrete episode id separately in
+ * tmdbEpisodeId. This lets a Watch Next episode reuse the normal series catalog endpoints without
+ * changing how the episode is represented on the home screen.
+ */
+internal fun detailSeriesContext(media: MediaItem): MediaItem? = when {
+    media.tmdbId == null -> null
+    media.type == MediaType.Series -> media
+    media.type == MediaType.Episode -> media.copy(type = MediaType.Series)
+    else -> null
+}
+
+/** The opened Watch Next episode is the strongest resume signal for its own detail page. */
+internal fun detailSeriesResume(media: MediaItem): SeriesResumePosition? {
+    if (media.type != MediaType.Episode) return null
+    val seasonNumber = media.seasonNumber ?: return null
+    val episodeNumber = media.episodeNumber ?: return null
+    return SeriesResumePosition(
+        seasonNumber = seasonNumber,
+        episodeNumber = episodeNumber,
+        episodeTitle = media.episodeTitle,
+        playbackPositionMillis = media.playbackPositionMillis,
+        durationMillis = media.durationMillis,
+        lastEngagementTimeUtcMillis = media.lastEngagementTimeUtcMillis,
+    )
+}
+
+internal fun preferredSeriesSeason(
+    seasons: List<SeriesSeason>,
+    resume: SeriesResumePosition?,
+): Int? = resume?.seasonNumber
+    ?.takeIf { wanted -> seasons.any { it.seasonNumber == wanted } }
+    ?: seasons.firstOrNull { it.seasonNumber > 0 }?.seasonNumber
+    ?: seasons.firstOrNull()?.seasonNumber
+
 @Composable
 fun DetailsScreen(
     item: MediaItem,
@@ -81,7 +116,9 @@ fun DetailsScreen(
     var personWorkFocusRestoreKey by remember(item.id) { mutableStateOf<String?>(null) }
     var personWorkFocusRestoreGeneration by remember(item.id) { mutableIntStateOf(0) }
 
-    LaunchedEffect(item.id, loader) {
+    // Watch Next enrichment can finish after details were opened while keeping the same internal id.
+    // Key the effect by the complete immutable item so a newly resolved TMDB id is picked up.
+    LaunchedEffect(item, loader) {
         displayItem = item
         relatedContent = MediaRelatedContent.Empty
         credits = MediaCredits()
@@ -222,51 +259,54 @@ private fun MediaDetailsContent(
     }
     val handoff = remember(context) { ContentSearchHandoff(context.applicationContext) }
     val seriesResumeRepository = remember(context) { SeriesResumeRepository(context.applicationContext) }
-    var seriesResume by remember(item.id) { mutableStateOf<SeriesResumePosition?>(null) }
+    val seriesContext = remember(item) { detailSeriesContext(item) }
+    val directSeriesResume = remember(item) { detailSeriesResume(item) }
+    var seriesResume by remember(item.id) { mutableStateOf(directSeriesResume) }
     var seasons by remember(item.id) { mutableStateOf<List<SeriesSeason>>(emptyList()) }
     var selectedSeasonNumber by remember(item.id) { mutableStateOf<Int?>(null) }
     var selectedSeasonContent by remember(item.id) { mutableStateOf<SeriesSeasonContent?>(null) }
     var seasonSelectionTouched by remember(item.id) { mutableStateOf(false) }
     var seasonContentLoading by remember(item.id) { mutableStateOf(false) }
 
-    LaunchedEffect(item.id, item.type, item.title, item.originalTitle) {
-        seriesResume = null
-        if (item.type != MediaType.Series) return@LaunchedEffect
-        seriesResumeRepository.observe(item).collectLatest { resume ->
-            seriesResume = resume
+    LaunchedEffect(item.id, seriesContext, directSeriesResume) {
+        seriesResume = directSeriesResume
+        val catalogSeries = seriesContext ?: return@LaunchedEffect
+        seriesResumeRepository.observe(catalogSeries).collectLatest { resume ->
+            // When details were opened from Watch Next, do not replace its exact episode with a
+            // weaker title-based lookup from a different row/provider.
+            seriesResume = directSeriesResume ?: resume
         }
     }
-    LaunchedEffect(item.tmdbId, item.type, loader) {
+    LaunchedEffect(seriesContext?.tmdbId, loader) {
         seasons = emptyList()
         selectedSeasonNumber = null
         selectedSeasonContent = null
         seasonSelectionTouched = false
-        if (item.type != MediaType.Series || item.tmdbId == null || loader == null) return@LaunchedEffect
-        val loaded = runCatching { loader.loadSeriesSeasons(item) }.getOrDefault(emptyList())
+        val catalogSeries = seriesContext ?: return@LaunchedEffect
+        if (loader == null) return@LaunchedEffect
+        val loaded = runCatching { loader.loadSeriesSeasons(catalogSeries) }.getOrDefault(emptyList())
         seasons = loaded
-        val resumeSeason = seriesResume?.seasonNumber?.takeIf { wanted -> loaded.any { it.seasonNumber == wanted } }
-        selectedSeasonNumber = resumeSeason
-            ?: loaded.firstOrNull { it.seasonNumber > 0 }?.seasonNumber
-            ?: loaded.firstOrNull()?.seasonNumber
+        selectedSeasonNumber = preferredSeriesSeason(loaded, seriesResume)
     }
     LaunchedEffect(seriesResume, seasons, seasonSelectionTouched) {
         if (seasonSelectionTouched) return@LaunchedEffect
         val resumeSeason = seriesResume?.seasonNumber ?: return@LaunchedEffect
         if (seasons.any { it.seasonNumber == resumeSeason }) selectedSeasonNumber = resumeSeason
     }
-    LaunchedEffect(item.tmdbId, selectedSeasonNumber, loader) {
+    LaunchedEffect(seriesContext?.tmdbId, selectedSeasonNumber, loader) {
         val seasonNumber = selectedSeasonNumber ?: run {
             selectedSeasonContent = null
             seasonContentLoading = false
             return@LaunchedEffect
         }
-        if (item.type != MediaType.Series || item.tmdbId == null || loader == null) {
+        val catalogSeries = seriesContext
+        if (catalogSeries == null || loader == null) {
             selectedSeasonContent = null
             seasonContentLoading = false
             return@LaunchedEffect
         }
         seasonContentLoading = true
-        selectedSeasonContent = runCatching { loader.loadSeriesSeason(item, seasonNumber) }.getOrNull()
+        selectedSeasonContent = runCatching { loader.loadSeriesSeason(catalogSeries, seasonNumber) }.getOrNull()
         seasonContentLoading = false
     }
 
@@ -453,7 +493,7 @@ private fun MediaDetailsContent(
                 )
             }
 
-            if (item.type == MediaType.Series && seasons.isNotEmpty()) {
+            if (seriesContext != null && seasons.isNotEmpty()) {
                 Spacer(Modifier.height(30.dp))
                 SeriesEpisodesSection(
                     seasons = seasons,
@@ -545,6 +585,10 @@ private fun SeriesEpisodesSection(
 ) {
     Text("Staffeln", style = MaterialTheme.typography.titleMedium)
     val seasonRowState = rememberLazyListState()
+    LaunchedEffect(seasons, selectedSeasonNumber) {
+        val targetIndex = seasons.indexOfFirst { it.seasonNumber == selectedSeasonNumber }
+        if (targetIndex >= 0) seasonRowState.scrollToItem(targetIndex)
+    }
     LazyRow(
         state = seasonRowState,
         modifier = Modifier.fillMaxWidth().touchScrollFallback(seasonRowState, Orientation.Horizontal),
@@ -576,6 +620,18 @@ private fun SeriesEpisodesSection(
                 style = MaterialTheme.typography.titleMedium,
             )
             val episodeRowState = rememberLazyListState()
+            LaunchedEffect(
+                seasonContent.season.seasonNumber,
+                seasonContent.episodes,
+                resume?.seasonNumber,
+                resume?.episodeNumber,
+            ) {
+                if (resume?.seasonNumber != seasonContent.season.seasonNumber) return@LaunchedEffect
+                val targetIndex = seasonContent.episodes.indexOfFirst {
+                    it.episodeNumber == resume.episodeNumber
+                }
+                if (targetIndex >= 0) episodeRowState.scrollToItem(targetIndex)
+            }
             LazyRow(
                 state = episodeRowState,
                 modifier = Modifier.fillMaxWidth().touchScrollFallback(episodeRowState, Orientation.Horizontal),
