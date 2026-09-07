@@ -84,7 +84,7 @@ class ServusCurrentChannelSelectionStore(context: Context) {
 
         val filteredLegacy = legacyEpisodes.mapNotNull { rawEpisode ->
             val episode = ServusBranding.canonicalizeEpisode(rawEpisode)
-            matchingSelectedShow(
+            ServusCurrentChannelPolicy.matchingSelectedShow(
                 episode = episode,
                 selectedShows = selectedWholeShows,
                 allShows = allShows,
@@ -135,6 +135,13 @@ class ServusCurrentChannelSelectionStore(context: Context) {
                 categoryId = episode.categoryId ?: show.categoryId,
                 categoryTitle = episode.categoryTitle ?: show.categoryTitle,
             ),
+        )
+
+    private fun sortByAvailability(episodes: List<ServusNewsEpisode>): List<ServusNewsEpisode> =
+        episodes.sortedWith(
+            compareByDescending<ServusNewsEpisode> {
+                ServusNewsPolicy.recencyMillis(it) ?: Long.MIN_VALUE
+            },
         )
 
     private companion object {
@@ -232,9 +239,6 @@ object ServusCurrentChannelPolicy {
             }
         }
     }
-
-    private fun sortByAvailability(episodes: List<ServusNewsEpisode>): List<ServusNewsEpisode> =
-        episodes.sortedWith(compareByDescending<ServusNewsEpisode> { ServusNewsPolicy.recencyMillis(it) ?: Long.MIN_VALUE })
 
     private fun normalize(value: String): String = value
         .lowercase(Locale.GERMAN)
