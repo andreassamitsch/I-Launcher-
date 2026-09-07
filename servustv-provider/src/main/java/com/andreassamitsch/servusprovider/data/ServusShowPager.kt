@@ -1,23 +1,25 @@
 package com.andreassamitsch.servusprovider.data
 
 import android.content.Context
+import com.andreassamitsch.servusprovider.api.SearchResponseDto
 import com.andreassamitsch.servusprovider.api.ServusApi
 import com.andreassamitsch.servusprovider.api.ServusCardDto
+import com.andreassamitsch.servusprovider.api.ServusCollectionRefDto
 import com.andreassamitsch.servusprovider.api.ServusNetwork
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import java.util.Locale
 
 /**
- * In-app show pager.
+ * Local-first in-app show pager.
  *
- * The global refresh intentionally does not walk every episode collection. When a show is opened,
- * this pager follows only the collection pages advertised by ServusTV and hydrates product details
- * in small batches. That keeps descriptions/season metadata accurate without front-loading dozens
- * of product requests or imposing the Android-TV-channel episode limit on the standalone UI.
+ * Opening a show performs one root-product request and one first-page request per advertised
+ * collection so the API's editorial structure can be classified. Recommendation/playnet rails stop
+ * there. Only CONTENT collections get cursors, and their already-fetched first page is reused. Product
+ * details are hydrated only for the small visible batch and only when the collection card/cache does
+ * not already contain enough metadata.
  */
 class ServusShowPager(
     context: Context,
@@ -27,6 +29,7 @@ class ServusShowPager(
     private val sessionStore = ServusSessionStore(appContext, api)
     private val hubStore = ServusHubStore(appContext)
     private val detailSemaphore = Semaphore(DETAIL_PARALLELISM)
+    private val collectionSemaphore = Semaphore(COLLECTION_DISCOVERY_PARALLELISM)
     private val states = mutableMapOf<String, PagingState>()
 
     data class PageResult(
@@ -38,11 +41,11 @@ class ServusShowPager(
         val session = sessionStore.get()
         val detail = runCatching { api.product(session.countryCode, cachedShow.id) }.getOrNull()
         val title = detail?.title?.takeIf { !it.isNullOrBlank() } ?: cachedShow.title
-        val resources = detail?.mediaResources.orEmpty()
-        val logo = ServusBranding.logoUriForShow(
-            cachedShow.id,
-            ServusCatalogPolicy.titleTreatment(cachedShow.id, resources) ?: cachedShow.logoUri,
+        val resources = ServusCatalogPolicy.mergeMediaResources(
+            fallback = emptyMap(),
+            authoritative = detail?.mediaResources.orEmpty(),
         )
+        val officialLogo = ServusCatalogPolicy.titleTreatment(cachedShow.id, resources)
         val baseShow = cachedShow.copy(
             title = title,
             description = detail?.longDescription?.takeIf { it.isNotBlank() }
@@ -52,56 +55,109 @@ class ServusShowPager(
                 ?: cachedShow.artworkUri,
             squareArtworkUri = ServusCatalogPolicy.squareArtwork(cachedShow.id, resources)
                 ?: cachedShow.squareArtworkUri,
-            logoUri = logo,
+            logoUri = ServusBranding.logoUriForShow(cachedShow.id, officialLogo ?: cachedShow.logoUri),
         )
 
-        // Some current ServusTV web pages expose their actual episode rail as list_type=reference.
-        // We can safely follow those links for an explicitly opened show because every returned card
-        // still passes conservative show-membership checks before it is hydrated or rendered.
-        val cursors = detail?.collections.orEmpty()
-            .filter(ServusEditorialShowPolicy::includeOpenedShowCollection)
-            .take(MAX_SHOW_COLLECTIONS)
-            .map { ref ->
-                CollectionCursor(
-                    id = requireNotNull(ref.id),
-                    fallbackLabel = ref.label,
-                )
-            }
-            .toMutableList()
-
+        val previews = discoverCollections(
+            market = session.countryCode,
+            showId = cachedShow.id,
+            showTitle = title,
+            refs = detail?.collections.orEmpty(),
+        )
+        val collections = previews.map { preview ->
+            ServusShowCollection(
+                id = preview.id,
+                title = preview.title,
+                listType = preview.response.listType,
+                type = preview.response.type,
+                role = preview.role,
+                contentShowId = preview.contentShowId,
+                contentShowTitle = preview.contentShowTitle,
+                episodes = cachedShow.collections
+                    .firstOrNull { it.id == preview.id }
+                    ?.episodes
+                    .orEmpty(),
+            )
+        }
         val state = PagingState(
             market = session.countryCode,
-            show = baseShow,
-            cursors = cursors,
+            show = baseShow.copy(collections = collections),
+            cursors = previews
+                .filter { it.role == ServusCollectionRole.CONTENT }
+                .map { preview ->
+                    CollectionCursor(
+                        id = preview.id,
+                        fallbackLabel = preview.title,
+                        label = preview.title,
+                        contentShowId = preview.contentShowId,
+                        contentShowTitle = preview.contentShowTitle,
+                        nextOffset = ServusCatalogPolicy.nextOffset(preview.response.meta?.next),
+                        pagesLoaded = 1,
+                        exhausted = ServusCatalogPolicy.nextOffset(preview.response.meta?.next) == null,
+                    )
+                }
+                .toMutableList(),
             sourceCards = mutableListOf(),
             hydratedIds = mutableSetOf(),
         )
+        previews.filter { it.role == ServusCollectionRole.CONTENT }.forEach { preview ->
+            addSourceCards(
+                state,
+                preview.response.cards.map { card -> preview.toSourcedCard(card, title) },
+            )
+        }
         states[cachedShow.id] = state
+        persistShow(state.show)
         return loadNextInternal(state)
     }
 
-    suspend fun loadNext(showId: String): PageResult? {
-        val state = states[showId] ?: return null
-        return loadNextInternal(state)
+    suspend fun loadNext(showId: String): PageResult? =
+        states[showId]?.let { loadNextInternal(it) }
+
+    private suspend fun discoverCollections(
+        market: String,
+        showId: String,
+        showTitle: String,
+        refs: List<ServusCollectionRefDto>,
+    ): List<CollectionPreview> = coroutineScope {
+        refs.asSequence()
+            .filter { !it.id.isNullOrBlank() }
+            .take(MAX_SHOW_COLLECTIONS)
+            .map { ref ->
+                async {
+                    collectionSemaphore.withPermit {
+                        val id = requireNotNull(ref.id)
+                        val response = runCatching { api.collection(market, id, 0) }.getOrNull()
+                            ?: return@withPermit null
+                        val role = ServusCollectionPolicy.classify(response, showId, showTitle)
+                        CollectionPreview(
+                            id = id,
+                            title = ServusCollectionPolicy.displayTitle(response, ref.label),
+                            role = role,
+                            contentShowId = ServusCollectionPolicy.contentShowId(showId, response),
+                            contentShowTitle = ServusCollectionPolicy.contentShowTitle(showTitle, response),
+                            response = response,
+                        )
+                    }
+                }
+            }
+            .toList()
+            .awaitAll()
+            .filterNotNull()
     }
 
     private suspend fun loadNextInternal(state: PagingState): PageResult {
         var eligible = eligibleCandidates(state)
         var guard = 0
-        while (eligible.size < ServusShowPagingPolicy.PAGE_SIZE && hasMoreSourcePages(state) && guard < MAX_FETCH_ROUNDS_PER_PAGE) {
+        while (
+            eligible.size < ServusShowPagingPolicy.PAGE_SIZE &&
+            hasMoreSourcePages(state) &&
+            guard < MAX_FETCH_ROUNDS_PER_PAGE
+        ) {
             val added = fetchNextCollectionRound(state)
             if (added == 0) break
             eligible = eligibleCandidates(state)
             guard++
-        }
-
-        // A few ServusTV On pages visibly contain an episode rail on the public website while their
-        // product response exposes no usable collection cards to this client. Only in that empty
-        // state do we query the existing ServusTV search endpoint by the exact show identity. The
-        // returned cards are subjected to the same membership checks as normal collection cards.
-        if (eligible.isEmpty() && !hasMoreSourcePages(state) && !state.searchFallbackAttempted) {
-            fetchSearchFallback(state)
-            eligible = eligibleCandidates(state)
         }
 
         val batch = eligible.take(ServusShowPagingPolicy.PAGE_SIZE)
@@ -111,7 +167,15 @@ class ServusShowPager(
             cached = state.show.episodes,
             fresh = hydrated,
         )
-        state.show = state.show.copy(episodes = mergedEpisodes)
+        state.show = state.show.copy(
+            episodes = mergedEpisodes,
+            collections = state.show.collections.map { collection ->
+                if (collection.role != ServusCollectionRole.CONTENT) return@map collection
+                collection.copy(
+                    episodes = mergedEpisodes.filter { it.sourceCollectionId == collection.id },
+                )
+            },
+        )
         persistShow(state.show)
 
         return PageResult(
@@ -144,40 +208,16 @@ class ServusShowPager(
                         sourceCollectionId = cursor.id,
                         sourceCollectionLabel = label,
                         contentKindHint = ServusCatalogPolicy.contentKindForCollection(
-                            ownerShowId = state.show.id,
-                            ownerShowTitle = state.show.title,
+                            ownerShowId = cursor.contentShowId,
+                            ownerShowTitle = cursor.contentShowTitle,
                             collectionLabel = label,
                         ) ?: ServusNewsPolicy.contentKind(card),
+                        contentShowId = cursor.contentShowId,
+                        contentShowTitle = cursor.contentShowTitle,
                     )
                 }
             }
         }.awaitAll().flatten()
-
-        addSourceCards(state, loaded)
-    }
-
-    private suspend fun fetchSearchFallback(state: PagingState) {
-        state.searchFallbackAttempted = true
-        val loaded = mutableListOf<ServusSourcedCard>()
-
-        ServusEditorialShowPolicy.fallbackSearchQueries(state.show).forEach { query ->
-            var offset = 0
-            val seenOffsets = mutableSetOf<Int>()
-            var page = 0
-            while (seenOffsets.add(offset) && page < MAX_SEARCH_FALLBACK_PAGES) {
-                val response = runCatching { api.search(state.market, query, offset) }.getOrNull() ?: break
-                response.cards.forEach { card ->
-                    loaded += ServusSourcedCard(
-                        card = card,
-                        sourceCollectionLabel = "Suche: ${state.show.title}",
-                        contentKindHint = ServusNewsPolicy.contentKind(card),
-                    )
-                }
-                val next = ServusCatalogPolicy.nextOffset(response.meta?.next) ?: break
-                offset = next
-                page++
-            }
-        }
 
         addSourceCards(state, loaded)
     }
@@ -204,8 +244,7 @@ class ServusShowPager(
                     id !in state.hydratedIds &&
                     card.title?.isNotBlank() == true &&
                     card.playable != false &&
-                    isVideoLike(card) &&
-                    belongsToOpenedShow(candidate, state.show)
+                    isVideoLike(card)
             }
             .distinctBy { it.card.id }
             .toList()
@@ -214,17 +253,6 @@ class ServusShowPager(
         val unknown = eligible.filter { it.card.contentType.isNullOrBlank() }
         val clips = eligible.filterNot { isFullEpisode(it.card) || it.card.contentType.isNullOrBlank() }
         return (full + unknown + clips).distinctBy { it.card.id }
-    }
-
-    private fun belongsToOpenedShow(candidate: ServusSourcedCard, show: ServusShow): Boolean {
-        if (ServusCatalogPolicy.belongsToShow(candidate, show.id, show.title)) return true
-        if (ServusEditorialShowPolicy.matchesKnownAlias(candidate, show)) return true
-        if (show.id != ServusBranding.WEATHER_90_SECONDS_SHOW_ID) return false
-
-        // ServusTV's dedicated weather-90 page exposes an editorial "Aktuelle Sendungen" rail.
-        // That collection is authoritative even when individual cards still use "Servus Wetter"
-        // as show_name, which would otherwise make the generic exact-name membership check reject it.
-        return isAuthoritativeWeatherCollection(candidate)
     }
 
     private suspend fun hydrateBatch(
@@ -237,51 +265,66 @@ class ServusShowPager(
                 detailSemaphore.withPermit {
                     val card = candidate.card
                     val id = card.id ?: return@withPermit null
-                    val detail = runCatching { api.product(state.market, id) }.getOrNull()
-                    val merged = detail?.let { ServusCatalogPolicy.mergeEpisodeProduct(card, it) } ?: card
-                    val canonicalCard = when {
-                        state.show.id == ServusBranding.WEATHER_90_SECONDS_SHOW_ID &&
-                            isAuthoritativeWeatherCollection(candidate) &&
-                            !ServusCatalogPolicy.belongsToShow(merged, state.show.id, state.show.title) -> {
-                            // Preserve the verified parent-format identity at the mapping boundary. Some
-                            // weather cards still say only "Servus Wetter" even though they came from the
-                            // dedicated 90-second product's own "Aktuelle Sendungen" collection.
-                            merged.copy(showName = state.show.title)
-                        }
-                        state.show.id == ServusBranding.FLEISCHHACKER_SHOW_ID &&
-                            ServusEditorialShowPolicy.matchesKnownAlias(candidate.copy(card = merged), state.show) &&
-                            !ServusCatalogPolicy.belongsToShow(merged, state.show.id, state.show.title) -> {
-                            // Search/reference cards can use the shorter web-hub wording "Servus Kommentar
-                            // mit Michael Fleischhacker". Once that stable editorial alias is verified, map
-                            // it back to the opened product title so the normal episode mapper remains strict.
-                            merged.copy(showName = state.show.title)
-                        }
-                        else -> merged
+                    val cached = cachedById[id]
+                    val detail = if (needsProductDetail(card, cached)) {
+                        runCatching { api.product(state.market, id) }.getOrNull()
+                    } else {
+                        null
                     }
-                    val mergedCandidate = candidate.copy(card = canonicalCard)
+                    val merged = detail?.let { ServusCatalogPolicy.mergeEpisodeProduct(card, it) } ?: card
+                    val resolvedCandidate = candidate.copy(
+                        card = merged,
+                        contentShowId = parentShowIdFromProduct(merged) ?: candidate.contentShowId,
+                    )
+                    val effectiveShowId = resolvedCandidate.contentShowId ?: state.show.id
+                    val effectiveShowTitle = resolvedCandidate.contentShowTitle ?: state.show.title
+                    val effectiveLogo = if (effectiveShowId == state.show.id) {
+                        state.show.logoUri
+                    } else {
+                        ServusBranding.logoUriForShow(effectiveShowId, null)
+                    }
                     val fresh = ServusCatalogPolicy.toShowEpisode(
-                        candidate = mergedCandidate,
-                        showId = state.show.id,
-                        showTitle = state.show.title,
+                        candidate = resolvedCandidate,
+                        showId = effectiveShowId,
+                        showTitle = effectiveShowTitle,
                         categoryId = state.show.categoryId,
                         categoryTitle = state.show.categoryTitle,
-                        showLogoUri = state.show.logoUri,
+                        showLogoUri = effectiveLogo,
                         nowMillis = System.currentTimeMillis(),
-                    ) ?: return@withPermit cachedById[id]
+                    ) ?: return@withPermit cached
 
-                    val cached = cachedById[id]
                     ServusBranding.canonicalizeEpisode(
                         fresh.copy(
                             description = fresh.description ?: cached?.description,
                             publishedAtMillis = fresh.publishedAtMillis ?: cached?.publishedAtMillis,
-                            seasonNumber = canonicalCard.seasonNumber ?: cached?.seasonNumber,
-                            episodeNumber = canonicalCard.episodeNumber ?: cached?.episodeNumber,
+                            seasonNumber = fresh.seasonNumber ?: cached?.seasonNumber,
+                            episodeNumber = fresh.episodeNumber ?: cached?.episodeNumber,
+                            sourceCollectionId = fresh.sourceCollectionId ?: cached?.sourceCollectionId,
+                            sourceCollectionTitle = fresh.sourceCollectionTitle ?: cached?.sourceCollectionTitle,
                         ),
                     )
                 }
             }
         }.awaitAll().filterNotNull()
     }
+
+    private fun needsProductDetail(card: ServusCardDto, cached: ServusNewsEpisode?): Boolean =
+        card.duration?.let { it > 0L } != true ||
+            card.longDescription.isNullOrBlank() && card.shortDescription.isNullOrBlank() ||
+            card.sunriseTimestamp.isNullOrBlank() && cached?.publishedAtMillis == null ||
+            card.seasonNumber == null && card.episodeNumber == null &&
+                card.deeplinkPlaylist.isNullOrBlank() && card.nextPlaylist.isNullOrBlank()
+
+    private fun parentShowIdFromProduct(card: ServusCardDto): String? = sequenceOf(
+        card.deeplinkPlaylist,
+        card.nextPlaylist,
+    ).filterNotNull()
+        .mapNotNull { playlist ->
+            playlist.takeIf { it.endsWith(ALL_EPISODES_SUFFIX) }
+                ?.removeSuffix(ALL_EPISODES_SUFFIX)
+                ?.takeIf { it.isNotBlank() }
+        }
+        .firstOrNull()
 
     private fun persistShow(show: ServusShow) {
         val categories = hubStore.loadCategories()
@@ -299,13 +342,10 @@ class ServusShowPager(
         if (changed) hubStore.saveCatalogContent(updated)
     }
 
-    private fun isAuthoritativeWeatherCollection(candidate: ServusSourcedCard): Boolean =
-        normalizeWords(candidate.sourceCollectionLabel.orEmpty()) == "aktuelle sendungen"
-
     private fun hasMoreSourcePages(state: PagingState): Boolean = state.cursors.any { !it.exhausted }
 
     private fun isVideoLike(card: ServusCardDto): Boolean =
-        card.type == "video" ||
+        card.type.equals("video", ignoreCase = true) ||
             card.contentType.equals("episode", ignoreCase = true) ||
             card.contentType.equals("film", ignoreCase = true) ||
             card.contentType.equals("clip", ignoreCase = true)
@@ -314,35 +354,54 @@ class ServusShowPager(
         card.contentType.equals("episode", ignoreCase = true) ||
             card.contentType.equals("film", ignoreCase = true)
 
-    private fun normalizeWords(value: String): String = value
-        .lowercase(Locale.GERMAN)
-        .replace('–', '-')
-        .replace(Regex("""[^a-z0-9äöüß]+"""), " ")
-        .trim()
-
     private data class PagingState(
         val market: String,
         var show: ServusShow,
         val cursors: MutableList<CollectionCursor>,
         val sourceCards: MutableList<ServusSourcedCard>,
         val hydratedIds: MutableSet<String>,
-        var searchFallbackAttempted: Boolean = false,
     )
 
     private data class CollectionCursor(
         val id: String,
         val fallbackLabel: String?,
-        var label: String? = fallbackLabel,
-        var nextOffset: Int? = 0,
-        var pagesLoaded: Int = 0,
-        var exhausted: Boolean = false,
+        var label: String?,
+        val contentShowId: String,
+        val contentShowTitle: String,
+        var nextOffset: Int?,
+        var pagesLoaded: Int,
+        var exhausted: Boolean,
     )
+
+    private data class CollectionPreview(
+        val id: String,
+        val title: String,
+        val role: ServusCollectionRole,
+        val contentShowId: String,
+        val contentShowTitle: String,
+        val response: SearchResponseDto,
+    ) {
+        fun toSourcedCard(card: ServusCardDto, ownerShowTitle: String): ServusSourcedCard =
+            ServusSourcedCard(
+                card = card,
+                sourceCollectionId = id,
+                sourceCollectionLabel = title,
+                contentKindHint = ServusCatalogPolicy.contentKindForCollection(
+                    ownerShowId = contentShowId,
+                    ownerShowTitle = contentShowTitle.ifBlank { ownerShowTitle },
+                    collectionLabel = title,
+                ) ?: ServusNewsPolicy.contentKind(card),
+                contentShowId = contentShowId,
+                contentShowTitle = contentShowTitle,
+            )
+    }
 
     private companion object {
         const val DETAIL_PARALLELISM = 4
+        const val COLLECTION_DISCOVERY_PARALLELISM = 4
         const val MAX_SHOW_COLLECTIONS = 8
         const val MAX_PAGES_PER_COLLECTION = 12
         const val MAX_FETCH_ROUNDS_PER_PAGE = 4
-        const val MAX_SEARCH_FALLBACK_PAGES = 3
+        const val ALL_EPISODES_SUFFIX = ":all_episodes"
     }
 }
