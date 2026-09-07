@@ -3,11 +3,10 @@ package com.andreassamitsch.servusprovider.data
 /**
  * Canonical show identity/branding for editorial formats whose ServusTV API structure is known.
  *
- * These values are deliberately independent from the mutable catalogue cache. The generic news
- * product exposes a stable `rbtv_title_treatment`. The 90-second news show has no title-treatment in
- * the API, so its verified bundled logo is used locally. `NEWS_90_SECONDS_LOGO_URI` is the stable
- * transport marker written to Android TvProvider; ServusTV itself renders the bundled drawable
- * directly and must never depend on resolving that cross-process URI for its own UI.
+ * Official API title treatments always win. `Servus Nachrichten in 90 Sekunden` deliberately keeps
+ * the verified bundled logo as a local fallback because its dedicated product currently exposes no
+ * title treatment. The fallback is therefore stable without preventing a future official asset from
+ * taking over automatically.
  */
 object ServusBranding {
     const val NEWS_SHOW_ID = "AA-1Y5RJCD1H2111"
@@ -15,13 +14,11 @@ object ServusBranding {
     const val NEWS_90_SECONDS_SHOW_ID = "AAYGF2URW6ALQYE42IJK"
     const val NEWS_90_SECONDS_SHOW_NAME = "Servus Nachrichten in 90 Sekunden"
 
-    /** Dedicated ServusTV-On product which is not reliably present in the generic Sendungen rail. */
     const val WEATHER_90_SECONDS_SHOW_ID = "AA90VBHT0KRB2CMU1AHQ"
     const val WEATHER_90_SECONDS_SHOW_NAME = "Servus Wetter in 90 Sekunden"
     const val WEATHER_90_SECONDS_DESCRIPTION =
         "Das Servus Wetter in 90 Sekunden: Ab 6:00 Uhr mehrmals täglich bei ServusTV On!"
 
-    /** Official ServusTV On page currently exposes episodes under this stable product ID. */
     const val FLEISCHHACKER_SHOW_ID = "AA95DDIZGB942P3W94TM"
     const val FLEISCHHACKER_SHOW_NAME = "Der Servus Kommentar von Michael Fleischhacker"
 
@@ -39,14 +36,6 @@ object ServusBranding {
     fun isNinetySecondLogoUri(uri: String?): Boolean =
         uri == NEWS_90_SECONDS_LOGO_URI || uri == NEWS_90_SECONDS_LEGACY_RESOURCE_URI
 
-    /**
-     * Canonicalises a resolved ServusTV branding URI.
-     *
-     * `c_fill` was visibly destructive for several transparent show wordmarks. Merely deleting it
-     * still left the CDN free to interpret a one-dimensional height transform differently between
-     * assets. All real Red Bull/ServusTV branding resources therefore use one explicit `c_fit`
-     * bounding box. Normal artwork URLs are deliberately untouched.
-     */
     fun normalizeLogoUri(uri: String?): String? {
         val value = uri?.trim()?.takeIf { it.isNotBlank() } ?: return null
         if (!value.startsWith(ARTWORK_HOST_PREFIX, ignoreCase = true)) return value
@@ -59,19 +48,14 @@ object ServusBranding {
         }
     }
 
-    fun logoUriForShow(showId: String?, fallback: String?): String? = when (showId) {
-        NEWS_SHOW_ID -> NEWS_LOGO_URI
-        NEWS_90_SECONDS_SHOW_ID -> NEWS_90_SECONDS_LOGO_URI
-        else -> normalizeLogoUri(fallback)
+    fun logoUriForShow(showId: String?, official: String?): String? = when (showId) {
+        NEWS_SHOW_ID -> normalizeLogoUri(official) ?: NEWS_LOGO_URI
+        NEWS_90_SECONDS_SHOW_ID -> normalizeLogoUri(official) ?: NEWS_90_SECONDS_LOGO_URI
+        else -> normalizeLogoUri(official)
     }
 
-    /**
-     * Catalogue cards are Local First. If the lightweight catalogue card has no logo metadata, keep
-     * a stable lazy marker instead of guessing a resource filename. The artwork loader resolves that
-     * marker from the official product detail only when the card becomes visible.
-     */
-    fun catalogueLogoUriForShow(showId: String?, fallback: String?): String? =
-        logoUriForShow(showId, fallback)
+    fun catalogueLogoUriForShow(showId: String?, official: String?): String? =
+        logoUriForShow(showId, official)
             ?: showId?.trim()?.takeIf { it.isNotBlank() }?.let(::lazyLogoUri)
 
     fun isLazyLogoUri(uri: String?): Boolean = uri?.startsWith(LAZY_LOGO_PREFIX) == true
@@ -93,29 +77,27 @@ object ServusBranding {
 
     fun logoUriForEpisode(episode: ServusNewsEpisode, fallback: String?): String? = when {
         ServusNewsPolicy.contentKind(episode) == ServusContentKind.NEWS_90_SECONDS ->
-            NEWS_90_SECONDS_LOGO_URI
-        ServusNewsPolicy.contentKind(episode) == ServusContentKind.FULL_NEWS -> NEWS_LOGO_URI
-        episode.showId == NEWS_90_SECONDS_SHOW_ID -> NEWS_90_SECONDS_LOGO_URI
-        episode.showId == NEWS_SHOW_ID -> NEWS_LOGO_URI
+            logoUriForShow(NEWS_90_SECONDS_SHOW_ID, fallback ?: episode.logoUri)
+        ServusNewsPolicy.contentKind(episode) == ServusContentKind.FULL_NEWS ->
+            logoUriForShow(NEWS_SHOW_ID, fallback ?: episode.logoUri)
+        episode.showId == NEWS_90_SECONDS_SHOW_ID ->
+            logoUriForShow(NEWS_90_SECONDS_SHOW_ID, fallback ?: episode.logoUri)
+        episode.showId == NEWS_SHOW_ID -> logoUriForShow(NEWS_SHOW_ID, fallback ?: episode.logoUri)
         else -> normalizeLogoUri(fallback)
     }
 
-    /**
-     * Applies identity and logo together. Callers must never change only the logo for a known news
-     * format: show ID, show name, format hint and logo are one atomic editorial identity.
-     */
     fun canonicalizeEpisode(episode: ServusNewsEpisode): ServusNewsEpisode {
         return when (ServusNewsPolicy.contentKind(episode)) {
             ServusContentKind.FULL_NEWS -> episode.copy(
                 showId = NEWS_SHOW_ID,
                 showName = NEWS_SHOW_NAME,
-                logoUri = NEWS_LOGO_URI,
+                logoUri = logoUriForShow(NEWS_SHOW_ID, episode.logoUri),
                 contentKindHint = ServusContentKind.FULL_NEWS,
             )
             ServusContentKind.NEWS_90_SECONDS -> episode.copy(
                 showId = NEWS_90_SECONDS_SHOW_ID,
                 showName = NEWS_90_SECONDS_SHOW_NAME,
-                logoUri = NEWS_90_SECONDS_LOGO_URI,
+                logoUri = logoUriForShow(NEWS_90_SECONDS_SHOW_ID, episode.logoUri),
                 contentKindHint = ServusContentKind.NEWS_90_SECONDS,
             )
             ServusContentKind.WEGSCHEIDER, null -> episode.copy(
