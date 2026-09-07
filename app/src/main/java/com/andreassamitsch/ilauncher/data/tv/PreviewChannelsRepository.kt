@@ -175,6 +175,7 @@ class PreviewChannelsRepository(context: Context) {
                 } else {
                     emptyList()
                 },
+                internalProviderId = cursor.string(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID),
             )
         }
         return rows
@@ -242,6 +243,7 @@ class PreviewChannelsRepository(context: Context) {
             TvContract.Channels.COLUMN_APP_LINK_INTENT_URI,
             TvContract.Channels.COLUMN_BROWSABLE,
             TvContract.Channels.COLUMN_TYPE,
+            TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,
         )
 
         private val PROGRAM_PROJECTION = arrayOf(
