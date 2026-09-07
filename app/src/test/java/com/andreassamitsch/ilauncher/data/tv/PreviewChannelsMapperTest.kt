@@ -139,12 +139,13 @@ class PreviewChannelsMapperTest {
         assertEquals(MediaType.Episode, item.media.type)
         assertEquals("S2 E4 · Folge vier", item.media.subtitle)
         assertEquals(2026, item.media.releaseYear)
+        assertEquals("2026-01-02", item.media.releaseDate)
         assertEquals("example.package", item.media.source.packageName)
         assertEquals(90, item.weight)
     }
 
     @Test
-    fun `Servus current channel uses show art for card and episode art for hero`() {
+    fun `Servus current channel uses show art for card episode art for hero and title treatment`() {
         val mapped = PreviewChannelsMapper.map(
             listOf(
                 channel(
@@ -161,7 +162,7 @@ class PreviewChannelsMapperTest {
                             programType = TvContract.PreviewPrograms.TYPE_TV_EPISODE,
                             posterArtUri = "https://example.test/show-landscape.webp",
                             thumbnailUri = "https://example.test/episode-landscape.webp",
-                            logoUri = "https://example.test/cropped-title-treatment.webp",
+                            logoUri = "https://example.test/title-treatment.webp",
                         ),
                     ),
                 ),
@@ -171,9 +172,42 @@ class PreviewChannelsMapperTest {
         val media = mapped.single().programs.single().media
         assertEquals("https://example.test/show-landscape.webp", media.sourceArtworkUri)
         assertEquals("https://example.test/show-landscape.webp", media.preferredArtworkUri)
+        assertEquals("https://example.test/episode-landscape.webp", media.episodeStillUri)
         assertEquals("https://example.test/episode-landscape.webp", media.backdropUri)
         assertEquals("https://example.test/episode-landscape.webp", media.heroBackdropUri)
-        assertNull(media.logoUri)
+        assertEquals("https://example.test/title-treatment.webp", media.logoUri)
+    }
+
+    @Test
+    fun `Servus current 90-second entry still uses bundled title logo`() {
+        val mapped = PreviewChannelsMapper.map(
+            listOf(
+                channel(
+                    id = 90,
+                    sourceOrder = 0,
+                    name = "ServusTV Aktuelles",
+                    packageName = SERVUS_PROVIDER_PACKAGE,
+                    internalProviderId = SERVUS_CURRENT_CHANNEL_ID,
+                    programs = listOf(
+                        program(
+                            id = 9002,
+                            sourceOrder = 0,
+                            title = "Aktuelle Meldungen",
+                            programType = TvContract.PreviewPrograms.TYPE_TV_EPISODE,
+                            shortDescription = SERVUS_90_SHOW_NAME,
+                            posterArtUri = "https://example.test/show-landscape.webp",
+                            thumbnailUri = "https://example.test/episode-landscape.webp",
+                            logoUri = null,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            "android.resource://${BuildConfig.APPLICATION_ID}/${R.drawable.servus_news_90_logo}",
+            mapped.single().programs.single().media.logoUri,
+        )
     }
 
     @Test
