@@ -18,10 +18,12 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import com.andreassamitsch.servusprovider.R
+import com.andreassamitsch.servusprovider.data.ServusCollectionRole
 import com.andreassamitsch.servusprovider.data.ServusCurrentChannelSelectionStore
 import com.andreassamitsch.servusprovider.data.ServusNewsEpisode
 import com.andreassamitsch.servusprovider.data.ServusNewsRepository
 import com.andreassamitsch.servusprovider.data.ServusShow
+import com.andreassamitsch.servusprovider.data.ServusShowCollection
 import com.andreassamitsch.servusprovider.data.ServusShowPager
 import com.andreassamitsch.servusprovider.data.ServusShowPagingPolicy
 import com.andreassamitsch.servusprovider.tv.ServusChannelPublisher
@@ -38,9 +40,7 @@ import java.util.Locale
 
 class ShowActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val isTvDevice: Boolean by lazy {
-        packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
-    }
+    private val isTvDevice: Boolean by lazy { packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) }
     private lateinit var repository: ServusNewsRepository
     private lateinit var pager: ServusShowPager
     private lateinit var currentSelectionStore: ServusCurrentChannelSelectionStore
@@ -52,6 +52,8 @@ class ShowActivity : Activity() {
     private lateinit var titleView: TextView
     private lateinit var categoryView: TextView
     private lateinit var descriptionView: TextView
+    private lateinit var collectionsTitleView: TextView
+    private lateinit var collectionsContainer: LinearLayout
     private lateinit var episodeCardsContainer: LinearLayout
     private lateinit var loadStateText: TextView
 
@@ -85,9 +87,7 @@ class ShowActivity : Activity() {
         loadingMore = true
         updateLoadState()
         scope.launch {
-            val result = runCatching {
-                withContext(Dispatchers.IO) { pager.refresh(cachedShow) }
-            }
+            val result = runCatching { withContext(Dispatchers.IO) { pager.refresh(cachedShow) } }
             if (isFinishing || isDestroyed) return@launch
             loadingMore = false
             val page = result.getOrNull()
@@ -114,9 +114,7 @@ class ShowActivity : Activity() {
         updateLoadState()
         val focusId = currentFocus?.tag as? String
         scope.launch {
-            val result = runCatching {
-                withContext(Dispatchers.IO) { pager.loadNext(show.id) }
-            }
+            val result = runCatching { withContext(Dispatchers.IO) { pager.loadNext(show.id) } }
             if (isFinishing || isDestroyed) return@launch
             loadingMore = false
             val page = result.getOrNull()
@@ -163,13 +161,10 @@ class ShowActivity : Activity() {
             setPadding(if (isTvDevice) dp(28) else 0, if (isTvDevice) 0 else dp(18), 0, 0)
         }
         logoView = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.FIT_START
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
             adjustViewBounds = true
         }
-        info.addView(
-            logoView,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (isTvDevice) 82 else 64)),
-        )
+        info.addView(logoView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (isTvDevice) 104 else 82)))
         titleView = TextView(this).apply {
             textSize = if (isTvDevice) 30f else 24f
             setTextColor(Color.WHITE)
@@ -198,7 +193,7 @@ class ShowActivity : Activity() {
         fun activeShow(): ServusShow = currentShow ?: show
         fun renderCurrentButton() {
             val selected = currentSelectionStore.isSelected(activeShow(), repository.cachedCategories())
-            currentButton.contentDescription = if (selected) "Aus Aktuelles entfernen" else "Zu Aktuelles hinzufügen"
+            currentButton.contentDescription = if (selected) "Gesamte Sendung aus Aktuelles entfernen" else "Gesamte Sendung zu Aktuelles hinzufügen"
             setIconSelected(currentButton, selected)
         }
         renderCurrentButton()
@@ -210,11 +205,7 @@ class ShowActivity : Activity() {
             renderCurrentButton()
             runCatching { channelPublisher.publish(repository.cachedEpisodes()) }
             ServusRefreshWorker.enqueueNow(applicationContext)
-            Toast.makeText(
-                this,
-                if (selected) "Aus Aktuelles entfernt" else "Zu Aktuelles hinzugefügt",
-                Toast.LENGTH_SHORT,
-            ).show()
+            Toast.makeText(this, if (selected) "Gesamte Sendung aus Aktuelles entfernt" else "Gesamte Sendung zu Aktuelles hinzugefügt", Toast.LENGTH_SHORT).show()
         }
         actions.addView(currentButton, iconLayoutParams())
 
@@ -224,8 +215,8 @@ class ShowActivity : Activity() {
             val selected = repository.isShowChannelSelected(activeShow().id)
             tvButton.contentDescription = when {
                 !tvChannelSupported -> "Android-TV-Kanal – nur auf Android TV verfügbar"
-                selected -> "Android-TV-Kanal entfernen"
-                else -> "Als Android-TV-Kanal veröffentlichen"
+                selected -> "Kanal der gesamten Sendung entfernen"
+                else -> "Gesamte Sendung als Android-TV-Kanal veröffentlichen"
             }
             setIconSelected(tvButton, selected)
             if (!tvChannelSupported) tvButton.alpha = 0.45f
@@ -233,11 +224,7 @@ class ShowActivity : Activity() {
         renderTvButton()
         tvButton.setOnClickListener {
             if (!tvChannelSupported) {
-                Toast.makeText(
-                    this,
-                    "Android-TV-Kanäle sind nur auf Android TV verfügbar.",
-                    Toast.LENGTH_SHORT,
-                ).show()
+                Toast.makeText(this, "Android-TV-Kanäle sind nur auf Android TV verfügbar.", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             val selectedShow = activeShow()
@@ -245,11 +232,7 @@ class ShowActivity : Activity() {
             repository.setShowChannelSelected(selectedShow.id, !selected)
             renderTvButton()
             ServusRefreshWorker.enqueueNow(applicationContext)
-            Toast.makeText(
-                this,
-                if (selected) "Android-TV-Kanal entfernt" else "Android-TV-Kanal aktiviert",
-                Toast.LENGTH_SHORT,
-            ).show()
+            Toast.makeText(this, if (selected) "Android-TV-Kanal entfernt" else "Android-TV-Kanal aktiviert", Toast.LENGTH_SHORT).show()
         }
         actions.addView(tvButton, iconLayoutParams().apply { marginStart = dp(8) })
         info.addView(actions)
@@ -264,20 +247,24 @@ class ShowActivity : Activity() {
         )
         content.addView(header)
 
+        collectionsTitleView = TextView(this).apply {
+            text = "Bereiche"
+            textSize = if (isTvDevice) 24f else 20f
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(28), 0, dp(10))
+        }
+        content.addView(collectionsTitleView)
+        collectionsContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(collectionsContainer)
+
         content.addView(TextView(this).apply {
             text = "Folgen & Videos"
             textSize = if (isTvDevice) 24f else 20f
             setTextColor(Color.WHITE)
             setPadding(0, dp(28), 0, dp(12))
         })
-
-        episodeCardsContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        content.addView(
-            episodeCardsContainer,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
-        )
+        episodeCardsContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(episodeCardsContainer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         loadStateText = TextView(this).apply {
             textSize = if (isTvDevice) 15f else 13f
             setTextColor(Color.GRAY)
@@ -289,9 +276,7 @@ class ShowActivity : Activity() {
         replaceEpisodeCards(show.episodes, focusId = null)
         loadingMore = loadingEpisodes
         updateLoadState()
-        if (isTvDevice) {
-            episodeCardsContainer.getChildAt(0)?.requestFocus() ?: currentButton.requestFocus()
-        }
+        if (isTvDevice) episodeCardsContainer.getChildAt(0)?.requestFocus() ?: currentButton.requestFocus()
         return scrollView
     }
 
@@ -301,11 +286,92 @@ class ShowActivity : Activity() {
         val description = show.description?.takeIf { it.isNotBlank() }
         descriptionView.text = description.orEmpty()
         descriptionView.visibility = if (description == null) View.GONE else View.VISIBLE
-
         ServusArtworkLoader.load(scope, artworkView, show.artworkUri ?: show.squareArtworkUri)
         val logo = show.logoUri?.takeIf { it.isNotBlank() }
         logoView.visibility = if (logo == null) View.GONE else View.VISIBLE
         if (logo != null) ServusArtworkLoader.load(scope, logoView, logo)
+        renderCollections(show)
+    }
+
+    private fun renderCollections(show: ServusShow) {
+        if (!::collectionsContainer.isInitialized) return
+        collectionsContainer.removeAllViews()
+        val contentCollections = show.collections.filter { it.role == ServusCollectionRole.CONTENT }
+        collectionsTitleView.visibility = if (contentCollections.isEmpty()) View.GONE else View.VISIBLE
+        collectionsContainer.visibility = if (contentCollections.isEmpty()) View.GONE else View.VISIBLE
+        contentCollections.forEach { collection ->
+            collectionsContainer.addView(
+                buildCollectionRow(show, collection),
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    bottomMargin = dp(8)
+                },
+            )
+        }
+    }
+
+    private fun buildCollectionRow(show: ServusShow, collection: ServusShowCollection): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(8), dp(8), dp(8))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(Color.rgb(19, 19, 19))
+            }
+        }
+        val text = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        text.addView(TextView(this).apply {
+            this.text = collection.title
+            textSize = if (isTvDevice) 17f else 14f
+            setTextColor(Color.WHITE)
+            maxLines = 2
+        })
+        text.addView(TextView(this).apply {
+            this.text = if (collection.episodes.isEmpty()) "Inhalte werden bei Bedarf geladen" else "${collection.episodes.size} geladene Videos"
+            textSize = if (isTvDevice) 13f else 11f
+            setTextColor(Color.GRAY)
+            setPadding(0, dp(3), 0, 0)
+        })
+        row.addView(text, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+        val currentButton = buildIconButton(R.drawable.ic_star, "Bereich zu Aktuelles hinzufügen")
+        fun renderCurrent() {
+            val selected = repository.isCurrentCollectionSelected(show.id, collection.id)
+            currentButton.contentDescription = if (selected) "${collection.title} aus Aktuelles entfernen" else "${collection.title} zu Aktuelles hinzufügen"
+            setIconSelected(currentButton, selected)
+        }
+        renderCurrent()
+        currentButton.setOnClickListener {
+            val selected = repository.isCurrentCollectionSelected(show.id, collection.id)
+            repository.setCurrentCollectionSelected(show.id, collection.id, !selected)
+            renderCurrent()
+            runCatching { channelPublisher.publish(repository.cachedEpisodes()) }
+            ServusRefreshWorker.enqueueNow(applicationContext)
+            Toast.makeText(this, if (selected) "Bereich aus Aktuelles entfernt" else "Bereich zu Aktuelles hinzugefügt", Toast.LENGTH_SHORT).show()
+        }
+        row.addView(currentButton, iconLayoutParams())
+
+        val tvButton = buildIconButton(R.drawable.ic_tv, "Bereich als Android-TV-Kanal")
+        fun renderTv() {
+            val selected = repository.isCollectionChannelSelected(show.id, collection.id)
+            tvButton.contentDescription = if (selected) "${collection.title} TV-Kanal entfernen" else "${collection.title} als TV-Kanal veröffentlichen"
+            setIconSelected(tvButton, selected)
+            if (!repository.tvChannelSupported()) tvButton.alpha = 0.45f
+        }
+        renderTv()
+        tvButton.setOnClickListener {
+            if (!repository.tvChannelSupported()) {
+                Toast.makeText(this, "Android-TV-Kanäle sind nur auf Android TV verfügbar.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val selected = repository.isCollectionChannelSelected(show.id, collection.id)
+            repository.setCollectionChannelSelected(show.id, collection.id, !selected)
+            renderTv()
+            ServusRefreshWorker.enqueueNow(applicationContext)
+            Toast.makeText(this, if (selected) "Bereichskanal entfernt" else "Bereichskanal aktiviert", Toast.LENGTH_SHORT).show()
+        }
+        row.addView(tvButton, iconLayoutParams().apply { marginStart = dp(6) })
+        return row
     }
 
     private fun replaceEpisodeCards(episodes: List<ServusNewsEpisode>, focusId: String?) {
@@ -314,12 +380,7 @@ class ShowActivity : Activity() {
         episodes.forEachIndexed { index, episode ->
             val card = buildEpisodeCard(episode, index)
             if (episode.id == focusId) focusTarget = card
-            episodeCardsContainer.addView(
-                card,
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    bottomMargin = dp(12)
-                },
-            )
+            episodeCardsContainer.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) })
         }
         focusTarget?.post { focusTarget?.requestFocus() }
     }
@@ -329,13 +390,7 @@ class ShowActivity : Activity() {
         val content = scrollView.getChildAt(0) ?: return
         if (scrollView.height <= 0 || content.height <= 0) return
         val remainingScrollPx = content.height - (scrollView.scrollY + scrollView.height)
-        if (
-            ServusShowPagingPolicy.shouldPrefetchFromScroll(
-                remainingScrollPx = remainingScrollPx,
-                thresholdPx = dp(SCROLL_PREFETCH_DISTANCE_DP),
-                hasMore = hasMoreEpisodes,
-            )
-        ) {
+        if (ServusShowPagingPolicy.shouldPrefetchFromScroll(remainingScrollPx, dp(SCROLL_PREFETCH_DISTANCE_DP), hasMoreEpisodes)) {
             loadMoreEpisodes()
         }
     }
@@ -387,15 +442,12 @@ class ShowActivity : Activity() {
         val selected = button.isSelected
         button.background = GradientDrawable().apply {
             cornerRadius = dp(12).toFloat()
-            setColor(
-                when {
-                    focused -> Color.rgb(62, 62, 62)
-                    selected -> Color.rgb(42, 42, 42)
-                    else -> Color.rgb(22, 22, 22)
-                },
-            )
-            if (focused) setStroke(dp(2), Color.WHITE)
-            else if (selected) setStroke(dp(1), Color.rgb(120, 120, 120))
+            setColor(when {
+                focused -> Color.rgb(62, 62, 62)
+                selected -> Color.rgb(42, 42, 42)
+                else -> Color.rgb(22, 22, 22)
+            })
+            if (focused) setStroke(dp(2), Color.WHITE) else if (selected) setStroke(dp(1), Color.rgb(120, 120, 120))
         }
         button.alpha = if (selected || focused) 1f else 0.8f
         button.scaleX = if (focused && isTvDevice) 1.06f else 1f
@@ -414,12 +466,7 @@ class ShowActivity : Activity() {
             setOnClickListener { openPlayback(episode.id) }
             setOnFocusChangeListener { view, focused ->
                 setBackgroundForFocus(view, focused)
-                if (focused && ServusShowPagingPolicy.shouldPrefetch(
-                        focusedIndex = index,
-                        itemCount = currentShow?.episodes?.size ?: 0,
-                        hasMore = hasMoreEpisodes,
-                    )
-                ) {
+                if (focused && ServusShowPagingPolicy.shouldPrefetch(index, currentShow?.episodes?.size ?: 0, hasMoreEpisodes)) {
                     loadMoreEpisodes()
                 }
             }
@@ -463,11 +510,11 @@ class ShowActivity : Activity() {
 
     private fun buildEpisodeMeta(episode: ServusNewsEpisode): String = buildList {
         when {
-            episode.seasonNumber != null && episode.episodeNumber != null ->
-                add("S${episode.seasonNumber} E${episode.episodeNumber}")
+            episode.seasonNumber != null && episode.episodeNumber != null -> add("S${episode.seasonNumber} E${episode.episodeNumber}")
             episode.seasonNumber != null -> add("Staffel ${episode.seasonNumber}")
             episode.episodeNumber != null -> add("Folge ${episode.episodeNumber}")
         }
+        episode.sourceCollectionTitle?.takeIf { it.isNotBlank() }?.let(::add)
         when {
             episode.observedAvailableAtMillis != null -> add("Online erkannt ${formatDate(episode.observedAvailableAtMillis)}")
             episode.publishedAtMillis != null -> add("Verfügbar ab ${formatDate(episode.publishedAtMillis)}")
@@ -476,11 +523,7 @@ class ShowActivity : Activity() {
     }.joinToString(" · ")
 
     private fun openPlayback(id: String) {
-        startActivity(
-            Intent(this, PlaybackActivity::class.java)
-                .setAction(Intent.ACTION_VIEW)
-                .setData(Uri.parse("iservus://play/${Uri.encode(id)}")),
-        )
+        startActivity(Intent(this, PlaybackActivity::class.java).setAction(Intent.ACTION_VIEW).setData(Uri.parse("iservus://play/${Uri.encode(id)}")))
     }
 
     private fun setBackgroundForFocus(view: View, focused: Boolean) {
@@ -493,16 +536,11 @@ class ShowActivity : Activity() {
         view.scaleY = if (focused && isTvDevice) 1.02f else 1f
     }
 
-    private fun formatDate(millis: Long): String =
-        SimpleDateFormat("dd.MM.yyyy · HH:mm", Locale.getDefault()).format(Date(millis))
-
+    private fun formatDate(millis: Long): String = SimpleDateFormat("dd.MM.yyyy · HH:mm", Locale.getDefault()).format(Date(millis))
     private fun formatDuration(millis: Long): String {
         val seconds = millis / 1_000L
-        val minutes = seconds / 60L
-        val rest = seconds % 60L
-        return "$minutes:${rest.toString().padStart(2, '0')} Min."
+        return "${seconds / 60L}:${(seconds % 60L).toString().padStart(2, '0')} Min."
     }
-
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private companion object {
