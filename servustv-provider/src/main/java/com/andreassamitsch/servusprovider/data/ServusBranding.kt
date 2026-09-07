@@ -48,6 +48,11 @@ object ServusBranding {
         }
     }
 
+    /**
+     * `official` is trusted API metadata for this exact show. Callers repairing persisted episode
+     * metadata must first use [canonicalCachedLogo] so a stale logo from a different show cannot be
+     * mistaken for a newly supplied official treatment.
+     */
     fun logoUriForShow(showId: String?, official: String?): String? = when (showId) {
         NEWS_SHOW_ID -> normalizeLogoUri(official) ?: NEWS_LOGO_URI
         NEWS_90_SECONDS_SHOW_ID -> normalizeLogoUri(official) ?: NEWS_90_SECONDS_LOGO_URI
@@ -75,14 +80,39 @@ object ServusBranding {
             uri.contains("_logo", ignoreCase = true) ||
             uri.contains("/logo", ignoreCase = true)
 
+    private fun canonicalCachedLogo(showId: String, uri: String?): String? {
+        val normalized = normalizeLogoUri(uri) ?: return null
+        if (showId == NEWS_90_SECONDS_SHOW_ID && isNinetySecondLogoUri(normalized)) {
+            return normalized
+        }
+        if (!normalized.startsWith(ARTWORK_HOST_PREFIX, ignoreCase = true)) return null
+        if (!looksLikeBrandingResource(normalized)) return null
+        return normalized.takeIf { value ->
+            value.contains("/$showId/", ignoreCase = true)
+        }
+    }
+
     fun logoUriForEpisode(episode: ServusNewsEpisode, fallback: String?): String? = when {
         ServusNewsPolicy.contentKind(episode) == ServusContentKind.NEWS_90_SECONDS ->
-            logoUriForShow(NEWS_90_SECONDS_SHOW_ID, fallback ?: episode.logoUri)
+            logoUriForShow(
+                NEWS_90_SECONDS_SHOW_ID,
+                canonicalCachedLogo(NEWS_90_SECONDS_SHOW_ID, fallback ?: episode.logoUri),
+            )
         ServusNewsPolicy.contentKind(episode) == ServusContentKind.FULL_NEWS ->
-            logoUriForShow(NEWS_SHOW_ID, fallback ?: episode.logoUri)
+            logoUriForShow(
+                NEWS_SHOW_ID,
+                canonicalCachedLogo(NEWS_SHOW_ID, fallback ?: episode.logoUri),
+            )
         episode.showId == NEWS_90_SECONDS_SHOW_ID ->
-            logoUriForShow(NEWS_90_SECONDS_SHOW_ID, fallback ?: episode.logoUri)
-        episode.showId == NEWS_SHOW_ID -> logoUriForShow(NEWS_SHOW_ID, fallback ?: episode.logoUri)
+            logoUriForShow(
+                NEWS_90_SECONDS_SHOW_ID,
+                canonicalCachedLogo(NEWS_90_SECONDS_SHOW_ID, fallback ?: episode.logoUri),
+            )
+        episode.showId == NEWS_SHOW_ID ->
+            logoUriForShow(
+                NEWS_SHOW_ID,
+                canonicalCachedLogo(NEWS_SHOW_ID, fallback ?: episode.logoUri),
+            )
         else -> normalizeLogoUri(fallback)
     }
 
@@ -91,13 +121,19 @@ object ServusBranding {
             ServusContentKind.FULL_NEWS -> episode.copy(
                 showId = NEWS_SHOW_ID,
                 showName = NEWS_SHOW_NAME,
-                logoUri = logoUriForShow(NEWS_SHOW_ID, episode.logoUri),
+                logoUri = logoUriForShow(
+                    NEWS_SHOW_ID,
+                    canonicalCachedLogo(NEWS_SHOW_ID, episode.logoUri),
+                ),
                 contentKindHint = ServusContentKind.FULL_NEWS,
             )
             ServusContentKind.NEWS_90_SECONDS -> episode.copy(
                 showId = NEWS_90_SECONDS_SHOW_ID,
                 showName = NEWS_90_SECONDS_SHOW_NAME,
-                logoUri = logoUriForShow(NEWS_90_SECONDS_SHOW_ID, episode.logoUri),
+                logoUri = logoUriForShow(
+                    NEWS_90_SECONDS_SHOW_ID,
+                    canonicalCachedLogo(NEWS_90_SECONDS_SHOW_ID, episode.logoUri),
+                ),
                 contentKindHint = ServusContentKind.NEWS_90_SECONDS,
             )
             ServusContentKind.WEGSCHEIDER, null -> episode.copy(
