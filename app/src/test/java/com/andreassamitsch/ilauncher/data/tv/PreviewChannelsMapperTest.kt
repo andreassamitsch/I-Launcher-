@@ -144,6 +144,73 @@ class PreviewChannelsMapperTest {
     }
 
     @Test
+    fun `Servus current channel uses show art for card and episode art for hero`() {
+        val mapped = PreviewChannelsMapper.map(
+            listOf(
+                channel(
+                    id = 90,
+                    sourceOrder = 0,
+                    name = "ServusTV Aktuelles",
+                    packageName = SERVUS_PROVIDER_PACKAGE,
+                    internalProviderId = SERVUS_CURRENT_CHANNEL_ID,
+                    programs = listOf(
+                        program(
+                            id = 9001,
+                            sourceOrder = 0,
+                            title = "Leiche in abgeschlepptem Auto entdeckt",
+                            programType = TvContract.PreviewPrograms.TYPE_TV_EPISODE,
+                            posterArtUri = "https://example.test/show-landscape.webp",
+                            thumbnailUri = "https://example.test/episode-landscape.webp",
+                            logoUri = "https://example.test/cropped-title-treatment.webp",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val media = mapped.single().programs.single().media
+        assertEquals("https://example.test/show-landscape.webp", media.sourceArtworkUri)
+        assertEquals("https://example.test/show-landscape.webp", media.preferredArtworkUri)
+        assertEquals("https://example.test/episode-landscape.webp", media.backdropUri)
+        assertEquals("https://example.test/episode-landscape.webp", media.heroBackdropUri)
+        assertNull(media.logoUri)
+    }
+
+    @Test
+    fun `dedicated Servus channel keeps episode art and logo behavior`() {
+        val mapped = PreviewChannelsMapper.map(
+            listOf(
+                channel(
+                    id = 91,
+                    sourceOrder = 0,
+                    name = SERVUS_90_SHOW_NAME,
+                    packageName = SERVUS_PROVIDER_PACKAGE,
+                    internalProviderId = "servus-show:AAYGF2URW6ALQYE42IJK",
+                    programs = listOf(
+                        program(
+                            id = 9002,
+                            sourceOrder = 0,
+                            title = "Nachrichtenfolge",
+                            shortDescription = SERVUS_90_SHOW_NAME,
+                            posterArtUri = "https://example.test/episode-poster.webp",
+                            thumbnailUri = "https://example.test/episode-thumbnail.webp",
+                            logoUri = null,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val media = mapped.single().programs.single().media
+        assertEquals("https://example.test/episode-thumbnail.webp", media.sourceArtworkUri)
+        assertNull(media.heroBackdropUri)
+        assertEquals(
+            "android.resource://${BuildConfig.APPLICATION_ID}/${R.drawable.servus_news_90_logo}",
+            media.logoUri,
+        )
+    }
+
+    @Test
     fun `uses bundled Servus 90-second logo when TvProvider logo uri is missing`() {
         val mapped = PreviewChannelsMapper.map(
             listOf(
@@ -226,6 +293,7 @@ class PreviewChannelsMapperTest {
         packageName: String = "example.package",
         browsable: Int? = 1,
         type: String? = TvContract.Channels.TYPE_PREVIEW,
+        internalProviderId: String? = null,
         programs: List<PreviewProgramRawRow>,
     ) = PreviewChannelRawRow(
         id = id,
@@ -236,6 +304,7 @@ class PreviewChannelsMapperTest {
         browsable = browsable,
         type = type,
         programs = programs,
+        internalProviderId = internalProviderId,
     )
 
     private fun program(
@@ -248,6 +317,8 @@ class PreviewChannelsMapperTest {
         episodeTitle: String? = null,
         releaseDate: String? = null,
         shortDescription: String? = null,
+        posterArtUri: String? = null,
+        thumbnailUri: String? = null,
         logoUri: String? = null,
         weight: Int? = null,
         browsable: Int? = 1,
@@ -263,8 +334,8 @@ class PreviewChannelsMapperTest {
         episodeDisplayNumber = episode,
         episodeTitle = episodeTitle,
         shortDescription = shortDescription,
-        posterArtUri = null,
-        thumbnailUri = null,
+        posterArtUri = posterArtUri,
+        thumbnailUri = thumbnailUri,
         logoUri = logoUri,
         intentUri = "intent:#Intent;end",
         durationMillis = null,
@@ -275,6 +346,7 @@ class PreviewChannelsMapperTest {
 
     private companion object {
         const val SERVUS_PROVIDER_PACKAGE = "com.andreassamitsch.servusprovider"
+        const val SERVUS_CURRENT_CHANNEL_ID = "servus-news-19-20"
         const val SERVUS_90_SHOW_NAME = "Servus Nachrichten in 90 Sekunden"
     }
 }

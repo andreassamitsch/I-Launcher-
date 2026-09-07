@@ -55,10 +55,17 @@ data class MediaItem(
 ) {
     val preferredArtworkUri: String?
         get() = when (type) {
-            MediaType.Episode -> episodeStillUri
-                ?: backdropUri
-                ?: posterUri
-                ?: sourceArtworkUri
+            MediaType.Episode -> if (heroBackdropUri != null && sourceArtworkUri != null) {
+                // An explicit hero backdrop means the provider intentionally supplied
+                // separate card and hero artwork. Keep the source card artwork stable
+                // while the Hero can use backdropUri/heroBackdropUri.
+                sourceArtworkUri
+            } else {
+                episodeStillUri
+                    ?: backdropUri
+                    ?: posterUri
+                    ?: sourceArtworkUri
+            }
 
             MediaType.Series,
             MediaType.Movie,

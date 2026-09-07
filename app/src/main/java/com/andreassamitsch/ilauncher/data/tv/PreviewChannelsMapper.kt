@@ -18,6 +18,7 @@ internal data class PreviewChannelRawRow(
     val browsable: Int?,
     val type: String?,
     val programs: List<PreviewProgramRawRow>,
+    val internalProviderId: String? = null,
 )
 
 internal data class PreviewProgramRawRow(
@@ -57,7 +58,11 @@ internal object PreviewChannelsMapper {
             } else {
                 AppContentProgram(
                     sourceOrder = program.sourceOrder,
-                    media = program.toMediaItem(channel.id, channel.packageName),
+                    media = program.toMediaItem(
+                        channelId = channel.id,
+                        channelPackageName = channel.packageName,
+                        channelInternalProviderId = channel.internalProviderId,
+                    ),
                     weight = program.weight,
                 )
             }
@@ -78,9 +83,13 @@ internal object PreviewChannelsMapper {
     private fun PreviewProgramRawRow.toMediaItem(
         channelId: Long,
         channelPackageName: String?,
+        channelInternalProviderId: String?,
     ): MediaItem {
         val effectivePackageName = packageName?.takeIf { it.isNotBlank() }
             ?: channelPackageName?.takeIf { it.isNotBlank() }
+        val isServusCurrentChannel =
+            effectivePackageName == SERVUS_PROVIDER_PACKAGE &&
+                channelInternalProviderId == SERVUS_CURRENT_CHANNEL_ID
         val season = seasonDisplayNumber?.toIntOrNull()
         val episode = episodeDisplayNumber?.toIntOrNull()
         val type = if (season != null || episode != null) {
@@ -100,6 +109,24 @@ internal object PreviewChannelsMapper {
             episodeTitle?.takeIf { it.isNotBlank() && it != displayTitle },
         ).joinToString(" · ").ifBlank { null }
 
+        // ServusTV's aggregate "Aktuelles" channel deliberately transports two
+        // different 16:9 images in one TvProvider row:
+        // - posterArtUri: show-level display art (stable row/card branding)
+        // - thumbnailUri: episode-level display art (specific Hero artwork)
+        // Dedicated show/collection channels keep their existing episode artwork.
+        val showArtworkUri = posterArtUri?.takeIf { it.isNotBlank() }
+        val episodeArtworkUri = thumbnailUri?.takeIf { it.isNotBlank() }
+        val sourceArtworkUri = if (isServusCurrentChannel) {
+            showArtworkUri ?: episodeArtworkUri
+        } else {
+            episodeArtworkUri ?: showArtworkUri
+        }
+        val heroArtworkUri = if (isServusCurrentChannel) {
+            episodeArtworkUri ?: showArtworkUri
+        } else {
+            null
+        }
+
         return MediaItem(
             id = "preview:${effectivePackageName ?: "unknown"}:$channelId:$id",
             type = type,
@@ -110,14 +137,22 @@ internal object PreviewChannelsMapper {
             seasonNumber = season,
             episodeNumber = episode,
             episodeTitle = episodeTitle,
-            logoUri = localizePreviewLogoUri(
-                packageName = effectivePackageName,
-                logoUri = logoUri,
-                title = displayTitle,
-                shortDescription = shortDescription,
-            ),
-            sourceArtworkUri = thumbnailUri?.takeIf { it.isNotBlank() }
-                ?: posterArtUri?.takeIf { it.isNotBlank() },
+            backdropUri = heroArtworkUri,
+            heroBackdropUri = heroArtworkUri,
+            logoUri = if (isServusCurrentChannel) {
+                // The show display art already carries editorial branding. Avoid a
+                // second title-treatment overlay because some Servus assets are
+                // cropped at source.
+                null
+            } else {
+                localizePreviewLogoUri(
+                    packageName = effectivePackageName,
+                    logoUri = logoUri,
+                    title = displayTitle,
+                    shortDescription = shortDescription,
+                )
+            },
+            sourceArtworkUri = sourceArtworkUri,
             durationMillis = durationMillis,
             source = MediaSource(
                 provider = "android_preview_channel",
@@ -165,6 +200,7 @@ internal object PreviewChannelsMapper {
     }
 
     private const val SERVUS_PROVIDER_PACKAGE = "com.andreassamitsch.servusprovider"
+    private const val SERVUS_CURRENT_CHANNEL_ID = "servus-news-19-20"
     private const val SERVUS_90_SHOW_NAME = "Servus Nachrichten in 90 Sekunden"
     private const val SERVUS_90_CONTENT_LOGO_URI =
         "content://com.andreassamitsch.servusprovider.branding/servus_news_90_logo.png"

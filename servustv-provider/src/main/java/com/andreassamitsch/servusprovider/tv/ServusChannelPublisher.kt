@@ -54,10 +54,15 @@ class ServusChannelPublisher(context: Context) {
 
     fun publish(episodes: List<ServusNewsEpisode>) {
         if (!isSupported()) return
+        val categories = hubStore.loadCategories()
         val effectiveEpisodes = currentSelectionStore.effectiveEpisodes(
-            categories = hubStore.loadCategories(),
+            categories = categories,
             legacyEpisodes = episodes,
         )
+        val showArtworkById = categories
+            .flatMap { it.shows }
+            .distinctBy { it.id }
+            .associate { it.id to it.artworkUri }
         val channelId = findOrCreateChannel(
             internalId = CURRENT_CHANNEL_ID,
             displayName = CURRENT_CHANNEL_NAME,
@@ -68,7 +73,17 @@ class ServusChannelPublisher(context: Context) {
             logo = createAppLogo(),
         )
         replacePrograms(channelId, effectiveEpisodes.mapIndexed { index, episode ->
-            buildEpisodeProgram(channelId, episode, effectiveEpisodes.size - index, episode.logoUri)
+            val showArtwork = episode.showId
+                ?.let(showArtworkById::get)
+                ?.takeIf { it.isNotBlank() }
+            buildEpisodeProgram(
+                channelId = channelId,
+                episode = episode,
+                weight = effectiveEpisodes.size - index,
+                logoUri = episode.logoUri,
+                posterArtworkUri = showArtwork ?: episode.artworkUri,
+                includeLogo = false,
+            )
         })
     }
 
@@ -229,6 +244,8 @@ class ServusChannelPublisher(context: Context) {
         episode: ServusNewsEpisode,
         weight: Int,
         logoUri: String?,
+        posterArtworkUri: String? = null,
+        includeLogo: Boolean = true,
     ): PreviewProgram {
         val playbackIntentUri = Uri.parse(
             Intent(appContext, PlaybackActivity::class.java)
@@ -248,14 +265,24 @@ class ServusChannelPublisher(context: Context) {
             .setBrowsable(true)
             .setSearchable(true)
         episode.publishedAtMillis?.let { builder.setReleaseDate(RELEASE_DATE_FORMAT.format(Date(it))) }
-        episode.artworkUri?.let { uri ->
-            val artwork = Uri.parse(uri)
-            builder.setPosterArtUri(artwork)
-            builder.setThumbnailUri(artwork)
-        }
-        ServusBranding.logoUriForEpisode(episode, logoUri ?: episode.logoUri)
+        episode.seasonNumber?.let(builder::setSeasonNumber)
+        episode.episodeNumber?.let(builder::setEpisodeNumber)
+
+        val episodeArtwork = episode.artworkUri
             ?.takeIf { it.isNotBlank() }
-            ?.let { builder.setLogoUri(Uri.parse(it)) }
+            ?.let(Uri::parse)
+        val posterArtwork = posterArtworkUri
+            ?.takeIf { it.isNotBlank() }
+            ?.let(Uri::parse)
+            ?: episodeArtwork
+        posterArtwork?.let(builder::setPosterArtUri)
+        episodeArtwork?.let(builder::setThumbnailUri)
+
+        if (includeLogo) {
+            ServusBranding.logoUriForEpisode(episode, logoUri ?: episode.logoUri)
+                ?.takeIf { it.isNotBlank() }
+                ?.let { builder.setLogoUri(Uri.parse(it)) }
+        }
         return builder.build()
     }
 
