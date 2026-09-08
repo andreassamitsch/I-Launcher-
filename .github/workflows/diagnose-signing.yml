@@ -1,0 +1,122 @@
+name: Diagnose I Launcher Signing
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/servustv-news-provider-prototype
+    paths:
+      - ".github/workflows/diagnose-signing.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-signing-keystore:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Inspect signing keystore metadata
+        env:
+          DEV_KEYSTORE_BASE64: ${{ secrets.IL_DEV_KEYSTORE_BASE64 }}
+          DEV_STORE_PASSWORD: ${{ secrets.IL_DEV_STORE_PASSWORD }}
+          DEV_KEY_ALIAS: ${{ secrets.IL_DEV_KEY_ALIAS }}
+          DEV_KEY_PASSWORD: ${{ secrets.IL_DEV_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$DEV_KEYSTORE_BASE64" ] || \
+             [ -z "$DEV_STORE_PASSWORD" ] || \
+             [ -z "$DEV_KEY_ALIAS" ] || \
+             [ -z "$DEV_KEY_PASSWORD" ]; then
+            echo "::error::One or more I Launcher development signing secrets are missing."
+            exit 1
+          fi
+
+          KEYSTORE=/tmp/i-launcher-development.jks
+          CERT=/tmp/i-launcher-configured-alias.der
+          printf '%s' "$DEV_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+
+          echo "=== Keystore entries (metadata only) ==="
+          keytool \
+            -J-Duser.language=en \
+            -J-Duser.country=US \
+            -list -v \
+            -keystore "$KEYSTORE" \
+            -storepass "$DEV_STORE_PASSWORD" \
+            | awk '
+              /^Alias name: / { alias = substr($0, 13) }
+              /^Entry type: / { entryType = substr($0, 13) }
+              /^[[:space:]]*SHA256: / {
+                sha = $0
+                sub(/^[[:space:]]*SHA256:[[:space:]]*/, "", sha)
+                count++
+                printf "Entry %d\nAlias: %s\nEntry type: %s\nSHA-256: %s\n\n", count, alias, entryType, sha
+              }
+            '
+
+          keytool \
+            -J-Duser.language=en \
+            -J-Duser.country=US \
+            -exportcert \
+            -alias "$DEV_KEY_ALIAS" \
+            -keystore "$KEYSTORE" \
+            -storepass "$DEV_STORE_PASSWORD" \
+            -file "$CERT" >/dev/null
+
+          CONFIGURED_SHA256="$(sha256sum "$CERT" | awk '{print toupper($1)}')"
+          EXPECTED_SHA256="D96E3617A3E370B2F3F13CDC8C7CCE0BA8AB39C76697BBE227F21AC226445B45"
+          MISMATCH_SHA256="45E1AE301EFA5A17D04C5AEBAEEA584323D6CAF4E6C99FE98FA3C7F0D0F9A550"
+
+          ALL_SHA256="$(
+            keytool \
+              -J-Duser.language=en \
+              -J-Duser.country=US \
+              -list -v \
+              -keystore "$KEYSTORE" \
+              -storepass "$DEV_STORE_PASSWORD" \
+              | awk '/^[[:space:]]*SHA256: / { gsub(":", "", $2); print toupper($2) }'
+          )"
+
+          echo "=== Diagnosis ==="
+          echo "Configured alias certificate SHA-256: $CONFIGURED_SHA256"
+
+          if printf '%s\n' "$ALL_SHA256" | grep -Fxq "$EXPECTED_SHA256"; then
+            echo "Expected installed-update certificate is present in the current keystore: YES"
+          else
+            echo "Expected installed-update certificate is present in the current keystore: NO"
+          fi
+
+          if printf '%s\n' "$ALL_SHA256" | grep -Fxq "$MISMATCH_SHA256"; then
+            echo "Certificate seen in dev.486 mismatch is present in the current keystore: YES"
+          else
+            echo "Certificate seen in dev.486 mismatch is present in the current keystore: NO"
+          fi
+
+          {
+            echo "## I Launcher signing diagnosis"
+            echo
+            echo "- Configured alias certificate SHA-256: \`$CONFIGURED_SHA256\`"
+            if printf '%s\n' "$ALL_SHA256" | grep -Fxq "$EXPECTED_SHA256"; then
+              echo "- Expected installed-update certificate \`$EXPECTED_SHA256\`: **present**"
+            else
+              echo "- Expected installed-update certificate \`$EXPECTED_SHA256\`: **not present**"
+            fi
+            if printf '%s\n' "$ALL_SHA256" | grep -Fxq "$MISMATCH_SHA256"; then
+              echo "- dev.486 mismatch certificate \`$MISMATCH_SHA256\`: **present**"
+            else
+              echo "- dev.486 mismatch certificate \`$MISMATCH_SHA256\`: **not present**"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          rm -f "$CERT" "$KEYSTORE"
