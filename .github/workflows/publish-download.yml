@@ -1,5 +1,5 @@
 name: Publish TV Downloader APK
-# Publication touch: ServusTV preview logo background removal.
+# Publication touch: verify update signing certificate against the known-good installed build.
 
 on:
   push:
@@ -118,6 +118,29 @@ jobs:
                   echo "::error::$safe"
                 done
             exit "$STATUS"
+          fi
+
+      - name: Verify installed-update signing certificate
+        if: env.UPDATE_COMPATIBLE == 'true'
+        run: |
+          EXPECTED_SIGNER_SHA256="D96E3617A3E370B2F3F13CDC8C7CCE0BA8AB39C76697BBE227F21AC226445B45"
+          ACTUAL_SIGNER_SHA256="$(
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs \
+              app/build/outputs/apk/debug/app-debug.apk \
+              | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ { print $2; exit }' \
+              | tr -d ':' \
+              | tr '[:lower:]' '[:upper:]'
+          )"
+
+          if [ -z "$ACTUAL_SIGNER_SHA256" ]; then
+            echo "::error::Could not read the I Launcher APK signing certificate."
+            exit 1
+          fi
+
+          echo "I Launcher signer SHA-256: $ACTUAL_SIGNER_SHA256"
+          if [ "$ACTUAL_SIGNER_SHA256" != "$EXPECTED_SIGNER_SHA256" ]; then
+            echo "::error::I Launcher APK signer mismatch. Expected $EXPECTED_SIGNER_SHA256 but got $ACTUAL_SIGNER_SHA256. Publication stopped to protect in-place updates."
+            exit 1
           fi
 
       - name: Prepare APK and update manifest
