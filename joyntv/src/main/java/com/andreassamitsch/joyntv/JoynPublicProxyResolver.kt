@@ -139,6 +139,8 @@ internal class JoynPublicProxyResolver {
     private suspend fun fetchProxyScrape(country: JoynCountry): List<JoynPublicProxyCandidate> {
         val countryCode = country.name.lowercase()
         val countryUrls = listOf(
+            "https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/countries/$countryCode/https/data.json",
+            "https://raw.githubusercontent.com/ProxyScrape/free-proxy-list/main/proxies/countries/$countryCode/https/data.json",
             "https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/countries/$countryCode/data.json",
             "https://raw.githubusercontent.com/ProxyScrape/free-proxy-list/main/proxies/countries/$countryCode/data.json",
         )
@@ -149,8 +151,8 @@ internal class JoynPublicProxyResolver {
         if (countryCandidates.isNotEmpty()) return countryCandidates
 
         val globalUrls = listOf(
-            "https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/all/data.json",
-            "https://raw.githubusercontent.com/ProxyScrape/free-proxy-list/main/proxies/all/data.json",
+            "https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/protocols/https/data.json",
+            "https://raw.githubusercontent.com/ProxyScrape/free-proxy-list/main/proxies/protocols/https/data.json",
         )
         return fetchFirst(globalUrls)
             ?.let { parseProxyScrape(it, country) }
@@ -159,8 +161,8 @@ internal class JoynPublicProxyResolver {
 
     private suspend fun fetchProxifly(country: JoynCountry): List<JoynPublicProxyCandidate> {
         val urls = listOf(
-            "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/all/data.json",
-            "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/all/data.json",
+            "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/https/data.json",
+            "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/https/data.json",
         )
         return fetchFirst(urls)
             ?.let { parseProxifly(it, country) }
@@ -261,7 +263,7 @@ internal class JoynPublicProxyResolver {
     private fun rankCandidates(
         candidates: List<JoynPublicProxyCandidate>,
     ): List<JoynPublicProxyCandidate> = candidates.sortedWith(
-        compareByDescending<JoynPublicProxyCandidate> { it.anonymity == "elite" }
+        compareByDescending<JoynPublicProxyCandidate> { if (it.anonymity == "elite") 1 else 0 }
             .thenByDescending { it.uptimePercent }
             .thenBy { it.reportedLatencyMs }
             .thenBy { it.host }
@@ -328,7 +330,7 @@ internal class JoynPublicProxyResolver {
 
     private companion object {
         private const val MIN_PRIMARY_CANDIDATES = 12
-        private const val MAX_CANDIDATES = 24
+        private const val MAX_CANDIDATES = 18
         private const val PARALLELISM = 6
         private const val PROBE_CONNECT_TIMEOUT_SECONDS = 3L
         private const val PROBE_READ_TIMEOUT_SECONDS = 4L
