@@ -3,6 +3,7 @@ package com.andreassamitsch.joyntv
 import android.content.Context
 import java.io.IOException
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -41,15 +42,29 @@ internal class JoynBrowseApiClient(context: Context) {
             block.optString("__typename") in CATEGORY_LANES
         }
         val resolved = resolveMissingBlocks(blocks)
+        val hasPlus = loadHasPlus()
         val items = blocks.mapNotNull { original ->
             val blockId = original.optString("id").takeIf(String::isNotBlank) ?: return@mapNotNull null
             val block = resolved[blockId] ?: original
-            val preview = block.optJSONArray("assets")?.firstMediaItem()
+            val title = block.optString("headline").takeIf(String::isNotBlank)
+                ?: block.optString("title").takeIf(String::isNotBlank)
+                ?: return@mapNotNull null
+            val categoryItems = available(block.optJSONArray("assets").toMediaItems(), hasPlus)
+
+            // LandingPageClient already gives us the correctly resolved assets here. Keep that
+            // exact result for the click that follows. Some Joyn markets return the same block
+            // without assets when LandingBlocks is called again a moment later.
+            if (categoryItems.isNotEmpty()) {
+                CATEGORY_PAGE_CACHE[categoryCacheKey(blockId)] = JoynCataloguePage(
+                    title = title,
+                    lanes = listOf(JoynLane("category:$blockId", title, categoryItems)),
+                )
+            }
+
+            val preview = categoryItems.firstOrNull() ?: block.optJSONArray("assets")?.firstMediaItem()
             JoynMediaItem(
                 id = "category:$blockId",
-                title = block.optString("headline").takeIf(String::isNotBlank)
-                    ?: block.optString("title").takeIf(String::isNotBlank)
-                    ?: return@mapNotNull null,
+                title = title,
                 description = block.optString("description").takeIf(String::isNotBlank),
                 path = blockId,
                 type = JoynMediaType.CATEGORY,
@@ -91,19 +106,29 @@ internal class JoynBrowseApiClient(context: Context) {
     }
 
     suspend fun loadCategory(blockId: String, fallbackTitle: String): JoynCataloguePage {
-        val response = persistedGraphQl(
-            operationName = "LandingBlocks",
-            hash = HASH_LANDING_BLOCKS,
-            variables = JSONObject().put("ids", JSONArray().put(blockId)),
-        )
-        val block = response.optJSONArray("blocks")?.findObjectById(blockId)
-            ?: error("Joyn Kategorie '$fallbackTitle' wurde nicht gefunden")
+        CATEGORY_PAGE_CACHE[categoryCacheKey(blockId)]?.let { return it }
+
+        val remoteResult = runCatching {
+            persistedGraphQl(
+                operationName = "LandingBlocks",
+                hash = HASH_LANDING_BLOCKS,
+                variables = JSONObject().put("ids", JSONArray().put(blockId)),
+            )
+        }
+        val response = remoteResult.getOrNull()
+        val block = response?.optJSONArray("blocks")?.findObjectById(blockId)
+        if (block == null) {
+            throw remoteResult.exceptionOrNull()
+                ?: IllegalStateException("Joyn Kategorie '$fallbackTitle' wurde nicht gefunden")
+        }
         val title = block.optString("headline").takeIf(String::isNotBlank) ?: fallbackTitle
         val items = available(block.optJSONArray("assets").toMediaItems(), loadHasPlus())
-        return JoynCataloguePage(
+        val result = JoynCataloguePage(
             title = title,
             lanes = listOfNotNull(JoynLane("category:$blockId", title, items).takeIf { items.isNotEmpty() }),
         )
+        if (items.isNotEmpty()) CATEGORY_PAGE_CACHE[categoryCacheKey(blockId)] = result
+        return result
     }
 
     suspend fun loadChannel(path: String, fallbackTitle: String): JoynCataloguePage {
@@ -417,6 +442,8 @@ internal class JoynBrowseApiClient(context: Context) {
         return fallback
     }
 
+    private fun categoryCacheKey(blockId: String): String = "${country.name}:$blockId"
+
     private data class BrowseSession(
         val country: JoynCountry,
         val apiKey: String,
@@ -442,6 +469,7 @@ internal class JoynBrowseApiClient(context: Context) {
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
+        private val CATEGORY_PAGE_CACHE = ConcurrentHashMap<String, JoynCataloguePage>()
         private val CATEGORY_LANES = setOf("StandardLane", "CollectionLane", "FeaturedLane")
         private val COLLECTION_BLOCKS = setOf("StandardLane", "Grid", "FeaturedLane", "CollectionLane")
 
