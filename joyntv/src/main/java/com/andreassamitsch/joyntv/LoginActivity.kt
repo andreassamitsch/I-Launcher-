@@ -1,5 +1,6 @@
 package com.andreassamitsch.joyntv
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -50,19 +51,33 @@ class LoginActivity : ComponentActivity() {
         val repository = JoynRepository(applicationContext)
         setContent {
             JoynTvTheme {
-                LoginScreen(repository)
+                LoginScreen(
+                    repository = repository,
+                    onRegionChanged = {
+                        startActivity(
+                            Intent(this, MainActivity::class.java)
+                                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                        finish()
+                    },
+                )
             }
         }
     }
 }
 
 @Composable
-private fun LoginScreen(repository: JoynRepository) {
+private fun LoginScreen(
+    repository: JoynRepository,
+    onRegionChanged: () -> Unit,
+) {
     var account by remember { mutableStateOf<JoynAccountState?>(null) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var working by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    var activeCountry by remember { mutableStateOf(repository.currentCountry()) }
+    var automaticRegion by remember { mutableStateOf(repository.countryIsAutomatic()) }
     val scope = rememberCoroutineScope()
 
     suspend fun refreshAccount() {
@@ -84,18 +99,62 @@ private fun LoginScreen(repository: JoynRepository) {
                 .padding(horizontal = horizontalPadding, vertical = if (compact) 28.dp else 54.dp),
         ) {
             Text(
-                "Joyn Konto",
+                "Joyn Konto & Region",
                 color = Color.White,
                 fontSize = if (compact) 30.sp else 42.sp,
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "Die Anmeldung läuft direkt über Joyns aktuellen 7Pass/SSO-Ablauf. Das Passwort wird nicht gespeichert; gespeichert wird nur das von Joyn ausgegebene Sitzungstoken.",
+                "Die Joyn-Region steuert Sender, Mediatheken und Katalog. Android TV meldet bei deutscher Sprache oft DE, auch wenn das Gerät in Österreich steht. Deshalb kann die Region hier fest eingestellt werden.",
                 color = Color(0xFFD7DBE3),
                 fontSize = if (compact) 13.sp else 15.sp,
                 lineHeight = if (compact) 18.sp else 21.sp,
-                modifier = Modifier.widthIn(max = 760.dp),
+                modifier = Modifier.widthIn(max = 860.dp),
+            )
+            Spacer(Modifier.height(if (compact) 18.dp else 24.dp))
+
+            Text(
+                "Region: ${countryLabel(activeCountry)}${if (automaticRegion) " · automatisch" else " · fest eingestellt"}",
+                color = Color.White,
+                fontSize = if (compact) 16.sp else 18.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                RegionButton("Automatisch", automaticRegion) {
+                    repository.setCountry(null)
+                    activeCountry = repository.currentCountry()
+                    automaticRegion = true
+                    onRegionChanged()
+                }
+                RegionButton("Österreich", !automaticRegion && activeCountry == JoynCountry.AT) {
+                    repository.setCountry(JoynCountry.AT)
+                    activeCountry = JoynCountry.AT
+                    automaticRegion = false
+                    onRegionChanged()
+                }
+                RegionButton("Deutschland", !automaticRegion && activeCountry == JoynCountry.DE) {
+                    repository.setCountry(JoynCountry.DE)
+                    activeCountry = JoynCountry.DE
+                    automaticRegion = false
+                    onRegionChanged()
+                }
+                RegionButton("Schweiz", !automaticRegion && activeCountry == JoynCountry.CH) {
+                    repository.setCountry(JoynCountry.CH)
+                    activeCountry = JoynCountry.CH
+                    automaticRegion = false
+                    onRegionChanged()
+                }
+            }
+            Spacer(Modifier.height(if (compact) 24.dp else 36.dp))
+
+            Text(
+                "Die Anmeldung läuft direkt über Joyns aktuellen 7Pass/SSO-Ablauf. Das Passwort wird nicht gespeichert; gespeichert wird nur das von Joyn ausgegebene Sitzungstoken. Beim Regionswechsel wird dieses Token bewusst verworfen, weil Joyn Sitzungen marktabhängig sind.",
+                color = Color(0xFF9FA8B5),
+                fontSize = if (compact) 12.sp else 13.sp,
+                lineHeight = if (compact) 17.sp else 19.sp,
+                modifier = Modifier.widthIn(max = 860.dp),
             )
             Spacer(Modifier.height(if (compact) 22.dp else 34.dp))
 
@@ -182,6 +241,35 @@ private fun LoginScreen(repository: JoynRepository) {
             }
             Spacer(Modifier.height(44.dp))
         }
+    }
+}
+
+private fun countryLabel(country: JoynCountry): String = when (country) {
+    JoynCountry.AT -> "Österreich"
+    JoynCountry.DE -> "Deutschland"
+    JoynCountry.CH -> "Schweiz"
+}
+
+@Composable
+private fun RegionButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(20.dp)
+    Box(
+        Modifier
+            .clip(shape)
+            .background(if (selected || focused) Color.White else Color(0xFF171C24))
+            .border(1.dp, if (focused) Color.White else Color(0xFF535D6A), shape)
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .focusable()
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+    ) {
+        Text(
+            label,
+            color = if (selected || focused) Color(0xFF11151B) else Color.White,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }
 
