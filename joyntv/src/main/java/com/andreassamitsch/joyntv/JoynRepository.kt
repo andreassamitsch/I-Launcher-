@@ -9,6 +9,7 @@ internal class JoynRepository(context: Context) {
     }
     private val regionSettings = JoynRegionSettings(appContext)
     private val proxySettings = JoynProxySettings(appContext)
+    private val publicProxyResolver = JoynPublicProxyResolver()
     private val pinSettings = JoynParentalPinSettings(appContext)
     private val api = JoynApiClient(appContext)
     private val pinPlaybackApi = JoynPinPlaybackApiClient(appContext)
@@ -128,6 +129,15 @@ internal class JoynRepository(context: Context) {
     }
 
     fun proxyConfig(): JoynProxyConfig = proxySettings.current()
+
+    suspend fun findAutomaticProxy(
+        allTraffic: Boolean,
+        onProgress: (JoynProxyDiscoveryProgress) -> Unit = {},
+    ): JoynProxyDiscoveryResult = publicProxyResolver.findBest(
+        country = currentCountry(),
+        allTraffic = allTraffic,
+        onProgress = onProgress,
+    )
 
     fun setProxy(config: JoynProxyConfig) {
         proxySettings.save(config)
