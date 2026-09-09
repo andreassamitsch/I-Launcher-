@@ -14,8 +14,25 @@ Standalone Android-TV application module for Joyn interoperability experiments a
 - Android `TvContract` preview channel `Joyn · Live TV`
 - explicit deep links from preview programs into the internal player
 - premium/Plus-marked streams are hidden in anonymous mode
+- optional test proxy with manual configuration or automatic public-proxy discovery
 
 The module does **not** bypass Joyn subscriptions, geo rules, entitlements, Widevine or other access controls.
+
+## Test proxy
+
+The proxy feature is disabled by default. In automatic mode the app:
+
+1. resolves the currently selected Joyn market (DE / AT / CH),
+2. downloads fresh public HTTP(S) candidates from ProxyScrape and, when needed, Proxifly,
+3. rejects transparent/non-HTTPS-capable entries,
+4. tests candidates in small parallel batches,
+5. verifies the real exit country independently,
+6. verifies an HTTPS request to the matching Joyn website,
+7. persists and activates only a successful candidate.
+
+Proxy-list downloads always bypass the configured proxy so a dead previous proxy cannot prevent recovery. The normal mode only routes Joyn control-plane hosts through the proxy; the explicit full-proxy option additionally covers media traffic.
+
+Public free proxies are inherently unreliable and untrusted. This mode exists for interoperability testing only. TLS certificate validation is never disabled. A manually configured trusted proxy remains available as the recommended fallback for repeatable tests.
 
 ## Build
 
