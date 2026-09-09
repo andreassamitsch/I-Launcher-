@@ -22,6 +22,70 @@ data class JoynLiveChannel(
         get() = "PLUS" !in markings && "PREMIUM" !in markings
 }
 
+enum class JoynMediaType {
+    MOVIE,
+    SERIES,
+    EPISODE,
+    COMPILATION,
+    EXTRA,
+    SPORT,
+    CHANNEL,
+    UNKNOWN,
+}
+
+data class JoynMediaItem(
+    val id: String,
+    val title: String,
+    val description: String? = null,
+    val path: String? = null,
+    val type: JoynMediaType = JoynMediaType.UNKNOWN,
+    val imageUrl: String? = null,
+    val backdropUrl: String? = null,
+    val logoUrl: String? = null,
+    val videoId: String? = null,
+    val seasonId: String? = null,
+    val seasonNumber: Int? = null,
+    val episodeNumber: Int? = null,
+    val licenseTypes: Set<String> = emptySet(),
+    val markings: Set<String> = emptySet(),
+) {
+    val isFree: Boolean
+        get() = licenseTypes.none { it == "SVOD" } &&
+            "PLUS" !in markings && "PREMIUM" !in markings
+
+    val isDirectlyPlayable: Boolean
+        get() = !videoId.isNullOrBlank()
+}
+
+data class JoynLane(
+    val id: String,
+    val title: String,
+    val items: List<JoynMediaItem>,
+)
+
+data class JoynCataloguePage(
+    val title: String,
+    val lanes: List<JoynLane>,
+)
+
+data class JoynSeriesDetails(
+    val series: JoynMediaItem,
+    val seasons: List<JoynSeason>,
+)
+
+data class JoynSeason(
+    val id: String,
+    val number: Int,
+    val licenseTypes: Set<String> = emptySet(),
+)
+
+data class JoynAccountState(
+    val loggedIn: Boolean,
+    val email: String? = null,
+    val hasPlus: Boolean = false,
+    val hasHd: Boolean = false,
+)
+
 data class JoynPlayback(
     val manifestUrl: String,
     val licenseUrl: String?,
