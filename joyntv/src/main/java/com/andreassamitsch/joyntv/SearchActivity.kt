@@ -119,7 +119,7 @@ private fun SearchScreen(repository: JoynRepository, onOpen: (JoynMediaItem) -> 
                     decorationBox = { inner ->
                         Box(
                             Modifier
-                                .weight(1f)
+                                .fillMaxWidth()
                                 .background(Color(0xFF171C24), RoundedCornerShape(12.dp))
                                 .border(1.dp, Color(0xFF4F5966), RoundedCornerShape(12.dp))
                                 .padding(horizontal = 16.dp, vertical = 14.dp),
