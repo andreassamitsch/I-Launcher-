@@ -30,6 +30,8 @@ enum class JoynMediaType {
     EXTRA,
     SPORT,
     CHANNEL,
+    CATEGORY,
+    COLLECTION,
     UNKNOWN,
 }
 

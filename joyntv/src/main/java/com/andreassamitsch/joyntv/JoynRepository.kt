@@ -4,6 +4,7 @@ import android.content.Context
 
 internal class JoynRepository(context: Context) {
     private val api = JoynApiClient(context)
+    private val browseApi = JoynBrowseApiClient(context)
     private val previewPublisher = JoynPreviewChannelPublisher(context)
 
     suspend fun loadLiveChannelsAndPublish(): List<JoynLiveChannel> {
@@ -12,8 +13,30 @@ internal class JoynRepository(context: Context) {
         return channels
     }
 
-    suspend fun loadCatalogue(path: String = "/neu-beliebt"): JoynCataloguePage =
-        api.loadCatalogue(path)
+    suspend fun loadCatalogue(path: String = "/neu-beliebt"): JoynCataloguePage {
+        val page = api.loadCatalogue(path)
+        if (path != "/neu-beliebt") return page
+
+        // Joyn exposes categories and broadcaster libraries via separate GraphQL roots.
+        // Surface both on Start so they are first-class TV navigation rather than dead teasers.
+        val browseLanes = buildList {
+            runCatching { browseApi.loadMediaLibraries() }.getOrNull()?.lanes?.let(::addAll)
+            runCatching { browseApi.loadCategories("/") }.getOrNull()?.lanes?.let(::addAll)
+        }
+        return page.copy(lanes = browseLanes + page.lanes)
+    }
+
+    suspend fun loadCategory(blockId: String, title: String): JoynCataloguePage =
+        browseApi.loadCategory(blockId, title)
+
+    suspend fun loadChannel(path: String, title: String): JoynCataloguePage =
+        browseApi.loadChannel(path, title)
+
+    suspend fun loadCollection(path: String, title: String): JoynCataloguePage =
+        browseApi.loadCollection(path, title)
+
+    suspend fun loadCompilation(path: String, title: String): JoynCataloguePage =
+        browseApi.loadCompilation(path, title)
 
     suspend fun searchMedia(text: String): List<JoynMediaItem> = api.searchMedia(text)
 

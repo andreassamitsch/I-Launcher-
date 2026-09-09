@@ -40,6 +40,11 @@
             android:screenOrientation="landscape" />
 
         <activity
+            android:name=".BrowseActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <activity
             android:name=".PlayerActivity"
             android:exported="true"
             android:screenOrientation="landscape">
