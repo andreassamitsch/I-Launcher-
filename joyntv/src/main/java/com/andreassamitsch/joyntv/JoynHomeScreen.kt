@@ -316,24 +316,25 @@ private fun HeroArea(compact: Boolean, media: JoynMediaItem?, live: JoynLiveChan
         ),
     ) {
         val title = media?.title ?: live?.currentProgram?.title ?: live?.title ?: "Joyn"
-        media?.logoUrl?.let {
+        val mediaLogo = media?.logoUrl?.takeIf(String::isNotBlank)
+        if (mediaLogo != null) {
             AsyncImage(
-                model = it,
-                contentDescription = null,
+                model = mediaLogo,
+                contentDescription = title,
                 modifier = Modifier.width(if (compact) 140.dp else 210.dp).height(if (compact) 46.dp else 68.dp),
                 contentScale = ContentScale.Fit,
             )
-            Spacer(Modifier.height(10.dp))
+        } else {
+            Text(
+                title,
+                color = Color.White,
+                fontSize = if (compact) 29.sp else 42.sp,
+                lineHeight = if (compact) 33.sp else 46.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-        Text(
-            title,
-            color = Color.White,
-            fontSize = if (compact) 29.sp else 42.sp,
-            lineHeight = if (compact) 33.sp else 46.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
         val meta = when {
             media != null -> when (media.type) {
                 JoynMediaType.SERIES -> "Serie"
