@@ -3,9 +3,11 @@ package com.andreassamitsch.joyntv
 import android.content.Context
 
 internal class JoynRepository(context: Context) {
-    private val api = JoynApiClient(context)
-    private val browseApi = JoynBrowseApiClient(context)
-    private val previewPublisher = JoynPreviewChannelPublisher(context)
+    private val appContext = context.applicationContext.also(JoynRegionSettings::install)
+    private val regionSettings = JoynRegionSettings(appContext)
+    private val api = JoynApiClient(appContext)
+    private val browseApi = JoynBrowseApiClient(appContext)
+    private val previewPublisher = JoynPreviewChannelPublisher(appContext)
 
     suspend fun loadLiveChannelsAndPublish(): List<JoynLiveChannel> {
         val channels = api.loadLiveChannels()
@@ -59,4 +61,14 @@ internal class JoynRepository(context: Context) {
 
     suspend fun accountState(refreshRemote: Boolean = true): JoynAccountState =
         api.accountState(refreshRemote)
+
+    fun currentCountry(): JoynCountry = regionSettings.currentCountry()
+
+    fun selectedCountry(): JoynCountry? = regionSettings.selectedCountry()
+
+    fun countryIsAutomatic(): Boolean = regionSettings.isAutomatic()
+
+    fun setCountry(country: JoynCountry?) {
+        regionSettings.setCountry(country)
+    }
 }
