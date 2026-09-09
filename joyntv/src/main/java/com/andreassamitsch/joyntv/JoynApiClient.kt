@@ -178,8 +178,24 @@ internal class JoynApiClient(context: Context) {
     suspend fun resolveLivePlayback(channelId: String): JoynPlayback =
         resolvePlaybackWithRecovery(channelId, "LIVE", "channel")
 
-    suspend fun resolveVodPlayback(videoId: String): JoynPlayback =
-        resolvePlaybackWithRecovery(videoId, "VOD", "asset")
+    suspend fun resolveVodPlayback(contentRef: String): JoynPlayback {
+        val videoId = if (contentRef.startsWith('/')) resolveMovieVideoId(contentRef) else contentRef
+        return resolvePlaybackWithRecovery(videoId, "VOD", "asset")
+    }
+
+    private suspend fun resolveMovieVideoId(path: String): String {
+        val config = bootstrapConfig()
+        val response = persistedGraphQl(
+            config = config,
+            operationName = "PageMovieDetailStatic",
+            hash = HASH_MOVIE_DETAIL,
+            variables = JSONObject().put("path", path),
+        )
+        val movie = response.optJSONObject("page")?.optJSONObject("movie")
+            ?: error("Joyn Film '$path' wurde nicht gefunden")
+        return movie.optJSONObject("video")?.optString("id")?.takeIf(String::isNotBlank)
+            ?: error("Joyn Film '${movie.optString("title").ifBlank { path }}' enthält keine Video-ID")
+    }
 
     suspend fun login(email: String, password: String): JoynAccountState {
         require(email.contains('@')) { "Bitte eine gültige E-Mail-Adresse eingeben" }
@@ -848,6 +864,7 @@ internal class JoynApiClient(context: Context) {
         private const val HASH_SEARCH = "bb2bab6cbe17321d7eddd5006e7f40765faedd79790b193a59d83f4640694856"
         private const val HASH_SEASONS = "e867452d17ef36e5c077db5cdcad7563a9aebede497c24ac8fae779723bc462d"
         private const val HASH_EPISODES = "ee2396bb1b7c9f800e5cefd0b341271b7213fceb4ebe18d5a30dab41d703009f"
+        private const val HASH_MOVIE_DETAIL = "9ae6bcd8c45a5e350438d1cc415a022fe053e938c93438509f60ae3abb425fa7"
         private const val HASH_ACCOUNT = "55ebb3812b45628017ee6c7f36f0b88a94e9778b9f11ad8a6fc05849182c07ec"
     }
 }
