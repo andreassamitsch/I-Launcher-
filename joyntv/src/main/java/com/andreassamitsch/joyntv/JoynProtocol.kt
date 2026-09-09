@@ -44,8 +44,32 @@ internal object JoynProtocol {
                   thumbnailImage: image(type: PRIMARY) {
                     url(profile: "nextgen-web-episodestillplayer-693x390")
                   }
+                  posterImage: image(type: PRIMARY) {
+                    url(profile: "nextgen-web-primarycut-1920x1080")
+                  }
                 }
                 ... on Movie {
+                  title
+                  posterImage: image(type: PRIMARY) {
+                    url(profile: "nextgen-web-primarycut-1920x1080")
+                  }
+                }
+                ... on CompilationItem {
+                  title
+                  thumbnailImage: image(type: PRIMARY) {
+                    url(profile: "nextgen-web-episodestillplayer-693x390")
+                  }
+                  posterImage: image(type: PRIMARY) {
+                    url(profile: "nextgen-web-primarycut-1920x1080")
+                  }
+                }
+                ... on Extra {
+                  title
+                  posterImage: image(type: PRIMARY) {
+                    url(profile: "nextgen-web-primarycut-1920x1080")
+                  }
+                }
+                ... on SportsMatch {
                   title
                   posterImage: image(type: PRIMARY) {
                     url(profile: "nextgen-web-primarycut-1920x1080")
