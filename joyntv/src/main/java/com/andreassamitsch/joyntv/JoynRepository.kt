@@ -65,6 +65,7 @@ internal class JoynRepository(context: Context) {
     suspend fun resolveVodPlayback(contentRef: String, enteredPin: String? = null): JoynPlayback {
         val explicitPin = enteredPin?.takeIf { it.matches(Regex("^\\d{4}$")) }
         if (explicitPin != null) {
+            if (!api.accountState(refreshRemote = false).loggedIn) throw JoynLoginRequiredException()
             return pinPlaybackApi.resolveVodPlayback(contentRef, explicitPin)
         }
 
@@ -73,7 +74,20 @@ internal class JoynRepository(context: Context) {
         return try {
             api.resolveVodPlayback(contentRef)
         } catch (error: Throwable) {
-            if (!error.message.orEmpty().contains("ENT_PINRequired", ignoreCase = true)) throw error
+            val details = error.message.orEmpty()
+
+            // Joyn also uses ENT_AgeVerificationSetupRequired when an anonymous session tries
+            // to start age-restricted content. In that case the useful action is login, not
+            // changing the already configured parental PIN in the Joyn account.
+            if (details.contains("ENT_AgeVerificationSetupRequired", ignoreCase = true) &&
+                !api.accountState(refreshRemote = false).loggedIn
+            ) {
+                throw JoynLoginRequiredException()
+            }
+
+            if (!details.contains("ENT_PINRequired", ignoreCase = true)) throw error
+
+            if (!api.accountState(refreshRemote = false).loggedIn) throw JoynLoginRequiredException()
 
             val automaticPin = if (pinSettings.autoUse()) pinSettings.readPin() else null
             if (automaticPin != null) {
@@ -118,3 +132,7 @@ internal class JoynRepository(context: Context) {
         proxySettings.save(config)
     }
 }
+
+internal class JoynLoginRequiredException : Exception(
+    "Für diesen geschützten Inhalt musst du in Joyn TV mit deinem Joyn-Konto angemeldet sein.",
+)
