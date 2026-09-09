@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +40,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
+import kotlinx.coroutines.launch
 
 class ProxySettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,6 +50,10 @@ class ProxySettingsActivity : ComponentActivity() {
             JoynTvTheme {
                 ProxySettingsScreen(
                     initial = repository.proxyConfig(),
+                    country = repository.currentCountry(),
+                    onAutoResolve = { allTraffic, onProgress ->
+                        repository.findAutomaticProxy(allTraffic, onProgress)
+                    },
                     onSave = { config ->
                         repository.setProxy(config)
                         startActivity(
@@ -66,15 +72,36 @@ class ProxySettingsActivity : ComponentActivity() {
 @Composable
 private fun ProxySettingsScreen(
     initial: JoynProxyConfig,
+    country: JoynCountry,
+    onAutoResolve: suspend (
+        allTraffic: Boolean,
+        onProgress: (JoynProxyDiscoveryProgress) -> Unit,
+    ) -> JoynProxyDiscoveryResult,
     onSave: (JoynProxyConfig) -> Unit,
     onBack: () -> Unit,
 ) {
     var enabled by remember { mutableStateOf(initial.enabled) }
+    var automatic by remember { mutableStateOf(initial.automatic) }
     var allTraffic by remember { mutableStateOf(initial.allTraffic) }
     var host by remember { mutableStateOf(initial.host) }
     var port by remember { mutableStateOf(initial.port.takeIf { it > 0 }?.toString().orEmpty()) }
     var username by remember { mutableStateOf(initial.username) }
     var password by remember { mutableStateOf(initial.password) }
+    var testing by remember { mutableStateOf(false) }
+    var status by remember {
+        mutableStateOf(
+            if (initial.enabled && initial.automatic && initial.isUsable) {
+                buildString {
+                    append("Aktuell automatisch gewählt: ${initial.host}:${initial.port}")
+                    if (initial.latencyMs >= 0) append(" · ${initial.latencyMs} ms")
+                    if (initial.source.isNotBlank()) append(" · ${initial.source}")
+                }
+            } else {
+                ""
+            },
+        )
+    }
+    val scope = rememberCoroutineScope()
 
     BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF080A0E))) {
         val compact = maxHeight < 520.dp
@@ -93,7 +120,7 @@ private fun ProxySettingsScreen(
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "Für DE/CH-Tests kann nur Joyns Steuerverkehr über einen Proxy im Zielland laufen. Standardmäßig bleiben Manifest, Widevine und Videosegmente auf deiner direkten Verbindung. Nur wenn Joyn beim eigentlichen Stream nochmals die IP prüft, aktiviere testweise den Vollproxy.",
+                "Für DE/AT/CH-Tests kann Joyns Steuerverkehr über einen Proxy im Zielland laufen. Standardmäßig bleiben Manifest, Widevine und Videosegmente auf deiner direkten Verbindung. Nur wenn Joyn beim eigentlichen Stream nochmals die IP prüft, aktiviere testweise den Vollproxy.",
                 color = Color(0xFFD7DBE3),
                 fontSize = if (compact) 13.sp else 15.sp,
                 lineHeight = if (compact) 18.sp else 21.sp,
@@ -102,34 +129,82 @@ private fun ProxySettingsScreen(
             Spacer(Modifier.height(22.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ProxyChoice("Proxy aus", !enabled) { enabled = false }
-                ProxyChoice("Proxy an", enabled) { enabled = true }
+                ProxyChoice("Proxy aus", !enabled) {
+                    if (!testing) enabled = false
+                }
+                ProxyChoice("Proxy an", enabled) {
+                    if (!testing) enabled = true
+                }
             }
-            Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ProxyChoice("Nur API / Token", !allTraffic) { allTraffic = false }
-                ProxyChoice("Alles inkl. Stream", allTraffic) { allTraffic = true }
-            }
-            Spacer(Modifier.height(22.dp))
 
-            ProxyFieldLabel("Proxy Host")
-            ProxyField(host, { host = it }, "z. B. de-proxy.meinserver.net", false)
-            Spacer(Modifier.height(12.dp))
-            ProxyFieldLabel("Port")
-            ProxyField(port, { port = it.filter(Char::isDigit).take(5) }, "8080", false)
-            Spacer(Modifier.height(12.dp))
-            ProxyFieldLabel("Benutzername (optional)")
-            ProxyField(username, { username = it }, "proxy-user", false)
-            Spacer(Modifier.height(12.dp))
-            ProxyFieldLabel("Passwort (optional)")
-            ProxyField(password, { password = it }, "proxy-passwort", true)
+            if (enabled) {
+                Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ProxyChoice("Automatisch", automatic) {
+                        if (!testing) automatic = true
+                    }
+                    ProxyChoice("Manuell", !automatic) {
+                        if (!testing) automatic = false
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ProxyChoice("Nur API / Token", !allTraffic) {
+                        if (!testing) allTraffic = false
+                    }
+                    ProxyChoice("Alles inkl. Stream", allTraffic) {
+                        if (!testing) allTraffic = true
+                    }
+                }
+                Spacer(Modifier.height(22.dp))
+
+                if (automatic) {
+                    Text(
+                        "Automatik für Zielregion ${country.name}: Die App lädt frische öffentliche HTTP(S)-Proxylisten, bevorzugt anonyme Kandidaten und testet mehrere parallel. Aktiviert wird erst ein Proxy, dessen tatsächliches Exit-Land ${country.name} ist und der Joyn per HTTPS erreicht.",
+                        color = Color(0xFFD7DBE3),
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        modifier = Modifier.widthIn(max = 900.dp),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Testfunktion: öffentliche Gratis-Proxys sind unzuverlässig und nicht vertrauenswürdig. Die HTTPS-Zertifikatsprüfung wird nicht abgeschaltet. Für einen dauerhaften Betrieb ist ein eigener oder seriöser Proxy sinnvoller.",
+                        color = Color(0xFFF1C27D),
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.widthIn(max = 900.dp),
+                    )
+                    if (status.isNotBlank()) {
+                        Spacer(Modifier.height(14.dp))
+                        Text(
+                            status,
+                            color = if (testing) Color(0xFFD7DBE3) else Color(0xFF9FD6AE),
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            modifier = Modifier.widthIn(max = 900.dp),
+                        )
+                    }
+                } else {
+                    ProxyFieldLabel("Proxy Host")
+                    ProxyField(host, { host = it }, "z. B. de-proxy.meinserver.net", false)
+                    Spacer(Modifier.height(12.dp))
+                    ProxyFieldLabel("Port")
+                    ProxyField(port, { port = it.filter(Char::isDigit).take(5) }, "8080", false)
+                    Spacer(Modifier.height(12.dp))
+                    ProxyFieldLabel("Benutzername (optional)")
+                    ProxyField(username, { username = it }, "proxy-user", false)
+                    Spacer(Modifier.height(12.dp))
+                    ProxyFieldLabel("Passwort (optional)")
+                    ProxyField(password, { password = it }, "proxy-passwort", true)
+                }
+            }
 
             Spacer(Modifier.height(24.dp))
             Text(
-                if (enabled) {
-                    "Aktiv: ${if (allTraffic) "gesamter App-Verkehr" else "Joyn API/Auth/Entitlement/Playlist"} über Proxy. Beim Speichern wird die aktuelle Joyn-Sitzung verworfen und neu aufgebaut."
-                } else {
-                    "Proxy ist deaktiviert. Joyn verwendet die normale Internetverbindung."
+                when {
+                    !enabled -> "Proxy ist deaktiviert. Joyn verwendet die normale Internetverbindung."
+                    automatic -> "Beim Aktivieren wird immer neu gesucht und getestet; ein Listen-Eintrag allein reicht nicht."
+                    else -> "Aktiv: ${if (allTraffic) "gesamter App-Verkehr" else "Joyn API/Auth/Entitlement/Playlist"} über den manuellen Proxy. Beim Speichern wird die aktuelle Joyn-Sitzung verworfen und neu aufgebaut."
                 },
                 color = Color(0xFF9FA8B5),
                 fontSize = 13.sp,
@@ -138,22 +213,64 @@ private fun ProxySettingsScreen(
             )
             Spacer(Modifier.height(22.dp))
 
+            val manualValid = host.isNotBlank() && (port.toIntOrNull() ?: 0) in 1..65535
+            val saveEnabled = !testing && (!enabled || automatic || manualValid)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ProxyAction("Zurück", onClick = onBack)
+                ProxyAction("Zurück", enabled = !testing, onClick = onBack)
                 ProxyAction(
-                    "Speichern",
-                    enabled = !enabled || (host.isNotBlank() && (port.toIntOrNull() ?: 0) in 1..65535),
+                    label = when {
+                        testing -> "Proxys werden getestet …"
+                        enabled && automatic -> "Suchen & aktivieren"
+                        else -> "Speichern"
+                    },
+                    enabled = saveEnabled,
                 ) {
-                    onSave(
-                        JoynProxyConfig(
-                            enabled = enabled,
-                            host = host.trim(),
-                            port = port.toIntOrNull() ?: 0,
-                            username = username,
-                            password = password,
-                            allTraffic = allTraffic,
-                        ),
-                    )
+                    when {
+                        !enabled -> onSave(
+                            initial.copy(
+                                enabled = false,
+                                automatic = automatic,
+                                allTraffic = allTraffic,
+                            ),
+                        )
+
+                        !automatic -> onSave(
+                            JoynProxyConfig(
+                                enabled = true,
+                                automatic = false,
+                                host = host.trim(),
+                                port = port.toIntOrNull() ?: 0,
+                                username = username,
+                                password = password,
+                                allTraffic = allTraffic,
+                            ),
+                        )
+
+                        else -> scope.launch {
+                            testing = true
+                            status = "Lade aktuelle Proxylisten für ${country.name} …"
+                            val result = runCatching {
+                                onAutoResolve(allTraffic) { progress ->
+                                    status = progress.message
+                                }
+                            }.getOrElse { error ->
+                                JoynProxyDiscoveryResult(
+                                    config = null,
+                                    candidates = 0,
+                                    attempted = 0,
+                                    message = "Proxy-Suche fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}",
+                                )
+                            }
+                            testing = false
+                            val config = result.config
+                            if (config != null) {
+                                status = result.message
+                                onSave(config)
+                            } else {
+                                status = result.message
+                            }
+                        }
+                    }
                 }
             }
             Spacer(Modifier.height(44.dp))
