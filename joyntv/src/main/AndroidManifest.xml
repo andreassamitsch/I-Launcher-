@@ -25,6 +25,11 @@
             android:exported="false" />
 
         <activity
+            android:name=".PinSettingsActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <activity
             android:name=".ProxySettingsActivity"
             android:exported="false"
             android:screenOrientation="landscape" />
