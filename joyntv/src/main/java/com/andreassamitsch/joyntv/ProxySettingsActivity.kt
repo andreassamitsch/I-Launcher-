@@ -139,7 +139,7 @@ private fun ProxySettingsScreen(
             Spacer(Modifier.height(22.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ProxyAction("Zurück", onBack)
+                ProxyAction("Zurück", onClick = onBack)
                 ProxyAction(
                     "Speichern",
                     enabled = !enabled || (host.isNotBlank() && (port.toIntOrNull() ?: 0) in 1..65535),
