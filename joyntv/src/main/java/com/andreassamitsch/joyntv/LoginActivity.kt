@@ -60,6 +60,9 @@ class LoginActivity : ComponentActivity() {
                         )
                         finish()
                     },
+                    onProxySettings = {
+                        startActivity(Intent(this, ProxySettingsActivity::class.java))
+                    },
                 )
             }
         }
@@ -70,6 +73,7 @@ class LoginActivity : ComponentActivity() {
 private fun LoginScreen(
     repository: JoynRepository,
     onRegionChanged: () -> Unit,
+    onProxySettings: () -> Unit,
 ) {
     var account by remember { mutableStateOf<JoynAccountState?>(null) }
     var email by remember { mutableStateOf("") }
@@ -78,6 +82,7 @@ private fun LoginScreen(
     var message by remember { mutableStateOf<String?>(null) }
     var activeCountry by remember { mutableStateOf(repository.currentCountry()) }
     var automaticRegion by remember { mutableStateOf(repository.countryIsAutomatic()) }
+    val proxy = repository.proxyConfig()
     val scope = rememberCoroutineScope()
 
     suspend fun refreshAccount() {
@@ -147,6 +152,15 @@ private fun LoginScreen(
                     onRegionChanged()
                 }
             }
+            Spacer(Modifier.height(14.dp))
+            LoginActionButton(
+                if (proxy.isUsable) {
+                    "Test-Proxy · ${if (proxy.allTraffic) "Vollproxy" else "API/Token"} · ${proxy.host}:${proxy.port}"
+                } else {
+                    "Test-Proxy für DE / CH konfigurieren"
+                },
+                onClick = onProxySettings,
+            )
             Spacer(Modifier.height(if (compact) 24.dp else 36.dp))
 
             Text(
