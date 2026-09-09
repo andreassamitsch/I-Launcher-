@@ -9,6 +9,8 @@ import java.net.Proxy
 import java.net.ProxySelector
 import java.net.SocketAddress
 import java.net.URI
+import okhttp3.Credentials
+import okhttp3.OkHttpClient
 
 internal data class JoynProxyConfig(
     val enabled: Boolean = false,
@@ -42,6 +44,23 @@ internal class JoynProxySettings(context: Context) {
         password = prefs.getString(KEY_PASSWORD, "").orEmpty(),
         allTraffic = prefs.getBoolean(KEY_ALL_TRAFFIC, false),
     )
+
+    /** Adds HTTP proxy authentication to OkHttp. Proxy selection itself is process-wide so
+     * Media3 can optionally participate when full-proxy mode is selected. */
+    fun configure(builder: OkHttpClient.Builder): OkHttpClient.Builder {
+        val config = current()
+        if (!config.isUsable || config.username.isBlank()) return builder
+        val credential = Credentials.basic(config.username, config.password)
+        return builder.proxyAuthenticator { _, response ->
+            if (response.request.header("Proxy-Authorization") != null) {
+                null
+            } else {
+                response.request.newBuilder()
+                    .header("Proxy-Authorization", credential)
+                    .build()
+            }
+        }
+    }
 
     fun save(config: JoynProxyConfig) {
         prefs.edit()
@@ -109,6 +128,7 @@ internal class JoynProxySettings(context: Context) {
                 override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) = Unit
             })
 
+            // HttpURLConnection/Media3 can use the JDK authenticator in full-proxy mode.
             if (config.username.isNotBlank()) {
                 Authenticator.setDefault(object : Authenticator() {
                     override fun getPasswordAuthentication(): PasswordAuthentication? {
