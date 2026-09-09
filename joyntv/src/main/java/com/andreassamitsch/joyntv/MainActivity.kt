@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -21,7 +22,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -104,6 +107,7 @@ private fun JoynHome(
 
     LaunchedEffect(Unit) {
         loading = true
+        errorText = null
         runCatching {
             withContext(Dispatchers.IO) { repository.loadLiveChannelsAndPublish() }
         }.onSuccess {
@@ -120,18 +124,21 @@ private fun JoynHome(
     }
 
     val selected = channels.getOrNull(selectedIndex)
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
+        val compact = maxHeight < 520.dp
+        val pageScroll = rememberScrollState()
+
         selected?.let { channel ->
             AsyncImage(
                 model = channel.currentProgram?.imageUrl ?: channel.logoUrl,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
-                alpha = 0.46f,
+                alpha = 0.38f,
             )
         }
         Box(
@@ -139,8 +146,8 @@ private fun JoynHome(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0f to Color(0x33080A0E),
-                        0.56f to Color(0xCC080A0E),
+                        0f to Color(0x66080A0E),
+                        0.52f to Color(0xD9080A0E),
                         1f to Color(0xFF080A0E),
                     ),
                 ),
@@ -148,53 +155,66 @@ private fun JoynHome(
 
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 54.dp),
+                .fillMaxWidth()
+                .verticalScroll(pageScroll)
+                .padding(top = if (compact) 28.dp else 54.dp),
         ) {
-            Hero(selected)
-            Spacer(Modifier.weight(1f))
+            Hero(selected, compact)
+            Spacer(Modifier.height(if (compact) 34.dp else 150.dp))
 
             when {
-                loading -> Text(
-                    text = "Joyn wird geladen …",
-                    modifier = Modifier.padding(horizontal = 64.dp, vertical = 36.dp),
-                    fontSize = 22.sp,
-                )
-
-                errorText != null -> Column(Modifier.padding(horizontal = 64.dp, vertical = 32.dp)) {
-                    Text("Joyn konnte nicht geladen werden", fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(8.dp))
-                    Text(errorText.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)
-                }
-
-                channels.isEmpty() -> Text(
-                    text = "Keine freien Live-Sender verfügbar.",
-                    modifier = Modifier.padding(horizontal = 64.dp, vertical = 36.dp),
-                    fontSize = 20.sp,
-                )
-
-                else -> {
+                loading -> StatusText("Joyn wird geladen …", compact)
+                errorText != null -> Column(
+                    Modifier.padding(
+                        horizontal = if (compact) 28.dp else 64.dp,
+                        vertical = 24.dp,
+                    ),
+                ) {
                     Text(
-                        text = "Live TV",
-                        modifier = Modifier.padding(horizontal = 64.dp),
-                        fontSize = 20.sp,
+                        "Joyn konnte nicht geladen werden",
+                        color = Color.White,
+                        fontSize = if (compact) 20.sp else 24.sp,
                         fontWeight = FontWeight.SemiBold,
                     )
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        errorText.orEmpty(),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 15.sp,
+                    )
+                }
+                channels.isEmpty() -> StatusText("Keine freien Live-Sender verfügbar.", compact)
+                else -> {
+                    val horizontalPadding = if (compact) 28.dp else 64.dp
+                    Text(
+                        text = "Live TV",
+                        modifier = Modifier.padding(horizontal = horizontalPadding),
+                        color = Color.White,
+                        fontSize = if (compact) 18.sp else 20.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(12.dp))
                     LazyRow(
-                        contentPadding = PaddingValues(horizontal = 64.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        contentPadding = PaddingValues(
+                            horizontal = horizontalPadding,
+                            vertical = 8.dp,
+                        ),
+                        horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 18.dp),
                     ) {
                         itemsIndexed(channels, key = { _, item -> item.id }) { index, channel ->
                             LiveChannelCard(
                                 channel = channel,
+                                compact = compact,
                                 modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
                                 onFocused = { selectedIndex = index },
-                                onClick = { onPlay(channel) },
+                                onClick = {
+                                    selectedIndex = index
+                                    onPlay(channel)
+                                },
                             )
                         }
                     }
-                    Spacer(Modifier.height(42.dp))
+                    Spacer(Modifier.height(if (compact) 54.dp else 72.dp))
                 }
             }
         }
@@ -203,7 +223,10 @@ private fun JoynHome(
             state = updateState,
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 38.dp, end = 48.dp),
+                .padding(
+                    top = if (compact) 16.dp else 38.dp,
+                    end = if (compact) 18.dp else 48.dp,
+                ),
             onAction = {
                 when (val state = updateState) {
                     is JoynUpdateState.Available -> updateManager.startDownload(state.info)
@@ -216,6 +239,19 @@ private fun JoynHome(
             },
         )
     }
+}
+
+@Composable
+private fun StatusText(text: String, compact: Boolean) {
+    Text(
+        text = text,
+        modifier = Modifier.padding(
+            horizontal = if (compact) 28.dp else 64.dp,
+            vertical = 24.dp,
+        ),
+        color = Color.White,
+        fontSize = if (compact) 18.sp else 22.sp,
+    )
 }
 
 @Composable
@@ -244,10 +280,10 @@ private fun UpdateChip(
     Box(
         modifier = modifier
             .clip(shape)
-            .background(if (focused) Color(0xFFF3F5F8) else Color(0xCC171B22))
+            .background(if (focused) Color(0xFFF3F5F8) else Color(0xEE171B22))
             .border(
                 width = if (focused) 2.dp else 1.dp,
-                color = if (focused) Color.White else Color(0x555A6470),
+                color = if (focused) Color.White else Color(0x775A6470),
                 shape = shape,
             )
             .onFocusChanged { focused = it.isFocused }
@@ -264,15 +300,13 @@ private fun UpdateChip(
                     Modifier
                         .clickable(onClick = onAction)
                         .focusable()
-                } else {
-                    Modifier
-                },
+                } else Modifier,
             )
-            .padding(horizontal = 18.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 9.dp),
     ) {
         Text(
             text = label,
-            fontSize = 14.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
             color = if (focused) Color(0xFF11151B) else Color.White,
         )
@@ -280,43 +314,44 @@ private fun UpdateChip(
 }
 
 @Composable
-private fun Hero(channel: JoynLiveChannel?) {
+private fun Hero(channel: JoynLiveChannel?, compact: Boolean) {
     Column(
         modifier = Modifier
-            .fillMaxWidth(0.58f)
-            .padding(horizontal = 64.dp),
+            .fillMaxWidth(if (compact) 0.82f else 0.58f)
+            .padding(horizontal = if (compact) 28.dp else 64.dp),
     ) {
         Text(
             text = "JOYN  ·  I LAUNCHER",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp,
+            color = Color(0xFFD7DBE3),
+            fontSize = if (compact) 11.sp else 13.sp,
             letterSpacing = 2.sp,
             fontWeight = FontWeight.Medium,
         )
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(if (compact) 14.dp else 22.dp))
         Text(
             text = channel?.currentProgram?.title ?: channel?.title ?: "Joyn TV",
-            fontSize = 42.sp,
-            lineHeight = 46.sp,
+            color = Color.White,
+            fontSize = if (compact) 30.sp else 42.sp,
+            lineHeight = if (compact) 34.sp else 46.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
         channel?.let {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
             Text(
                 text = listOfNotNull(it.title, it.quality).joinToString(" · "),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 18.sp,
+                color = Color(0xFFD7DBE3),
+                fontSize = if (compact) 15.sp else 18.sp,
             )
             it.currentProgram?.subtitle?.takeIf(String::isNotBlank)?.let { subtitle ->
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
                 Text(
                     text = subtitle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 16.sp,
-                    lineHeight = 22.sp,
-                    maxLines = 3,
+                    color = Color(0xFFE3E6EC),
+                    fontSize = if (compact) 14.sp else 16.sp,
+                    lineHeight = if (compact) 18.sp else 22.sp,
+                    maxLines = if (compact) 2 else 3,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -327,6 +362,7 @@ private fun Hero(channel: JoynLiveChannel?) {
 @Composable
 private fun LiveChannelCard(
     channel: JoynLiveChannel,
+    compact: Boolean,
     modifier: Modifier = Modifier,
     onFocused: () -> Unit,
     onClick: () -> Unit,
@@ -337,8 +373,8 @@ private fun LiveChannelCard(
 
     Box(
         modifier = modifier
-            .width(276.dp)
-            .height(156.dp)
+            .width(if (compact) 230.dp else 276.dp)
+            .height(if (compact) 130.dp else 156.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -347,7 +383,7 @@ private fun LiveChannelCard(
             .background(Color(0xFF161A21))
             .border(
                 width = if (focused) 2.dp else 1.dp,
-                color = if (focused) Color(0xFFF4F6FA) else Color(0x44555C68),
+                color = if (focused) Color(0xFFF4F6FA) else Color(0x66555C68),
                 shape = shape,
             )
             .onFocusChanged {
@@ -360,11 +396,12 @@ private fun LiveChannelCard(
                 ) {
                     onClick()
                     true
-                } else {
-                    false
-                }
+                } else false
             }
-            .clickable(onClick = onClick)
+            .clickable {
+                onFocused()
+                onClick()
+            }
             .focusable(),
     ) {
         AsyncImage(
@@ -377,7 +414,7 @@ private fun LiveChannelCard(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE8080A0E)))),
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xF2080A0E)))),
         )
         channel.logoUrl?.let { logo ->
             AsyncImage(
@@ -385,20 +422,24 @@ private fun LiveChannelCard(
                 contentDescription = null,
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(12.dp)
-                    .size(width = 82.dp, height = 36.dp),
+                    .padding(if (compact) 10.dp else 12.dp)
+                    .size(
+                        width = if (compact) 72.dp else 82.dp,
+                        height = if (compact) 32.dp else 36.dp,
+                    ),
                 contentScale = ContentScale.Fit,
             )
         }
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(13.dp),
+                .padding(if (compact) 11.dp else 13.dp),
         ) {
             Text(
                 text = channel.currentProgram?.title ?: channel.title,
-                fontSize = 16.sp,
-                lineHeight = 19.sp,
+                color = Color.White,
+                fontSize = if (compact) 14.sp else 16.sp,
+                lineHeight = if (compact) 17.sp else 19.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -407,8 +448,8 @@ private fun LiveChannelCard(
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = channel.title,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color(0xFFD7DBE3),
+                    fontSize = if (compact) 11.sp else 12.sp,
                     maxLines = 1,
                 )
             }
