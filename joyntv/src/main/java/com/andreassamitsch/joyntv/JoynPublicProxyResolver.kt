@@ -28,6 +28,7 @@ internal data class JoynProxyDiscoveryResult(
 internal data class JoynPublicProxyCandidate(
     val host: String,
     val port: Int,
+    val transport: JoynProxyTransport,
     val source: String,
     val anonymity: String = "",
     val uptimePercent: Double = 0.0,
@@ -67,7 +68,7 @@ internal class JoynPublicProxyResolver {
         }
 
         val candidates = rankCandidates(primary + fallback)
-            .distinctBy { "${it.host}:${it.port}" }
+            .distinctBy { "${it.transport}:${it.host}:${it.port}" }
             .take(MAX_CANDIDATES)
 
         if (candidates.isEmpty()) {
@@ -75,7 +76,7 @@ internal class JoynPublicProxyResolver {
                 config = null,
                 candidates = 0,
                 attempted = 0,
-                message = "Für ${country.name} wurden aktuell keine technisch passenden HTTP(S)-Proxys gefunden.",
+                message = "Für ${country.name} wurden aktuell keine technisch passenden HTTP/HTTPS- oder SOCKS5-Proxys gefunden.",
             )
         }
 
@@ -101,6 +102,7 @@ internal class JoynPublicProxyResolver {
                 val config = JoynProxyConfig(
                     enabled = true,
                     automatic = true,
+                    transport = best.candidate.transport,
                     host = best.candidate.host,
                     port = best.candidate.port,
                     username = "",
@@ -111,7 +113,7 @@ internal class JoynPublicProxyResolver {
                     lastVerifiedAtEpochMs = System.currentTimeMillis(),
                 )
                 val message =
-                    "Funktionierender ${country.name}-Proxy: ${config.host}:${config.port} · ${config.latencyMs} ms · ${config.source}"
+                    "Funktionierender ${country.name}-${config.transport.name}-Proxy: ${config.host}:${config.port} · ${config.latencyMs} ms · ${config.source}"
                 onProgress(
                     JoynProxyDiscoveryProgress(
                         message = message,
@@ -138,35 +140,62 @@ internal class JoynPublicProxyResolver {
 
     private suspend fun fetchProxyScrape(country: JoynCountry): List<JoynPublicProxyCandidate> {
         val countryCode = country.name.lowercase()
-        val countryUrls = listOf(
+        val httpsCountryUrls = listOf(
             "https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/countries/$countryCode/https/data.json",
             "https://raw.githubusercontent.com/ProxyScrape/free-proxy-list/main/proxies/countries/$countryCode/https/data.json",
+        )
+        val combinedCountryUrls = listOf(
             "https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/countries/$countryCode/data.json",
             "https://raw.githubusercontent.com/ProxyScrape/free-proxy-list/main/proxies/countries/$countryCode/data.json",
         )
-        val countryBody = fetchFirst(countryUrls)
-        val countryCandidates = countryBody
+
+        val httpsCandidates = fetchFirst(httpsCountryUrls)
             ?.let { parseProxyScrape(it, country) }
             .orEmpty()
-        if (countryCandidates.isNotEmpty()) return countryCandidates
+        if (httpsCandidates.size >= MIN_PRIMARY_CANDIDATES) return httpsCandidates
 
-        val globalUrls = listOf(
+        val countryCandidates = fetchFirst(combinedCountryUrls)
+            ?.let { parseProxyScrape(it, country) }
+            .orEmpty()
+        val mergedCountry = (httpsCandidates + countryCandidates)
+            .distinctBy { "${it.transport}:${it.host}:${it.port}" }
+        if (mergedCountry.isNotEmpty()) return mergedCountry
+
+        val globalHttpsUrls = listOf(
             "https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/protocols/https/data.json",
             "https://raw.githubusercontent.com/ProxyScrape/free-proxy-list/main/proxies/protocols/https/data.json",
         )
-        return fetchFirst(globalUrls)
+        val globalSocks5Urls = listOf(
+            "https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/protocols/socks5/data.json",
+            "https://raw.githubusercontent.com/ProxyScrape/free-proxy-list/main/proxies/protocols/socks5/data.json",
+        )
+        val globalHttps = fetchFirst(globalHttpsUrls)
             ?.let { parseProxyScrape(it, country) }
             .orEmpty()
+        val globalSocks5 = fetchFirst(globalSocks5Urls)
+            ?.let { parseProxyScrape(it, country) }
+            .orEmpty()
+        return (globalHttps + globalSocks5)
+            .distinctBy { "${it.transport}:${it.host}:${it.port}" }
     }
 
     private suspend fun fetchProxifly(country: JoynCountry): List<JoynPublicProxyCandidate> {
-        val urls = listOf(
+        val httpsUrls = listOf(
             "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/https/data.json",
             "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/https/data.json",
         )
-        return fetchFirst(urls)
+        val socks5Urls = listOf(
+            "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/socks5/data.json",
+            "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/socks5/data.json",
+        )
+        val httpsCandidates = fetchFirst(httpsUrls)
             ?.let { parseProxifly(it, country) }
             .orEmpty()
+        val socks5Candidates = fetchFirst(socks5Urls)
+            ?.let { parseProxifly(it, country) }
+            .orEmpty()
+        return (httpsCandidates + socks5Candidates)
+            .distinctBy { "${it.transport}:${it.host}:${it.port}" }
     }
 
     private suspend fun fetchFirst(urls: List<String>): String? = withContext(Dispatchers.IO) {
@@ -200,9 +229,15 @@ internal class JoynPublicProxyResolver {
                 val item = array.optJSONObject(index) ?: continue
                 if (!item.optString("country_code").equals(expectedCountry, ignoreCase = true)) continue
                 val protocol = item.optString("protocol").lowercase()
-                if (protocol != "http" && protocol != "https") continue
-                val supportsHttps = item.optBoolean("ssl", false) || protocol == "https"
-                if (!supportsHttps) continue
+                val transport = when (protocol) {
+                    "http", "https" -> {
+                        val supportsHttps = item.optBoolean("ssl", false) || protocol == "https"
+                        if (!supportsHttps) continue
+                        JoynProxyTransport.HTTP
+                    }
+                    "socks5" -> JoynProxyTransport.SOCKS5
+                    else -> continue
+                }
 
                 val anonymity = item.optString("anonymity").lowercase()
                 if (anonymity == "transparent") continue
@@ -214,6 +249,7 @@ internal class JoynPublicProxyResolver {
                     JoynPublicProxyCandidate(
                         host = host,
                         port = port,
+                        transport = transport,
                         source = "ProxyScrape",
                         anonymity = anonymity,
                         uptimePercent = item.optDouble("uptime_percent", 0.0),
@@ -237,9 +273,15 @@ internal class JoynPublicProxyResolver {
                 if (!geo?.optString("country").orEmpty().equals(expectedCountry, ignoreCase = true)) continue
 
                 val protocol = item.optString("protocol").lowercase()
-                if (protocol != "http" && protocol != "https") continue
-                val supportsHttps = item.optBoolean("https", false) || protocol == "https"
-                if (!supportsHttps) continue
+                val transport = when (protocol) {
+                    "http", "https" -> {
+                        val supportsHttps = item.optBoolean("https", false) || protocol == "https"
+                        if (!supportsHttps) continue
+                        JoynProxyTransport.HTTP
+                    }
+                    "socks5" -> JoynProxyTransport.SOCKS5
+                    else -> continue
+                }
 
                 val anonymity = item.optString("anonymity").lowercase()
                 if (anonymity == "transparent") continue
@@ -251,6 +293,7 @@ internal class JoynPublicProxyResolver {
                     JoynPublicProxyCandidate(
                         host = host,
                         port = port,
+                        transport = transport,
                         source = "Proxifly",
                         anonymity = anonymity,
                         uptimePercent = item.optDouble("score", 0.0) * 100.0,
@@ -265,6 +308,7 @@ internal class JoynPublicProxyResolver {
     ): List<JoynPublicProxyCandidate> = candidates.sortedWith(
         compareByDescending<JoynPublicProxyCandidate> { if (it.anonymity == "elite") 1 else 0 }
             .thenByDescending { it.uptimePercent }
+            .thenByDescending { if (it.transport == JoynProxyTransport.HTTP) 1 else 0 }
             .thenBy { it.reportedLatencyMs }
             .thenBy { it.host }
             .thenBy { it.port },
@@ -274,8 +318,12 @@ internal class JoynPublicProxyResolver {
         country: JoynCountry,
         candidate: JoynPublicProxyCandidate,
     ): ProbedProxy? {
+        val javaProxyType = when (candidate.transport) {
+            JoynProxyTransport.HTTP -> Proxy.Type.HTTP
+            JoynProxyTransport.SOCKS5 -> Proxy.Type.SOCKS
+        }
         val proxy = Proxy(
-            Proxy.Type.HTTP,
+            javaProxyType,
             InetSocketAddress.createUnresolved(candidate.host, candidate.port),
         )
         val client = directClient.newBuilder()
