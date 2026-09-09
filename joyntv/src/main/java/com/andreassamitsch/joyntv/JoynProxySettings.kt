@@ -12,9 +12,15 @@ import java.net.URI
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
 
+internal enum class JoynProxyTransport {
+    HTTP,
+    SOCKS5,
+}
+
 internal data class JoynProxyConfig(
     val enabled: Boolean = false,
     val automatic: Boolean = false,
+    val transport: JoynProxyTransport = JoynProxyTransport.HTTP,
     val host: String = "",
     val port: Int = 0,
     val username: String = "",
@@ -42,9 +48,13 @@ internal class JoynProxySettings(context: Context) {
 
     fun current(): JoynProxyConfig {
         val host = prefs.getString(KEY_HOST, "").orEmpty()
+        val transport = prefs.getString(KEY_TRANSPORT, null)
+            ?.let { value -> runCatching { JoynProxyTransport.valueOf(value) }.getOrNull() }
+            ?: JoynProxyTransport.HTTP
         return JoynProxyConfig(
             enabled = prefs.getBoolean(KEY_ENABLED, false),
             automatic = prefs.getBoolean(KEY_AUTOMATIC, host.isBlank()),
+            transport = transport,
             host = host,
             port = prefs.getInt(KEY_PORT, 0),
             username = prefs.getString(KEY_USERNAME, "").orEmpty(),
@@ -60,7 +70,9 @@ internal class JoynProxySettings(context: Context) {
      * Media3 can optionally participate when full-proxy mode is selected. */
     fun configure(builder: OkHttpClient.Builder): OkHttpClient.Builder {
         val config = current()
-        if (!config.isUsable || config.username.isBlank()) return builder
+        if (!config.isUsable || config.transport != JoynProxyTransport.HTTP || config.username.isBlank()) {
+            return builder
+        }
         val credential = Credentials.basic(config.username, config.password)
         return builder.proxyAuthenticator { _, response ->
             if (response.request.header("Proxy-Authorization") != null) {
@@ -77,6 +89,7 @@ internal class JoynProxySettings(context: Context) {
         prefs.edit()
             .putBoolean(KEY_ENABLED, config.enabled)
             .putBoolean(KEY_AUTOMATIC, config.automatic)
+            .putString(KEY_TRANSPORT, config.transport.name)
             .putString(KEY_HOST, config.host.trim())
             .putInt(KEY_PORT, config.port)
             .putString(KEY_USERNAME, config.username)
@@ -95,6 +108,7 @@ internal class JoynProxySettings(context: Context) {
         private const val PREFS_NAME = "joyn_protocol"
         private const val KEY_ENABLED = "test_proxy_enabled"
         private const val KEY_AUTOMATIC = "test_proxy_automatic"
+        private const val KEY_TRANSPORT = "test_proxy_transport"
         private const val KEY_HOST = "test_proxy_host"
         private const val KEY_PORT = "test_proxy_port"
         private const val KEY_USERNAME = "test_proxy_username"
@@ -129,8 +143,12 @@ internal class JoynProxySettings(context: Context) {
                 return
             }
 
+            val javaProxyType = when (config.transport) {
+                JoynProxyTransport.HTTP -> Proxy.Type.HTTP
+                JoynProxyTransport.SOCKS5 -> Proxy.Type.SOCKS
+            }
             val proxy = Proxy(
-                Proxy.Type.HTTP,
+                javaProxyType,
                 InetSocketAddress.createUnresolved(config.host.trim(), config.port),
             )
             val fallback = originalProxySelector
@@ -149,7 +167,7 @@ internal class JoynProxySettings(context: Context) {
                 override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) = Unit
             })
 
-            // HttpURLConnection/Media3 can use the JDK authenticator in full-proxy mode.
+            // HTTP proxy authentication and Java SOCKS authentication can both consult this.
             if (config.username.isNotBlank()) {
                 Authenticator.setDefault(object : Authenticator() {
                     override fun getPasswordAuthentication(): PasswordAuthentication? {
