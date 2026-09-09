@@ -33,14 +33,11 @@ internal class JoynRepository(context: Context) {
         return page.copy(lanes = browseLanes + page.lanes)
     }
 
-    suspend fun loadCategory(blockId: String, title: String): JoynCataloguePage {
-        val browse = runCatching { browseApi.loadCategory(blockId, title) }.getOrNull()
-        if (browse != null && browse.lanes.any { it.items.isNotEmpty() }) return browse
-
-        // Diagnostic/raw fallback. Unlike the generic browse loader this throws a detailed
-        // error when Joyn returned a block but none of its union assets could be mapped.
-        return categoryApi.loadCategory(blockId, title)
-    }
+    // Keep category opening deliberately close to the Kodi reference: the category card carries
+    // Joyn's original block id and the click resolves that id once through LandingBlocks. Do not
+    // let the generic browse cache replace the original lane with a lightweight block shell.
+    suspend fun loadCategory(blockId: String, title: String): JoynCataloguePage =
+        categoryApi.loadCategory(blockId, title)
 
     suspend fun loadChannel(path: String, title: String): JoynCataloguePage =
         browseApi.loadChannel(path, title)
