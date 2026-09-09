@@ -12,10 +12,10 @@ import java.util.TimeZone
  * automatic mode additionally considers the device timezone before falling back to Locale.
  */
 internal class JoynRegionSettings(context: Context) {
-    private val prefs = context.applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext.also(::install)
+    private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun currentCountry(): JoynCountry = selectedCountry() ?: automaticCountry()
+    fun currentCountry(): JoynCountry = resolveCountry(Locale.getDefault().country)
 
     fun selectedCountry(): JoynCountry? = prefs.getString(KEY_COUNTRY_OVERRIDE, null)
         ?.let { value -> runCatching { JoynCountry.valueOf(value) }.getOrNull() }
@@ -31,16 +31,34 @@ internal class JoynRegionSettings(context: Context) {
         editor.remove("auth_token").apply()
     }
 
-    private fun automaticCountry(): JoynCountry {
-        return when (TimeZone.getDefault().id) {
-            "Europe/Vienna" -> JoynCountry.AT
-            "Europe/Zurich", "Europe/Busingen" -> JoynCountry.CH
-            else -> JoynCountry.fromIsoCountry(Locale.getDefault().country)
-        }
-    }
-
     companion object {
         private const val PREFS_NAME = "joyn_protocol"
         private const val KEY_COUNTRY_OVERRIDE = "country_override"
+
+        @Volatile
+        private var installedContext: Context? = null
+
+        fun install(context: Context) {
+            installedContext = context.applicationContext
+        }
+
+        fun resolveCountry(localeCountry: String?): JoynCountry {
+            val context = installedContext
+            val override = context
+                ?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                ?.getString(KEY_COUNTRY_OVERRIDE, null)
+                ?.let { runCatching { JoynCountry.valueOf(it) }.getOrNull() }
+            if (override != null) return override
+
+            return when (TimeZone.getDefault().id) {
+                "Europe/Vienna" -> JoynCountry.AT
+                "Europe/Zurich", "Europe/Busingen" -> JoynCountry.CH
+                else -> when (localeCountry?.uppercase(Locale.ROOT)) {
+                    "AT" -> JoynCountry.AT
+                    "CH" -> JoynCountry.CH
+                    else -> JoynCountry.DE
+                }
+            }
+        }
     }
 }
