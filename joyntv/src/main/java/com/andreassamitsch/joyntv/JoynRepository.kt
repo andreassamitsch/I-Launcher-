@@ -64,12 +64,23 @@ internal class JoynRepository(context: Context) {
 
     suspend fun resolveVodPlayback(contentRef: String, enteredPin: String? = null): JoynPlayback {
         val explicitPin = enteredPin?.takeIf { it.matches(Regex("^\\d{4}$")) }
-        val automaticPin = if (explicitPin == null && pinSettings.autoUse()) pinSettings.readPin() else null
-        val pin = explicitPin ?: automaticPin
-        return if (pin != null) {
-            pinPlaybackApi.resolveVodPlayback(contentRef, pin)
-        } else {
+        if (explicitPin != null) {
+            return pinPlaybackApi.resolveVodPlayback(contentRef, explicitPin)
+        }
+
+        // Keep the proven playback/session-recovery path for every VOD request. Joyn expects
+        // the PIN only after the entitlement service explicitly answers with ENT_PINRequired.
+        return try {
             api.resolveVodPlayback(contentRef)
+        } catch (error: Throwable) {
+            if (!error.message.orEmpty().contains("ENT_PINRequired", ignoreCase = true)) throw error
+
+            val automaticPin = if (pinSettings.autoUse()) pinSettings.readPin() else null
+            if (automaticPin != null) {
+                pinPlaybackApi.resolveVodPlayback(contentRef, automaticPin)
+            } else {
+                throw JoynPinRequiredException()
+            }
         }
     }
 
