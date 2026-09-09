@@ -14,6 +14,7 @@ internal class JoynRepository(context: Context) {
     private val pinPlaybackApi = JoynPinPlaybackApiClient(appContext)
     private val browseApi = JoynBrowseApiClient(appContext)
     private val categoryApi = JoynCategoryApiClient(appContext)
+    private val collectionApi = JoynCollectionApiClient(appContext)
     private val previewPublisher = JoynPreviewChannelPublisher(appContext)
 
     suspend fun loadLiveChannelsAndPublish(): List<JoynLiveChannel> {
@@ -42,8 +43,11 @@ internal class JoynRepository(context: Context) {
     suspend fun loadChannel(path: String, title: String): JoynCataloguePage =
         browseApi.loadChannel(path, title)
 
+    // Teasers/genre entries are collection pages. Kodi treats StandardLane blocks in a collection
+    // as another folder and only renders Grid assets directly. Keep that semantic in one dedicated
+    // resolver instead of silently returning an empty generic browse page.
     suspend fun loadCollection(path: String, title: String): JoynCataloguePage =
-        browseApi.loadCollection(path, title)
+        collectionApi.loadCollection(path, title)
 
     suspend fun loadCompilation(path: String, title: String): JoynCataloguePage =
         browseApi.loadCompilation(path, title)
