@@ -56,18 +56,22 @@ import kotlinx.coroutines.withContext
 class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val channelId = intent.getStringExtra(EXTRA_CHANNEL_ID)
+        val contentId = intent.getStringExtra(EXTRA_CONTENT_ID)
+            ?: intent.getStringExtra(EXTRA_CHANNEL_ID)
             ?: intent.data?.lastPathSegment
             ?: run {
                 finish()
                 return
             }
-        val title = intent.getStringExtra(EXTRA_CHANNEL_TITLE) ?: "Joyn Live"
+        val title = intent.getStringExtra(EXTRA_TITLE)
+            ?: intent.getStringExtra(EXTRA_CHANNEL_TITLE)
+            ?: "Joyn"
+        val streamType = intent.getStringExtra(EXTRA_STREAM_TYPE) ?: STREAM_LIVE
         val repository = JoynRepository(applicationContext)
 
         setContent {
             JoynTvTheme {
-                JoynPlayer(repository, channelId, title)
+                JoynPlayer(repository, contentId, title, streamType)
             }
         }
     }
@@ -75,11 +79,26 @@ class PlayerActivity : ComponentActivity() {
     companion object {
         const val EXTRA_CHANNEL_ID = "joyn_channel_id"
         const val EXTRA_CHANNEL_TITLE = "joyn_channel_title"
+        private const val EXTRA_CONTENT_ID = "joyn_content_id"
+        private const val EXTRA_TITLE = "joyn_title"
+        private const val EXTRA_STREAM_TYPE = "joyn_stream_type"
+        private const val STREAM_LIVE = "LIVE"
+        private const val STREAM_VOD = "VOD"
 
         fun intent(context: Context, channelId: String, title: String): Intent =
             Intent(context, PlayerActivity::class.java).apply {
+                putExtra(EXTRA_CONTENT_ID, channelId)
+                putExtra(EXTRA_TITLE, title)
+                putExtra(EXTRA_STREAM_TYPE, STREAM_LIVE)
                 putExtra(EXTRA_CHANNEL_ID, channelId)
                 putExtra(EXTRA_CHANNEL_TITLE, title)
+            }
+
+        fun vodIntent(context: Context, videoId: String, title: String): Intent =
+            Intent(context, PlayerActivity::class.java).apply {
+                putExtra(EXTRA_CONTENT_ID, videoId)
+                putExtra(EXTRA_TITLE, title)
+                putExtra(EXTRA_STREAM_TYPE, STREAM_VOD)
             }
     }
 }
@@ -87,26 +106,28 @@ class PlayerActivity : ComponentActivity() {
 @Composable
 private fun JoynPlayer(
     repository: JoynRepository,
-    channelId: String,
+    contentId: String,
     title: String,
+    streamType: String,
 ) {
-    var playback by remember(channelId) { mutableStateOf<JoynPlayback?>(null) }
-    var errorText by remember(channelId) { mutableStateOf<String?>(null) }
-    var retryKey by remember(channelId) { mutableIntStateOf(0) }
+    var playback by remember(contentId, streamType) { mutableStateOf<JoynPlayback?>(null) }
+    var errorText by remember(contentId, streamType) { mutableStateOf<String?>(null) }
+    var retryKey by remember(contentId, streamType) { mutableIntStateOf(0) }
 
-    LaunchedEffect(channelId, retryKey) {
+    LaunchedEffect(contentId, streamType, retryKey) {
         playback = null
         errorText = null
         runCatching {
-            withContext(Dispatchers.IO) { repository.resolveLivePlayback(channelId) }
+            withContext(Dispatchers.IO) {
+                if (streamType == "VOD") repository.resolveVodPlayback(contentId)
+                else repository.resolveLivePlayback(contentId)
+            }
         }.onSuccess { playback = it }
             .onFailure { errorText = it.message ?: it.javaClass.simpleName }
     }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
+        modifier = Modifier.fillMaxSize().background(Color.Black),
     ) {
         when {
             playback != null -> Media3Player(
@@ -132,15 +153,9 @@ private fun JoynPlayer(
 }
 
 @Composable
-private fun PlaybackError(
-    title: String,
-    message: String,
-    onRetry: () -> Unit,
-) {
+private fun PlaybackError(title: String, message: String, onRetry: () -> Unit) {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(40.dp),
+        modifier = Modifier.fillMaxSize().padding(40.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -195,10 +210,7 @@ private fun RetryButton(onRetry: () -> Unit) {
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun Media3Player(
-    playback: JoynPlayback,
-    onPlaybackError: (PlaybackException) -> Unit,
-) {
+private fun Media3Player(playback: JoynPlayback, onPlaybackError: (PlaybackException) -> Unit) {
     val context = LocalContext.current
     val player = remember(playback) {
         ExoPlayer.Builder(context).build().apply {
@@ -226,9 +238,7 @@ private fun Media3Player(
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
-            override fun onPlayerError(error: PlaybackException) {
-                onPlaybackError(error)
-            }
+            override fun onPlayerError(error: PlaybackException) = onPlaybackError(error)
         }
         player.addListener(listener)
         onDispose {
