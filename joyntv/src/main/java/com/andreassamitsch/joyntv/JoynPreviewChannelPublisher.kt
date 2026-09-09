@@ -4,6 +4,7 @@ import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.tv.TvContract
 import android.net.Uri
 
@@ -13,8 +14,9 @@ internal class JoynPreviewChannelPublisher(context: Context) {
     private val prefs = appContext.getSharedPreferences("joyn_preview_channels", Context.MODE_PRIVATE)
 
     fun publishLive(channels: List<JoynLiveChannel>) {
-        if (channels.isEmpty()) return
-        val channelId = ensureChannel()
+        if (channels.isEmpty() || !supportsTvProviderPublishing()) return
+
+        val channelId = runCatching { ensureChannel() }.getOrNull() ?: return
         val programsUri = TvContract.buildPreviewProgramsUriForChannel(channelId)
         runCatching { resolver.delete(programsUri, null, null) }
 
@@ -46,6 +48,12 @@ internal class JoynPreviewChannelPublisher(context: Context) {
             }
             runCatching { resolver.insert(TvContract.PreviewPrograms.CONTENT_URI, values) }
         }
+    }
+
+    private fun supportsTvProviderPublishing(): Boolean {
+        val packageManager = appContext.packageManager
+        return packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
+            packageManager.hasSystemFeature(PackageManager.FEATURE_TELEVISION)
     }
 
     private fun ensureChannel(): Long {
