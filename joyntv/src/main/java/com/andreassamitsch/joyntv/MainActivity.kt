@@ -1,6 +1,5 @@
 package com.andreassamitsch.joyntv
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -18,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -187,7 +187,7 @@ private fun Hero(channel: JoynLiveChannel?) {
             .padding(horizontal = 64.dp),
     ) {
         Text(
-            text = "JOY N  ·  I LAUNCHER",
+            text = "JOYN  ·  I LAUNCHER",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 13.sp,
             letterSpacing = 2.sp,
