@@ -2,7 +2,6 @@ package com.andreassamitsch.joyntv
 
 import android.content.Context
 import java.io.IOException
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
@@ -15,11 +14,12 @@ import org.json.JSONObject
  *
  * Joyn validates the parental PIN on the entitlement request itself. This client deliberately
  * reuses the session and API-key cache created by JoynApiClient and only takes over the VOD
- * resolution when a PIN has to be supplied.
+ * resolution after Joyn explicitly requested a PIN.
  */
 internal class JoynPinPlaybackApiClient(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences("joyn_protocol", Context.MODE_PRIVATE)
+    private val regionSettings = JoynRegionSettings(appContext)
     private val core = JoynApiClient(appContext)
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -29,7 +29,7 @@ internal class JoynPinPlaybackApiClient(context: Context) {
         .build()
 
     private val country: JoynCountry
-        get() = JoynCountry.fromIsoCountry(Locale.getDefault().country)
+        get() = regionSettings.currentCountry()
 
     suspend fun resolveVodPlayback(contentRef: String, pin: String): JoynPlayback {
         require(pin.matches(Regex("^\\d{4}$"))) { "Der Jugendschutz-PIN muss genau 4 Ziffern haben." }
