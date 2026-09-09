@@ -10,83 +10,115 @@ import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Dedicated category resolver. Joyn category lanes differ between markets/builds and can
- * wrap their assets one level deeper than the generic catalogue response. This resolver
- * walks the returned union tree and falls back to the landing pages that originally
- * advertised the block. */
+/**
+ * Category resolver aligned with the current Kodi Joyn reference flow.
+ *
+ * Kodi does not try to recursively infer category contents from LandingPageClient. It keeps
+ * the original lane id and, when a category is opened, requests exactly that id through
+ * LandingBlocks. For authenticated accounts it additionally sends Joyn-User-State from
+ * GetMeState. That header is important for account-aware persisted GraphQL queries.
+ */
 internal class JoynCategoryApiClient(context: Context) {
     private val appContext = context.applicationContext
-    private val prefs = appContext.getSharedPreferences("joyn_protocol", Context.MODE_PRIVATE)
+    private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val core = JoynApiClient(appContext)
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(25, TimeUnit.SECONDS)
-        .build()
+    private val proxySettings = JoynProxySettings(appContext)
+    private val client = proxySettings.configure(
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(25, TimeUnit.SECONDS),
+    ).build()
 
     private val country: JoynCountry
         get() = JoynCountry.fromIsoCountry(Locale.getDefault().country)
 
     suspend fun loadCategory(blockId: String, fallbackTitle: String): JoynCataloguePage {
-        val direct = persistedGraphQl(
+        val session = ensureSession()
+        val account = loadAccountContext(session)
+        val response = persistedGraphQl(
+            session = session,
             operationName = "LandingBlocks",
             hash = HASH_LANDING_BLOCKS,
             variables = JSONObject().put("ids", JSONArray().put(blockId)),
+            userState = account.userState,
         )
-        val directBlock = direct.findBlock(blockId)
-        val directItems = directBlock?.deepMediaItems().orEmpty()
-        if (directItems.isNotEmpty()) {
-            return categoryPage(blockId, fallbackTitle, directBlock, directItems)
+
+        val block = response.optJSONArray("blocks").findObjectById(blockId)
+            ?: throw IOException(
+                "Joyn Kategorie '$fallbackTitle' wurde von LandingBlocks nicht zurückgegeben " +
+                    "(Block $blockId, angemeldet=${account.loggedIn}, User-State=${account.userState ?: "-"}).",
+            )
+
+        val assets = block.optJSONArray("assets") ?: JSONArray()
+        val mapped = assets.toMediaItems()
+        val items = mapped
+            .filter { it.isFree || account.hasPlus }
+            .distinctBy { "${it.type}:${it.id}" }
+
+        if (items.isEmpty()) {
+            val types = buildList {
+                for (index in 0 until assets.length()) {
+                    assets.optJSONObject(index)?.optString("__typename")
+                        ?.takeIf(String::isNotBlank)
+                        ?.let(::add)
+                }
+            }.distinct()
+            val fields = block.keys().asSequence().toList().sorted()
+            throw IOException(
+                "Joyn Kategorie '$fallbackTitle' ist leer " +
+                    "(Block $blockId, assets=${assets.length()}, gemappt=${mapped.size}, " +
+                    "Typen=${types.joinToString().ifBlank { "keine" }}, " +
+                    "angemeldet=${account.loggedIn}, PLUS=${account.hasPlus}, " +
+                    "User-State=${account.userState ?: "-"}, " +
+                    "Felder=${fields.joinToString().ifBlank { "keine" }}).",
+            )
         }
 
-        // Some Joyn market variants advertise a block with content in LandingPageClient but
-        // return a lightweight shell when the same block is requested via LandingBlocks.
-        for (path in CATEGORY_SOURCE_PATHS) {
-            val landing = runCatching {
-                persistedGraphQl(
-                    operationName = "LandingPageClient",
-                    hash = HASH_LANDING_PAGE,
-                    variables = JSONObject().put("path", path),
-                )
-            }.getOrNull() ?: continue
-            val block = landing.findBlock(blockId) ?: continue
-            val items = block.deepMediaItems()
-            if (items.isNotEmpty()) return categoryPage(blockId, fallbackTitle, block, items)
-        }
-
-        val directKeys = directBlock?.keys()?.asSequence()?.toList()?.sorted().orEmpty()
-        error(
-            "Joyn Kategorie '$fallbackTitle' enthält keine auswertbaren Inhalte " +
-                "(Block $blockId, Felder: ${directKeys.joinToString().ifBlank { "keine" }}).",
-        )
-    }
-
-    private fun categoryPage(
-        blockId: String,
-        fallbackTitle: String,
-        block: JSONObject?,
-        items: List<JoynMediaItem>,
-    ): JoynCataloguePage {
-        val title = block?.optString("headline")?.takeIf(String::isNotBlank)
-            ?: block?.optString("title")?.takeIf(String::isNotBlank)
+        val title = block.optString("headline").takeIf(String::isNotBlank)
+            ?: block.optString("title").takeIf(String::isNotBlank)
             ?: fallbackTitle
         return JoynCataloguePage(
             title = title,
-            lanes = listOf(
-                JoynLane(
-                    id = "category:$blockId",
-                    title = title,
-                    items = items.distinctBy { "${it.type}:${it.id}" }.take(200),
-                ),
-            ),
+            lanes = listOf(JoynLane("category:$blockId", title, items)),
         )
     }
 
-    private suspend fun persistedGraphQl(
+    /**
+     * Kodi calls GetMeState for authenticated accounts and forwards me.state as Joyn-User-State
+     * on subsequent GraphQL operations. Anonymous sessions deliberately do not send it.
+     */
+    private fun loadAccountContext(session: CategorySession): AccountContext {
+        if (!session.hasAccount) return AccountContext(loggedIn = false)
+
+        return runCatching {
+            val response = persistedGraphQl(
+                session = session,
+                operationName = "GetMeState",
+                hash = HASH_ACCOUNT,
+                variables = JSONObject(),
+                userState = null,
+            )
+            val me = response.optJSONObject("me")
+            val subscriptions = me?.optJSONObject("subscriptionsData")?.optJSONObject("config")
+            AccountContext(
+                loggedIn = true,
+                userState = me?.optString("state")?.takeIf(String::isNotBlank) ?: "code=R_A",
+                hasPlus = subscriptions?.optBoolean("hasActivePlus", false) ?: false,
+            )
+        }.getOrElse {
+            // Keep browsing possible if account metadata is temporarily unavailable. The detailed
+            // category error below will expose that no user state could be obtained.
+            AccountContext(loggedIn = true)
+        }
+    }
+
+    private fun persistedGraphQl(
+        session: CategorySession,
         operationName: String,
         hash: String,
         variables: JSONObject,
+        userState: String?,
     ): JSONObject {
-        val session = ensureSession()
         val extensions = JSONObject().put(
             "persistedQuery",
             JSONObject().put("version", 1).put("sha256Hash", hash),
@@ -96,49 +128,61 @@ internal class JoynCategoryApiClient(context: Context) {
             .addQueryParameter("variables", variables.toString())
             .addQueryParameter("extensions", extensions.toString())
             .build()
-        val json = client.newCall(
-            Request.Builder()
-                .url(url)
-                .header("User-Agent", USER_AGENT)
-                .header("x-api-key", session.apiKey)
-                .header("Joyn-Platform", "web")
-                .header("Joyn-Country", session.country.name)
-                .header("Joyn-Distribution-Tenant", session.country.graphqlTenant)
-                .header("Authorization", session.authorization)
-                .get()
-                .build(),
-        ).execute().use { response ->
-            val body = response.body.string()
-            if (!response.isSuccessful) throw IOException("Joyn Kategorie HTTP ${response.code}: ${body.take(260)}")
+
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "application/json")
+            .header("x-api-key", session.apiKey)
+            .header("Joyn-Platform", "web")
+            .header("Joyn-Country", session.country.name)
+            .header("Joyn-Distribution-Tenant", session.country.graphqlTenant)
+            .header("Authorization", session.authorization)
+            .apply {
+                if (!userState.isNullOrBlank() && operationName != "GetMeState") {
+                    header("Joyn-User-State", userState)
+                }
+            }
+            .get()
+            .build()
+
+        val json = client.newCall(request).execute().use { http ->
+            val body = http.body.string()
+            if (!http.isSuccessful) {
+                throw IOException("Joyn $operationName HTTP ${http.code}: ${body.take(320)}")
+            }
             JSONObject(body)
         }
         val errors = json.optJSONArray("errors")
         if (errors != null && errors.length() > 0) {
-            throw IOException("Joyn $operationName: ${errors.toString().take(320)}")
+            throw IOException("Joyn $operationName: ${errors.toString().take(360)}")
         }
-        return json.optJSONObject("data") ?: error("Joyn $operationName lieferte keine Daten")
+        return json.optJSONObject("data")
+            ?: throw IOException("Joyn $operationName lieferte keine Daten")
     }
 
     private suspend fun ensureSession(): CategorySession {
         val selectedCountry = country
         val cacheKey = "api_key_${selectedCountry.name}"
         var token = readToken()
-        val cachedAt = prefs.getLong("${cacheKey}_at", 0L)
         val nowMs = System.currentTimeMillis()
         val now = nowMs / 1000L
         val keyFresh = !prefs.getString(cacheKey, null).isNullOrBlank() &&
-            nowMs - cachedAt < API_KEY_TTL_MS
+            nowMs - prefs.getLong("${cacheKey}_at", 0L) < API_KEY_TTL_MS
         val tokenFresh = token != null && now < token.createdAt + token.expiresIn - 1800L
+
         if (!keyFresh || !tokenFresh) {
             core.loadCatalogue("/neu-beliebt")
             token = readToken()
         }
+
         return CategorySession(
             country = selectedCountry,
             apiKey = prefs.getString(cacheKey, null)?.takeIf(String::isNotBlank)
                 ?: error("Joyn API-Key ist nicht verfügbar"),
             authorization = token?.let { "${it.tokenType} ${it.accessToken}" }
                 ?: error("Joyn Sitzung ist nicht verfügbar"),
+            hasAccount = token?.hasAccount == true,
         )
     }
 
@@ -151,58 +195,24 @@ internal class JoynCategoryApiClient(context: Context) {
                 tokenType = json.optString("tokenType").takeIf(String::isNotBlank) ?: "Bearer",
                 expiresIn = json.optLong("expiresIn").takeIf { it > 0L } ?: 3600L,
                 createdAt = json.optLong("createdAt"),
+                hasAccount = json.optBoolean("hasAccount", false),
             )
         }.getOrNull()
     }
 
-    private fun JSONObject.findBlock(blockId: String): JSONObject? {
-        if (optString("id") == blockId) return this
-        val keys = keys()
-        while (keys.hasNext()) {
-            when (val value = opt(keys.next())) {
-                is JSONObject -> value.findBlock(blockId)?.let { return it }
-                is JSONArray -> {
-                    for (index in 0 until value.length()) {
-                        val child = value.optJSONObject(index) ?: continue
-                        child.findBlock(blockId)?.let { return it }
-                    }
-                }
-            }
+    private fun JSONArray?.findObjectById(id: String): JSONObject? {
+        val source = this ?: return null
+        for (index in 0 until source.length()) {
+            val value = source.optJSONObject(index) ?: continue
+            if (value.optString("id") == id) return value
         }
         return null
     }
 
-    private fun JSONObject.deepMediaItems(): List<JoynMediaItem> {
-        val found = mutableListOf<JoynMediaItem>()
-        val stack = mutableListOf<Any>(this)
-        var visited = 0
-        while (stack.isNotEmpty() && visited < 10_000) {
-            val value = stack.removeAt(stack.lastIndex)
-            visited += 1
-            when (value) {
-                is JSONObject -> {
-                    if (value.optString("__typename") in MEDIA_TYPENAMES) {
-                        value.toMediaItem()?.let(found::add)
-                    }
-                    val keys = value.keys()
-                    while (keys.hasNext()) {
-                        when (val child = value.opt(keys.next())) {
-                            is JSONObject -> stack.add(child)
-                            is JSONArray -> stack.add(child)
-                        }
-                    }
-                }
-                is JSONArray -> {
-                    for (index in 0 until value.length()) {
-                        when (val child = value.opt(index)) {
-                            is JSONObject -> stack.add(child)
-                            is JSONArray -> stack.add(child)
-                        }
-                    }
-                }
-            }
+    private fun JSONArray.toMediaItems(): List<JoynMediaItem> = buildList {
+        for (index in 0 until length()) {
+            optJSONObject(index)?.toMediaItem()?.let(::add)
         }
-        return found.distinctBy { "${it.type}:${it.id}" }
     }
 
     private fun JSONObject.toMediaItem(): JoynMediaItem? {
@@ -233,6 +243,7 @@ internal class JoynCategoryApiClient(context: Context) {
             ?: optJSONObject("thumbnailImage")?.urlValue()
             ?: optJSONObject("posterImage")?.urlValue()
             ?: optJSONObject("heroPortraitImage")?.urlValue()
+            ?: optJSONObject("heroPortrait")?.urlValue()
             ?: optJSONArray("images").firstImageUrl()
             ?: logo
         val backdrop = optJSONObject("heroLandscapeImage")?.urlValue()
@@ -263,8 +274,8 @@ internal class JoynCategoryApiClient(context: Context) {
     private fun JSONArray?.firstImageUrl(): String? {
         val source = this ?: return null
         var fallback: String? = null
-        for (i in 0 until source.length()) {
-            val image = source.optJSONObject(i) ?: continue
+        for (index in 0 until source.length()) {
+            val image = source.optJSONObject(index) ?: continue
             val url = image.optString("url").takeIf(String::isNotBlank) ?: continue
             if (fallback == null) fallback = url
             if (image.optString("type") in setOf("LIVE_STILL", "PRIMARY", "HERO_LANDSCAPE")) return url
@@ -274,13 +285,16 @@ internal class JoynCategoryApiClient(context: Context) {
 
     private fun JSONArray?.toStringSet(): Set<String> = buildSet {
         val source = this@toStringSet ?: return@buildSet
-        for (i in 0 until source.length()) source.optString(i).takeIf(String::isNotBlank)?.let(::add)
+        for (index in 0 until source.length()) {
+            source.optString(index).takeIf(String::isNotBlank)?.let(::add)
+        }
     }
 
     private data class CategorySession(
         val country: JoynCountry,
         val apiKey: String,
         val authorization: String,
+        val hasAccount: Boolean,
     )
 
     private data class CategoryToken(
@@ -288,18 +302,21 @@ internal class JoynCategoryApiClient(context: Context) {
         val tokenType: String,
         val expiresIn: Long,
         val createdAt: Long,
+        val hasAccount: Boolean,
+    )
+
+    private data class AccountContext(
+        val loggedIn: Boolean,
+        val userState: String? = null,
+        val hasPlus: Boolean = false,
     )
 
     companion object {
+        private const val PREFS_NAME = "joyn_protocol"
         private const val API_KEY_TTL_MS = 5L * 24L * 60L * 60L * 1000L
+        private const val HASH_LANDING_BLOCKS = "1655591f83b0dc1508ad4d52c5f37f72d410f48ad08c3e5f2de8622f86a21c68"
+        private const val HASH_ACCOUNT = "55ebb3812b45628017ee6c7f36f0b88a94e9778b9f11ad8a6fc05849182c07ec"
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-        private const val HASH_LANDING_PAGE = "b71b3871aebfe266b63a4bf7daaa35645e17be2469b850265ba75146fa60affc"
-        private const val HASH_LANDING_BLOCKS = "1655591f83b0dc1508ad4d52c5f37f72d410f48ad08c3e5f2de8622f86a21c68"
-        private val CATEGORY_SOURCE_PATHS = listOf("/", "/filme", "/serien", "/sport", "/neu-beliebt")
-        private val MEDIA_TYPENAMES = setOf(
-            "Movie", "Series", "Episode", "Compilation", "CompilationItem", "Extra",
-            "SportsMatch", "SportsStage", "SportsCompetition", "Brand", "ChannelPage", "Teaser",
-        )
     }
 }
