@@ -132,10 +132,11 @@ internal class JoynApiClient(context: Context) {
                     else -> URI(webBase).resolve(source).toString()
                 }
                 runCatching {
-                    API_KEY.find(executeText(Request.Builder().url(absolute).header("User-Agent", USER_AGENT).build()))
-                        ?.groupValues
-                        ?.getOrNull(1)
-                        ?.takeIf { it.isNotBlank() }
+                    API_KEY.find(
+                        executeText(
+                            Request.Builder().url(absolute).header("User-Agent", USER_AGENT).build(),
+                        ),
+                    )?.groupValues?.getOrNull(1)?.takeIf { it.isNotBlank() }
                 }.getOrNull()
             } ?: error("API_GW_API_KEY not found in Joyn web bundle")
 
@@ -236,12 +237,12 @@ internal class JoynApiClient(context: Context) {
         prefs.edit().putString("auth_token", json.toString()).apply()
     }
 
-    private fun clientId(): String = stableId("client_id", "JOYNCLIENTID")
-    private fun anonDeviceId(): String = stableId("anon_device_id", "ANON")
+    private fun clientId(): String = stableUuid("client_id")
+    private fun anonDeviceId(): String = stableUuid("anon_device_id")
 
-    private fun stableId(key: String, prefix: String): String {
+    private fun stableUuid(key: String): String {
         prefs.getString(key, null)?.let { return it }
-        val value = "$prefix-${UUID.randomUUID()}"
+        val value = UUID.randomUUID().toString()
         prefs.edit().putString(key, value).apply()
         return value
     }
