@@ -51,9 +51,18 @@ data class JoynMediaItem(
     val licenseTypes: Set<String> = emptySet(),
     val markings: Set<String> = emptySet(),
 ) {
+    /**
+     * Joyn can expose more than one license type for the same asset (for example AVOD + SVOD).
+     * The Kodi reference considers such an asset free whenever at least one free license is
+     * available; SVOD must not veto an otherwise valid AVOD/FVOD path.
+     */
     val isFree: Boolean
-        get() = licenseTypes.none { it == "SVOD" } &&
-            "PLUS" !in markings && "PREMIUM" !in markings
+        get() {
+            if (licenseTypes.isEmpty()) return true
+            val hasFreeLicense = licenseTypes.any { it == "AVOD" || it == "FVOD" }
+            if (!hasFreeLicense) return false
+            return "PLUS" !in markings && "PREMIUM" !in markings
+        }
 
     val isDirectlyPlayable: Boolean
         get() = !videoId.isNullOrBlank()
