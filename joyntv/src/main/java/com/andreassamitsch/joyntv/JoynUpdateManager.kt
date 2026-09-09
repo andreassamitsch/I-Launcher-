@@ -193,7 +193,7 @@ class JoynUpdateManager(context: Context) {
         }
 
         val id = preferences.getLong(KEY_DOWNLOAD_ID, -1L)
-        val apkUri = if (id > 0L) downloadManager.getUriForDownloadedFile(id) else null
+        val apkUri = (if (id > 0L) downloadManager.getUriForDownloadedFile(id) else null)
             ?: return JoynInstallResult.Error("Installationsdatei konnte nicht geöffnet werden.")
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -255,7 +255,14 @@ class JoynUpdateManager(context: Context) {
             )
         } else {
             @Suppress("DEPRECATION")
-            appContext.packageManager.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
+            appContext.packageManager.getPackageArchiveInfo(
+                file.absolutePath,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    PackageManager.GET_SIGNING_CERTIFICATES
+                } else {
+                    PackageManager.GET_SIGNATURES
+                },
+            )
         }
 
     private fun PackageManager.getPackageInfoCompat(packageName: String): PackageInfo? =
@@ -267,7 +274,14 @@ class JoynUpdateManager(context: Context) {
                 )
             } else {
                 @Suppress("DEPRECATION")
-                getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+                getPackageInfo(
+                    packageName,
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        PackageManager.GET_SIGNING_CERTIFICATES
+                    } else {
+                        PackageManager.GET_SIGNATURES
+                    },
+                )
             }
         }.getOrNull()
 
