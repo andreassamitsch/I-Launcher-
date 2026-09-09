@@ -110,10 +110,6 @@ enum class JoynCountry(
     ;
 
     companion object {
-        fun fromIsoCountry(value: String?): JoynCountry = when (value?.uppercase()) {
-            "AT" -> AT
-            "CH" -> CH
-            else -> DE
-        }
+        fun fromIsoCountry(value: String?): JoynCountry = JoynRegionSettings.resolveCountry(value)
     }
 }
