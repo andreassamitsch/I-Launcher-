@@ -26,7 +26,7 @@ internal object JoynProtocol {
             brand {
               id
               brandCode
-              livestream { logo { url(profile: \"nextgen-web-artlogo-183x75\") } }
+              livestream { logo { url(profile: "nextgen-web-artlogo-183x75") } }
             }
             epgEvents {
               startDate
@@ -42,13 +42,13 @@ internal object JoynProtocol {
                   title
                   description
                   thumbnailImage: image(type: PRIMARY) {
-                    url(profile: \"nextgen-web-episodestillplayer-693x390\")
+                    url(profile: "nextgen-web-episodestillplayer-693x390")
                   }
                 }
                 ... on Movie {
                   title
                   posterImage: image(type: PRIMARY) {
-                    url(profile: \"nextgen-web-primarycut-1920x1080\")
+                    url(profile: "nextgen-web-primarycut-1920x1080")
                   }
                 }
               }
