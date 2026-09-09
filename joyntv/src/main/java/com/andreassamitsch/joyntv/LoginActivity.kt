@@ -63,6 +63,9 @@ class LoginActivity : ComponentActivity() {
                     onProxySettings = {
                         startActivity(Intent(this, ProxySettingsActivity::class.java))
                     },
+                    onPinSettings = {
+                        startActivity(Intent(this, PinSettingsActivity::class.java))
+                    },
                 )
             }
         }
@@ -74,6 +77,7 @@ private fun LoginScreen(
     repository: JoynRepository,
     onRegionChanged: () -> Unit,
     onProxySettings: () -> Unit,
+    onPinSettings: () -> Unit,
 ) {
     var account by remember { mutableStateOf<JoynAccountState?>(null) }
     var email by remember { mutableStateOf("") }
@@ -83,6 +87,8 @@ private fun LoginScreen(
     var activeCountry by remember { mutableStateOf(repository.currentCountry()) }
     var automaticRegion by remember { mutableStateOf(repository.countryIsAutomatic()) }
     val proxy = repository.proxyConfig()
+    val pinConfigured = repository.hasStoredParentalPin()
+    val pinAuto = repository.parentalPinAutoUse()
     val scope = rememberCoroutineScope()
 
     suspend fun refreshAccount() {
@@ -160,6 +166,15 @@ private fun LoginScreen(
                     "Test-Proxy für DE / CH konfigurieren"
                 },
                 onClick = onProxySettings,
+            )
+            Spacer(Modifier.height(10.dp))
+            LoginActionButton(
+                when {
+                    pinConfigured && pinAuto -> "Jugendschutz-PIN · gespeichert · automatisch"
+                    pinConfigured -> "Jugendschutz-PIN · gespeichert · manuell"
+                    else -> "Jugendschutz-PIN einrichten"
+                },
+                onClick = onPinSettings,
             )
             Spacer(Modifier.height(if (compact) 24.dp else 36.dp))
 
