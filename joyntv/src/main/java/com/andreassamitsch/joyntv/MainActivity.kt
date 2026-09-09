@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -258,7 +259,15 @@ private fun UpdateChip(
                     true
                 } else false
             }
-            .then(if (actionable) Modifier.focusable() else Modifier)
+            .then(
+                if (actionable) {
+                    Modifier
+                        .clickable(onClick = onAction)
+                        .focusable()
+                } else {
+                    Modifier
+                },
+            )
             .padding(horizontal = 18.dp, vertical = 10.dp),
     ) {
         Text(
@@ -355,6 +364,7 @@ private fun LiveChannelCard(
                     false
                 }
             }
+            .clickable(onClick = onClick)
             .focusable(),
     ) {
         AsyncImage(
