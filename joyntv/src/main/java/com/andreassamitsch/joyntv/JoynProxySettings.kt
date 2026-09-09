@@ -14,11 +14,15 @@ import okhttp3.OkHttpClient
 
 internal data class JoynProxyConfig(
     val enabled: Boolean = false,
+    val automatic: Boolean = false,
     val host: String = "",
     val port: Int = 0,
     val username: String = "",
     val password: String = "",
     val allTraffic: Boolean = false,
+    val source: String = "",
+    val latencyMs: Long = -1L,
+    val lastVerifiedAtEpochMs: Long = 0L,
 ) {
     val isUsable: Boolean
         get() = enabled && host.isNotBlank() && port in 1..65535
@@ -36,14 +40,21 @@ internal class JoynProxySettings(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun current(): JoynProxyConfig = JoynProxyConfig(
-        enabled = prefs.getBoolean(KEY_ENABLED, false),
-        host = prefs.getString(KEY_HOST, "").orEmpty(),
-        port = prefs.getInt(KEY_PORT, 0),
-        username = prefs.getString(KEY_USERNAME, "").orEmpty(),
-        password = prefs.getString(KEY_PASSWORD, "").orEmpty(),
-        allTraffic = prefs.getBoolean(KEY_ALL_TRAFFIC, false),
-    )
+    fun current(): JoynProxyConfig {
+        val host = prefs.getString(KEY_HOST, "").orEmpty()
+        return JoynProxyConfig(
+            enabled = prefs.getBoolean(KEY_ENABLED, false),
+            automatic = prefs.getBoolean(KEY_AUTOMATIC, host.isBlank()),
+            host = host,
+            port = prefs.getInt(KEY_PORT, 0),
+            username = prefs.getString(KEY_USERNAME, "").orEmpty(),
+            password = prefs.getString(KEY_PASSWORD, "").orEmpty(),
+            allTraffic = prefs.getBoolean(KEY_ALL_TRAFFIC, false),
+            source = prefs.getString(KEY_SOURCE, "").orEmpty(),
+            latencyMs = prefs.getLong(KEY_LATENCY_MS, -1L),
+            lastVerifiedAtEpochMs = prefs.getLong(KEY_LAST_VERIFIED_AT, 0L),
+        )
+    }
 
     /** Adds HTTP proxy authentication to OkHttp. Proxy selection itself is process-wide so
      * Media3 can optionally participate when full-proxy mode is selected. */
@@ -65,11 +76,15 @@ internal class JoynProxySettings(context: Context) {
     fun save(config: JoynProxyConfig) {
         prefs.edit()
             .putBoolean(KEY_ENABLED, config.enabled)
+            .putBoolean(KEY_AUTOMATIC, config.automatic)
             .putString(KEY_HOST, config.host.trim())
             .putInt(KEY_PORT, config.port)
             .putString(KEY_USERNAME, config.username)
             .putString(KEY_PASSWORD, config.password)
             .putBoolean(KEY_ALL_TRAFFIC, config.allTraffic)
+            .putString(KEY_SOURCE, config.source)
+            .putLong(KEY_LATENCY_MS, config.latencyMs)
+            .putLong(KEY_LAST_VERIFIED_AT, config.lastVerifiedAtEpochMs)
             // A Joyn auth token can be tied to the previous source IP/market.
             .remove("auth_token")
             .apply()
@@ -79,13 +94,18 @@ internal class JoynProxySettings(context: Context) {
     companion object {
         private const val PREFS_NAME = "joyn_protocol"
         private const val KEY_ENABLED = "test_proxy_enabled"
+        private const val KEY_AUTOMATIC = "test_proxy_automatic"
         private const val KEY_HOST = "test_proxy_host"
         private const val KEY_PORT = "test_proxy_port"
         private const val KEY_USERNAME = "test_proxy_username"
         private const val KEY_PASSWORD = "test_proxy_password"
         private const val KEY_ALL_TRAFFIC = "test_proxy_all_traffic"
+        private const val KEY_SOURCE = "test_proxy_source"
+        private const val KEY_LATENCY_MS = "test_proxy_latency_ms"
+        private const val KEY_LAST_VERIFIED_AT = "test_proxy_last_verified_at"
 
         private val originalProxySelector: ProxySelector? by lazy { ProxySelector.getDefault() }
+        private val originalAuthenticator: Authenticator? by lazy { Authenticator.getDefault() }
 
         private val controlHosts = setOf(
             "www.joyn.de",
@@ -105,6 +125,7 @@ internal class JoynProxySettings(context: Context) {
         private fun installProcessRouting(config: JoynProxyConfig) {
             if (!config.isUsable) {
                 ProxySelector.setDefault(originalProxySelector)
+                Authenticator.setDefault(originalAuthenticator)
                 return
             }
 
@@ -137,6 +158,8 @@ internal class JoynProxySettings(context: Context) {
                         } else null
                     }
                 })
+            } else {
+                Authenticator.setDefault(originalAuthenticator)
             }
         }
     }
