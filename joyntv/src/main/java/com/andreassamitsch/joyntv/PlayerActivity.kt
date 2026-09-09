@@ -7,26 +7,45 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -73,8 +92,11 @@ private fun JoynPlayer(
 ) {
     var playback by remember(channelId) { mutableStateOf<JoynPlayback?>(null) }
     var errorText by remember(channelId) { mutableStateOf<String?>(null) }
+    var retryKey by remember(channelId) { mutableIntStateOf(0) }
 
-    LaunchedEffect(channelId) {
+    LaunchedEffect(channelId, retryKey) {
+        playback = null
+        errorText = null
         runCatching {
             withContext(Dispatchers.IO) { repository.resolveLivePlayback(channelId) }
         }.onSuccess { playback = it }
@@ -87,26 +109,96 @@ private fun JoynPlayer(
             .background(Color.Black),
     ) {
         when {
-            playback != null -> Media3Player(playback = requireNotNull(playback))
-            errorText != null -> Text(
-                text = "$title konnte nicht gestartet werden\n${errorText.orEmpty()}",
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(40.dp),
-                fontSize = 20.sp,
+            playback != null -> Media3Player(
+                playback = requireNotNull(playback),
+                onPlaybackError = { error ->
+                    playback = null
+                    errorText = "${error.errorCodeName}: ${error.message.orEmpty()}".trim()
+                },
+            )
+            errorText != null -> PlaybackError(
+                title = title,
+                message = errorText.orEmpty(),
+                onRetry = { retryKey++ },
             )
             else -> Text(
                 text = "$title wird gestartet …",
                 modifier = Modifier.align(Alignment.Center),
+                color = Color.White,
                 fontSize = 20.sp,
             )
         }
     }
 }
 
+@Composable
+private fun PlaybackError(
+    title: String,
+    message: String,
+    onRetry: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(40.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = "$title konnte nicht gestartet werden",
+            color = Color.White,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = message.take(700),
+            color = Color(0xFFD7DBE3),
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(24.dp))
+        RetryButton(onRetry)
+    }
+}
+
+@Composable
+private fun RetryButton(onRetry: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(22.dp)
+    Box(
+        modifier = Modifier
+            .background(if (focused) Color.White else Color(0xFF20252D), shape)
+            .border(1.dp, if (focused) Color.White else Color(0xFF5A6470), shape)
+            .onFocusChanged { focused = it.isFocused }
+            .onKeyEvent { event ->
+                if (event.type == KeyEventType.KeyUp &&
+                    (event.key == Key.DirectionCenter || event.key == Key.Enter)
+                ) {
+                    onRetry()
+                    true
+                } else false
+            }
+            .clickable(onClick = onRetry)
+            .focusable()
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+    ) {
+        Text(
+            text = "Erneut versuchen",
+            color = if (focused) Color(0xFF11151B) else Color.White,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
 @OptIn(UnstableApi::class)
 @Composable
-private fun Media3Player(playback: JoynPlayback) {
+private fun Media3Player(
+    playback: JoynPlayback,
+    onPlaybackError: (PlaybackException) -> Unit,
+) {
     val context = LocalContext.current
     val player = remember(playback) {
         ExoPlayer.Builder(context).build().apply {
@@ -133,7 +225,16 @@ private fun Media3Player(playback: JoynPlayback) {
     }
 
     DisposableEffect(player) {
-        onDispose { player.release() }
+        val listener = object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                onPlaybackError(error)
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            player.release()
+        }
     }
 
     AndroidView(
@@ -146,6 +247,7 @@ private fun Media3Player(playback: JoynPlayback) {
                 requestFocus()
             }
         },
+        update = { view -> view.player = player },
         modifier = Modifier.fillMaxSize(),
     )
 }
