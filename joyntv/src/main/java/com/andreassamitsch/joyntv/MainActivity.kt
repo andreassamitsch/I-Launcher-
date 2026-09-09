@@ -23,10 +23,12 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,16 +53,20 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val repository = JoynRepository(applicationContext)
+        val updateManager = JoynUpdateManager(applicationContext)
         setContent {
             JoynTvTheme {
                 JoynHome(
                     repository = repository,
+                    updateManager = updateManager,
                     onPlay = { channel ->
                         startActivity(PlayerActivity.intent(this, channel.id, channel.title))
                     },
@@ -73,6 +79,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun JoynHome(
     repository: JoynRepository,
+    updateManager: JoynUpdateManager,
     onPlay: (JoynLiveChannel) -> Unit,
 ) {
     var channels by remember { mutableStateOf<List<JoynLiveChannel>>(emptyList()) }
@@ -80,6 +87,19 @@ private fun JoynHome(
     var errorText by remember { mutableStateOf<String?>(null) }
     var selectedIndex by remember { mutableIntStateOf(0) }
     val firstFocus = remember { FocusRequester() }
+    val updateState by updateManager.state.collectAsState()
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        updateManager.checkForUpdates()
+    }
+
+    LaunchedEffect(updateState) {
+        while (updateState is JoynUpdateState.Downloading) {
+            delay(700)
+            updateManager.refreshDownloadState()
+        }
+    }
 
     LaunchedEffect(Unit) {
         loading = true
@@ -177,6 +197,76 @@ private fun JoynHome(
                 }
             }
         }
+
+        UpdateChip(
+            state = updateState,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 38.dp, end = 48.dp),
+            onAction = {
+                when (val state = updateState) {
+                    is JoynUpdateState.Available -> updateManager.startDownload(state.info)
+                    is JoynUpdateState.ReadyToInstall -> scope.launch {
+                        updateManager.installDownloadedUpdate()
+                    }
+                    is JoynUpdateState.Error -> scope.launch { updateManager.checkForUpdates() }
+                    else -> Unit
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun UpdateChip(
+    state: JoynUpdateState,
+    modifier: Modifier = Modifier,
+    onAction: () -> Unit,
+) {
+    val label = when (state) {
+        JoynUpdateState.Idle,
+        JoynUpdateState.Checking,
+        is JoynUpdateState.UpToDate,
+        -> null
+        is JoynUpdateState.Available -> "Update ${state.info.versionName}"
+        is JoynUpdateState.Downloading -> state.progressPercent?.let { "Update $it %" } ?: "Update lädt …"
+        is JoynUpdateState.ReadyToInstall -> "Update installieren"
+        is JoynUpdateState.Error -> "Update erneut prüfen"
+    } ?: return
+
+    val actionable = state is JoynUpdateState.Available ||
+        state is JoynUpdateState.ReadyToInstall ||
+        state is JoynUpdateState.Error
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(20.dp)
+
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(if (focused) Color(0xFFF3F5F8) else Color(0xCC171B22))
+            .border(
+                width = if (focused) 2.dp else 1.dp,
+                color = if (focused) Color.White else Color(0x555A6470),
+                shape = shape,
+            )
+            .onFocusChanged { focused = it.isFocused }
+            .onKeyEvent { event ->
+                if (actionable && event.type == KeyEventType.KeyUp &&
+                    (event.key == Key.DirectionCenter || event.key == Key.Enter)
+                ) {
+                    onAction()
+                    true
+                } else false
+            }
+            .then(if (actionable) Modifier.focusable() else Modifier)
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (focused) Color(0xFF11151B) else Color.White,
+        )
     }
 }
 
