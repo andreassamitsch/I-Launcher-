@@ -174,34 +174,34 @@ internal class JoynCategoryApiClient(context: Context) {
 
     private fun JSONObject.deepMediaItems(): List<JoynMediaItem> {
         val found = mutableListOf<JoynMediaItem>()
-        fun visitObject(value: JSONObject, depth: Int) {
-            if (depth > 10) return
-            if (value.optString("__typename") in MEDIA_TYPENAMES) {
-                value.toMediaItem()?.let(found::add)
-            }
-            val keys = value.keys()
-            while (keys.hasNext()) {
-                when (val child = value.opt(keys.next())) {
-                    is JSONObject -> visitObject(child, depth + 1)
-                    is JSONArray -> for (i in 0 until child.length()) {
-                        when (val entry = child.opt(i)) {
-                            is JSONObject -> visitObject(entry, depth + 1)
-                            is JSONArray -> visitArray(entry, depth + 1)
+        val stack = mutableListOf<Any>(this)
+        var visited = 0
+        while (stack.isNotEmpty() && visited < 10_000) {
+            val value = stack.removeAt(stack.lastIndex)
+            visited += 1
+            when (value) {
+                is JSONObject -> {
+                    if (value.optString("__typename") in MEDIA_TYPENAMES) {
+                        value.toMediaItem()?.let(found::add)
+                    }
+                    val keys = value.keys()
+                    while (keys.hasNext()) {
+                        when (val child = value.opt(keys.next())) {
+                            is JSONObject -> stack.add(child)
+                            is JSONArray -> stack.add(child)
+                        }
+                    }
+                }
+                is JSONArray -> {
+                    for (index in 0 until value.length()) {
+                        when (val child = value.opt(index)) {
+                            is JSONObject -> stack.add(child)
+                            is JSONArray -> stack.add(child)
                         }
                     }
                 }
             }
         }
-        fun visitArray(value: JSONArray, depth: Int) {
-            if (depth > 10) return
-            for (i in 0 until value.length()) {
-                when (val entry = value.opt(i)) {
-                    is JSONObject -> visitObject(entry, depth + 1)
-                    is JSONArray -> visitArray(entry, depth + 1)
-                }
-            }
-        }
-        visitObject(this, 0)
         return found.distinctBy { "${it.type}:${it.id}" }
     }
 
