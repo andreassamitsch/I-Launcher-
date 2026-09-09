@@ -3,6 +3,26 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val joynVersionCode = providers.gradleProperty("joynVersionCode")
+    .orNull
+    ?.toIntOrNull()
+    ?: 1
+val joynVersionName = providers.gradleProperty("joynVersionName")
+    .orNull
+    ?.takeIf { it.isNotBlank() }
+    ?: "0.1.0"
+
+val stableSigningStoreFile = System.getenv("IL_SIGNING_STORE_FILE")?.takeIf { it.isNotBlank() }
+val stableSigningStorePassword = System.getenv("IL_SIGNING_STORE_PASSWORD")?.takeIf { it.isNotBlank() }
+val stableSigningKeyAlias = System.getenv("IL_SIGNING_KEY_ALIAS")?.takeIf { it.isNotBlank() }
+val stableSigningKeyPassword = System.getenv("IL_SIGNING_KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+val stableSigningConfigured = listOf(
+    stableSigningStoreFile,
+    stableSigningStorePassword,
+    stableSigningKeyAlias,
+    stableSigningKeyPassword,
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.andreassamitsch.joyntv"
     compileSdk = 36
@@ -11,8 +31,8 @@ android {
         applicationId = "com.andreassamitsch.joyntv"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = joynVersionCode
+        versionName = joynVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -24,11 +44,32 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    signingConfigs {
+        if (stableSigningConfigured) {
+            create("stable") {
+                storeFile = file(requireNotNull(stableSigningStoreFile))
+                storePassword = stableSigningStorePassword
+                keyAlias = stableSigningKeyAlias
+                keyPassword = stableSigningKeyPassword
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            if (stableSigningConfigured) {
+                signingConfig = signingConfigs.getByName("stable")
+            }
+        }
+
         release {
             isMinifyEnabled = false
+            if (stableSigningConfigured) {
+                signingConfig = signingConfigs.getByName("stable")
+            }
         }
     }
 }
