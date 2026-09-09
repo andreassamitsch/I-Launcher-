@@ -13,8 +13,8 @@ import org.json.JSONObject
 /** PIN-aware VOD entitlement path.
  *
  * Joyn validates the parental PIN on the entitlement request itself. This client deliberately
- * reuses the session and API-key cache created by JoynApiClient and only takes over the VOD
- * resolution after Joyn explicitly requested a PIN.
+ * reuses the account session created by JoynApiClient and only takes over the VOD resolution
+ * after Joyn explicitly requested a PIN.
  */
 internal class JoynPinPlaybackApiClient(context: Context) {
     private val appContext = context.applicationContext
@@ -42,7 +42,11 @@ internal class JoynPinPlaybackApiClient(context: Context) {
             } catch (error: Throwable) {
                 if (error is JoynPinRequiredException || error is JoynPinInvalidException) throw error
                 lastError = error
-                if (attempt > 0 || !error.message.orEmpty().contains("INVALID_JWT", true)) throw error
+                val details = error.message.orEmpty()
+                val retryWithFreshAccountToken = details.contains("INVALID_JWT", true) ||
+                    details.contains("ENT_VALIDATION_TOKEN_ERROR", true) ||
+                    details.contains("ENT_AgeVerificationSetupRequired", true)
+                if (attempt > 0 || !retryWithFreshAccountToken) throw error
             }
         }
         throw lastError ?: IOException("Joyn PIN-Wiedergabe fehlgeschlagen")
@@ -122,7 +126,7 @@ internal class JoynPinPlaybackApiClient(context: Context) {
 
     private suspend fun ensureSession(forceRefresh: Boolean): Session {
         if (forceRefresh) {
-            runCatching { core.loadLiveChannels() }
+            forceRefreshStoredAccountToken()
         }
         val selectedCountry = country
         val cacheKey = "api_key_${selectedCountry.name}"
@@ -145,15 +149,67 @@ internal class JoynPinPlaybackApiClient(context: Context) {
         )
     }
 
+    /**
+     * The Kodi reference forces an auth-token refresh when the entitlement service reports
+     * token validation problems. Age-verification is account state carried by the Joyn session,
+     * so a still-valid but stale account token must also be refreshed before retrying the PIN.
+     */
+    private suspend fun forceRefreshStoredAccountToken() {
+        val token = readToken() ?: return
+        val selectedCountry = country
+        val clientId = prefs.getString("client_id", null)?.takeIf(String::isNotBlank)
+            ?: return core.loadLiveChannels().let { }
+        val payload = JSONObject()
+            .put("refresh_token", token.refreshToken)
+            .put("grant_type", token.tokenType)
+            .put("client_id", clientId)
+            .put("client_name", "web")
+        val response = executeJson(
+            Request.Builder()
+                .url("${JoynProtocol.authBaseUrl}/refresh")
+                .header("User-Agent", USER_AGENT)
+                .header("Joyn-Country", selectedCountry.name)
+                .header("Joyn-Distribution-Tenant", selectedCountry.authTenant)
+                .header("Content-Type", JSON_MEDIA_TYPE.toString())
+                .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
+                .build(),
+        )
+        val refreshed = JSONObject()
+            .put(
+                "accessToken",
+                response.optString("access_token").takeIf(String::isNotBlank)
+                    ?: error("Joyn Refresh lieferte kein Access-Token"),
+            )
+            .put(
+                "refreshToken",
+                response.optString("refresh_token").takeIf(String::isNotBlank) ?: token.refreshToken,
+            )
+            .put(
+                "tokenType",
+                response.optString("token_type").takeIf(String::isNotBlank) ?: token.tokenType,
+            )
+            .put("expiresIn", response.optLong("expires_in").takeIf { it > 0L } ?: token.expiresIn)
+            .put("createdAt", System.currentTimeMillis() / 1000L)
+            .put("hasAccount", token.hasAccount)
+        token.email?.let { refreshed.put("email", it) }
+        prefs.edit().putString("auth_token", refreshed.toString()).apply()
+
+        // Kodi refreshes account info after refreshing an authenticated token as well.
+        if (token.hasAccount) runCatching { core.accountState(refreshRemote = true) }
+    }
+
     private fun readToken(): Token? {
         val raw = prefs.getString("auth_token", null) ?: return null
         return runCatching {
             val json = JSONObject(raw)
             Token(
                 accessToken = json.getString("accessToken"),
+                refreshToken = json.getString("refreshToken"),
                 tokenType = json.optString("tokenType").takeIf(String::isNotBlank) ?: "Bearer",
                 expiresIn = json.optLong("expiresIn").takeIf { it > 0L } ?: 3600L,
                 createdAt = json.optLong("createdAt"),
+                hasAccount = json.optBoolean("hasAccount", false),
+                email = json.optString("email").takeIf(String::isNotBlank),
             )
         }.getOrNull()
     }
@@ -176,9 +232,12 @@ internal class JoynPinPlaybackApiClient(context: Context) {
 
     private data class Token(
         val accessToken: String,
+        val refreshToken: String,
         val tokenType: String,
         val expiresIn: Long,
         val createdAt: Long,
+        val hasAccount: Boolean,
+        val email: String?,
     )
 
     companion object {
