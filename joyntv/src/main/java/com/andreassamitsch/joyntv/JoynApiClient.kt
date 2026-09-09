@@ -1,6 +1,7 @@
 package com.andreassamitsch.joyntv
 
 import android.content.Context
+import java.io.IOException
 import java.net.URI
 import java.util.Locale
 import java.util.UUID
@@ -30,6 +31,40 @@ internal class JoynApiClient(context: Context) {
 
     suspend fun loadLiveChannels(): List<JoynLiveChannel> {
         val config = bootstrapConfig()
+        return runCatching { loadLiveChannelsOnce(config) }
+            .recoverCatching { error ->
+                if (error.shouldRefreshSession()) {
+                    forceRefreshAuthorization(config.country)
+                    loadLiveChannelsOnce(config)
+                } else {
+                    throw error
+                }
+            }
+            .getOrThrow()
+    }
+
+    suspend fun resolveLivePlayback(channelId: String): JoynPlayback {
+        val config = bootstrapConfig()
+        var lastError: Throwable? = null
+
+        repeat(MAX_PLAYBACK_ATTEMPTS) { attempt ->
+            try {
+                return resolveLivePlaybackOnce(channelId, config)
+            } catch (error: Throwable) {
+                lastError = error
+                when {
+                    error.requiresAnonymousReset() -> resetAnonymousAuthorization(config.country)
+                    error.shouldRefreshSession() && attempt == 0 -> forceRefreshAuthorization(config.country)
+                    error.shouldRefreshSession() -> resetAnonymousAuthorization(config.country)
+                    else -> throw error
+                }
+            }
+        }
+
+        throw lastError ?: error("Joyn playback failed without an error")
+    }
+
+    private suspend fun loadLiveChannelsOnce(config: JoynRuntimeConfig): List<JoynLiveChannel> {
         val authorization = authorizationHeader(config.country)
         val url = JoynProtocol.graphQlUrl.toHttpUrl().newBuilder()
             .addQueryParameter("query", JoynProtocol.liveStreamsQuery)
@@ -48,7 +83,11 @@ internal class JoynApiClient(context: Context) {
         val json = executeJson(request)
         val errors = json.optJSONArray("errors")
         if (errors != null && errors.length() > 0) {
-            error("Joyn GraphQL returned ${errors.length()} error(s)")
+            val details = errors.toString()
+            if (details.contains("INVALID_JWT", ignoreCase = true)) {
+                throw JoynSessionException(details)
+            }
+            error("Joyn GraphQL returned ${errors.length()} error(s): ${details.take(220)}")
         }
         val streams = json.optJSONObject("data")?.optJSONArray("liveStreams")
             ?: return emptyList()
@@ -63,8 +102,10 @@ internal class JoynApiClient(context: Context) {
         }
     }
 
-    suspend fun resolveLivePlayback(channelId: String): JoynPlayback {
-        val config = bootstrapConfig()
+    private suspend fun resolveLivePlaybackOnce(
+        channelId: String,
+        config: JoynRuntimeConfig,
+    ): JoynPlayback {
         val authorization = authorizationHeader(config.country)
         val entitlementBody = JSONObject()
             .put("content_id", channelId)
@@ -77,10 +118,22 @@ internal class JoynApiClient(context: Context) {
             .header("Content-Type", JSON_MEDIA_TYPE.toString())
             .post(entitlementBody.toRequestBody(JSON_MEDIA_TYPE))
             .build()
-        val entitlementToken = executeJson(entitlementRequest)
+        val entitlementJson = executeJson(entitlementRequest)
+        val entitlementToken = entitlementJson
             .optString("entitlement_token")
             .takeIf { it.isNotBlank() }
-            ?: error("Joyn did not return an entitlement token")
+            ?: run {
+                val body = entitlementJson.toString()
+                if (body.contains("INVALID_JWT", ignoreCase = true) ||
+                    body.contains("ENT_VALIDATION_TOKEN_ERROR", ignoreCase = true)
+                ) {
+                    throw JoynSessionException(body)
+                }
+                if (body.contains("ENT_RVOD_Playback_Restricted", ignoreCase = true)) {
+                    throw JoynAnonymousSessionRestrictedException(body)
+                }
+                error("Joyn did not return an entitlement token: ${body.take(220)}")
+            }
 
         val signature = JoynProtocol.playbackSignature(entitlementToken)
         val playlistUrl = "${JoynProtocol.playbackBaseUrl}/channel/$channelId/playlist"
@@ -97,7 +150,7 @@ internal class JoynApiClient(context: Context) {
             .build()
         val playlist = executeJson(playlistRequest)
         val manifest = playlist.optString("manifestUrl").takeIf { it.isNotBlank() }
-            ?: error("Joyn did not return a DASH manifest")
+            ?: error("Joyn did not return a DASH manifest: ${playlist.toString().take(220)}")
 
         return JoynPlayback(
             manifestUrl = manifest,
@@ -157,6 +210,28 @@ internal class JoynApiClient(context: Context) {
                 .getOrElse { createAnonymousToken(country) }
         }
         "${token.tokenType} ${token.accessToken}"
+    }
+
+    private suspend fun forceRefreshAuthorization(country: JoynCountry) = tokenMutex.withLock {
+        val existing = readToken()
+        if (existing == null) {
+            createAnonymousToken(country)
+        } else {
+            runCatching { refreshToken(country, existing) }
+                .getOrElse {
+                    prefs.edit().remove("auth_token").apply()
+                    createAnonymousToken(country)
+                }
+        }
+    }
+
+    private suspend fun resetAnonymousAuthorization(country: JoynCountry) = tokenMutex.withLock {
+        prefs.edit()
+            .remove("auth_token")
+            .remove("client_id")
+            .remove("anon_device_id")
+            .apply()
+        createAnonymousToken(country)
     }
 
     private fun createAnonymousToken(country: JoynCountry): StoredToken {
@@ -252,9 +327,30 @@ internal class JoynApiClient(context: Context) {
     private fun executeText(request: Request): String = client.newCall(request).execute().use { response ->
         val body = response.body.string()
         if (!response.isSuccessful) {
-            error("Joyn HTTP ${response.code}: ${body.take(180)}")
+            throw JoynHttpException(response.code, body)
         }
         body
+    }
+
+    private fun Throwable.shouldRefreshSession(): Boolean {
+        val body = when (this) {
+            is JoynHttpException -> responseBody
+            is JoynSessionException -> message.orEmpty()
+            else -> ""
+        }
+        return body.contains("INVALID_JWT", ignoreCase = true) ||
+            body.contains("ENT_VALIDATION_TOKEN_ERROR", ignoreCase = true) ||
+            (this is JoynHttpException && statusCode in setOf(401, 403))
+    }
+
+    private fun Throwable.requiresAnonymousReset(): Boolean {
+        val body = when (this) {
+            is JoynHttpException -> responseBody
+            is JoynAnonymousSessionRestrictedException -> message.orEmpty()
+            else -> ""
+        }
+        return body.contains("ENT_RVOD_Playback_Restricted", ignoreCase = true) ||
+            this is JoynAnonymousSessionRestrictedException
     }
 
     private fun JSONObject.toLiveChannel(now: Long): JoynLiveChannel? {
@@ -332,9 +428,19 @@ internal class JoynApiClient(context: Context) {
         val createdAt: Long,
     )
 
+    private class JoynHttpException(
+        val statusCode: Int,
+        val responseBody: String,
+    ) : IOException("Joyn HTTP $statusCode: ${responseBody.take(240)}")
+
+    private class JoynSessionException(details: String) : IOException(details)
+
+    private class JoynAnonymousSessionRestrictedException(details: String) : IOException(details)
+
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private const val API_KEY_TTL_MS = 5L * 24L * 60L * 60L * 1000L
+        private const val MAX_PLAYBACK_ATTEMPTS = 3
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
         private val SCRIPT_SRC = Regex("""<script[^>]+src=[\"']([^\"']+)[\"']""", RegexOption.IGNORE_CASE)
