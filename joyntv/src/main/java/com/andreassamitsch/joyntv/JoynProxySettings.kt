@@ -119,7 +119,11 @@ internal class JoynProxySettings(context: Context) {
         private const val KEY_LAST_VERIFIED_AT = "test_proxy_last_verified_at"
 
         private val originalProxySelector: ProxySelector? by lazy { ProxySelector.getDefault() }
-        private val originalAuthenticator: Authenticator? by lazy { Authenticator.getDefault() }
+
+        // Android exposes Authenticator.setDefault(), but not Authenticator.getDefault()
+        // in its public SDK API. Joyn TV therefore restores the process authenticator to
+        // the platform default (null) when proxy authentication is disabled.
+        private val originalAuthenticator: Authenticator? = null
 
         private val controlHosts = setOf(
             "www.joyn.de",
