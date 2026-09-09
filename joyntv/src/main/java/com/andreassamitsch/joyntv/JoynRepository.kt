@@ -33,8 +33,14 @@ internal class JoynRepository(context: Context) {
         return page.copy(lanes = browseLanes + page.lanes)
     }
 
-    suspend fun loadCategory(blockId: String, title: String): JoynCataloguePage =
-        categoryApi.loadCategory(blockId, title)
+    suspend fun loadCategory(blockId: String, title: String): JoynCataloguePage {
+        val browse = runCatching { browseApi.loadCategory(blockId, title) }.getOrNull()
+        if (browse != null && browse.lanes.any { it.items.isNotEmpty() }) return browse
+
+        // Diagnostic/raw fallback. Unlike the generic browse loader this throws a detailed
+        // error when Joyn returned a block but none of its union assets could be mapped.
+        return categoryApi.loadCategory(blockId, title)
+    }
 
     suspend fun loadChannel(path: String, title: String): JoynCataloguePage =
         browseApi.loadChannel(path, title)
