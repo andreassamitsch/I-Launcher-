@@ -120,6 +120,7 @@ private fun JoynPlayer(
     title: String,
     streamType: String,
 ) {
+    val context = LocalContext.current
     var playback by remember(contentId, streamType) { mutableStateOf<JoynPlayback?>(null) }
     var errorText by remember(contentId, streamType) { mutableStateOf<String?>(null) }
     var retryKey by remember(contentId, streamType) { mutableIntStateOf(0) }
@@ -127,11 +128,13 @@ private fun JoynPlayer(
     var pinOverride by remember(contentId, streamType) { mutableStateOf<String?>(null) }
     var pinRequested by remember(contentId, streamType) { mutableStateOf(false) }
     var pinInvalid by remember(contentId, streamType) { mutableStateOf(false) }
+    var loginRequired by remember(contentId, streamType) { mutableStateOf(false) }
 
     LaunchedEffect(contentId, streamType, retryKey, pinAttemptKey) {
         playback = null
         errorText = null
         pinRequested = false
+        loginRequired = false
         runCatching {
             withContext(Dispatchers.IO) {
                 if (streamType == "VOD") repository.resolveVodPlayback(contentId, pinOverride)
@@ -146,14 +149,16 @@ private fun JoynPlayer(
                 message.contains("ENT_PINRequired", ignoreCase = true)
             val invalidPin = error is JoynPinInvalidException ||
                 message.contains("ENT_PINInvalid", ignoreCase = true)
-            if (streamType == "VOD" && (requiresPin || invalidPin)) {
-                if (invalidPin && pinOverride == null && repository.parentalPinAutoUse()) {
-                    repository.setParentalPinAutoUse(false)
+            when {
+                error is JoynLoginRequiredException -> loginRequired = true
+                streamType == "VOD" && (requiresPin || invalidPin) -> {
+                    if (invalidPin && pinOverride == null && repository.parentalPinAutoUse()) {
+                        repository.setParentalPinAutoUse(false)
+                    }
+                    pinInvalid = invalidPin
+                    pinRequested = true
                 }
-                pinInvalid = invalidPin
-                pinRequested = true
-            } else {
-                errorText = error.message ?: error.javaClass.simpleName
+                else -> errorText = error.message ?: error.javaClass.simpleName
             }
         }
     }
@@ -165,6 +170,16 @@ private fun JoynPlayer(
                 onPlaybackError = { error ->
                     playback = null
                     errorText = "${error.errorCodeName}: ${error.message.orEmpty()}".trim()
+                },
+            )
+            loginRequired -> PlaybackLoginRequired(
+                title = title,
+                onLogin = {
+                    context.startActivity(Intent(context, LoginActivity::class.java))
+                },
+                onRetry = {
+                    pinOverride = null
+                    retryKey++
                 },
             )
             pinRequested -> ParentalPinPrompt(
@@ -191,6 +206,39 @@ private fun JoynPlayer(
                 fontSize = 20.sp,
             )
         }
+    }
+}
+
+@Composable
+private fun PlaybackLoginRequired(
+    title: String,
+    onLogin: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(40.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = "Anmeldung erforderlich",
+            color = Color.White,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = "„$title“ ist jugendgeschützt. Du bist in Joyn TV derzeit nicht mit deinem Joyn-Konto angemeldet. Melde dich an; anschließend kann der gespeicherte Jugendschutz-PIN automatisch verwendet werden.",
+            color = Color(0xFFD7DBE3),
+            fontSize = 15.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(max = 760.dp),
+        )
+        Spacer(Modifier.height(24.dp))
+        RetryButton(onLogin, label = "Konto & Region öffnen")
+        Spacer(Modifier.height(12.dp))
+        RetryButton(onRetry)
     }
 }
 
@@ -331,7 +379,7 @@ private fun PlaybackError(title: String, message: String, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun RetryButton(onRetry: () -> Unit) {
+private fun RetryButton(onRetry: () -> Unit, label: String = "Erneut versuchen") {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(22.dp)
     Box(
@@ -352,7 +400,7 @@ private fun RetryButton(onRetry: () -> Unit) {
             .padding(horizontal = 24.dp, vertical = 12.dp),
     ) {
         Text(
-            text = "Erneut versuchen",
+            text = label,
             color = if (focused) Color(0xFF11151B) else Color.White,
             fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
