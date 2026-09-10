@@ -6,7 +6,6 @@ import java.net.PasswordAuthentication
 import java.net.Proxy
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-import okhttp3.Credentials
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -16,20 +15,16 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Discovers NordVPN servers for the selected Joyn country and checks whether a server still
- * exposes a usable authenticated proxy endpoint. NordVPN's historical HTTPS/CONNECT proxy on
- * port 89 is tested first. SOCKS5 on port 1080 is tested as an additional compatibility path.
- *
- * A candidate is only accepted after the same checks that matter for the app itself: exit country,
- * Joyn HTTPS, anonymous auth, live GraphQL and a LIVE entitlement. This prevents a technically
- * reachable Nord endpoint from being selected when Joyn rejects its exit IP as VPN/proxy.
+ * Discovers NordVPN endpoints that explicitly advertise proxy capability for the selected country.
+ * Nord's proxy_ssl technology uses a TLS connection to the proxy itself on port 89; SOCKS5 uses
+ * port 1080. A candidate is only accepted after exit-country, Joyn API and LIVE entitlement checks.
  */
 internal class JoynNordVpnProxyResolver {
     private val directClient = OkHttpClient.Builder()
         .proxy(Proxy.NO_PROXY)
-        .connectTimeout(6, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
-        .callTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(7, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .callTimeout(14, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
@@ -43,40 +38,36 @@ internal class JoynNordVpnProxyResolver {
         onProgress: (JoynProxyDiscoveryProgress) -> Unit = {},
     ): JoynProxyDiscoveryResult {
         if (username.isBlank() || password.isBlank()) {
-            return JoynProxyDiscoveryResult(
-                config = null,
-                candidates = 0,
-                attempted = 0,
-                message = "Bitte NordVPN-Service-Benutzername und Service-Passwort eingeben.",
-            )
+            return JoynProxyDiscoveryResult(null, 0, 0, "Bitte NordVPN-Service-Benutzername und Service-Passwort eingeben.")
         }
         if (apiKey.isNullOrBlank()) {
             return JoynProxyDiscoveryResult(
-                config = null,
-                candidates = 0,
-                attempted = 0,
-                message = "Der Joyn API-Schlüssel für ${country.name} fehlt. Joyn bitte einmal ohne Proxy starten und danach erneut testen.",
+                null,
+                0,
+                0,
+                "Der Joyn API-Schlüssel für ${country.name} fehlt. Joyn bitte einmal ohne Proxy starten und danach erneut testen.",
             )
         }
 
-        onProgress(JoynProxyDiscoveryProgress("Lade NordVPN-Server für ${country.name} …"))
-        val servers = loadRecommendedServers(country)
-        if (servers.isEmpty()) {
+        onProgress(JoynProxyDiscoveryProgress("Lade proxyfähige NordVPN-Server für ${country.name} …"))
+        val candidates = loadCandidates(country)
+        if (candidates.isEmpty()) {
             return JoynProxyDiscoveryResult(
-                config = null,
-                candidates = 0,
-                attempted = 0,
-                message = "NordVPN lieferte aktuell keine Server für ${country.name}.",
+                null,
+                0,
+                0,
+                "NordVPN-API lieferte keine proxyfähigen Server für ${country.name}. Normale VPN-Server werden dabei bewusst nicht als Proxy behandelt.",
             )
         }
 
-        val candidates = buildList {
-            // The user's previously working Nord configuration used authenticated HTTP CONNECT/89.
-            servers.forEach { add(NordCandidate(it.hostname, 89, JoynProxyTransport.HTTP, it.load)) }
-            // Nord currently documents SOCKS5 on 1080. Not every generic country server exposes it,
-            // therefore every endpoint is probed instead of assuming support from the hostname.
-            servers.forEach { add(NordCandidate(it.hostname, 1080, JoynProxyTransport.SOCKS5, it.load)) }
-        }
+        val httpsCount = candidates.count { it.tlsProxy }
+        val socksCount = candidates.count { it.transport == JoynProxyTransport.SOCKS5 }
+        onProgress(
+            JoynProxyDiscoveryProgress(
+                "NordVPN: $httpsCount HTTPS/89 + $socksCount SOCKS5/1080 Kandidaten für ${country.name}. Starte Joyn-Prüfung …",
+                total = candidates.size,
+            ),
+        )
 
         var attempted = 0
         var wrongCountry = 0
@@ -85,23 +76,21 @@ internal class JoynNordVpnProxyResolver {
 
         for (candidate in candidates) {
             attempted++
-            val protocolLabel = when (candidate.transport) {
-                JoynProxyTransport.HTTP -> "HTTPS/CONNECT :${candidate.port}"
-                JoynProxyTransport.SOCKS5 -> "SOCKS5 :${candidate.port}"
-            }
+            val protocolLabel = if (candidate.tlsProxy) "HTTPS-Proxy :89" else "SOCKS5 :1080"
             onProgress(
                 JoynProxyDiscoveryProgress(
-                    message = "Teste NordVPN $attempted/${candidates.size}: ${candidate.host} · $protocolLabel · Joyn Live …",
-                    attempted = attempted - 1,
-                    total = candidates.size,
+                    "Teste $attempted/${candidates.size}: ${candidate.host} · $protocolLabel · Joyn Live …",
+                    attempted - 1,
+                    candidates.size,
                 ),
             )
 
             when (val result = probe(country, candidate, apiKey, username, password)) {
                 is NordProbeResult.Success -> {
-                    val source = when (candidate.transport) {
-                        JoynProxyTransport.HTTP -> "NordVPN · HTTPS/CONNECT 89"
-                        JoynProxyTransport.SOCKS5 -> "NordVPN · SOCKS5 1080"
+                    val source = if (candidate.tlsProxy) {
+                        "${JoynProxyConfig.NORD_TLS_SOURCE_PREFIX} 89"
+                    } else {
+                        "NordVPN · SOCKS5 1080"
                     }
                     val config = JoynProxyConfig(
                         enabled = true,
@@ -116,7 +105,7 @@ internal class JoynNordVpnProxyResolver {
                         latencyMs = result.latencyMs,
                         lastVerifiedAtEpochMs = System.currentTimeMillis(),
                     )
-                    val message = "Joyn-tauglicher NordVPN-Server: ${candidate.host}:${candidate.port} · ${candidate.transport.name} · ${result.latencyMs} ms"
+                    val message = "Joyn-tauglicher NordVPN-Server: ${candidate.host}:${candidate.port} · $protocolLabel · ${result.latencyMs} ms"
                     onProgress(JoynProxyDiscoveryProgress(message, attempted, candidates.size))
                     return JoynProxyDiscoveryResult(config, candidates.size, attempted, message)
                 }
@@ -127,48 +116,110 @@ internal class JoynNordVpnProxyResolver {
         }
 
         return JoynProxyDiscoveryResult(
-            config = null,
-            candidates = candidates.size,
-            attempted = attempted,
-            message = "Kein NordVPN-Proxy für ${country.name} bestand die Joyn-Live-Prüfung. " +
-                "Getestet: $attempted · nicht erreichbar/Auth: $unreachable · falsches Exit-Land: $wrongCountry · Joyn blockiert/keine Live-Freigabe: $joynBlocked.",
+            null,
+            candidates.size,
+            attempted,
+            "Kein NordVPN-Proxy für ${country.name} bestand die Joyn-Live-Prüfung. " +
+                "Getestet: $attempted · nicht erreichbar/Auth: $unreachable · falsches Exit-Land: $wrongCountry · " +
+                "Joyn blockiert/keine Live-Freigabe: $joynBlocked.",
         )
     }
 
-    private fun loadRecommendedServers(country: JoynCountry): List<NordServer> {
-        val countriesBody = executeDirect("https://api.nordvpn.com/v1/servers/countries") ?: return emptyList()
-        val countries = runCatching { JSONArray(countriesBody) }.getOrNull() ?: return emptyList()
+    private fun loadCandidates(country: JoynCountry): List<NordCandidate> {
+        val tlsServers = (
+            loadTechnologyServers(country, "proxy_ssl") +
+                loadTechnologyServers(country, "proxy_ssl_cybersec")
+            )
+            .distinctBy { it.hostname }
+            .sortedBy { it.load }
+            .take(MAX_HTTPS_SERVERS)
+            .map {
+                NordCandidate(
+                    host = it.hostname,
+                    port = 89,
+                    transport = JoynProxyTransport.HTTP,
+                    tlsProxy = true,
+                    load = it.load,
+                )
+            }
+
+        val socksServers = loadTechnologyServers(country, "socks")
+            .distinctBy { it.hostname }
+            .sortedBy { it.load }
+            .take(MAX_SOCKS_SERVERS)
+            .map {
+                NordCandidate(
+                    host = it.hostname,
+                    port = 1080,
+                    transport = JoynProxyTransport.SOCKS5,
+                    tlsProxy = false,
+                    load = it.load,
+                )
+            }
+
+        return tlsServers + socksServers
+    }
+
+    private fun loadTechnologyServers(country: JoynCountry, technology: String): List<NordServer> {
+        val countryId = when (country) {
+            JoynCountry.DE -> 81
+            JoynCountry.AT -> 14
+            JoynCountry.CH -> 209
+        }
         val expectedName = when (country) {
             JoynCountry.DE -> "Germany"
             JoynCountry.AT -> "Austria"
             JoynCountry.CH -> "Switzerland"
         }
-        var countryId: Long? = null
-        for (index in 0 until countries.length()) {
-            val item = countries.optJSONObject(index) ?: continue
-            val matches = item.optString("code").equals(country.name, ignoreCase = true) ||
-                item.optString("name").equals(expectedName, ignoreCase = true)
-            if (matches) {
-                countryId = item.optLong("id").takeIf { it > 0L }
-                break
+
+        val endpoints = listOf(
+            "https://api.nordvpn.com/v1/servers".toHttpUrl().newBuilder()
+                .addQueryParameter("limit", "0")
+                .addQueryParameter("filters[country_id]", countryId.toString())
+                .addQueryParameter("filters[servers_technologies][identifier]", technology)
+                .build(),
+            "https://api.nordvpn.com/v1/servers/recommendations".toHttpUrl().newBuilder()
+                .addQueryParameter("limit", SERVER_FETCH_LIMIT.toString())
+                .addQueryParameter("filters[country_id]", countryId.toString())
+                .addQueryParameter("filters[servers_technologies][identifier]", technology)
+                .build(),
+        )
+
+        for (url in endpoints) {
+            val body = executeDirect(url.toString()) ?: continue
+            val array = runCatching { JSONArray(body) }.getOrNull() ?: continue
+            val parsed = buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val hostname = item.optString("hostname").trim()
+                    if (hostname.isBlank()) continue
+                    val status = item.optString("status")
+                    if (status.isNotBlank() && !status.equals("online", true)) continue
+                    if (!belongsToCountry(item, country, expectedName, hostname)) continue
+                    add(NordServer(hostname, item.optInt("load", 100)))
+                }
+            }.distinctBy { it.hostname }
+            if (parsed.isNotEmpty()) return parsed
+        }
+        return emptyList()
+    }
+
+    private fun belongsToCountry(
+        item: JSONObject,
+        country: JoynCountry,
+        expectedName: String,
+        hostname: String,
+    ): Boolean {
+        val locations = item.optJSONArray("locations")
+        if (locations != null) {
+            for (index in 0 until locations.length()) {
+                val countryJson = locations.optJSONObject(index)?.optJSONObject("country") ?: continue
+                val code = countryJson.optString("code")
+                val name = countryJson.optString("name")
+                if (code.equals(country.name, true) || name.equals(expectedName, true)) return true
             }
         }
-        val id = countryId ?: return emptyList()
-        val url = "https://api.nordvpn.com/v1/servers/recommendations".toHttpUrl().newBuilder()
-            .addQueryParameter("limit", MAX_SERVERS.toString())
-            .addQueryParameter("filters[country_id]", id.toString())
-            .build()
-        val body = executeDirect(url.toString()) ?: return emptyList()
-        val array = runCatching { JSONArray(body) }.getOrNull() ?: return emptyList()
-        return buildList {
-            for (index in 0 until array.length()) {
-                val item = array.optJSONObject(index) ?: continue
-                val hostname = item.optString("hostname").trim()
-                if (hostname.isBlank()) continue
-                if (item.optString("status").isNotBlank() && !item.optString("status").equals("online", true)) continue
-                add(NordServer(hostname, item.optInt("load", 100)))
-            }
-        }.distinctBy { it.hostname }.sortedBy { it.load }.take(MAX_SERVERS)
+        return hostname.lowercase().startsWith(country.name.lowercase())
     }
 
     private fun executeDirect(url: String): String? = runCatching {
@@ -192,53 +243,46 @@ internal class JoynNordVpnProxyResolver {
         username: String,
         password: String,
     ): NordProbeResult {
-        return if (candidate.transport == JoynProxyTransport.SOCKS5) {
-            synchronized(SOCKS_AUTH_LOCK) {
-                Authenticator.setDefault(object : Authenticator() {
-                    override fun getPasswordAuthentication(): PasswordAuthentication? =
-                        if (requestorType == RequestorType.PROXY) {
-                            PasswordAuthentication(username, password.toCharArray())
-                        } else null
-                })
-                try {
-                    probeWithClient(country, candidate, apiKey, username, password)
-                } finally {
-                    // Repository reinstalls the previously persisted proxy configuration after
-                    // Nord discovery. Null here prevents test credentials from leaking process-wide.
-                    Authenticator.setDefault(null)
+        if (candidate.tlsProxy) {
+            return runCatching {
+                JoynTlsProxyBridge(candidate.host, candidate.port, username, password).use { bridge ->
+                    val proxy = Proxy(Proxy.Type.HTTP, bridge.localAddress)
+                    probeWithProxy(country, candidate, apiKey, proxy)
                 }
+            }.getOrDefault(NordProbeResult.Unreachable)
+        }
+
+        return synchronized(SOCKS_AUTH_LOCK) {
+            Authenticator.setDefault(object : Authenticator() {
+                override fun getPasswordAuthentication(): PasswordAuthentication? =
+                    if (requestorType == RequestorType.PROXY) {
+                        PasswordAuthentication(username, password.toCharArray())
+                    } else null
+            })
+            try {
+                val proxy = Proxy(
+                    Proxy.Type.SOCKS,
+                    InetSocketAddress.createUnresolved(candidate.host, candidate.port),
+                )
+                probeWithProxy(country, candidate, apiKey, proxy)
+            } finally {
+                Authenticator.setDefault(null)
             }
-        } else {
-            probeWithClient(country, candidate, apiKey, username, password)
         }
     }
 
-    private fun probeWithClient(
+    private fun probeWithProxy(
         country: JoynCountry,
         candidate: NordCandidate,
         apiKey: String,
-        username: String,
-        password: String,
+        proxy: Proxy,
     ): NordProbeResult {
-        val proxyType = when (candidate.transport) {
-            JoynProxyTransport.HTTP -> Proxy.Type.HTTP
-            JoynProxyTransport.SOCKS5 -> Proxy.Type.SOCKS
-        }
-        val proxy = Proxy(proxyType, InetSocketAddress.createUnresolved(candidate.host, candidate.port))
-        val builder = directClient.newBuilder()
+        val client = directClient.newBuilder()
             .proxy(proxy)
             .connectTimeout(PROBE_CONNECT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(PROBE_READ_SECONDS, TimeUnit.SECONDS)
             .callTimeout(PROBE_CALL_SECONDS, TimeUnit.SECONDS)
-
-        if (candidate.transport == JoynProxyTransport.HTTP) {
-            val credential = Credentials.basic(username, password)
-            builder.proxyAuthenticator { _, response ->
-                if (response.request.header("Proxy-Authorization") != null) null
-                else response.request.newBuilder().header("Proxy-Authorization", credential).build()
-            }
-        }
-        val client = builder.build()
+            .build()
 
         val actualCountry = runCatching {
             client.newCall(
@@ -354,7 +398,9 @@ internal class JoynNordVpnProxyResolver {
                 .build(),
         ).execute().use { response ->
             val body = response.body.string()
-            response.isSuccessful && runCatching { JSONObject(body).optString("entitlement_token").isNotBlank() }.getOrDefault(false)
+            response.isSuccessful && runCatching {
+                JSONObject(body).optString("entitlement_token").isNotBlank()
+            }.getOrDefault(false)
         }
     }.getOrDefault(false)
 
@@ -363,6 +409,7 @@ internal class JoynNordVpnProxyResolver {
         val host: String,
         val port: Int,
         val transport: JoynProxyTransport,
+        val tlsProxy: Boolean,
         val load: Int,
     )
     private data class ProbeToken(val accessToken: String, val tokenType: String)
@@ -377,13 +424,15 @@ internal class JoynNordVpnProxyResolver {
     private companion object {
         private val SOCKS_AUTH_LOCK = Any()
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
-        private const val MAX_SERVERS = 18
-        private const val PROBE_CONNECT_SECONDS = 3L
-        private const val PROBE_READ_SECONDS = 6L
-        private const val PROBE_CALL_SECONDS = 10L
+        private const val SERVER_FETCH_LIMIT = 100
+        private const val MAX_HTTPS_SERVERS = 30
+        private const val MAX_SOCKS_SERVERS = 15
+        private const val PROBE_CONNECT_SECONDS = 4L
+        private const val PROBE_READ_SECONDS = 8L
+        private const val PROBE_CALL_SECONDS = 14L
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
         private const val LIVE_PROBE_QUERY =
-            "query NordProxyLiveProbe { liveStreams(filterLivestreamsTypes: [LINEAR], first: 30, offset: 0) { id markings } }"
+            "query ProxyLiveProbe { liveStreams(filterLivestreamsTypes: [LINEAR], first: 30, offset: 0) { id markings } }"
     }
 }
