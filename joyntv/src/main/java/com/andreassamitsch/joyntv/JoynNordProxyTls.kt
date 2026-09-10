@@ -8,18 +8,18 @@ import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 
 /**
- * TLS compatibility layer for NordVPN's legacy HTTPS proxy endpoints (normally port 89).
+ * TLS transport for NordVPN's HTTPS proxy service on port 89.
  *
- * Android's HTTPS endpoint identification rejects some Nord proxy certificates because their
- * subjectAltName set does not match the individual de1234.nordvpn.com style hostname. Current
- * third-party Nord proxy clients commonly work around this with curl --proxy-insecure, but doing
- * that here would also disable certificate-chain validation for the proxy hop.
+ * Nord's server directory returns ordinary VPN hostnames such as de1544.nordvpn.com, while the
+ * HTTPS proxy service uses the corresponding proxy hostname de1544.proxy.nordvpn.com. The proxy
+ * certificate observed on-device is issued for *.proxy.nordvpn.com, which matches that service
+ * hostname. We therefore derive and dial the proxy hostname instead of weakening TLS verification
+ * for the ordinary VPN hostname.
  *
- * Instead we keep the platform/default trust manager and therefore normal CA-chain validation,
- * while performing a narrowly scoped Nord hostname check ourselves after the TLS handshake.
- * A connection is accepted only for a *.nordvpn.com host and only when the trusted leaf
- * certificate contains either a matching DNS SAN or a matching legacy CN such as
- * *.nordvpn.com. TLS to Joyn and every other destination remains untouched.
+ * The platform/default trust manager still validates the certificate chain. We additionally check
+ * the trusted leaf certificate against the derived *.proxy.nordvpn.com identity because Android
+ * devices can differ in how raw SSLSocket hostname verification treats legacy CN-only certificates.
+ * TLS from the CONNECT tunnel to Joyn remains completely independent and unchanged.
  */
 internal object JoynNordProxyTls {
     internal data class Connection(
@@ -33,27 +33,26 @@ internal object JoynNordProxyTls {
         connectTimeoutMs: Int,
         readTimeoutMs: Int,
     ): Connection {
-        val normalizedHost = host.trim().lowercase()
-        require(normalizedHost.endsWith(NORD_DOMAIN_SUFFIX) && normalizedHost.length > NORD_DOMAIN_SUFFIX.length) {
+        val directoryHost = host.trim().lowercase()
+        require(directoryHost.endsWith(NORD_DOMAIN_SUFFIX) && directoryHost.length > NORD_DOMAIN_SUFFIX.length) {
             "Nord proxy host outside allowed domain: $host"
         }
 
+        val proxyHost = toProxyHost(directoryHost)
         val raw = Socket()
         try {
-            raw.connect(InetSocketAddress(host, port), connectTimeoutMs)
+            raw.connect(InetSocketAddress(proxyHost, port), connectTimeoutMs)
             raw.soTimeout = readTimeoutMs
             raw.tcpNoDelay = true
 
             val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-            val tls = factory.createSocket(raw, host, port, true) as SSLSocket
+            val tls = factory.createSocket(raw, proxyHost, port, true) as SSLSocket
             tls.useClientMode = true
             tls.soTimeout = readTimeoutMs
             tls.tcpNoDelay = true
 
-            // Raw SSLSocket handshakes validate the certificate chain using the platform trust
-            // manager. We deliberately do not enable JSSE's HTTPS endpoint identification here,
-            // because that is exactly what rejects Nord's legacy proxy certificate. Identity is
-            // checked immediately below with a Nord-only policy.
+            // Keep normal CA-chain validation. Identity is checked explicitly immediately after the
+            // handshake so CN-only Nord proxy certificates work consistently across Android levels.
             tls.sslParameters = tls.sslParameters.apply {
                 endpointIdentificationAlgorithm = null
             }
@@ -68,29 +67,35 @@ internal object JoynNordProxyTls {
 
             val dnsSans = readDnsSans(certificate)
             val commonName = readCommonName(certificate)
-            val sanMatch = dnsSans.any { dnsMatches(it, normalizedHost) }
-            val cnMatch = commonName?.let { dnsMatches(it, normalizedHost) } == true
+            val sanMatch = dnsSans.any { dnsMatches(it, proxyHost) }
+            val cnMatch = commonName?.let { dnsMatches(it, proxyHost) } == true
 
             if (!sanMatch && !cnMatch) {
                 val summary = certificateSummary(certificate, dnsSans, commonName)
                 tls.close()
                 throw SSLHandshakeException(
-                    "Trusted certificate is not a Nord identity for $normalizedHost · $summary",
+                    "Trusted certificate does not match Nord proxy endpoint $proxyHost · $summary",
                 )
             }
 
-            val mode = when {
-                sanMatch -> "SAN"
-                else -> "legacy-CN"
-            }
+            val mode = if (sanMatch) "SAN" else "CN"
             return Connection(
                 socket = tls,
-                certificateSummary = "$mode · ${certificateSummary(certificate, dnsSans, commonName)}",
+                certificateSummary = "$directoryHost → $proxyHost · $mode · ${certificateSummary(certificate, dnsSans, commonName)}",
             )
         } catch (error: Throwable) {
             runCatching { raw.close() }
             throw error
         }
+    }
+
+    private fun toProxyHost(host: String): String {
+        if (host.endsWith(PROXY_DOMAIN_SUFFIX)) return host
+        val serverLabel = host.removeSuffix(NORD_DOMAIN_SUFFIX)
+        require(serverLabel.isNotBlank() && !serverLabel.contains('.')) {
+            "Unsupported Nord server hostname for proxy mapping: $host"
+        }
+        return "$serverLabel.proxy.nordvpn.com"
     }
 
     private fun readDnsSans(certificate: X509Certificate): List<String> = runCatching {
@@ -122,7 +127,7 @@ internal object JoynNordProxyTls {
         if (pattern == host) return true
         if (!pattern.startsWith("*.")) return false
 
-        val suffix = pattern.substring(1) // e.g. .nordvpn.com
+        val suffix = pattern.substring(1)
         if (!host.endsWith(suffix)) return false
         val firstLabel = host.removeSuffix(suffix)
         return firstLabel.isNotBlank() && !firstLabel.contains('.')
@@ -140,4 +145,5 @@ internal object JoynNordProxyTls {
 
     private const val DNS_SAN_TYPE = 2
     private const val NORD_DOMAIN_SUFFIX = ".nordvpn.com"
+    private const val PROXY_DOMAIN_SUFFIX = ".proxy.nordvpn.com"
 }
