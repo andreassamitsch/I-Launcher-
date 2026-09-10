@@ -72,7 +72,7 @@ internal class JoynNordHttpsCredentialDiagnostics {
                     return JoynNordHttpsCredentialDiagnosticReport(
                         JoynNordHttpsCredentialStatus.CONFIRMED,
                         reachable + 1,
-                        "HTTPS/89-Credentials: OK · ${result.host}.proxy.nordvpn.com akzeptiert CONNECT/Auth.",
+                        "HTTPS/89-Credentials: OK · ${proxyHostname(result.host)} akzeptiert CONNECT/Auth.",
                     )
                 }
                 is HttpsCredentialProbe.Rejected -> {
@@ -91,7 +91,7 @@ internal class JoynNordHttpsCredentialDiagnostics {
                 JoynNordHttpsCredentialStatus.REJECTED,
                 hosts.size,
                 "HTTPS/89-Credentials abgelehnt: $authRejected erreichbare Nord-Proxys antworteten mit HTTP 407. " +
-                    "Die 65-Server-Suche wird übersprungen. ${details.joinToString(" | ").take(360)}",
+                    "Die große Proxy-Suche wird übersprungen. ${details.joinToString(" | ").take(360)}",
             )
         }
 
@@ -101,6 +101,15 @@ internal class JoynNordHttpsCredentialDiagnostics {
             "HTTPS/89-Credential-Precheck nicht eindeutig; vollständige Suche wird fortgesetzt. " +
                 details.joinToString(" | ").take(360),
         )
+    }
+
+    private fun proxyHostname(host: String): String {
+        val normalized = host.trim().lowercase()
+        return if (normalized.endsWith(".proxy.nordvpn.com")) {
+            normalized
+        } else {
+            normalized.removeSuffix(".nordvpn.com") + ".proxy.nordvpn.com"
+        }
     }
 
     private fun loadProxySslHosts(country: JoynCountry): List<String> {
