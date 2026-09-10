@@ -12,6 +12,7 @@ import com.kape.openvpn.data.models.OpenVpnServerPeerInformation
 import com.kape.openvpn.domain.usecases.IOpenVpnMtuTestResultAnnouncer
 import com.kape.openvpn.presenters.OpenVpnAPI
 import com.kape.openvpn.presenters.OpenVpnBuilder
+import com.kape.openvpn.presenters.OpenVpnError
 import com.kape.openvpn.presenters.OpenVpnProcessEventHandler
 import com.kape.openvpn.presenters.OpenVpnState
 import com.kape.openvpn.presenters.OpenVpnUserCredentials
@@ -112,6 +113,7 @@ internal class JoynNordOpenVpnService : VpnService(), OpenVpnProcessEventHandler
         JoynNordTunnelRuntime.clearLogs()
         JoynNordTunnelRuntime.update(JoynNordTunnelState.Connecting(host))
         startForeground(NOTIFICATION_ID, buildNotification("NordVPN · $host wird verbunden"))
+        logNativeRuntime()
 
         val managementSocket = File(filesDir, MANAGEMENT_SOCKET_NAME).apply { delete() }.absolutePath
         val tempDirectory = File(cacheDir, "nord_openvpn_tmp").apply { mkdirs() }.absolutePath
@@ -285,6 +287,25 @@ internal class JoynNordOpenVpnService : VpnService(), OpenVpnProcessEventHandler
         return address to prefix
     }
 
+    private fun logNativeRuntime() {
+        val nativeDir = applicationInfo.nativeLibraryDir.orEmpty()
+        val executable = File(nativeDir, "libovpnexec.so")
+        val core = File(nativeDir, "libopenvpn.so")
+        JoynNordTunnelRuntime.log(
+            buildString {
+                append("OpenVPN native: ABI=${Build.SUPPORTED_ABIS.firstOrNull().orEmpty()}")
+                append(" · dir=$nativeDir")
+                append(" · ovpnexec exists=${executable.exists()}")
+                if (executable.exists()) {
+                    append(" size=${executable.length()}")
+                    append(" executable=${executable.canExecute()}")
+                }
+                append(" · libopenvpn exists=${core.exists()}")
+                if (core.exists()) append(" size=${core.length()}")
+            },
+        )
+    }
+
     private fun createNotificationChannel() {
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
@@ -315,7 +336,16 @@ internal class JoynNordOpenVpnService : VpnService(), OpenVpnProcessEventHandler
     }
 
     private fun summarize(error: Throwable): String {
-        val message = error.message.orEmpty().replace('\n', ' ').replace('\r', ' ').trim().take(180)
+        if (error is OpenVpnError) {
+            val nested = error.error?.message.orEmpty()
+                .replace('\n', ' ')
+                .replace('\r', ' ')
+                .trim()
+                .take(220)
+            val prefix = "OpenVpnError(${error.code})"
+            return if (nested.isBlank()) prefix else "$prefix: $nested"
+        }
+        val message = error.message.orEmpty().replace('\n', ' ').replace('\r', ' ').trim().take(220)
         return if (message.isBlank()) error.javaClass.simpleName else "${error.javaClass.simpleName}: $message"
     }
 
