@@ -11,6 +11,7 @@ internal class JoynRepository(context: Context) {
     private val regionSettings = JoynRegionSettings(appContext)
     private val proxySettings = JoynProxySettings(appContext)
     private val publicProxyResolver = JoynPublicProxyResolver()
+    private val nordVpnProxyResolver = JoynNordVpnProxyResolver()
     private val pinSettings = JoynParentalPinSettings(appContext)
     private val api = JoynApiClient(appContext)
     private val pinPlaybackApi = JoynPinPlaybackApiClient(appContext)
@@ -79,9 +80,6 @@ internal class JoynRepository(context: Context) {
         } catch (error: Throwable) {
             val details = error.message.orEmpty()
 
-            // Joyn also uses ENT_AgeVerificationSetupRequired when an anonymous session tries
-            // to start age-restricted content. In that case the useful action is login, not
-            // changing the already configured parental PIN in the Joyn account.
             if (details.contains("ENT_AgeVerificationSetupRequired", ignoreCase = true) &&
                 !api.accountState(refreshRemote = false).loggedIn
             ) {
@@ -144,8 +142,49 @@ internal class JoynRepository(context: Context) {
         )
     }
 
+    fun nordVpnServiceUsername(): String =
+        protocolPrefs.getString(KEY_NORD_USERNAME, "").orEmpty()
+
+    fun nordVpnServicePassword(): String =
+        protocolPrefs.getString(KEY_NORD_PASSWORD, "").orEmpty()
+
+    fun saveNordVpnServiceCredentials(username: String, password: String) {
+        protocolPrefs.edit()
+            .putString(KEY_NORD_USERNAME, username.trim())
+            .putString(KEY_NORD_PASSWORD, password)
+            .apply()
+    }
+
+    suspend fun findNordVpnProxy(
+        username: String,
+        password: String,
+        allTraffic: Boolean,
+        onProgress: (JoynProxyDiscoveryProgress) -> Unit = {},
+    ): JoynProxyDiscoveryResult {
+        val country = currentCountry()
+        return try {
+            nordVpnProxyResolver.findBest(
+                country = country,
+                allTraffic = allTraffic,
+                apiKey = protocolPrefs.getString("api_key_${country.name}", null),
+                username = username,
+                password = password,
+                onProgress = onProgress,
+            )
+        } finally {
+            // SOCKS authentication is process-global in java.net on Android. Restore the currently
+            // persisted Joyn proxy after the isolated Nord server scan has finished.
+            JoynProxySettings.install(appContext)
+        }
+    }
+
     fun setProxy(config: JoynProxyConfig) {
         proxySettings.save(config)
+    }
+
+    private companion object {
+        private const val KEY_NORD_USERNAME = "nordvpn_service_username"
+        private const val KEY_NORD_PASSWORD = "nordvpn_service_password"
     }
 }
 
