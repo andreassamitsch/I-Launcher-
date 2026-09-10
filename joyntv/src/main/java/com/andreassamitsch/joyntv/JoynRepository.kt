@@ -7,6 +7,7 @@ internal class JoynRepository(context: Context) {
         JoynRegionSettings.install(it)
         JoynProxySettings.install(it)
     }
+    private val protocolPrefs = appContext.getSharedPreferences("joyn_protocol", Context.MODE_PRIVATE)
     private val regionSettings = JoynRegionSettings(appContext)
     private val proxySettings = JoynProxySettings(appContext)
     private val publicProxyResolver = JoynPublicProxyResolver()
@@ -133,11 +134,15 @@ internal class JoynRepository(context: Context) {
     suspend fun findAutomaticProxy(
         allTraffic: Boolean,
         onProgress: (JoynProxyDiscoveryProgress) -> Unit = {},
-    ): JoynProxyDiscoveryResult = publicProxyResolver.findBest(
-        country = currentCountry(),
-        allTraffic = allTraffic,
-        onProgress = onProgress,
-    )
+    ): JoynProxyDiscoveryResult {
+        val country = currentCountry()
+        return publicProxyResolver.findBest(
+            country = country,
+            allTraffic = allTraffic,
+            apiKey = protocolPrefs.getString("api_key_${country.name}", null),
+            onProgress = onProgress,
+        )
+    }
 
     fun setProxy(config: JoynProxyConfig) {
         proxySettings.save(config)
