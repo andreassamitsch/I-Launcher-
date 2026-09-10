@@ -10,16 +10,16 @@ import java.net.Socket
 import java.util.Base64
 import java.util.concurrent.Executors
 import javax.net.ssl.SSLSocket
-import javax.net.ssl.SSLSocketFactory
 
 /**
  * Adapts a TLS/HTTPS forward proxy (such as NordVPN proxy_ssl on port 89) to a local plain
  * HTTP CONNECT proxy. OkHttp/Java's Proxy.Type.HTTP does not establish TLS to the proxy itself,
  * therefore it cannot talk to Nord's port 89 directly.
  *
- * The bridge only listens on 127.0.0.1. It opens a TLS connection to the remote proxy, verifies
- * the proxy certificate/hostname, injects Proxy-Authorization inside that encrypted connection,
- * and then relays the CONNECT tunnel byte-for-byte.
+ * The bridge only listens on 127.0.0.1. It opens a TLS connection to the remote proxy, keeps
+ * Android's normal CA-chain validation, applies the narrow Nord legacy-hostname compatibility
+ * check from JoynNordProxyTls, injects Proxy-Authorization inside that encrypted connection,
+ * and then relays the CONNECT tunnel byte-for-byte. TLS to Joyn itself remains fully independent.
  */
 internal class JoynTlsProxyBridge(
     private val remoteHost: String,
@@ -68,14 +68,12 @@ internal class JoynTlsProxyBridge(
                 return
             }
 
-            val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-            remote = factory.createSocket(remoteHost, remotePort) as SSLSocket
-            remote.soTimeout = HEADER_TIMEOUT_MS
-            remote.tcpNoDelay = true
-            remote.sslParameters = remote.sslParameters.apply {
-                endpointIdentificationAlgorithm = "HTTPS"
-            }
-            remote.startHandshake()
+            remote = JoynNordProxyTls.connect(
+                host = remoteHost,
+                port = remotePort,
+                connectTimeoutMs = HEADER_TIMEOUT_MS,
+                readTimeoutMs = HEADER_TIMEOUT_MS,
+            ).socket
 
             val outbound = withProxyAuthorization(requestHeader)
             remote.outputStream.write(outbound.toByteArray(Charsets.ISO_8859_1))
