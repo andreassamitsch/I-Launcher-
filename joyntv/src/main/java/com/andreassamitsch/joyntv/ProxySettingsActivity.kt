@@ -274,7 +274,7 @@ private fun ProxySettingsScreen(
 
                         if (nordTunnel) {
                             Text(
-                                "OpenVPN für ${country.name}: Die App lädt normale NordVPN-Server mit OpenVPN TCP, verbindet über deren offizielles .ovpn-Profil auf Port 443 und routet ausschließlich Joyn TV durch Androids VPN. Andere Apps und der I Launcher bleiben auf der normalen Verbindung. Nach jedem Tunnel wird die Exit-IP geprüft; gleiche Exit-IPs werden nur einmal gegen Joyn Live getestet.",
+                                "OpenVPN für ${country.name}: Die App lädt normale NordVPN-Server mit OpenVPN UDP/TCP und routet ausschließlich Joyn TV durch Androids VPN. Andere Apps und der I Launcher bleiben auf der normalen Verbindung. Nach jedem Tunnel wird die Exit-IP geprüft; gleiche Exit-IPs werden nur einmal gegen Joyn Live getestet.",
                                 color = Color(0xFFD7DBE3),
                                 fontSize = 14.sp,
                                 lineHeight = 20.sp,
@@ -282,7 +282,7 @@ private fun ProxySettingsScreen(
                             )
                             Spacer(Modifier.height(10.dp))
                             Text(
-                                "Beim ersten Start zeigt Android einmal den systemeigenen VPN-Berechtigungsdialog. Der Test verwendet zunächst TCP/443; UDP/1194 können wir ergänzen, sobald der Tunnel grundsätzlich funktioniert.",
+                                "UDP wird zuerst getestet, TCP dient als Fallback. Während der längeren Suche kannst du den Test jederzeit stoppen; danach bleibt die Zwischenbilanz mit den bisher getesteten Servern sichtbar.",
                                 color = Color(0xFFF1C27D),
                                 fontSize = 13.sp,
                                 lineHeight = 18.sp,
@@ -364,7 +364,7 @@ private fun ProxySettingsScreen(
                         "Direkt: Joyn verwendet die normale Internetverbindung."
                     }
                     automatic && nordVpn && nordTunnel ->
-                        "NordVPN OpenVPN Beta: normale OpenVPN-TCP-Server laden → Android-Tunnel nur für Joyn → Exit-IP deduplizieren → Joyn Live prüfen → ersten geeigneten Tunnel aktiv lassen."
+                        "NordVPN OpenVPN Beta: UDP/TCP-Server laden → Android-Tunnel nur für Joyn → Exit-IP deduplizieren → Joyn Live prüfen → ersten geeigneten Tunnel aktiv lassen."
                     automatic && nordVpn ->
                         "NordVPN HTTPS/89: Credentials prüfen → proxy_ssl-Server laden → Exit-IPs deduplizieren → Joyn Live prüfen. SOCKS5-Credential-Test separat auf Port 1080."
                     automatic -> "Öffentliche Automatik: Nur Proxys, die Joyns vollständige Live-Prüfung bestehen, werden aktiviert."
@@ -442,8 +442,6 @@ private fun ProxySettingsScreen(
                             testing = false
                             status = result.message
                             if (result.connected) {
-                                // The tunnel remains alive in its foreground VpnService; only the
-                                // mutually exclusive legacy proxy is persisted as disabled.
                                 onSave(initial.copy(enabled = false, automatic = true))
                             }
                         }
@@ -489,6 +487,13 @@ private fun ProxySettingsScreen(
                                 status = result.message
                             }
                         }
+                    }
+                }
+
+                if (testing && enabled && automatic && nordVpn && nordTunnel) {
+                    ProxyAction("Test stoppen") {
+                        status = "Stop angefordert … aktueller Tunnel wird getrennt; Zwischenbilanz wird vorbereitet."
+                        JoynNordOpenVpnScanControl.requestStop()
                     }
                 }
 
