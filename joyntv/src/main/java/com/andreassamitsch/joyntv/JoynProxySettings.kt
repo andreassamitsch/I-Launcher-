@@ -151,11 +151,20 @@ internal class JoynProxySettings(context: Context) {
             installProcessRouting(JoynProxySettings(context).current())
         }
 
+        /**
+         * Temporarily removes java.net proxy routing while an Android VpnService tunnel is being
+         * tested. This does not touch persisted proxy settings; callers can restore them with
+         * install(context) after an unsuccessful tunnel scan.
+         */
+        fun installDirectForTunnel() {
+            JoynTlsProxyBridge.stopShared()
+            ProxySelector.setDefault(originalProxySelector)
+            Authenticator.setDefault(originalAuthenticator)
+        }
+
         private fun installProcessRouting(config: JoynProxyConfig) {
             if (!config.isUsable) {
-                JoynTlsProxyBridge.stopShared()
-                ProxySelector.setDefault(originalProxySelector)
-                Authenticator.setDefault(originalAuthenticator)
+                installDirectForTunnel()
                 return
             }
 
