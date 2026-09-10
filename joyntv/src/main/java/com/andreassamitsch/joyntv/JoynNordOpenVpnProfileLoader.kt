@@ -13,6 +13,7 @@ internal data class JoynNordOpenVpnServer(
     val hostname: String,
     val station: String,
     val load: Int,
+    val recommended: Boolean = false,
 )
 
 internal enum class JoynNordOpenVpnTlsMode {
@@ -51,21 +52,21 @@ internal class JoynNordOpenVpnProfileLoader(context: Context) {
         .build()
 
     fun loadServers(country: JoynCountry): List<JoynNordOpenVpnServer> {
-        val urls = listOf(
-            "https://api.nordvpn.com/v1/servers/recommendations".toHttpUrl().newBuilder()
+        val sources = listOf(
+            true to "https://api.nordvpn.com/v1/servers/recommendations".toHttpUrl().newBuilder()
                 .addQueryParameter("limit", "100")
                 .addQueryParameter("filters[country_id]", countryId(country).toString())
                 .addQueryParameter("filters[servers_technologies][identifier]", "openvpn_tcp")
                 .build(),
-            "https://api.nordvpn.com/v1/servers".toHttpUrl().newBuilder()
-                .addQueryParameter("limit", "250")
+            false to "https://api.nordvpn.com/v1/servers".toHttpUrl().newBuilder()
+                .addQueryParameter("limit", "500")
                 .addQueryParameter("filters[country_id]", countryId(country).toString())
                 .addQueryParameter("filters[servers_technologies][identifier]", "openvpn_tcp")
                 .build(),
         )
 
         val merged = linkedMapOf<String, JoynNordOpenVpnServer>()
-        urls.forEach { url ->
+        sources.forEach { (recommended, url) ->
             val body = execute(url.toString()) ?: return@forEach
             val array = runCatching { JSONArray(body) }.getOrNull() ?: return@forEach
             for (index in 0 until array.length()) {
@@ -79,13 +80,26 @@ internal class JoynNordOpenVpnProfileLoader(context: Context) {
                     hostname = hostname,
                     station = station,
                     load = item.optInt("load", 100),
+                    recommended = recommended,
                 )
                 val old = merged[hostname]
-                if (old == null || server.load < old.load) merged[hostname] = server
+                merged[hostname] = when {
+                    old == null -> server
+                    old.recommended -> old.copy(load = minOf(old.load, server.load))
+                    recommended -> server.copy(load = minOf(old.load, server.load))
+                    server.load < old.load -> server
+                    else -> old
+                }
             }
         }
 
-        return merged.values.sortedWith(compareBy<JoynNordOpenVpnServer> { it.load }.thenBy { it.hostname })
+        // Nord's recommendations endpoint is the freshest signal for usable servers. Keep those
+        // ahead of the broad inventory; only use load as a secondary ordering criterion.
+        return merged.values.sortedWith(
+            compareByDescending<JoynNordOpenVpnServer> { it.recommended }
+                .thenBy { it.load }
+                .thenBy { it.hostname },
+        )
     }
 
     fun loadProfile(server: JoynNordOpenVpnServer): JoynNordOpenVpnProfile {
