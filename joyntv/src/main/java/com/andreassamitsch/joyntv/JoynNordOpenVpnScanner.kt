@@ -24,6 +24,7 @@ internal class JoynNordOpenVpnScanner(context: Context) {
     private val appContext = context.applicationContext
     private val loader = JoynNordOpenVpnProfileLoader(appContext)
     private val joynProbe = JoynNordTunnelJoynProbe()
+    private val httpsCredentialDiagnostics = JoynNordHttpsCredentialDiagnostics()
 
     suspend fun findBest(
         country: JoynCountry,
@@ -42,13 +43,19 @@ internal class JoynNordOpenVpnScanner(context: Context) {
             )
         }
 
+        val credentialFingerprint = JoynNordCredentialFingerprint.describe(username, password)
+        onProgress(JoynProxyDiscoveryProgress("Prüfe dieselben Nord-Credentials zuerst kurz auf HTTPS/89 …"))
+        val httpsCredentialCheck = runCatching {
+            httpsCredentialDiagnostics.run(country, username, password)
+        }.getOrNull()
+
         disconnectAndWait()
         onProgress(JoynProxyDiscoveryProgress("Lade normale NordVPN OpenVPN-TCP-Server für ${country.name} …"))
         val allServers = loader.loadServers(country)
         if (allServers.isEmpty()) {
             return JoynNordTunnelDiscoveryResult(
                 false,
-                message = "NordVPN-API lieferte keine OpenVPN-TCP-Server für ${country.name}.",
+                message = "NordVPN-API lieferte keine OpenVPN-TCP-Server für ${country.name}. · $credentialFingerprint",
             )
         }
 
@@ -112,6 +119,14 @@ internal class JoynNordOpenVpnScanner(context: Context) {
                         authFailures++
                         if (authFailures >= MAX_AUTH_FAILURES_BEFORE_ABORT) {
                             disconnectAndWait()
+                            val credentialConclusion = when (httpsCredentialCheck?.status) {
+                                JoynNordHttpsCredentialStatus.CONFIRMED ->
+                                    "Dieselben Credential-Bytes wurden unmittelbar davor vom Nord-HTTPS/89-Proxy akzeptiert, OpenVPN lehnt sie aber mit AUTH_FAILED ab. Das spricht gegen einen Eingabefehler und für unterschiedliche Nord-Authentifizierung/Service-Berechtigungen."
+                                JoynNordHttpsCredentialStatus.REJECTED ->
+                                    "Auch der unmittelbare HTTPS/89-Gegentest hat diese Credential-Bytes mit 407 abgelehnt. Credentials im Nord Account erneut prüfen."
+                                else ->
+                                    "Der parallele HTTPS/89-Credential-Gegentest war nicht eindeutig."
+                            }
                             return result(
                                 connected = false,
                                 attempted = attempted,
@@ -120,7 +135,7 @@ internal class JoynNordOpenVpnScanner(context: Context) {
                                 failures = failures,
                                 examples = examples,
                                 serverPool = allServers.size,
-                                messagePrefix = "NordVPN OpenVPN lehnt die Service-Credentials wiederholt mit AUTH_FAILED ab. Suche abgebrochen.",
+                                messagePrefix = "NordVPN OpenVPN lehnt die Service-Credentials wiederholt mit AUTH_FAILED ab. Suche abgebrochen. $credentialConclusion · $credentialFingerprint",
                             )
                         }
                     }
@@ -218,7 +233,7 @@ internal class JoynNordOpenVpnScanner(context: Context) {
             failures = failures,
             examples = examples,
             serverPool = allServers.size,
-            messagePrefix = "Kein getesteter normaler NordVPN-OpenVPN-Exit für ${country.name} bestand Joyn Live.",
+            messagePrefix = "Kein getesteter normaler NordVPN-OpenVPN-Exit für ${country.name} bestand Joyn Live. · $credentialFingerprint",
         )
     }
 
