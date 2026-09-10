@@ -7,7 +7,6 @@ import java.net.ConnectException
 import java.net.InetSocketAddress
 import java.net.PasswordAuthentication
 import java.net.Proxy
-import java.net.Socket
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.nio.charset.StandardCharsets
@@ -16,7 +15,6 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLSocket
-import javax.net.ssl.SSLSocketFactory
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -349,18 +347,15 @@ internal class JoynNordVpnProxyResolver {
         username: String,
         password: String,
     ): ProxyPreflight {
-        var raw: Socket? = null
         var tls: SSLSocket? = null
         return try {
-            raw = Socket()
-            raw.connect(InetSocketAddress(candidate.host, candidate.port), PREFLIGHT_CONNECT_TIMEOUT_MS)
-            raw.soTimeout = PREFLIGHT_READ_TIMEOUT_MS
-
-            val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-            tls = factory.createSocket(raw, candidate.host, candidate.port, true) as SSLSocket
-            tls.soTimeout = PREFLIGHT_READ_TIMEOUT_MS
-            tls.sslParameters = tls.sslParameters.apply { endpointIdentificationAlgorithm = "HTTPS" }
-            tls.startHandshake()
+            val tlsConnection = JoynNordProxyTls.connect(
+                host = candidate.host,
+                port = candidate.port,
+                connectTimeoutMs = PREFLIGHT_CONNECT_TIMEOUT_MS,
+                readTimeoutMs = PREFLIGHT_READ_TIMEOUT_MS,
+            )
+            tls = tlsConnection.socket
 
             val credentials = Base64.getEncoder().encodeToString(
                 "$username:$password".toByteArray(StandardCharsets.ISO_8859_1),
@@ -377,13 +372,16 @@ internal class JoynNordVpnProxyResolver {
 
             val reader = BufferedReader(InputStreamReader(tls.inputStream, StandardCharsets.ISO_8859_1))
             val statusLine = reader.readLine().orEmpty()
-            // Consume remaining CONNECT headers so the proxy has completed its response cleanly.
             while (true) {
                 val line = reader.readLine() ?: break
                 if (line.isEmpty()) break
             }
             when {
-                statusLine.contains(" 200 ") -> ProxyPreflight(true, "CONNECT", "HTTP 200")
+                statusLine.contains(" 200 ") -> ProxyPreflight(
+                    true,
+                    "CONNECT",
+                    "HTTP 200 · ${tlsConnection.certificateSummary.take(110)}",
+                )
                 statusLine.contains(" 407 ") -> ProxyPreflight(false, "AUTH", statusLine.ifBlank { "HTTP 407" })
                 statusLine.isBlank() -> ProxyPreflight(false, "CONNECT", "keine Antwort nach TLS-Handshake")
                 else -> ProxyPreflight(false, "CONNECT", statusLine)
@@ -398,7 +396,6 @@ internal class JoynNordVpnProxyResolver {
             }
         } finally {
             runCatching { tls?.close() }
-            runCatching { raw?.close() }
         }
     }
 
