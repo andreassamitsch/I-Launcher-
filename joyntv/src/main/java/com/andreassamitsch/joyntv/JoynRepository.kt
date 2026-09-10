@@ -18,6 +18,7 @@ internal class JoynRepository(context: Context) {
     private val nordVpnProxyResolver = JoynNordVpnProxyResolver()
     private val nordVpnDiagnostics = JoynNordVpnDiagnostics()
     private val nordCredentialDiagnostics = JoynNordCredentialDiagnostics()
+    private val nordHttpsCredentialDiagnostics = JoynNordHttpsCredentialDiagnostics()
     private val pinSettings = JoynParentalPinSettings(appContext)
     private val api = JoynApiClient(appContext)
     private val pinPlaybackApi = JoynPinPlaybackApiClient(appContext)
@@ -43,18 +44,12 @@ internal class JoynRepository(context: Context) {
         return page.copy(lanes = browseLanes + page.lanes)
     }
 
-    // Keep category opening deliberately close to the Kodi reference: the category card carries
-    // Joyn's original block id and the click resolves that id once through LandingBlocks. Do not
-    // let the generic browse cache replace the original lane with a lightweight block shell.
     suspend fun loadCategory(blockId: String, title: String): JoynCataloguePage =
         categoryApi.loadCategory(blockId, title)
 
     suspend fun loadChannel(path: String, title: String): JoynCataloguePage =
         browseApi.loadChannel(path, title)
 
-    // Teasers/genre entries are collection pages. Kodi treats StandardLane blocks in a collection
-    // as another folder and only renders Grid assets directly. Keep that semantic in one dedicated
-    // resolver instead of silently returning an empty generic browse page.
     suspend fun loadCollection(path: String, title: String): JoynCataloguePage =
         collectionApi.loadCollection(path, title)
 
@@ -79,8 +74,6 @@ internal class JoynRepository(context: Context) {
             return pinPlaybackApi.resolveVodPlayback(contentRef, explicitPin)
         }
 
-        // Keep the proven playback/session-recovery path for every VOD request. Joyn expects
-        // the PIN only after the entitlement service explicitly answers with ENT_PINRequired.
         return try {
             api.resolveVodPlayback(contentRef)
         } catch (error: Throwable) {
@@ -178,8 +171,30 @@ internal class JoynRepository(context: Context) {
         }
 
         return try {
-            // Always collect catalog diagnostics first while Nord discovery is still experimental.
-            // It does not use or print the user's Nord credentials.
+            // Validate the exact protocol we are about to use before scanning dozens of exits.
+            // A SOCKS5 failure must not invalidate HTTPS/89 credentials: the two Nord services can
+            // have different availability/auth behaviour. Only repeated explicit 407 responses on
+            // reachable proxy_ssl endpoints are treated as a hard credential rejection.
+            progressRelay(
+                JoynProxyDiscoveryProgress(
+                    "Prüfe NordVPN HTTPS/89-Service-Credentials …",
+                ),
+            )
+            val httpsCredentialDiagnostic = withContext(Dispatchers.IO) {
+                nordHttpsCredentialDiagnostics.run(country, username, password)
+            }
+
+            if (httpsCredentialDiagnostic.status == JoynNordHttpsCredentialStatus.REJECTED) {
+                return JoynProxyDiscoveryResult(
+                    config = null,
+                    candidates = httpsCredentialDiagnostic.attempted,
+                    attempted = httpsCredentialDiagnostic.attempted,
+                    message = httpsCredentialDiagnostic.summary,
+                )
+            }
+
+            // Keep the detailed Nord catalog diagnostic while discovery is experimental. It does
+            // not use or print the user's Nord credentials.
             val diagnostic = runCatching {
                 nordVpnDiagnostics.run(country, progressRelay)
             }.getOrElse { error ->
@@ -188,20 +203,17 @@ internal class JoynRepository(context: Context) {
                 )
             }
 
+            // This SOCKS test is informational only. A failure here says nothing about whether the
+            // HTTPS/89 service accepted the same credentials.
             progressRelay(
                 JoynProxyDiscoveryProgress(
-                    "Prüfe NordVPN-Service-Credentials über offiziellen SOCKS5-Dienst …",
+                    "Prüfe NordVPN-Service-Credentials zusätzlich über offiziellen SOCKS5-Dienst …",
                 ),
             )
             val credentialDiagnostic = withContext(Dispatchers.IO) {
                 nordCredentialDiagnostics.run(username, password)
             }
 
-            // The Nord resolver uses synchronous OkHttp calls for both directory lookup and
-            // endpoint probes. Running it from the Compose scope used to execute those calls on
-            // Android's main thread. NetworkOnMainThreadException was swallowed by executeDirect()
-            // and incorrectly appeared as an empty Nord server list. Keep all blocking Nord work
-            // on Dispatchers.IO and relay progress updates back to the main looper.
             val result = withContext(Dispatchers.IO) {
                 nordVpnProxyResolver.findBest(
                     country = country,
@@ -216,15 +228,14 @@ internal class JoynRepository(context: Context) {
             if (result.config == null) {
                 result.copy(
                     message = result.message +
-                        "\n\nNordVPN Credential-Debug:\n" + credentialDiagnostic.summary +
+                        "\n\nNordVPN HTTPS/89-Credential-Debug:\n" + httpsCredentialDiagnostic.summary +
+                        "\n\nNordVPN SOCKS5-Credential-Debug (nur Zusatztest):\n" + credentialDiagnostic.summary +
                         "\n\nNordVPN API-Debug:\n" + diagnostic.summary,
                 )
             } else {
                 result
             }
         } finally {
-            // SOCKS authentication is process-global in java.net on Android. Restore the currently
-            // persisted Joyn proxy after the isolated Nord server scan has finished.
             JoynProxySettings.install(appContext)
         }
     }
