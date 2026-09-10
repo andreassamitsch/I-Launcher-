@@ -47,6 +47,16 @@ android {
         buildConfig = true
     }
 
+    // The Kape OpenVPN core starts libovpnexec.so with ProcessBuilder from
+    // applicationInfo.nativeLibraryDir. Modern APK packaging normally keeps JNI libraries inside
+    // the APK, which makes that executable path unavailable at runtime. Legacy JNI packaging
+    // deliberately extracts libovpnexec.so and libopenvpn.so into nativeLibraryDir on install.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     signingConfigs {
         if (stableSigningConfigured) {
             create("stable") {
