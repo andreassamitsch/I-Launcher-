@@ -1,6 +1,10 @@
 package com.andreassamitsch.joyntv
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 internal class JoynRepository(context: Context) {
     private val appContext = context.applicationContext.also {
@@ -163,25 +167,41 @@ internal class JoynRepository(context: Context) {
         onProgress: (JoynProxyDiscoveryProgress) -> Unit = {},
     ): JoynProxyDiscoveryResult {
         val country = currentCountry()
+        val mainHandler = Handler(Looper.getMainLooper())
+        val progressRelay: (JoynProxyDiscoveryProgress) -> Unit = { progress ->
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                onProgress(progress)
+            } else {
+                mainHandler.post { onProgress(progress) }
+            }
+        }
+
         return try {
             // Always collect catalog diagnostics first while Nord discovery is still experimental.
             // It does not use or print the user's Nord credentials.
             val diagnostic = runCatching {
-                nordVpnDiagnostics.run(country, onProgress)
+                nordVpnDiagnostics.run(country, progressRelay)
             }.getOrElse { error ->
                 JoynNordVpnDiagnosticReport(
                     "Diagnose selbst fehlgeschlagen: ${error.javaClass.simpleName}: ${error.message.orEmpty()}",
                 )
             }
 
-            val result = nordVpnProxyResolver.findBest(
-                country = country,
-                allTraffic = allTraffic,
-                apiKey = protocolPrefs.getString("api_key_${country.name}", null),
-                username = username,
-                password = password,
-                onProgress = onProgress,
-            )
+            // The Nord resolver uses synchronous OkHttp calls for both directory lookup and
+            // endpoint probes. Running it from the Compose scope used to execute those calls on
+            // Android's main thread. NetworkOnMainThreadException was swallowed by executeDirect()
+            // and incorrectly appeared as an empty Nord server list. Keep all blocking Nord work
+            // on Dispatchers.IO and relay progress updates back to the main looper.
+            val result = withContext(Dispatchers.IO) {
+                nordVpnProxyResolver.findBest(
+                    country = country,
+                    allTraffic = allTraffic,
+                    apiKey = protocolPrefs.getString("api_key_${country.name}", null),
+                    username = username,
+                    password = password,
+                    onProgress = progressRelay,
+                )
+            }
 
             if (result.config == null) {
                 result.copy(
