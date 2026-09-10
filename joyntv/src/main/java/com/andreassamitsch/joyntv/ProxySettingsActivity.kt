@@ -1,9 +1,12 @@
 package com.andreassamitsch.joyntv
 
 import android.content.Intent
+import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,15 +45,29 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 class ProxySettingsActivity : ComponentActivity() {
+    private lateinit var vpnPermissionLauncher: ActivityResultLauncher<Intent>
+    private var vpnPermissionCallback: ((Boolean) -> Unit)? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        vpnPermissionLauncher = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult(),
+        ) {
+            val granted = VpnService.prepare(this) == null
+            vpnPermissionCallback?.invoke(granted)
+            vpnPermissionCallback = null
+        }
+
         val repository = JoynRepository(applicationContext)
         setContent {
             JoynTvTheme {
                 ProxySettingsScreen(
                     initial = repository.proxyConfig(),
+                    initialTunnelState = repository.nordVpnOpenVpnState(),
                     country = repository.currentCountry(),
                     savedNordUsername = repository.nordVpnServiceUsername(),
                     savedNordPassword = repository.nordVpnServicePassword(),
@@ -58,6 +76,19 @@ class ProxySettingsActivity : ComponentActivity() {
                     },
                     onNordResolve = { username, password, allTraffic, onProgress ->
                         repository.findNordVpnProxy(username, password, allTraffic, onProgress)
+                    },
+                    onNordTunnelResolve = { username, password, onProgress ->
+                        if (!ensureVpnPermission()) {
+                            JoynNordTunnelDiscoveryResult(
+                                connected = false,
+                                message = "Android-VPN-Berechtigung wurde nicht erteilt.",
+                            )
+                        } else {
+                            repository.findNordVpnOpenVpnTunnel(username, password, onProgress)
+                        }
+                    },
+                    onNordTunnelDisconnect = {
+                        repository.disconnectNordVpnOpenVpnTunnel()
                     },
                     onRememberNordCredentials = { username, password ->
                         repository.saveNordVpnServiceCredentials(username, password)
@@ -75,11 +106,23 @@ class ProxySettingsActivity : ComponentActivity() {
             }
         }
     }
+
+    private suspend fun ensureVpnPermission(): Boolean {
+        val intent = VpnService.prepare(this) ?: return true
+        return suspendCancellableCoroutine { continuation ->
+            vpnPermissionCallback = { granted ->
+                if (continuation.isActive) continuation.resume(granted)
+            }
+            continuation.invokeOnCancellation { vpnPermissionCallback = null }
+            vpnPermissionLauncher.launch(intent)
+        }
+    }
 }
 
 @Composable
 private fun ProxySettingsScreen(
     initial: JoynProxyConfig,
+    initialTunnelState: JoynNordTunnelState,
     country: JoynCountry,
     savedNordUsername: String,
     savedNordPassword: String,
@@ -93,14 +136,24 @@ private fun ProxySettingsScreen(
         allTraffic: Boolean,
         onProgress: (JoynProxyDiscoveryProgress) -> Unit,
     ) -> JoynProxyDiscoveryResult,
+    onNordTunnelResolve: suspend (
+        username: String,
+        password: String,
+        onProgress: (JoynProxyDiscoveryProgress) -> Unit,
+    ) -> JoynNordTunnelDiscoveryResult,
+    onNordTunnelDisconnect: suspend () -> Unit,
     onRememberNordCredentials: (String, String) -> Unit,
     onSave: (JoynProxyConfig) -> Unit,
     onBack: () -> Unit,
 ) {
-    val initialNord = initial.automatic && initial.source.startsWith("NordVPN")
-    var enabled by remember { mutableStateOf(initial.enabled) }
-    var automatic by remember { mutableStateOf(initial.automatic) }
+    val liveTunnelState by JoynNordTunnelRuntime.state.collectAsState()
+    val initialTunnelActive = initialTunnelState is JoynNordTunnelState.Connected
+    val tunnelConnected = liveTunnelState is JoynNordTunnelState.Connected
+    val initialNord = initialTunnelActive || (initial.automatic && initial.source.startsWith("NordVPN"))
+    var enabled by remember { mutableStateOf(initial.enabled || initialTunnelActive) }
+    var automatic by remember { mutableStateOf(if (initialTunnelActive) true else initial.automatic) }
     var nordVpn by remember { mutableStateOf(initialNord) }
+    var nordTunnel by remember { mutableStateOf(initialTunnelActive) }
     var allTraffic by remember { mutableStateOf(initial.allTraffic) }
     var host by remember { mutableStateOf(initial.host) }
     var port by remember { mutableStateOf(initial.port.takeIf { it > 0 }?.toString().orEmpty()) }
@@ -115,14 +168,19 @@ private fun ProxySettingsScreen(
     var testing by remember { mutableStateOf(false) }
     var status by remember {
         mutableStateOf(
-            if (initial.enabled && initial.automatic && initial.isUsable) {
-                buildString {
-                    append("Aktuell automatisch gewählt: ${initial.host}:${initial.port}")
-                    if (initial.latencyMs >= 0) append(" · ${initial.latencyMs} ms")
-                    if (initial.source.isNotBlank()) append(" · ${initial.source}")
+            when (val tunnel = initialTunnelState) {
+                is JoynNordTunnelState.Connected ->
+                    "Aktiver NordVPN OpenVPN-Tunnel: ${tunnel.host}" +
+                        tunnel.peerAddress.takeIf(String::isNotBlank)?.let { " · TUN $it" }.orEmpty()
+                else -> if (initial.enabled && initial.automatic && initial.isUsable) {
+                    buildString {
+                        append("Aktuell automatisch gewählt: ${initial.host}:${initial.port}")
+                        if (initial.latencyMs >= 0) append(" · ${initial.latencyMs} ms")
+                        if (initial.source.isNotBlank()) append(" · ${initial.source}")
+                    }
+                } else {
+                    ""
                 }
-            } else {
-                ""
             },
         )
     }
@@ -138,14 +196,14 @@ private fun ProxySettingsScreen(
                 .padding(horizontal = horizontal, vertical = if (compact) 24.dp else 46.dp),
         ) {
             Text(
-                "Joyn Test-Proxy",
+                "Joyn Netzwerk-Test",
                 color = Color.White,
                 fontSize = if (compact) 29.sp else 40.sp,
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "Für DE/AT/CH-Tests kann Joyns Steuerverkehr über einen Proxy im Zielland laufen. Ein automatisch gewählter Proxy wird erst aktiviert, wenn auch Joyn GraphQL und eine echte Live-Freigabe funktionieren.",
+                "Für DE/AT/CH-Tests kann Joyn wahlweise über einen Proxy oder über einen app-eigenen NordVPN-Tunnel laufen. Aktiviert bleibt nur eine Variante, die Joyns echte Live-Freigabe besteht.",
                 color = Color(0xFFD7DBE3),
                 fontSize = if (compact) 13.sp else 15.sp,
                 lineHeight = if (compact) 18.sp else 21.sp,
@@ -154,10 +212,10 @@ private fun ProxySettingsScreen(
             Spacer(Modifier.height(22.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ProxyChoice("Proxy aus", !enabled) {
+                ProxyChoice("Direkt", !enabled) {
                     if (!testing) enabled = false
                 }
-                ProxyChoice("Proxy an", enabled) {
+                ProxyChoice("Proxy / VPN", enabled) {
                     if (!testing) enabled = true
                 }
             }
@@ -169,16 +227,22 @@ private fun ProxySettingsScreen(
                         if (!testing) automatic = true
                     }
                     ProxyChoice("Manuell", !automatic) {
-                        if (!testing) automatic = false
+                        if (!testing) {
+                            automatic = false
+                            nordTunnel = false
+                        }
                     }
                 }
-                Spacer(Modifier.height(14.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ProxyChoice("Nur API / Token", !allTraffic) {
-                        if (!testing) allTraffic = false
-                    }
-                    ProxyChoice("Alles inkl. Stream", allTraffic) {
-                        if (!testing) allTraffic = true
+
+                if (!(automatic && nordVpn && nordTunnel)) {
+                    Spacer(Modifier.height(14.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ProxyChoice("Nur API / Token", !allTraffic) {
+                            if (!testing) allTraffic = false
+                        }
+                        ProxyChoice("Alles inkl. Stream", allTraffic) {
+                            if (!testing) allTraffic = true
+                        }
                     }
                 }
                 Spacer(Modifier.height(22.dp))
@@ -186,7 +250,10 @@ private fun ProxySettingsScreen(
                 if (automatic) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         ProxyChoice("Öffentliche Proxys", !nordVpn) {
-                            if (!testing) nordVpn = false
+                            if (!testing) {
+                                nordVpn = false
+                                nordTunnel = false
+                            }
                         }
                         ProxyChoice("NordVPN", nordVpn) {
                             if (!testing) nordVpn = true
@@ -195,16 +262,45 @@ private fun ProxySettingsScreen(
                     Spacer(Modifier.height(18.dp))
 
                     if (nordVpn) {
-                        Text(
-                            "NordVPN für ${country.name}: Die App lädt alle von Nord als proxy_ssl markierten Server des Ziellandes auf HTTPS-Port 89, ermittelt deren tatsächliche Exit-IP und prüft jede eindeutige Exit-IP nur einmal gegen Joyn Live. Mehrere Server mit derselben Exit-IP werden übersprungen. SOCKS5 ist ein separater Zusatztest auf Port 1080 und wird nicht als DE/CH-Fallback geraten.",
-                            color = Color(0xFFD7DBE3),
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp,
-                            modifier = Modifier.widthIn(max = 900.dp),
-                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            ProxyChoice("HTTPS Proxy :89", !nordTunnel) {
+                                if (!testing) nordTunnel = false
+                            }
+                            ProxyChoice("OpenVPN Tunnel Beta", nordTunnel) {
+                                if (!testing) nordTunnel = true
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+
+                        if (nordTunnel) {
+                            Text(
+                                "OpenVPN für ${country.name}: Die App lädt normale NordVPN-Server mit OpenVPN TCP, verbindet über deren offizielles .ovpn-Profil auf Port 443 und routet ausschließlich Joyn TV durch Androids VPN. Andere Apps und der I Launcher bleiben auf der normalen Verbindung. Nach jedem Tunnel wird die Exit-IP geprüft; gleiche Exit-IPs werden nur einmal gegen Joyn Live getestet.",
+                                color = Color(0xFFD7DBE3),
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp,
+                                modifier = Modifier.widthIn(max = 900.dp),
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                "Beim ersten Start zeigt Android einmal den systemeigenen VPN-Berechtigungsdialog. Der Test verwendet zunächst TCP/443; UDP/1194 können wir ergänzen, sobald der Tunnel grundsätzlich funktioniert.",
+                                color = Color(0xFFF1C27D),
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                                modifier = Modifier.widthIn(max = 900.dp),
+                            )
+                        } else {
+                            Text(
+                                "HTTPS-Proxy für ${country.name}: Die App lädt alle von Nord als proxy_ssl markierten Server auf Port 89, ermittelt deren tatsächliche Exit-IP und prüft jede eindeutige Exit-IP nur einmal gegen Joyn Live.",
+                                color = Color(0xFFD7DBE3),
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp,
+                                modifier = Modifier.widthIn(max = 900.dp),
+                            )
+                        }
+
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            "Verwende die NordVPN-Service-Zugangsdaten aus der manuellen Einrichtung, nicht zwingend E-Mail und Account-Passwort. Die Daten werden auf diesem Gerät gespeichert, damit du sie nur einmal eingeben musst.",
+                            "Verwende die NordVPN-Service-Zugangsdaten aus der manuellen Einrichtung. Sie werden auf diesem Gerät gespeichert, damit du sie nur einmal eingeben musst.",
                             color = Color(0xFFF1C27D),
                             fontSize = 13.sp,
                             lineHeight = 18.sp,
@@ -246,7 +342,7 @@ private fun ProxySettingsScreen(
                     }
                 } else {
                     ProxyFieldLabel("Proxy Host")
-                    ProxyField(host, { host = it }, "z. B. de1465.nordvpn.com", false)
+                    ProxyField(host, { host = it }, "z. B. de1465.proxy.nordvpn.com", false)
                     Spacer(Modifier.height(12.dp))
                     ProxyFieldLabel("Port")
                     ProxyField(port, { port = it.filter(Char::isDigit).take(5) }, "89", false)
@@ -262,10 +358,17 @@ private fun ProxySettingsScreen(
             Spacer(Modifier.height(24.dp))
             Text(
                 when {
-                    !enabled -> "Proxy ist deaktiviert. Joyn verwendet die normale Internetverbindung."
-                    automatic && nordVpn -> "NordVPN-Automatik: HTTPS/89-Credentials prüfen → alle proxy_ssl-Server laden → Exit-IPs ermitteln/deduplizieren → eindeutige Exit-IPs gegen Joyn Live prüfen → ersten geeigneten Exit aktivieren. SOCKS5-Credential-Test separat auf 1080."
+                    !enabled -> if (tunnelConnected) {
+                        "Direkt gewählt. Beim Speichern wird der aktive OpenVPN-Tunnel getrennt."
+                    } else {
+                        "Direkt: Joyn verwendet die normale Internetverbindung."
+                    }
+                    automatic && nordVpn && nordTunnel ->
+                        "NordVPN OpenVPN Beta: normale OpenVPN-TCP-Server laden → Android-Tunnel nur für Joyn → Exit-IP deduplizieren → Joyn Live prüfen → ersten geeigneten Tunnel aktiv lassen."
+                    automatic && nordVpn ->
+                        "NordVPN HTTPS/89: Credentials prüfen → proxy_ssl-Server laden → Exit-IPs deduplizieren → Joyn Live prüfen. SOCKS5-Credential-Test separat auf Port 1080."
                     automatic -> "Öffentliche Automatik: Nur Proxys, die Joyns vollständige Live-Prüfung bestehen, werden aktiviert."
-                    else -> "Aktiv: ${if (allTraffic) "gesamter App-Verkehr" else "Joyn API/Auth/Entitlement/Playlist"} über den manuellen Proxy. Beim Speichern wird die aktuelle Joyn-Sitzung verworfen und neu aufgebaut."
+                    else -> "Aktiv: ${if (allTraffic) "gesamter App-Verkehr" else "Joyn API/Auth/Entitlement/Playlist"} über den manuellen Proxy."
                 },
                 color = Color(0xFF9FA8B5),
                 fontSize = 13.sp,
@@ -281,7 +384,8 @@ private fun ProxySettingsScreen(
                 ProxyAction("Zurück", enabled = !testing, onClick = onBack)
                 ProxyAction(
                     label = when {
-                        testing -> "Proxys werden getestet …"
+                        testing -> if (nordTunnel) "OpenVPN wird getestet …" else "Proxys werden getestet …"
+                        enabled && automatic && nordVpn && nordTunnel -> "OpenVPN suchen & verbinden"
                         enabled && automatic && nordVpn -> "NordVPN suchen & aktivieren"
                         enabled && automatic -> "Suchen & aktivieren"
                         else -> "Speichern"
@@ -289,13 +393,25 @@ private fun ProxySettingsScreen(
                     enabled = saveEnabled,
                 ) {
                     when {
-                        !enabled -> onSave(
-                            initial.copy(
-                                enabled = false,
-                                automatic = automatic,
-                                allTraffic = allTraffic,
-                            ),
-                        )
+                        !enabled -> {
+                            if (tunnelConnected) {
+                                scope.launch {
+                                    testing = true
+                                    status = "Trenne NordVPN OpenVPN-Tunnel …"
+                                    runCatching { onNordTunnelDisconnect() }
+                                    testing = false
+                                    onSave(initial.copy(enabled = false))
+                                }
+                            } else {
+                                onSave(
+                                    initial.copy(
+                                        enabled = false,
+                                        automatic = automatic,
+                                        allTraffic = allTraffic,
+                                    ),
+                                )
+                            }
+                        }
 
                         !automatic -> onSave(
                             JoynProxyConfig(
@@ -309,11 +425,34 @@ private fun ProxySettingsScreen(
                             ),
                         )
 
+                        automatic && nordVpn && nordTunnel -> scope.launch {
+                            testing = true
+                            onRememberNordCredentials(nordUsername, nordPassword)
+                            status = "Prüfe Android-VPN-Berechtigung …"
+                            val result = runCatching {
+                                onNordTunnelResolve(nordUsername, nordPassword) { progress ->
+                                    status = progress.message
+                                }
+                            }.getOrElse { error ->
+                                JoynNordTunnelDiscoveryResult(
+                                    connected = false,
+                                    message = "OpenVPN-Suche fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}",
+                                )
+                            }
+                            testing = false
+                            status = result.message
+                            if (result.connected) {
+                                // The tunnel remains alive in its foreground VpnService; only the
+                                // mutually exclusive legacy proxy is persisted as disabled.
+                                onSave(initial.copy(enabled = false, automatic = true))
+                            }
+                        }
+
                         else -> scope.launch {
                             testing = true
                             val result = if (nordVpn) {
                                 onRememberNordCredentials(nordUsername, nordPassword)
-                                status = "Lade NordVPN-Server für ${country.name} …"
+                                status = "Lade NordVPN-Proxyserver für ${country.name} …"
                                 runCatching {
                                     onNordResolve(nordUsername, nordPassword, allTraffic) { progress ->
                                         status = progress.message
@@ -349,6 +488,19 @@ private fun ProxySettingsScreen(
                             } else {
                                 status = result.message
                             }
+                        }
+                    }
+                }
+
+                if (tunnelConnected && !testing) {
+                    ProxyAction("Tunnel trennen") {
+                        scope.launch {
+                            testing = true
+                            status = "Trenne NordVPN OpenVPN-Tunnel …"
+                            runCatching { onNordTunnelDisconnect() }
+                                .onSuccess { status = "OpenVPN-Tunnel getrennt." }
+                                .onFailure { status = "Trennen fehlgeschlagen: ${it.message ?: it.javaClass.simpleName}" }
+                            testing = false
                         }
                     }
                 }
