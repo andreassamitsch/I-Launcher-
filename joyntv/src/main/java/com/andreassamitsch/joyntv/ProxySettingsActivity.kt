@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -150,11 +151,11 @@ private fun ProxySettingsScreen(
     val initialTunnelActive = initialTunnelState is JoynNordTunnelState.Connected
     val tunnelConnected = liveTunnelState is JoynNordTunnelState.Connected
     val initialNord = initialTunnelActive || (initial.automatic && initial.source.startsWith("NordVPN"))
-    var enabled by remember { mutableStateOf(initial.enabled || initialTunnelActive) }
-    var automatic by remember { mutableStateOf(if (initialTunnelActive) true else initial.automatic) }
-    var nordVpn by remember { mutableStateOf(initialNord) }
-    var nordTunnel by remember { mutableStateOf(initialTunnelActive) }
-    var allTraffic by remember { mutableStateOf(initial.allTraffic) }
+    var enabled by rememberSaveable { mutableStateOf(initial.enabled || initialTunnelActive) }
+    var automatic by rememberSaveable { mutableStateOf(if (initialTunnelActive) true else initial.automatic) }
+    var nordVpn by rememberSaveable { mutableStateOf(initialNord) }
+    var nordTunnel by rememberSaveable { mutableStateOf(initialTunnelActive) }
+    var allTraffic by rememberSaveable { mutableStateOf(initial.allTraffic) }
     var host by remember { mutableStateOf(initial.host) }
     var port by remember { mutableStateOf(initial.port.takeIf { it > 0 }?.toString().orEmpty()) }
     var username by remember { mutableStateOf(initial.username) }
@@ -166,7 +167,7 @@ private fun ProxySettingsScreen(
         mutableStateOf(savedNordPassword.ifBlank { if (initialNord) initial.password else "" })
     }
     var testing by remember { mutableStateOf(false) }
-    var status by remember {
+    var status by rememberSaveable {
         mutableStateOf(
             when (val tunnel = initialTunnelState) {
                 is JoynNordTunnelState.Connected ->
