@@ -9,11 +9,18 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 
+internal enum class JoynNordOpenVpnTransport {
+    UDP,
+    TCP,
+}
+
 internal data class JoynNordOpenVpnServer(
     val hostname: String,
     val station: String,
     val load: Int,
     val recommended: Boolean = false,
+    val supportsUdp: Boolean = false,
+    val supportsTcp: Boolean = false,
 )
 
 internal enum class JoynNordOpenVpnTlsMode {
@@ -39,7 +46,7 @@ internal data class JoynNordOpenVpnProfile(
     val mssFix: Int?,
 )
 
-/** Loads current normal NordVPN OpenVPN servers and their official TCP profiles. */
+/** Loads current normal NordVPN OpenVPN servers and their official UDP/TCP profiles. */
 internal class JoynNordOpenVpnProfileLoader(context: Context) {
     private val appContext = context.applicationContext
     private val client = OkHttpClient.Builder()
@@ -52,22 +59,65 @@ internal class JoynNordOpenVpnProfileLoader(context: Context) {
         .build()
 
     fun loadServers(country: JoynCountry): List<JoynNordOpenVpnServer> {
+        data class Source(
+            val recommended: Boolean,
+            val transport: JoynNordOpenVpnTransport,
+            val url: String,
+        )
+
+        fun endpoint(
+            base: String,
+            limit: Int,
+            technology: String,
+        ): String = base.toHttpUrl().newBuilder()
+            .addQueryParameter("limit", limit.toString())
+            .addQueryParameter("filters[country_id]", countryId(country).toString())
+            .addQueryParameter("filters[servers_technologies][identifier]", technology)
+            .build()
+            .toString()
+
         val sources = listOf(
-            true to "https://api.nordvpn.com/v1/servers/recommendations".toHttpUrl().newBuilder()
-                .addQueryParameter("limit", "100")
-                .addQueryParameter("filters[country_id]", countryId(country).toString())
-                .addQueryParameter("filters[servers_technologies][identifier]", "openvpn_tcp")
-                .build(),
-            false to "https://api.nordvpn.com/v1/servers".toHttpUrl().newBuilder()
-                .addQueryParameter("limit", "500")
-                .addQueryParameter("filters[country_id]", countryId(country).toString())
-                .addQueryParameter("filters[servers_technologies][identifier]", "openvpn_tcp")
-                .build(),
+            Source(
+                recommended = true,
+                transport = JoynNordOpenVpnTransport.UDP,
+                url = endpoint(
+                    "https://api.nordvpn.com/v1/servers/recommendations",
+                    100,
+                    "openvpn_udp",
+                ),
+            ),
+            Source(
+                recommended = true,
+                transport = JoynNordOpenVpnTransport.TCP,
+                url = endpoint(
+                    "https://api.nordvpn.com/v1/servers/recommendations",
+                    100,
+                    "openvpn_tcp",
+                ),
+            ),
+            Source(
+                recommended = false,
+                transport = JoynNordOpenVpnTransport.UDP,
+                url = endpoint(
+                    "https://api.nordvpn.com/v1/servers",
+                    500,
+                    "openvpn_udp",
+                ),
+            ),
+            Source(
+                recommended = false,
+                transport = JoynNordOpenVpnTransport.TCP,
+                url = endpoint(
+                    "https://api.nordvpn.com/v1/servers",
+                    500,
+                    "openvpn_tcp",
+                ),
+            ),
         )
 
         val merged = linkedMapOf<String, JoynNordOpenVpnServer>()
-        sources.forEach { (recommended, url) ->
-            val body = execute(url.toString()) ?: return@forEach
+        sources.forEach { source ->
+            val body = execute(source.url) ?: return@forEach
             val array = runCatching { JSONArray(body) }.getOrNull() ?: return@forEach
             for (index in 0 until array.length()) {
                 val item = array.optJSONObject(index) ?: continue
@@ -75,26 +125,35 @@ internal class JoynNordOpenVpnProfileLoader(context: Context) {
                 if (hostname.isBlank() || !hostname.startsWith(country.name.lowercase())) continue
                 val status = item.optString("status")
                 if (status.isNotBlank() && !status.equals("online", ignoreCase = true)) continue
+
                 val station = item.optString("station").trim()
-                val server = JoynNordOpenVpnServer(
-                    hostname = hostname,
-                    station = station,
-                    load = item.optInt("load", 100),
-                    recommended = recommended,
-                )
                 val old = merged[hostname]
-                merged[hostname] = when {
-                    old == null -> server
-                    old.recommended -> old.copy(load = minOf(old.load, server.load))
-                    recommended -> server.copy(load = minOf(old.load, server.load))
-                    server.load < old.load -> server
-                    else -> old
+                val load = item.optInt("load", 100)
+                val supportsUdp = source.transport == JoynNordOpenVpnTransport.UDP
+                val supportsTcp = source.transport == JoynNordOpenVpnTransport.TCP
+
+                merged[hostname] = if (old == null) {
+                    JoynNordOpenVpnServer(
+                        hostname = hostname,
+                        station = station,
+                        load = load,
+                        recommended = source.recommended,
+                        supportsUdp = supportsUdp,
+                        supportsTcp = supportsTcp,
+                    )
+                } else {
+                    old.copy(
+                        station = old.station.ifBlank { station },
+                        load = minOf(old.load, load),
+                        recommended = old.recommended || source.recommended,
+                        supportsUdp = old.supportsUdp || supportsUdp,
+                        supportsTcp = old.supportsTcp || supportsTcp,
+                    )
                 }
             }
         }
 
-        // Nord's recommendations endpoint is the freshest signal for usable servers. Keep those
-        // ahead of the broad inventory; only use load as a secondary ordering criterion.
+        // Nord recommendations are the freshest signal. Inside that group prefer low-load servers.
         return merged.values.sortedWith(
             compareByDescending<JoynNordOpenVpnServer> { it.recommended }
                 .thenBy { it.load }
@@ -102,10 +161,29 @@ internal class JoynNordOpenVpnProfileLoader(context: Context) {
         )
     }
 
-    fun loadProfile(server: JoynNordOpenVpnServer): JoynNordOpenVpnProfile {
-        val url = "https://downloads.nordcdn.com/configs/files/ovpn_tcp/servers/${server.hostname}.tcp.ovpn"
+    fun loadProfile(
+        server: JoynNordOpenVpnServer,
+        transport: JoynNordOpenVpnTransport,
+    ): JoynNordOpenVpnProfile {
+        val directory: String
+        val suffix: String
+        val defaultProtocol: String
+        when (transport) {
+            JoynNordOpenVpnTransport.UDP -> {
+                directory = "ovpn_udp"
+                suffix = "udp"
+                defaultProtocol = "udp"
+            }
+            JoynNordOpenVpnTransport.TCP -> {
+                directory = "ovpn_tcp"
+                suffix = "tcp"
+                defaultProtocol = "tcp-client"
+            }
+        }
+
+        val url = "https://downloads.nordcdn.com/configs/files/$directory/servers/${server.hostname}.$suffix.ovpn"
         val text = execute(url)
-            ?: error("Nord OpenVPN-Profil für ${server.hostname} konnte nicht geladen werden")
+            ?: error("Nord OpenVPN-$suffix-Profil für ${server.hostname} konnte nicht geladen werden")
 
         val remoteLine = directive(text, "remote")
             ?: error("Nord-Profil ${server.hostname}: remote fehlt")
@@ -116,7 +194,7 @@ internal class JoynNordOpenVpnProfileLoader(context: Context) {
             ?: error("Nord-Profil ${server.hostname}: remote port fehlt")
 
         val protocol = directive(text, "proto")?.substringBefore(' ')?.trim().orEmpty()
-            .ifBlank { "tcp-client" }
+            .ifBlank { defaultProtocol }
         val caPem = inlineBlock(text, "ca")
             ?: error("Nord-Profil ${server.hostname}: CA-Zertifikat fehlt")
 
@@ -132,9 +210,9 @@ internal class JoynNordOpenVpnProfileLoader(context: Context) {
 
         val safeHost = server.hostname.replace(Regex("[^a-zA-Z0-9._-]"), "_")
         val profileDir = File(appContext.filesDir, "nord_openvpn").apply { mkdirs() }
-        val caFile = File(profileDir, "$safeHost.ca.crt").apply { writeText(caPem) }
+        val caFile = File(profileDir, "$safeHost.$suffix.ca.crt").apply { writeText(caPem) }
         val tlsFile = tlsKey?.let { key ->
-            File(profileDir, "$safeHost.tls.key").apply { writeText(key) }
+            File(profileDir, "$safeHost.$suffix.tls.key").apply { writeText(key) }
         }
 
         val verifyX509Args = directive(text, "verify-x509-name")
@@ -204,7 +282,7 @@ internal class JoynNordOpenVpnProfileLoader(context: Context) {
     }
 
     private fun normalizeProtocol(value: String): String = when (value.lowercase()) {
-        "tcp", "tcp-client" -> "tcp-client"
+        "tcp", "tcp-client", "tcp4-client" -> "tcp-client"
         "udp", "udp4" -> "udp"
         else -> value.lowercase()
     }
