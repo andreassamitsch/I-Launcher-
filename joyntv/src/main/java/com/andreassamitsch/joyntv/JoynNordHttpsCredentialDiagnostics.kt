@@ -53,12 +53,13 @@ internal class JoynNordHttpsCredentialDiagnostics {
             )
         }
 
+        val credentialFingerprint = JoynNordCredentialFingerprint.describe(username, password)
         val hosts = loadProxySslHosts(country).take(MAX_TEST_HOSTS)
         if (hosts.isEmpty()) {
             return JoynNordHttpsCredentialDiagnosticReport(
                 JoynNordHttpsCredentialStatus.INCONCLUSIVE,
                 0,
-                "HTTPS/89-Credential-Precheck nicht möglich: Nord lieferte keine proxy_ssl-Testserver.",
+                "HTTPS/89-Credential-Precheck nicht möglich: Nord lieferte keine proxy_ssl-Testserver. $credentialFingerprint",
             )
         }
 
@@ -72,7 +73,7 @@ internal class JoynNordHttpsCredentialDiagnostics {
                     return JoynNordHttpsCredentialDiagnosticReport(
                         JoynNordHttpsCredentialStatus.CONFIRMED,
                         reachable + 1,
-                        "HTTPS/89-Credentials: OK · ${proxyHostname(result.host)} akzeptiert CONNECT/Auth.",
+                        "HTTPS/89-Credentials: OK · ${proxyHostname(result.host)} akzeptiert CONNECT/Auth · $credentialFingerprint",
                     )
                 }
                 is HttpsCredentialProbe.Rejected -> {
@@ -91,7 +92,7 @@ internal class JoynNordHttpsCredentialDiagnostics {
                 JoynNordHttpsCredentialStatus.REJECTED,
                 hosts.size,
                 "HTTPS/89-Credentials abgelehnt: $authRejected erreichbare Nord-Proxys antworteten mit HTTP 407. " +
-                    "Die große Proxy-Suche wird übersprungen. ${details.joinToString(" | ").take(360)}",
+                    "Die große Proxy-Suche wird übersprungen. $credentialFingerprint · ${details.joinToString(" | ").take(360)}",
             )
         }
 
@@ -99,7 +100,7 @@ internal class JoynNordHttpsCredentialDiagnostics {
             JoynNordHttpsCredentialStatus.INCONCLUSIVE,
             hosts.size,
             "HTTPS/89-Credential-Precheck nicht eindeutig; vollständige Suche wird fortgesetzt. " +
-                details.joinToString(" | ").take(360),
+                "$credentialFingerprint · ${details.joinToString(" | ").take(360)}",
         )
     }
 
