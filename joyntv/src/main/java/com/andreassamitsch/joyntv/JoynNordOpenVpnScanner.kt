@@ -50,7 +50,7 @@ internal class JoynNordOpenVpnScanner(context: Context) {
         }.getOrNull()
 
         disconnectAndWait()
-        onProgress(JoynProxyDiscoveryProgress("Lade normale NordVPN OpenVPN-TCP-Server für ${country.name} …"))
+        onProgress(JoynProxyDiscoveryProgress("Lade aktuelle NordVPN OpenVPN-TCP-Server für ${country.name} …"))
         val allServers = loader.loadServers(country)
         if (allServers.isEmpty()) {
             return JoynNordTunnelDiscoveryResult(
@@ -68,6 +68,8 @@ internal class JoynNordOpenVpnScanner(context: Context) {
         var attempted = 0
         var vpnDetected = 0
         var authFailures = 0
+        var consecutiveAuthFailures = 0
+        var successfulTunnels = 0
 
         fun fail(stage: String, text: String) {
             failures[stage] = (failures[stage] ?: 0) + 1
@@ -78,7 +80,9 @@ internal class JoynNordOpenVpnScanner(context: Context) {
             attempted++
             onProgress(
                 JoynProxyDiscoveryProgress(
-                    "OpenVPN ${index + 1}/${servers.size}: ${server.hostname} · Profil laden …",
+                    "OpenVPN ${index + 1}/${servers.size}: ${server.hostname}" +
+                        (if (server.recommended) " · Nord-Empfehlung" else "") +
+                        " · Profil laden …",
                     index,
                     servers.size,
                 ),
@@ -117,33 +121,55 @@ internal class JoynNordOpenVpnScanner(context: Context) {
                     fail("OPENVPN", detail)
                     if (detail.contains("AUTH_FAILED", ignoreCase = true)) {
                         authFailures++
-                        if (authFailures >= MAX_AUTH_FAILURES_BEFORE_ABORT) {
+                        consecutiveAuthFailures++
+
+                        // AUTH_FAILED is server-specific in Nord's current fleet: a single scan can
+                        // contain both rejected servers and successfully authenticated tunnels.
+                        // Therefore a confirmed HTTPS/89 login, or any successful OpenVPN tunnel,
+                        // permanently disables the global auth-abort for this run.
+                        val mayAbortGlobally = successfulTunnels == 0 &&
+                            httpsCredentialCheck?.status != JoynNordHttpsCredentialStatus.CONFIRMED
+                        val abortLimit = if (
+                            httpsCredentialCheck?.status == JoynNordHttpsCredentialStatus.REJECTED
+                        ) {
+                            MAX_AUTH_FAILURES_IF_PROXY_REJECTED
+                        } else {
+                            MAX_CONSECUTIVE_AUTH_FAILURES_IF_UNCONFIRMED
+                        }
+
+                        if (mayAbortGlobally && consecutiveAuthFailures >= abortLimit) {
                             disconnectAndWait()
                             val credentialConclusion = when (httpsCredentialCheck?.status) {
-                                JoynNordHttpsCredentialStatus.CONFIRMED ->
-                                    "Dieselben Credential-Bytes wurden unmittelbar davor vom Nord-HTTPS/89-Proxy akzeptiert, OpenVPN lehnt sie aber mit AUTH_FAILED ab. Das spricht gegen einen Eingabefehler und für unterschiedliche Nord-Authentifizierung/Service-Berechtigungen."
                                 JoynNordHttpsCredentialStatus.REJECTED ->
                                     "Auch der unmittelbare HTTPS/89-Gegentest hat diese Credential-Bytes mit 407 abgelehnt. Credentials im Nord Account erneut prüfen."
                                 else ->
-                                    "Der parallele HTTPS/89-Credential-Gegentest war nicht eindeutig."
+                                    "Der HTTPS/89-Gegentest war nicht eindeutig und $consecutiveAuthFailures OpenVPN-Server in Folge lehnten Auth ab."
                             }
                             return result(
                                 connected = false,
                                 attempted = attempted,
                                 uniqueExits = seenExits.size,
                                 vpnDetected = vpnDetected,
+                                successfulTunnels = successfulTunnels,
+                                authFailures = authFailures,
                                 failures = failures,
                                 examples = examples,
                                 serverPool = allServers.size,
-                                messagePrefix = "NordVPN OpenVPN lehnt die Service-Credentials wiederholt mit AUTH_FAILED ab. Suche abgebrochen. $credentialConclusion · $credentialFingerprint",
+                                messagePrefix = "NordVPN-Authentifizierung konnte nicht bestätigt werden. Suche vorsorglich abgebrochen. $credentialConclusion · $credentialFingerprint",
                             )
                         }
+                    } else {
+                        consecutiveAuthFailures = 0
                     }
                     disconnectAndWait()
                     continue
                 }
-                is JoynNordTunnelState.Connected -> Unit
+                is JoynNordTunnelState.Connected -> {
+                    successfulTunnels++
+                    consecutiveAuthFailures = 0
+                }
                 else -> {
+                    consecutiveAuthFailures = 0
                     fail("TIMEOUT", "${server.hostname}: nach ${CONNECT_TIMEOUT_MS / 1000}s kein OpenVPN Connected")
                     disconnectAndWait()
                     continue
@@ -189,7 +215,8 @@ internal class JoynNordOpenVpnScanner(context: Context) {
                 is JoynNordTunnelGateResult.Success -> {
                     rememberActive(server.hostname, gate.exitIp)
                     val message =
-                        "NordVPN OpenVPN funktioniert mit Joyn Live: ${server.hostname} · Exit ${gate.exitIp} · ${gate.latencyMs} ms. Tunnel bleibt aktiv."
+                        "NordVPN OpenVPN funktioniert mit Joyn Live: ${server.hostname} · Exit ${gate.exitIp} · ${gate.latencyMs} ms. Tunnel bleibt aktiv. " +
+                            "Bis dahin: OpenVPN verbunden=$successfulTunnels · AUTH_FAILED=$authFailures."
                     onProgress(JoynProxyDiscoveryProgress(message, index + 1, servers.size))
                     return JoynNordTunnelDiscoveryResult(
                         connected = true,
@@ -230,6 +257,8 @@ internal class JoynNordOpenVpnScanner(context: Context) {
             attempted = attempted,
             uniqueExits = seenExits.size,
             vpnDetected = vpnDetected,
+            successfulTunnels = successfulTunnels,
+            authFailures = authFailures,
             failures = failures,
             examples = examples,
             serverPool = allServers.size,
@@ -257,6 +286,8 @@ internal class JoynNordOpenVpnScanner(context: Context) {
         attempted: Int,
         uniqueExits: Int,
         vpnDetected: Int,
+        successfulTunnels: Int,
+        authFailures: Int,
         failures: Map<String, Int>,
         examples: List<String>,
         serverPool: Int,
@@ -269,7 +300,7 @@ internal class JoynNordOpenVpnScanner(context: Context) {
             attemptedServers = attempted,
             uniqueExits = uniqueExits,
             vpnDetected = vpnDetected,
-            message = "$messagePrefix Normale OpenVPN-TCP-Server verfügbar=$serverPool · getestet=$attempted · eindeutige Exits=$uniqueExits · VPN erkannt=$vpnDetected" +
+            message = "$messagePrefix Normale OpenVPN-TCP-Server verfügbar=$serverPool · getestet=$attempted · OpenVPN verbunden=$successfulTunnels · AUTH_FAILED=$authFailures · eindeutige Exits=$uniqueExits · VPN erkannt=$vpnDetected" +
                 (if (stats.isBlank()) "." else " · $stats.") + exampleText,
         )
     }
@@ -296,9 +327,12 @@ internal class JoynNordOpenVpnScanner(context: Context) {
     }
 
     private companion object {
-        private const val MAX_SERVERS_TO_TEST = 40
+        // Test the complete current recommendations tranche before giving up. AUTH failures tend to
+        // return quickly, and the scan stops immediately when a Joyn-compatible exit is found.
+        private const val MAX_SERVERS_TO_TEST = 100
         private const val MAX_EXAMPLES = 10
-        private const val MAX_AUTH_FAILURES_BEFORE_ABORT = 2
+        private const val MAX_AUTH_FAILURES_IF_PROXY_REJECTED = 2
+        private const val MAX_CONSECUTIVE_AUTH_FAILURES_IF_UNCONFIRMED = 8
         private const val CONNECT_TIMEOUT_MS = 18_000L
         private const val STOP_TIMEOUT_MS = 6_000L
         private const val ROUTE_SETTLE_MS = 800L
