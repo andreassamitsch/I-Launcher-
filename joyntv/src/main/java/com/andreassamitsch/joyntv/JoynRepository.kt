@@ -19,6 +19,7 @@ internal class JoynRepository(context: Context) {
     private val nordVpnDiagnostics = JoynNordVpnDiagnostics()
     private val nordCredentialDiagnostics = JoynNordCredentialDiagnostics()
     private val nordHttpsCredentialDiagnostics = JoynNordHttpsCredentialDiagnostics()
+    private val nordOpenVpnScanner = JoynNordOpenVpnScanner(appContext)
     private val pinSettings = JoynParentalPinSettings(appContext)
     private val api = JoynApiClient(appContext)
     private val pinPlaybackApi = JoynPinPlaybackApiClient(appContext)
@@ -161,20 +162,9 @@ internal class JoynRepository(context: Context) {
         onProgress: (JoynProxyDiscoveryProgress) -> Unit = {},
     ): JoynProxyDiscoveryResult {
         val country = currentCountry()
-        val mainHandler = Handler(Looper.getMainLooper())
-        val progressRelay: (JoynProxyDiscoveryProgress) -> Unit = { progress ->
-            if (Looper.myLooper() == Looper.getMainLooper()) {
-                onProgress(progress)
-            } else {
-                mainHandler.post { onProgress(progress) }
-            }
-        }
+        val progressRelay = progressRelay(onProgress)
 
         return try {
-            // Validate the exact protocol we are about to use before scanning dozens of exits.
-            // A SOCKS5 failure must not invalidate HTTPS/89 credentials: the two Nord services can
-            // have different availability/auth behaviour. Only repeated explicit 407 responses on
-            // reachable proxy_ssl endpoints are treated as a hard credential rejection.
             progressRelay(
                 JoynProxyDiscoveryProgress(
                     "Prüfe NordVPN HTTPS/89-Service-Credentials …",
@@ -193,8 +183,6 @@ internal class JoynRepository(context: Context) {
                 )
             }
 
-            // Keep the detailed Nord catalog diagnostic while discovery is experimental. It does
-            // not use or print the user's Nord credentials.
             val diagnostic = runCatching {
                 nordVpnDiagnostics.run(country, progressRelay)
             }.getOrElse { error ->
@@ -203,8 +191,6 @@ internal class JoynRepository(context: Context) {
                 )
             }
 
-            // This SOCKS test is informational only. A failure here says nothing about whether the
-            // HTTPS/89 service accepted the same credentials.
             progressRelay(
                 JoynProxyDiscoveryProgress(
                     "Prüfe NordVPN-Service-Credentials zusätzlich über offiziellen SOCKS5-Dienst …",
@@ -240,8 +226,68 @@ internal class JoynRepository(context: Context) {
         }
     }
 
+    /**
+     * Tests normal NordVPN OpenVPN TCP/443 exits through Android VpnService. The java.net proxy is
+     * temporarily removed so there is never a proxy-inside-VPN during the scan. A successful tunnel
+     * disables the persisted test proxy and clears Joyn's stored auth token because the source IP
+     * has changed. On failure the previous proxy routing is restored unchanged.
+     */
+    suspend fun findNordVpnOpenVpnTunnel(
+        username: String,
+        password: String,
+        onProgress: (JoynProxyDiscoveryProgress) -> Unit = {},
+    ): JoynNordTunnelDiscoveryResult {
+        val country = currentCountry()
+        val progressRelay = progressRelay(onProgress)
+        val previousProxy = proxySettings.current()
+        JoynProxySettings.installDirectForTunnel()
+
+        return try {
+            val result = withContext(Dispatchers.IO) {
+                nordOpenVpnScanner.findBest(
+                    country = country,
+                    apiKey = protocolPrefs.getString("api_key_${country.name}", null),
+                    username = username,
+                    password = password,
+                    onProgress = progressRelay,
+                )
+            }
+            if (result.connected) {
+                // Tunnel and legacy proxy are mutually exclusive. save() also invalidates any Joyn
+                // token that may have been bound to the previous egress address.
+                proxySettings.save(previousProxy.copy(enabled = false))
+            } else {
+                JoynProxySettings.install(appContext)
+            }
+            result
+        } catch (error: Throwable) {
+            JoynProxySettings.install(appContext)
+            throw error
+        }
+    }
+
+    suspend fun disconnectNordVpnOpenVpnTunnel() {
+        withContext(Dispatchers.IO) { nordOpenVpnScanner.disconnect() }
+        JoynProxySettings.install(appContext)
+    }
+
+    fun nordVpnOpenVpnState(): JoynNordTunnelState = JoynNordTunnelRuntime.state.value
+
     fun setProxy(config: JoynProxyConfig) {
         proxySettings.save(config)
+    }
+
+    private fun progressRelay(
+        onProgress: (JoynProxyDiscoveryProgress) -> Unit,
+    ): (JoynProxyDiscoveryProgress) -> Unit {
+        val mainHandler = Handler(Looper.getMainLooper())
+        return { progress ->
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                onProgress(progress)
+            } else {
+                mainHandler.post { onProgress(progress) }
+            }
+        }
     }
 
     private companion object {
