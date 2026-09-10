@@ -196,7 +196,7 @@ private fun ProxySettingsScreen(
 
                     if (nordVpn) {
                         Text(
-                            "NordVPN für ${country.name}: Die App lädt aktuelle NordVPN-Server des Ziellandes und testet jeden Server zuerst als HTTPS/CONNECT-Proxy auf Port 89 und anschließend als SOCKS5 auf Port 1080. Aktiviert wird nur ein Server, mit dem Joyn Live tatsächlich freigegeben wird.",
+                            "NordVPN für ${country.name}: Die App lädt alle von Nord als proxy_ssl markierten Server des Ziellandes auf HTTPS-Port 89, ermittelt deren tatsächliche Exit-IP und prüft jede eindeutige Exit-IP nur einmal gegen Joyn Live. Mehrere Server mit derselben Exit-IP werden übersprungen. SOCKS5 ist ein separater Zusatztest auf Port 1080 und wird nicht als DE/CH-Fallback geraten.",
                             color = Color(0xFFD7DBE3),
                             fontSize = 14.sp,
                             lineHeight = 20.sp,
@@ -263,7 +263,7 @@ private fun ProxySettingsScreen(
             Text(
                 when {
                     !enabled -> "Proxy ist deaktiviert. Joyn verwendet die normale Internetverbindung."
-                    automatic && nordVpn -> "NordVPN-Automatik: Serverliste laden → Port 89 testen → SOCKS5/1080 testen → Joyn Live prüfen → ersten geeigneten Server aktivieren."
+                    automatic && nordVpn -> "NordVPN-Automatik: HTTPS/89-Credentials prüfen → alle proxy_ssl-Server laden → Exit-IPs ermitteln/deduplizieren → eindeutige Exit-IPs gegen Joyn Live prüfen → ersten geeigneten Exit aktivieren. SOCKS5-Credential-Test separat auf 1080."
                     automatic -> "Öffentliche Automatik: Nur Proxys, die Joyns vollständige Live-Prüfung bestehen, werden aktiviert."
                     else -> "Aktiv: ${if (allTraffic) "gesamter App-Verkehr" else "Joyn API/Auth/Entitlement/Playlist"} über den manuellen Proxy. Beim Speichern wird die aktuelle Joyn-Sitzung verworfen und neu aufgebaut."
                 },
