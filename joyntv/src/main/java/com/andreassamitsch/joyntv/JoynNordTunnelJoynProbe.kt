@@ -10,6 +10,11 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
+internal data class JoynNordTunnelExitInfo(
+    val ip: String,
+    val country: String,
+)
+
 internal sealed interface JoynNordTunnelGateResult {
     data class Success(
         val exitIp: String,
@@ -39,9 +44,40 @@ internal class JoynNordTunnelJoynProbe {
         .followSslRedirects(true)
         .build()
 
+    fun readExit(): Result<JoynNordTunnelExitInfo> = runCatching {
+        client.newCall(
+            Request.Builder()
+                .url("https://www.cloudflare.com/cdn-cgi/trace")
+                .header("User-Agent", USER_AGENT)
+                .get()
+                .build(),
+        ).execute().use { response ->
+            check(response.isSuccessful) { "Cloudflare HTTP ${response.code}" }
+            var ip = ""
+            var country = ""
+            response.body.string().lineSequence().forEach { line ->
+                when {
+                    line.startsWith("ip=") -> ip = line.substringAfter("ip=").trim()
+                    line.startsWith("loc=") -> country = line.substringAfter("loc=").trim().uppercase()
+                }
+            }
+            check(ip.isNotBlank()) { "Cloudflare-Trace enthält kein ip=" }
+            JoynNordTunnelExitInfo(ip, country)
+        }
+    }
+
     fun run(country: JoynCountry, apiKey: String): JoynNordTunnelGateResult {
-        val exit = readExit()
-            ?: return JoynNordTunnelGateResult.Failed("EXIT", "Cloudflare-Trace nicht erreichbar")
+        val exit = readExit().getOrElse { error ->
+            return JoynNordTunnelGateResult.Failed("EXIT", summarize(error))
+        }
+        return run(country, apiKey, exit)
+    }
+
+    fun run(
+        country: JoynCountry,
+        apiKey: String,
+        exit: JoynNordTunnelExitInfo,
+    ): JoynNordTunnelGateResult {
         if (!exit.country.equals(country.name, ignoreCase = true)) {
             return JoynNordTunnelGateResult.Failed(
                 stage = "LAND",
@@ -93,29 +129,6 @@ internal class JoynNordTunnelJoynProbe {
             exitIp = exit.ip,
             latencyMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started),
         )
-    }
-
-    private fun readExit(): ExitInfo? = try {
-        client.newCall(
-            Request.Builder()
-                .url("https://www.cloudflare.com/cdn-cgi/trace")
-                .header("User-Agent", USER_AGENT)
-                .get()
-                .build(),
-        ).execute().use { response ->
-            if (!response.isSuccessful) return null
-            var ip = ""
-            var country = ""
-            response.body.string().lineSequence().forEach { line ->
-                when {
-                    line.startsWith("ip=") -> ip = line.substringAfter("ip=").trim()
-                    line.startsWith("loc=") -> country = line.substringAfter("loc=").trim().uppercase()
-                }
-            }
-            if (ip.isBlank()) null else ExitInfo(ip, country)
-        }
-    } catch (_: Throwable) {
-        null
     }
 
     private fun createAnonymousToken(country: JoynCountry): StepValue<ProbeToken> = try {
@@ -233,7 +246,6 @@ internal class JoynNordTunnelJoynProbe {
         return if (text.isBlank()) error.javaClass.simpleName else "${error.javaClass.simpleName}: $text"
     }
 
-    private data class ExitInfo(val ip: String, val country: String)
     private data class ProbeToken(val access: String, val type: String)
     private data class StepValue<T>(val value: T?, val error: String)
     private data class StepFlag(val ok: Boolean, val error: String)
