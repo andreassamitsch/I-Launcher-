@@ -51,8 +51,16 @@ class ProxySettingsActivity : ComponentActivity() {
                 ProxySettingsScreen(
                     initial = repository.proxyConfig(),
                     country = repository.currentCountry(),
+                    savedNordUsername = repository.nordVpnServiceUsername(),
+                    savedNordPassword = repository.nordVpnServicePassword(),
                     onAutoResolve = { allTraffic, onProgress ->
                         repository.findAutomaticProxy(allTraffic, onProgress)
+                    },
+                    onNordResolve = { username, password, allTraffic, onProgress ->
+                        repository.findNordVpnProxy(username, password, allTraffic, onProgress)
+                    },
+                    onRememberNordCredentials = { username, password ->
+                        repository.saveNordVpnServiceCredentials(username, password)
                     },
                     onSave = { config ->
                         repository.setProxy(config)
@@ -73,20 +81,37 @@ class ProxySettingsActivity : ComponentActivity() {
 private fun ProxySettingsScreen(
     initial: JoynProxyConfig,
     country: JoynCountry,
+    savedNordUsername: String,
+    savedNordPassword: String,
     onAutoResolve: suspend (
         allTraffic: Boolean,
         onProgress: (JoynProxyDiscoveryProgress) -> Unit,
     ) -> JoynProxyDiscoveryResult,
+    onNordResolve: suspend (
+        username: String,
+        password: String,
+        allTraffic: Boolean,
+        onProgress: (JoynProxyDiscoveryProgress) -> Unit,
+    ) -> JoynProxyDiscoveryResult,
+    onRememberNordCredentials: (String, String) -> Unit,
     onSave: (JoynProxyConfig) -> Unit,
     onBack: () -> Unit,
 ) {
+    val initialNord = initial.automatic && initial.source.startsWith("NordVPN")
     var enabled by remember { mutableStateOf(initial.enabled) }
     var automatic by remember { mutableStateOf(initial.automatic) }
+    var nordVpn by remember { mutableStateOf(initialNord) }
     var allTraffic by remember { mutableStateOf(initial.allTraffic) }
     var host by remember { mutableStateOf(initial.host) }
     var port by remember { mutableStateOf(initial.port.takeIf { it > 0 }?.toString().orEmpty()) }
     var username by remember { mutableStateOf(initial.username) }
     var password by remember { mutableStateOf(initial.password) }
+    var nordUsername by remember {
+        mutableStateOf(savedNordUsername.ifBlank { if (initialNord) initial.username else "" })
+    }
+    var nordPassword by remember {
+        mutableStateOf(savedNordPassword.ifBlank { if (initialNord) initial.password else "" })
+    }
     var testing by remember { mutableStateOf(false) }
     var status by remember {
         mutableStateOf(
@@ -120,7 +145,7 @@ private fun ProxySettingsScreen(
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "Für DE/AT/CH-Tests kann Joyns Steuerverkehr über einen Proxy im Zielland laufen. Standardmäßig bleiben Manifest, Widevine und Videosegmente auf deiner direkten Verbindung. Nur wenn Joyn beim eigentlichen Stream nochmals die IP prüft, aktiviere testweise den Vollproxy.",
+                "Für DE/AT/CH-Tests kann Joyns Steuerverkehr über einen Proxy im Zielland laufen. Ein automatisch gewählter Proxy wird erst aktiviert, wenn auch Joyn GraphQL und eine echte Live-Freigabe funktionieren.",
                 color = Color(0xFFD7DBE3),
                 fontSize = if (compact) 13.sp else 15.sp,
                 lineHeight = if (compact) 18.sp else 21.sp,
@@ -159,21 +184,56 @@ private fun ProxySettingsScreen(
                 Spacer(Modifier.height(22.dp))
 
                 if (automatic) {
-                    Text(
-                        "Automatik für Zielregion ${country.name}: Die App lädt frische öffentliche HTTP(S)-Proxylisten, bevorzugt anonyme Kandidaten und testet mehrere parallel. Aktiviert wird erst ein Proxy, dessen tatsächliches Exit-Land ${country.name} ist und der Joyn per HTTPS erreicht.",
-                        color = Color(0xFFD7DBE3),
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                        modifier = Modifier.widthIn(max = 900.dp),
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        "Testfunktion: öffentliche Gratis-Proxys sind unzuverlässig und nicht vertrauenswürdig. Die HTTPS-Zertifikatsprüfung wird nicht abgeschaltet. Für einen dauerhaften Betrieb ist ein eigener oder seriöser Proxy sinnvoller.",
-                        color = Color(0xFFF1C27D),
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
-                        modifier = Modifier.widthIn(max = 900.dp),
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ProxyChoice("Öffentliche Proxys", !nordVpn) {
+                            if (!testing) nordVpn = false
+                        }
+                        ProxyChoice("NordVPN", nordVpn) {
+                            if (!testing) nordVpn = true
+                        }
+                    }
+                    Spacer(Modifier.height(18.dp))
+
+                    if (nordVpn) {
+                        Text(
+                            "NordVPN für ${country.name}: Die App lädt aktuelle NordVPN-Server des Ziellandes und testet jeden Server zuerst als HTTPS/CONNECT-Proxy auf Port 89 und anschließend als SOCKS5 auf Port 1080. Aktiviert wird nur ein Server, mit dem Joyn Live tatsächlich freigegeben wird.",
+                            color = Color(0xFFD7DBE3),
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            modifier = Modifier.widthIn(max = 900.dp),
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Verwende die NordVPN-Service-Zugangsdaten aus der manuellen Einrichtung, nicht zwingend E-Mail und Account-Passwort. Die Daten werden auf diesem Gerät gespeichert, damit du sie nur einmal eingeben musst.",
+                            color = Color(0xFFF1C27D),
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            modifier = Modifier.widthIn(max = 900.dp),
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        ProxyFieldLabel("NordVPN Service-Benutzername")
+                        ProxyField(nordUsername, { nordUsername = it }, "Service username", false)
+                        Spacer(Modifier.height(12.dp))
+                        ProxyFieldLabel("NordVPN Service-Passwort")
+                        ProxyField(nordPassword, { nordPassword = it }, "Service password", true)
+                    } else {
+                        Text(
+                            "Öffentliche Proxys für ${country.name}: Die App lädt aktuelle Proxylisten und verwirft Kandidaten, die Joyns API- oder Live-Prüfung nicht bestehen.",
+                            color = Color(0xFFD7DBE3),
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            modifier = Modifier.widthIn(max = 900.dp),
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Öffentliche Gratis-Proxys werden von Joyn häufig als VPN/Proxy erkannt. Diese Option bleibt vor allem für Tests erhalten.",
+                            color = Color(0xFFF1C27D),
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            modifier = Modifier.widthIn(max = 900.dp),
+                        )
+                    }
+
                     if (status.isNotBlank()) {
                         Spacer(Modifier.height(14.dp))
                         Text(
@@ -186,10 +246,10 @@ private fun ProxySettingsScreen(
                     }
                 } else {
                     ProxyFieldLabel("Proxy Host")
-                    ProxyField(host, { host = it }, "z. B. de-proxy.meinserver.net", false)
+                    ProxyField(host, { host = it }, "z. B. de1465.nordvpn.com", false)
                     Spacer(Modifier.height(12.dp))
                     ProxyFieldLabel("Port")
-                    ProxyField(port, { port = it.filter(Char::isDigit).take(5) }, "8080", false)
+                    ProxyField(port, { port = it.filter(Char::isDigit).take(5) }, "89", false)
                     Spacer(Modifier.height(12.dp))
                     ProxyFieldLabel("Benutzername (optional)")
                     ProxyField(username, { username = it }, "proxy-user", false)
@@ -203,7 +263,8 @@ private fun ProxySettingsScreen(
             Text(
                 when {
                     !enabled -> "Proxy ist deaktiviert. Joyn verwendet die normale Internetverbindung."
-                    automatic -> "Beim Aktivieren wird immer neu gesucht und getestet; ein Listen-Eintrag allein reicht nicht."
+                    automatic && nordVpn -> "NordVPN-Automatik: Serverliste laden → Port 89 testen → SOCKS5/1080 testen → Joyn Live prüfen → ersten geeigneten Server aktivieren."
+                    automatic -> "Öffentliche Automatik: Nur Proxys, die Joyns vollständige Live-Prüfung bestehen, werden aktiviert."
                     else -> "Aktiv: ${if (allTraffic) "gesamter App-Verkehr" else "Joyn API/Auth/Entitlement/Playlist"} über den manuellen Proxy. Beim Speichern wird die aktuelle Joyn-Sitzung verworfen und neu aufgebaut."
                 },
                 color = Color(0xFF9FA8B5),
@@ -214,12 +275,14 @@ private fun ProxySettingsScreen(
             Spacer(Modifier.height(22.dp))
 
             val manualValid = host.isNotBlank() && (port.toIntOrNull() ?: 0) in 1..65535
-            val saveEnabled = !testing && (!enabled || automatic || manualValid)
+            val nordValid = nordUsername.isNotBlank() && nordPassword.isNotBlank()
+            val saveEnabled = !testing && (!enabled || (automatic && (!nordVpn || nordValid)) || (!automatic && manualValid))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 ProxyAction("Zurück", enabled = !testing, onClick = onBack)
                 ProxyAction(
                     label = when {
                         testing -> "Proxys werden getestet …"
+                        enabled && automatic && nordVpn -> "NordVPN suchen & aktivieren"
                         enabled && automatic -> "Suchen & aktivieren"
                         else -> "Speichern"
                     },
@@ -248,18 +311,35 @@ private fun ProxySettingsScreen(
 
                         else -> scope.launch {
                             testing = true
-                            status = "Lade aktuelle Proxylisten für ${country.name} …"
-                            val result = runCatching {
-                                onAutoResolve(allTraffic) { progress ->
-                                    status = progress.message
+                            val result = if (nordVpn) {
+                                onRememberNordCredentials(nordUsername, nordPassword)
+                                status = "Lade NordVPN-Server für ${country.name} …"
+                                runCatching {
+                                    onNordResolve(nordUsername, nordPassword, allTraffic) { progress ->
+                                        status = progress.message
+                                    }
+                                }.getOrElse { error ->
+                                    JoynProxyDiscoveryResult(
+                                        config = null,
+                                        candidates = 0,
+                                        attempted = 0,
+                                        message = "NordVPN-Suche fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}",
+                                    )
                                 }
-                            }.getOrElse { error ->
-                                JoynProxyDiscoveryResult(
-                                    config = null,
-                                    candidates = 0,
-                                    attempted = 0,
-                                    message = "Proxy-Suche fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}",
-                                )
+                            } else {
+                                status = "Lade aktuelle Proxylisten für ${country.name} …"
+                                runCatching {
+                                    onAutoResolve(allTraffic) { progress ->
+                                        status = progress.message
+                                    }
+                                }.getOrElse { error ->
+                                    JoynProxyDiscoveryResult(
+                                        config = null,
+                                        candidates = 0,
+                                        attempted = 0,
+                                        message = "Proxy-Suche fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}",
+                                    )
+                                }
                             }
                             testing = false
                             val config = result.config
