@@ -14,7 +14,6 @@ import okhttp3.OkHttpClient
 
 internal enum class JoynProxyTransport {
     HTTP,
-    HTTPS_PROXY,
     SOCKS5,
 }
 
@@ -33,6 +32,15 @@ internal data class JoynProxyConfig(
 ) {
     val isUsable: Boolean
         get() = enabled && host.isNotBlank() && port in 1..65535
+
+    /** Nord's proxy_ssl endpoint on port 89 requires TLS to the proxy itself. */
+    val usesTlsProxyBridge: Boolean
+        get() = transport == JoynProxyTransport.HTTP &&
+            source.startsWith(NORD_TLS_SOURCE_PREFIX, ignoreCase = true)
+
+    companion object {
+        const val NORD_TLS_SOURCE_PREFIX = "NordVPN · HTTPS proxy"
+    }
 }
 
 /**
@@ -67,11 +75,13 @@ internal class JoynProxySettings(context: Context) {
         )
     }
 
-    /** Adds authentication for ordinary HTTP proxies. TLS/HTTPS proxy authentication is injected
-     * by JoynTlsProxyBridge; SOCKS authentication is handled by java.net.Authenticator. */
+    /** Adds authentication for ordinary HTTP proxies. Nord's TLS/HTTPS proxy authentication is
+     * injected inside JoynTlsProxyBridge; SOCKS authentication is handled by Authenticator. */
     fun configure(builder: OkHttpClient.Builder): OkHttpClient.Builder {
         val config = current()
-        if (!config.isUsable || config.transport != JoynProxyTransport.HTTP || config.username.isBlank()) {
+        if (!config.isUsable || config.transport != JoynProxyTransport.HTTP ||
+            config.usesTlsProxyBridge || config.username.isBlank()
+        ) {
             return builder
         }
         val credential = Credentials.basic(config.username, config.password)
@@ -149,19 +159,19 @@ internal class JoynProxySettings(context: Context) {
                 return
             }
 
-            val proxy = when (config.transport) {
-                JoynProxyTransport.HTTP -> {
+            val proxy = when {
+                config.usesTlsProxyBridge -> {
+                    val local = JoynTlsProxyBridge.shared(config)
+                    Proxy(Proxy.Type.HTTP, local)
+                }
+                config.transport == JoynProxyTransport.HTTP -> {
                     JoynTlsProxyBridge.stopShared()
                     Proxy(
                         Proxy.Type.HTTP,
                         InetSocketAddress.createUnresolved(config.host.trim(), config.port),
                     )
                 }
-                JoynProxyTransport.HTTPS_PROXY -> {
-                    val local = JoynTlsProxyBridge.shared(config)
-                    Proxy(Proxy.Type.HTTP, local)
-                }
-                JoynProxyTransport.SOCKS5 -> {
+                else -> {
                     JoynTlsProxyBridge.stopShared()
                     Proxy(
                         Proxy.Type.SOCKS,
@@ -186,8 +196,6 @@ internal class JoynProxySettings(context: Context) {
                 override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) = Unit
             })
 
-            // HTTP proxy auth is handled by OkHttp; HTTPS proxy auth is handled by the local TLS
-            // bridge. Java Authenticator is only required for SOCKS5 here.
             if (config.transport == JoynProxyTransport.SOCKS5 && config.username.isNotBlank()) {
                 Authenticator.setDefault(object : Authenticator() {
                     override fun getPasswordAuthentication(): PasswordAuthentication? {
