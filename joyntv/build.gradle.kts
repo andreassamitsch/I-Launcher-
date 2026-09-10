@@ -94,6 +94,11 @@ dependencies {
     implementation(platform("com.squareup.okhttp3:okhttp-bom:5.3.0"))
     implementation("com.squareup.okhttp3:okhttp")
 
+    // Low-level OpenVPN process/management core. We deliberately use the low-level API instead of
+    // the higher-level VPN manager so Nord's full .ovpn parameters (TLS-auth, SHA512, CN pinning)
+    // can be preserved. The Android VpnService/TUN remains owned by Joyn TV and is app-scoped.
+    implementation("com.kape.android:openvpn:0.4.15")
+
     implementation("io.coil-kt.coil3:coil-compose:3.5.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.5.0")
 
