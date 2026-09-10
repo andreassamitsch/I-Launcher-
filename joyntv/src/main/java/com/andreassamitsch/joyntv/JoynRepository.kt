@@ -12,6 +12,7 @@ internal class JoynRepository(context: Context) {
     private val proxySettings = JoynProxySettings(appContext)
     private val publicProxyResolver = JoynPublicProxyResolver()
     private val nordVpnProxyResolver = JoynNordVpnProxyResolver()
+    private val nordVpnDiagnostics = JoynNordVpnDiagnostics()
     private val pinSettings = JoynParentalPinSettings(appContext)
     private val api = JoynApiClient(appContext)
     private val pinPlaybackApi = JoynPinPlaybackApiClient(appContext)
@@ -163,7 +164,17 @@ internal class JoynRepository(context: Context) {
     ): JoynProxyDiscoveryResult {
         val country = currentCountry()
         return try {
-            nordVpnProxyResolver.findBest(
+            // Always collect catalog diagnostics first while Nord discovery is still experimental.
+            // It does not use or print the user's Nord credentials.
+            val diagnostic = runCatching {
+                nordVpnDiagnostics.run(country, onProgress)
+            }.getOrElse { error ->
+                JoynNordVpnDiagnosticReport(
+                    "Diagnose selbst fehlgeschlagen: ${error.javaClass.simpleName}: ${error.message.orEmpty()}",
+                )
+            }
+
+            val result = nordVpnProxyResolver.findBest(
                 country = country,
                 allTraffic = allTraffic,
                 apiKey = protocolPrefs.getString("api_key_${country.name}", null),
@@ -171,6 +182,14 @@ internal class JoynRepository(context: Context) {
                 password = password,
                 onProgress = onProgress,
             )
+
+            if (result.config == null) {
+                result.copy(
+                    message = result.message + "\n\nNordVPN API-Debug:\n" + diagnostic.summary,
+                )
+            } else {
+                result
+            }
         } finally {
             // SOCKS authentication is process-global in java.net on Android. Restore the currently
             // persisted Joyn proxy after the isolated Nord server scan has finished.
