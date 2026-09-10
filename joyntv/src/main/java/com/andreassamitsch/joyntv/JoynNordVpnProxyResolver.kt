@@ -15,9 +15,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Discovers NordVPN endpoints that explicitly advertise proxy capability for the selected country.
- * Nord's proxy_ssl technology uses a TLS connection to the proxy itself on port 89; SOCKS5 uses
- * port 1080. A candidate is only accepted after exit-country, Joyn API and LIVE entitlement checks.
+ * Discovers NordVPN servers for the selected Joyn country and probes their actual proxy ports.
+ *
+ * Nord's API capability flags are only hints: a normal country server may still answer on the
+ * historical TLS/HTTPS proxy port 89. Therefore the resolver first loads ordinary country servers,
+ * prioritizes advertised proxy capabilities, and then proves the endpoint by connecting to it.
+ * SOCKS5/1080 is used as a secondary compatibility path. A candidate is only accepted after
+ * exit-country, Joyn API and LIVE entitlement checks.
  */
 internal class JoynNordVpnProxyResolver {
     private val directClient = OkHttpClient.Builder()
@@ -49,14 +53,14 @@ internal class JoynNordVpnProxyResolver {
             )
         }
 
-        onProgress(JoynProxyDiscoveryProgress("Lade proxyfähige NordVPN-Server für ${country.name} …"))
+        onProgress(JoynProxyDiscoveryProgress("Lade NordVPN-Server für ${country.name} …"))
         val candidates = loadCandidates(country)
         if (candidates.isEmpty()) {
             return JoynProxyDiscoveryResult(
                 null,
                 0,
                 0,
-                "NordVPN-API lieferte keine proxyfähigen Server für ${country.name}. Normale VPN-Server werden dabei bewusst nicht als Proxy behandelt.",
+                "NordVPN-API lieferte keine auswertbaren Server für ${country.name}. Die Serverabfrage selbst ist fehlgeschlagen.",
             )
         }
 
@@ -64,7 +68,7 @@ internal class JoynNordVpnProxyResolver {
         val socksCount = candidates.count { it.transport == JoynProxyTransport.SOCKS5 }
         onProgress(
             JoynProxyDiscoveryProgress(
-                "NordVPN: $httpsCount HTTPS/89 + $socksCount SOCKS5/1080 Kandidaten für ${country.name}. Starte Joyn-Prüfung …",
+                "NordVPN: $httpsCount Server auf HTTPS/89 + $socksCount auf SOCKS5/1080 werden für ${country.name} praktisch getestet …",
                 total = candidates.size,
             ),
         )
@@ -126,12 +130,20 @@ internal class JoynNordVpnProxyResolver {
     }
 
     private fun loadCandidates(country: JoynCountry): List<NordCandidate> {
-        val tlsServers = (
-            loadTechnologyServers(country, "proxy_ssl") +
-                loadTechnologyServers(country, "proxy_ssl_cybersec")
+        val servers = loadCountryServers(country)
+        if (servers.isEmpty()) return emptyList()
+
+        // Capability metadata is useful for ordering only. Port 89 is deliberately tested on
+        // ordinary country servers as well because Nord's public metadata and historical proxy
+        // availability do not always line up.
+        val tlsServers = servers
+            .sortedWith(
+                compareByDescending<NordServer> {
+                    it.technologies.any { technology ->
+                        technology == "proxy_ssl" || technology == "proxy_ssl_cybersec"
+                    }
+                }.thenBy { it.load }.thenBy { it.hostname },
             )
-            .distinctBy { it.hostname }
-            .sortedBy { it.load }
             .take(MAX_HTTPS_SERVERS)
             .map {
                 NordCandidate(
@@ -143,9 +155,12 @@ internal class JoynNordVpnProxyResolver {
                 )
             }
 
-        val socksServers = loadTechnologyServers(country, "socks")
-            .distinctBy { it.hostname }
-            .sortedBy { it.load }
+        val socksServers = servers
+            .sortedWith(
+                compareByDescending<NordServer> { "socks" in it.technologies }
+                    .thenBy { it.load }
+                    .thenBy { it.hostname },
+            )
             .take(MAX_SOCKS_SERVERS)
             .map {
                 NordCandidate(
@@ -160,7 +175,7 @@ internal class JoynNordVpnProxyResolver {
         return tlsServers + socksServers
     }
 
-    private fun loadTechnologyServers(country: JoynCountry, technology: String): List<NordServer> {
+    private fun loadCountryServers(country: JoynCountry): List<NordServer> {
         val countryId = when (country) {
             JoynCountry.DE -> 81
             JoynCountry.AT -> 14
@@ -172,22 +187,27 @@ internal class JoynNordVpnProxyResolver {
             JoynCountry.CH -> "Switzerland"
         }
 
+        // v2 is preferred because Nord's newer API can filter a large server inventory server-side.
+        // v1 and recommendations remain fallbacks because Nord has changed these public endpoints
+        // several times while keeping the country ids stable.
         val endpoints = listOf(
-            "https://api.nordvpn.com/v1/servers".toHttpUrl().newBuilder()
-                .addQueryParameter("limit", "0")
-                .addQueryParameter("filters[country_id]", countryId.toString())
-                .addQueryParameter("filters[servers_technologies][identifier]", technology)
-                .build(),
-            "https://api.nordvpn.com/v1/servers/recommendations".toHttpUrl().newBuilder()
+            "https://api.nordvpn.com/v2/servers".toHttpUrl().newBuilder()
                 .addQueryParameter("limit", SERVER_FETCH_LIMIT.toString())
                 .addQueryParameter("filters[country_id]", countryId.toString())
-                .addQueryParameter("filters[servers_technologies][identifier]", technology)
+                .build(),
+            "https://api.nordvpn.com/v1/servers".toHttpUrl().newBuilder()
+                .addQueryParameter("limit", SERVER_FETCH_LIMIT.toString())
+                .addQueryParameter("filters[country_id]", countryId.toString())
+                .build(),
+            "https://api.nordvpn.com/v1/servers/recommendations".toHttpUrl().newBuilder()
+                .addQueryParameter("limit", RECOMMENDATION_FETCH_LIMIT.toString())
+                .addQueryParameter("filters[country_id]", countryId.toString())
                 .build(),
         )
 
         for (url in endpoints) {
             val body = executeDirect(url.toString()) ?: continue
-            val array = runCatching { JSONArray(body) }.getOrNull() ?: continue
+            val array = parseServerArray(body) ?: continue
             val parsed = buildList {
                 for (index in 0 until array.length()) {
                     val item = array.optJSONObject(index) ?: continue
@@ -196,12 +216,48 @@ internal class JoynNordVpnProxyResolver {
                     val status = item.optString("status")
                     if (status.isNotBlank() && !status.equals("online", true)) continue
                     if (!belongsToCountry(item, country, expectedName, hostname)) continue
-                    add(NordServer(hostname, item.optInt("load", 100)))
+                    add(
+                        NordServer(
+                            hostname = hostname,
+                            load = item.optInt("load", 100),
+                            technologies = readTechnologies(item),
+                        ),
+                    )
                 }
             }.distinctBy { it.hostname }
             if (parsed.isNotEmpty()) return parsed
         }
         return emptyList()
+    }
+
+    private fun parseServerArray(body: String): JSONArray? = runCatching {
+        val trimmed = body.trim()
+        when {
+            trimmed.startsWith("[") -> JSONArray(trimmed)
+            trimmed.startsWith("{") -> JSONObject(trimmed).optJSONArray("servers")
+            else -> null
+        }
+    }.getOrNull()
+
+    private fun readTechnologies(item: JSONObject): Set<String> = buildSet {
+        val technologies = item.optJSONArray("technologies")
+        if (technologies != null) {
+            for (index in 0 until technologies.length()) {
+                technologies.optJSONObject(index)
+                    ?.optString("identifier")
+                    ?.takeIf(String::isNotBlank)
+                    ?.lowercase()
+                    ?.let(::add)
+            }
+        }
+
+        // Some older Nord payloads expose the same information as boolean feature flags.
+        val features = item.optJSONObject("features")
+        if (features != null) {
+            for (key in listOf("proxy_ssl", "proxy_ssl_cybersec", "socks")) {
+                if (features.optBoolean(key, false)) add(key)
+            }
+        }
     }
 
     private fun belongsToCountry(
@@ -404,7 +460,11 @@ internal class JoynNordVpnProxyResolver {
         }
     }.getOrDefault(false)
 
-    private data class NordServer(val hostname: String, val load: Int)
+    private data class NordServer(
+        val hostname: String,
+        val load: Int,
+        val technologies: Set<String>,
+    )
     private data class NordCandidate(
         val host: String,
         val port: Int,
@@ -424,8 +484,9 @@ internal class JoynNordVpnProxyResolver {
     private companion object {
         private val SOCKS_AUTH_LOCK = Any()
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
-        private const val SERVER_FETCH_LIMIT = 100
-        private const val MAX_HTTPS_SERVERS = 30
+        private const val SERVER_FETCH_LIMIT = 250
+        private const val RECOMMENDATION_FETCH_LIMIT = 100
+        private const val MAX_HTTPS_SERVERS = 50
         private const val MAX_SOCKS_SERVERS = 15
         private const val PROBE_CONNECT_SECONDS = 4L
         private const val PROBE_READ_SECONDS = 8L
