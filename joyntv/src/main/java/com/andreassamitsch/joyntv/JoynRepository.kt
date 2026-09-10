@@ -17,6 +17,7 @@ internal class JoynRepository(context: Context) {
     private val publicProxyResolver = JoynPublicProxyResolver()
     private val nordVpnProxyResolver = JoynNordVpnProxyResolver()
     private val nordVpnDiagnostics = JoynNordVpnDiagnostics()
+    private val nordCredentialDiagnostics = JoynNordCredentialDiagnostics()
     private val pinSettings = JoynParentalPinSettings(appContext)
     private val api = JoynApiClient(appContext)
     private val pinPlaybackApi = JoynPinPlaybackApiClient(appContext)
@@ -187,6 +188,15 @@ internal class JoynRepository(context: Context) {
                 )
             }
 
+            progressRelay(
+                JoynProxyDiscoveryProgress(
+                    "Prüfe NordVPN-Service-Credentials über offiziellen SOCKS5-Dienst …",
+                ),
+            )
+            val credentialDiagnostic = withContext(Dispatchers.IO) {
+                nordCredentialDiagnostics.run(username, password)
+            }
+
             // The Nord resolver uses synchronous OkHttp calls for both directory lookup and
             // endpoint probes. Running it from the Compose scope used to execute those calls on
             // Android's main thread. NetworkOnMainThreadException was swallowed by executeDirect()
@@ -205,7 +215,9 @@ internal class JoynRepository(context: Context) {
 
             if (result.config == null) {
                 result.copy(
-                    message = result.message + "\n\nNordVPN API-Debug:\n" + diagnostic.summary,
+                    message = result.message +
+                        "\n\nNordVPN Credential-Debug:\n" + credentialDiagnostic.summary +
+                        "\n\nNordVPN API-Debug:\n" + diagnostic.summary,
                 )
             } else {
                 result
