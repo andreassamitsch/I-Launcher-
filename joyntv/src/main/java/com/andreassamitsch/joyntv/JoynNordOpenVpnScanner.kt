@@ -291,7 +291,7 @@ internal class JoynNordOpenVpnScanner(context: Context) {
                     when (val gate = joynProbe.run(country, apiKey, exit)) {
                         is JoynNordTunnelGateResult.Success -> {
                             rememberActive(server.hostname, gate.exitIp)
-                            record("[JOY N OK] ${server.hostname}/$transportLabel · Exit ${gate.exitIp} · ${gate.latencyMs} ms")
+                            record("[JOYN OK] ${server.hostname}/$transportLabel · Exit ${gate.exitIp} · ${gate.latencyMs} ms")
                             val message =
                                 "NordVPN OpenVPN funktioniert mit Joyn Live: ${server.hostname} · $transportLabel · Exit ${gate.exitIp} · ${gate.latencyMs} ms. Tunnel bleibt aktiv. " +
                                     "OpenVPN verbunden=$successfulTunnels · AUTH_FAILED=$authFailures · UDP=$udpAttempts · TCP=$tcpAttempts."
@@ -421,13 +421,19 @@ internal class JoynNordOpenVpnScanner(context: Context) {
         } else {
             ""
         }
+        val completedLog = if (!connected) {
+            val lines = JoynNordOpenVpnScanControl.snapshot()
+            if (lines.isEmpty()) "" else "\n\nGetestete Server:\n${lines.joinToString("\n")}"
+        } else {
+            ""
+        }
         return JoynNordTunnelDiscoveryResult(
             connected = connected,
             attemptedServers = attemptedConnections,
             uniqueExits = uniqueExits,
             vpnDetected = vpnDetected,
             message = "$messagePrefix OpenVPN-Server verfügbar=$serverPool · Hosts geprüft=$hostsChecked · Verbindungsversuche=$attemptedConnections · UDP=$udpAttempts · TCP=$tcpAttempts · OpenVPN verbunden=$successfulTunnels · AUTH_FAILED=$authFailures · eindeutige Exits=$uniqueExits · VPN erkannt=$vpnDetected$limitText" +
-                (if (stats.isBlank()) "." else " · $stats.") + exampleText,
+                (if (stats.isBlank()) "." else " · $stats.") + exampleText + completedLog,
         )
     }
 
