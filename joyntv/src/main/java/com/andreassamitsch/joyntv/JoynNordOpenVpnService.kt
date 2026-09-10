@@ -19,19 +19,14 @@ import com.kape.openvpn.presenters.OpenVpnUserCredentials
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 
-/**
- * Experimental NordVPN OpenVPN tunnel scoped to this Joyn TV package only.
- *
- * The OpenVPN transport socket is protected from the Android VPN before the TUN interface is
- * established, while Builder.addAllowedApplication(packageName) makes sure no other TV app is
- * routed through NordVPN.
- */
+/** Experimental NordVPN OpenVPN tunnel scoped to this Joyn TV package only. */
 internal class JoynNordOpenVpnService : VpnService(), OpenVpnProcessEventHandler {
     private lateinit var openVpn: OpenVpnAPI
     private var currentHost: String? = null
     private var currentPeerAddress: String = ""
     private var username: String = ""
     private var password: String = ""
+    private var currentAuthFile: File? = null
     private var stopping = false
 
     override fun onCreate() {
@@ -63,9 +58,8 @@ internal class JoynNordOpenVpnService : VpnService(), OpenVpnProcessEventHandler
     }
 
     override fun onDestroy() {
-        runCatching {
-            openVpn.stop { }
-        }
+        runCatching { openVpn.stop { } }
+        cleanupAuthFile()
         currentHost = null
         currentPeerAddress = ""
         username = ""
@@ -104,6 +98,15 @@ internal class JoynNordOpenVpnService : VpnService(), OpenVpnProcessEventHandler
             stopSelf()
             return
         }
+        if (newUsername.contains('\n') || newUsername.contains('\r') ||
+            newPassword.contains('\n') || newPassword.contains('\r')
+        ) {
+            JoynNordTunnelRuntime.update(
+                JoynNordTunnelState.Error(host, "NordVPN Service-Credentials enthalten unzulässige Zeilenumbrüche"),
+            )
+            stopSelf()
+            return
+        }
 
         currentHost = host
         currentPeerAddress = ""
@@ -117,11 +120,18 @@ internal class JoynNordOpenVpnService : VpnService(), OpenVpnProcessEventHandler
 
         val managementSocket = File(filesDir, MANAGEMENT_SOCKET_NAME).apply { delete() }.absolutePath
         val tempDirectory = File(cacheDir, "nord_openvpn_tmp").apply { mkdirs() }.absolutePath
+        cleanupAuthFile()
+        val authFile = File(cacheDir, "nord-openvpn-auth-${System.nanoTime()}.txt").apply {
+            writeText("$newUsername\n$newPassword\n")
+        }
+        currentAuthFile = authFile
+        JoynNordTunnelRuntime.log(
+            "OpenVPN Auth: private auth-user-pass-Datei aktiv · Benutzername/Passwort werden nicht über das Management-Interface gesendet",
+        )
 
         val params = mutableListOf(
             "--status-version", "3",
             "--machine-readable-output",
-            "--management-query-passwords",
             "--management-forget-disconnect",
             "--management-hold",
             "--management", managementSocket, "unix",
@@ -129,7 +139,7 @@ internal class JoynNordOpenVpnService : VpnService(), OpenVpnProcessEventHandler
             "--ca", caPath,
             "--remote", remoteHost, remotePort.toString(),
             "--dev", "tun",
-            "--auth-user-pass",
+            "--auth-user-pass", authFile.absolutePath,
             "--client",
             "--proto", protocol,
             "--connect-retry", "2", "5",
@@ -179,6 +189,7 @@ internal class JoynNordOpenVpnService : VpnService(), OpenVpnProcessEventHandler
                 val detail = summarize(error)
                 JoynNordTunnelRuntime.log("OpenVPN-Prozessstart fehlgeschlagen: $detail")
                 JoynNordTunnelRuntime.update(JoynNordTunnelState.Error(host, detail))
+                cleanupAuthFile()
             }
         }
     }
@@ -188,12 +199,14 @@ internal class JoynNordOpenVpnService : VpnService(), OpenVpnProcessEventHandler
         stopping = true
         JoynNordTunnelRuntime.update(JoynNordTunnelState.Stopping(host))
         if (!::openVpn.isInitialized) {
+            cleanupAuthFile()
             JoynNordTunnelRuntime.update(JoynNordTunnelState.Idle)
             if (stopSelfAfter) stopSelf()
             return
         }
         openVpn.stop { result ->
             result.exceptionOrNull()?.let { JoynNordTunnelRuntime.log("OpenVPN stop: ${summarize(it)}") }
+            cleanupAuthFile()
             currentHost = null
             currentPeerAddress = ""
             username = ""
@@ -218,8 +231,6 @@ internal class JoynNordOpenVpnService : VpnService(), OpenVpnProcessEventHandler
             .addDnsServer(NORD_DNS_1)
             .addDnsServer(NORD_DNS_2)
 
-        // Critical split-tunnel rule: only this APK enters the Android VPN. Other TV apps and the
-        // launcher keep using their normal network route.
         builder.addAllowedApplication(packageName)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) builder.setUnderlyingNetworks(null)
@@ -233,6 +244,7 @@ internal class JoynNordOpenVpnService : VpnService(), OpenVpnProcessEventHandler
         descriptor.detachFd()
     }
 
+    // Kept for the OpenVPN-core interface. Nord credentials are now supplied via auth-user-pass file.
     override fun getUserCredentials(): Result<OpenVpnUserCredentials> =
         Result.success(OpenVpnUserCredentials(username, password))
 
@@ -277,6 +289,11 @@ internal class JoynNordOpenVpnService : VpnService(), OpenVpnProcessEventHandler
             }
         }
         return Result.success(Unit)
+    }
+
+    private fun cleanupAuthFile() {
+        currentAuthFile?.let { runCatching { it.delete() } }
+        currentAuthFile = null
     }
 
     private fun parseAddress(value: String): Pair<String, Int> {
