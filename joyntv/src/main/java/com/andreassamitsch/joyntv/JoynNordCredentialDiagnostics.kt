@@ -11,15 +11,14 @@ internal data class JoynNordCredentialDiagnosticReport(
 )
 
 /**
- * Verifies the stored NordVPN service credentials against Nord's currently documented SOCKS5
- * service. This diagnostic is intentionally independent of the requested Joyn country: Nord only
- * documents SOCKS5 exits in NL/SE/US at the moment, but a successful SOCKS5 CONNECT still proves
- * that the service username/password pair itself is accepted by Nord.
+ * Tests the supplied credentials against Nord's documented SOCKS5 service. This is deliberately
+ * only an additional protocol-specific diagnostic. A SOCKS5 failure must never be interpreted as
+ * proof that the same credentials are invalid for Nord's HTTPS/89 proxy service.
  */
 internal class JoynNordCredentialDiagnostics {
     fun run(username: String, password: String): JoynNordCredentialDiagnosticReport {
         if (username.isBlank() || password.isBlank()) {
-            return JoynNordCredentialDiagnosticReport("Service-Credentials: fehlen")
+            return JoynNordCredentialDiagnosticReport("SOCKS5-Credential-Check: Zugangsdaten fehlen")
         }
 
         return synchronized(AUTH_LOCK) {
@@ -50,7 +49,8 @@ internal class JoynNordCredentialDiagnostics {
 
                     if (result.isSuccess) {
                         return@synchronized JoynNordCredentialDiagnosticReport(
-                            "Service-Credentials: OK · offizieller Nord SOCKS5 $host:$SOCKS_PORT akzeptiert Login",
+                            "SOCKS5-Credential-Check: OK · $host:$SOCKS_PORT akzeptiert Login. " +
+                                "Dieser Zusatztest bewertet nur SOCKS5, nicht HTTPS/89.",
                         )
                     }
 
@@ -64,7 +64,7 @@ internal class JoynNordCredentialDiagnostics {
                 }
 
                 JoynNordCredentialDiagnosticReport(
-                    "Service-Credentials: NICHT bestätigt · offizielle Nord SOCKS5-Tests fehlgeschlagen · " +
+                    "SOCKS5-Credential-Check: fehlgeschlagen · das ist KEIN Beweis für falsche HTTPS/89-Credentials. " +
                         failures.joinToString(" | ").take(420),
                 )
             } finally {
