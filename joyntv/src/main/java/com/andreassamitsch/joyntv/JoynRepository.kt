@@ -21,7 +21,7 @@ internal class JoynRepository(context: Context) {
     private val nordHttpsCredentialDiagnostics = JoynNordHttpsCredentialDiagnostics()
     private val nordOpenVpnScanner = JoynNordOpenVpnScanner(appContext)
     private val mysteriumSettings = JoynMysteriumSettings(appContext)
-    private val mysteriumApiClient = JoynMysteriumApiClient()
+    private val mysteriumApiClient = JoynMysteriumApiClient(appContext)
     private val mysteriumScanner = JoynMysteriumProxyScanner(mysteriumApiClient)
     private val pinSettings = JoynParentalPinSettings(appContext)
     private val api = JoynApiClient(appContext)
@@ -150,6 +150,10 @@ internal class JoynRepository(context: Context) {
     fun mysteriumCountrySettings(country: JoynCountry = currentCountry()): JoynMysteriumCountrySettings =
         mysteriumSettings.countrySettings(country)
 
+    fun mysteriumSavedEmail(): String = mysteriumApiClient.savedEmail()
+
+    fun mysteriumHasStoredAccessToken(): Boolean = mysteriumApiClient.hasStoredAccessToken()
+
     fun saveMysteriumSettings(
         apiBaseUrl: String,
         country: JoynCountry,
@@ -166,6 +170,29 @@ internal class JoynRepository(context: Context) {
 
     suspend fun mysteriumApiStatus(apiBaseUrl: String = mysteriumSettings.apiBaseUrl()): JoynMysteriumApiStatus =
         withContext(Dispatchers.IO) { mysteriumApiClient.status(apiBaseUrl) }
+
+    suspend fun requestMysteriumMagicLink(
+        email: String,
+        apiBaseUrl: String = mysteriumSettings.apiBaseUrl(),
+    ): Result<JoynMysteriumMagicLinkResult> = withContext(Dispatchers.IO) {
+        mysteriumSettings.saveApiBaseUrl(apiBaseUrl)
+        mysteriumApiClient.requestMagicLink(apiBaseUrl, email)
+    }
+
+    suspend fun completeMysteriumMagicLink(
+        codeOrLink: String,
+        apiBaseUrl: String = mysteriumSettings.apiBaseUrl(),
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        mysteriumApiClient.completeMagicLink(apiBaseUrl, codeOrLink)
+    }
+
+    fun saveMysteriumAccessToken(token: String) {
+        mysteriumApiClient.saveManualAccessToken(token)
+    }
+
+    fun logoutMysterium() {
+        mysteriumApiClient.clearSession()
+    }
 
     suspend fun findMysteriumResidentialProxy(
         country: JoynCountry,
@@ -224,11 +251,7 @@ internal class JoynRepository(context: Context) {
         val progressRelay = progressRelay(onProgress)
 
         return try {
-            progressRelay(
-                JoynProxyDiscoveryProgress(
-                    "Prüfe NordVPN HTTPS/89-Service-Credentials …",
-                ),
-            )
+            progressRelay(JoynProxyDiscoveryProgress("Prüfe NordVPN HTTPS/89-Service-Credentials …"))
             val httpsCredentialDiagnostic = withContext(Dispatchers.IO) {
                 nordHttpsCredentialDiagnostics.run(country, username, password)
             }
@@ -250,11 +273,7 @@ internal class JoynRepository(context: Context) {
                 )
             }
 
-            progressRelay(
-                JoynProxyDiscoveryProgress(
-                    "Prüfe NordVPN-Service-Credentials zusätzlich über offiziellen SOCKS5-Dienst …",
-                ),
-            )
+            progressRelay(JoynProxyDiscoveryProgress("Prüfe NordVPN-Service-Credentials zusätzlich über offiziellen SOCKS5-Dienst …"))
             val credentialDiagnostic = withContext(Dispatchers.IO) {
                 nordCredentialDiagnostics.run(username, password)
             }
@@ -285,12 +304,6 @@ internal class JoynRepository(context: Context) {
         }
     }
 
-    /**
-     * Tests normal NordVPN OpenVPN exits through Android VpnService. The java.net proxy is
-     * temporarily removed so there is never a proxy-inside-VPN during the scan. A successful tunnel
-     * disables the persisted test proxy and clears Joyn's stored auth token because the source IP
-     * has changed. On failure the previous proxy routing is restored unchanged.
-     */
     suspend fun findNordVpnOpenVpnTunnel(
         username: String,
         password: String,
