@@ -30,6 +30,5 @@ jobs:
           done \
           | grep -Eo 'https?://[A-Za-z0-9._:/?=&%-]+' \
           | grep -Ei 'mysterium|mystnodes|mysteriumnetwork|api' \
-          | sed -E 's/["'"'<>),;]+$//' \
           | sort -u \
-          | head -n 300
+          | head -n 300 || true
