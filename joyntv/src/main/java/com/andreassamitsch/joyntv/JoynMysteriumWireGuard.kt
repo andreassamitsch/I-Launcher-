@@ -19,13 +19,9 @@ import kotlinx.coroutines.withContext
 /**
  * App-scoped WireGuard tunnel used for Mysterium Residential.
  *
- * Mysterium's native Android client deliberately separates Android TUN routing from WireGuard peer
- * routing: the TUN captures IPv4 and IPv6, while the peer transports IPv4. The stock WireGuard
- * Android GoBackend used here derives Android TUN routes directly from peer AllowedIPs, so that
- * exact split cannot be represented without forking the backend. For this app-scoped tunnel we use
- * Android's equivalent leak-safe model instead: IPv4 is routed through WireGuard and IPv6 is not
- * enabled at all for this VPN. Android therefore blocks IPv6 for Joyn TV instead of allowing it to
- * fall through to the TV's underlying network.
+ * The tunnel itself is process-global, but Joyn keeps a separate remembered Residential profile per
+ * market. [activeCountry] identifies which market currently owns the live tunnel so switching
+ * DE/AT/CH can deterministically replace it with that country's approved exit.
  */
 internal object JoynMysteriumWireGuard {
     private const val PREFS_NAME = "joyn_protocol"
@@ -37,6 +33,9 @@ internal object JoynMysteriumWireGuard {
     @Volatile
     private var backendInstance: GoBackend? = null
 
+    @Volatile
+    private var activeMarket: JoynCountry? = null
+
     private val tunnel = object : Tunnel {
         override fun getName(): String = TUNNEL_NAME
         override fun onStateChange(newState: Tunnel.State) = Unit
@@ -46,7 +45,20 @@ internal object JoynMysteriumWireGuard {
 
     fun publicKey(context: Context): String = keyPair(context.applicationContext).publicKey.toBase64()
 
-    suspend fun connect(context: Context, configTemplate: String): Result<Unit> = withContext(Dispatchers.IO) {
+    fun activeCountry(): JoynCountry? = activeMarket
+
+    fun adoptActiveCountry(country: JoynCountry) {
+        activeMarket = country
+    }
+
+    suspend fun connect(context: Context, configTemplate: String): Result<Unit> =
+        connect(context, country = null, configTemplate = configTemplate)
+
+    suspend fun connect(
+        context: Context,
+        country: JoynCountry?,
+        configTemplate: String,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             operationMutex.withLock {
                 val appContext = context.applicationContext
@@ -61,6 +73,7 @@ internal object JoynMysteriumWireGuard {
 
                 val state = backend(appContext).setState(tunnel, Tunnel.State.UP, parsed)
                 check(state == Tunnel.State.UP) { "WireGuard-Tunnel wurde nicht aktiviert ($state)" }
+                if (country != null) activeMarket = country
             }
         }
     }
@@ -72,6 +85,7 @@ internal object JoynMysteriumWireGuard {
                 if (backend.getState(tunnel) != Tunnel.State.DOWN) {
                     backend.setState(tunnel, Tunnel.State.DOWN, null)
                 }
+                activeMarket = null
             }
         }
     }
@@ -168,11 +182,7 @@ internal object JoynMysteriumWireGuardConfig {
             "Ungültige Mysterium-WireGuard-Konfiguration: [Peer] fehlt."
         }
 
-        // One real IPv4 default route is intentional here. GoBackend then sees a single peer with
-        // a /0 route and does not call allowFamily(AF_INET6). Because the interface was sanitized
-        // above and contains no IPv6 address/DNS/route, Android blocks IPv6 for this app-scoped VPN.
         lines.add(peerIndex + 1, "AllowedIPs = 0.0.0.0/0")
-
         return lines.joinToString("\n")
     }
 
@@ -211,9 +221,6 @@ internal object JoynMysteriumWireGuardConfig {
     }
 
     private fun sanitizeDnsLine(line: String): String? {
-        // IPv4 DNS servers are kept. A non-IP hostname is a wg-quick DNS search domain and is safe
-        // because GoBackend adds it as a search domain, not as an IPv6 route/address. Any token that
-        // contains ':' is an IPv6 literal and is deliberately removed.
         val safe = values(line).filter { token -> !token.contains(':') }
         return safe.takeIf { it.isNotEmpty() }?.joinToString(", ", prefix = "DNS = ")
     }
