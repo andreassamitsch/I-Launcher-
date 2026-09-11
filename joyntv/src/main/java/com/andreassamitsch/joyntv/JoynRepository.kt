@@ -206,6 +206,11 @@ internal class JoynRepository(context: Context) {
     fun proxyConfig(): JoynProxyConfig = proxySettings.current()
     fun setProxy(config: JoynProxyConfig) {
         proxySettings.save(config)
+        ACTIVE_MYSTERIUM_PROXY_COUNTRY = if (config.isUsable && config.isMysterium) {
+            JoynCountry.entries.firstOrNull { config.source.contains(it.name, ignoreCase = true) }
+        } else {
+            null
+        }
         if (!config.enabled) {
             mysteriumSettings.setWireGuardEnabled(currentCountry(), false)
         }
@@ -213,6 +218,7 @@ internal class JoynRepository(context: Context) {
 
     fun disableProxy() {
         proxySettings.disable()
+        ACTIVE_MYSTERIUM_PROXY_COUNTRY = null
         mysteriumSettings.setWireGuardEnabled(currentCountry(), false)
     }
 
@@ -228,7 +234,10 @@ internal class JoynRepository(context: Context) {
 
     suspend fun mysteriumVpnConnected(): Boolean = JoynMysteriumWireGuard.isConnected(appContext)
 
-    suspend fun disconnectMysteriumVpn(): Result<Unit> = JoynMysteriumWireGuard.disconnect(appContext)
+    suspend fun disconnectMysteriumVpn(): Result<Unit> {
+        ACTIVE_MYSTERIUM_PROXY_COUNTRY = null
+        return JoynMysteriumWireGuard.disconnect(appContext)
+    }
 
     fun saveMysteriumSettings(
         country: JoynCountry,
@@ -256,11 +265,56 @@ internal class JoynRepository(context: Context) {
     fun saveMysteriumAccessToken(token: String) = mysteriumApiClient.saveManualAccessToken(token)
     fun logoutMysterium() = mysteriumApiClient.clearSession()
 
+    /**
+     * Restores the fastest valid Mysterium route for [country]. A verified connect-proxy lease is
+     * preferred because it needs no Android VPN/TUN setup. If the lease has expired or is missing,
+     * the previously verified app-scoped WireGuard profile remains the compatibility fallback.
+     */
     suspend fun ensureMysteriumForCountry(country: JoynCountry): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             GLOBAL_COUNTRY_ROUTING_MUTEX.withLock {
-                val profile = mysteriumSettings.wireGuardProfile(country)
+                val proxyProfile = mysteriumSettings.lastSuccessful(country)
+                val proxyValid = proxyProfile != null && !mysteriumSettings.leaseNeedsRefresh(country)
+                if (proxyValid) {
+                    val desired = requireNotNull(proxyProfile).copy(
+                        enabled = true,
+                        automatic = true,
+                        allTraffic = true,
+                    )
+                    if (
+                        ACTIVE_MYSTERIUM_PROXY_COUNTRY == country &&
+                        proxySettings.current().isUsable &&
+                        proxySettings.current().host == desired.host &&
+                        proxySettings.current().port == desired.port
+                    ) {
+                        return@withLock
+                    }
 
+                    val startedAt = SystemClock.elapsedRealtime()
+                    if (JoynMysteriumWireGuard.isConnected(appContext)) {
+                        JoynMysteriumWireGuard.disconnect(appContext).getOrThrow()
+                    }
+                    // save() updates the stable process ProxySelector already held by OkHttp and
+                    // Media3, so the next manifest/DRM/segment request switches without rebuilding
+                    // the player or creating an Android VPN interface.
+                    proxySettings.save(desired)
+                    ACTIVE_MYSTERIUM_PROXY_COUNTRY = country
+                    multiCountryLiveApi.onRouteChanged()
+                    Log.i(
+                        TAG,
+                        "Mysterium proxy switch ->${country.name} in ${SystemClock.elapsedRealtime() - startedAt}ms",
+                    )
+                    return@withLock
+                }
+
+                // No usable proxy lease for this market. Never let a previously selected country's
+                // proxy bleed into the WireGuard/direct fallback path.
+                if (ACTIVE_MYSTERIUM_PROXY_COUNTRY != null || proxySettings.current().isMysterium) {
+                    JoynProxySettings.installDirectForTunnel()
+                    ACTIVE_MYSTERIUM_PROXY_COUNTRY = null
+                }
+
+                val profile = mysteriumSettings.wireGuardProfile(country)
                 if (profile == null || !profile.enabled) {
                     if (JoynMysteriumWireGuard.isConnected(appContext)) {
                         JoynMysteriumWireGuard.disconnect(appContext).getOrThrow()
@@ -316,18 +370,13 @@ internal class JoynRepository(context: Context) {
                     }
                     Log.i(
                         TAG,
-                        "Mysterium phase ${previousCountry?.name ?: "DIRECT"}->${country.name}: " +
+                        "Mysterium WG phase ${previousCountry?.name ?: "DIRECT"}->${country.name}: " +
                             "api=${apiMs}ms wg=${wgMs}ms verify=${verifyMs}ms refresh=$forceRefresh",
                     )
                     return lease
                 }
 
                 val lease = if (crossCountrySwitch) {
-                    // A Mysterium country session that has been left is not reliably reusable. The old
-                    // implementation first tried that stale wg_config for 3 s and only then refreshed
-                    // the exact same target, which is why every country change clustered around
-                    // 10-12 s. Reactivate the approved target immediately while the old tunnel still
-                    // carries the Mysterium API request. Playback traffic below is the readiness probe.
                     activateTarget(
                         forceRefresh = true,
                         verifyExit = false,
@@ -361,7 +410,7 @@ internal class JoynRepository(context: Context) {
                 multiCountryLiveApi.onRouteChanged()
                 Log.i(
                     TAG,
-                    "Mysterium switch ${previousCountry?.name ?: "DIRECT"}->${country.name} in " +
+                    "Mysterium WG switch ${previousCountry?.name ?: "DIRECT"}->${country.name} in " +
                         "${SystemClock.elapsedRealtime() - switchStartedAt}ms",
                 )
             }
@@ -381,10 +430,11 @@ internal class JoynRepository(context: Context) {
         allTraffic: Boolean,
         onProgress: (JoynProxyDiscoveryProgress) -> Unit = {},
     ): JoynProxyDiscoveryResult {
-        saveMysteriumSettings(country, maxAttempts, allTraffic)
+        saveMysteriumSettings(country, maxAttempts, allTraffic = true)
         val progressRelay = progressRelay(onProgress)
 
         proxySettings.disable()
+        ACTIVE_MYSTERIUM_PROXY_COUNTRY = null
         mysteriumSettings.clearLastSuccessful(country)
 
         val accountStatus = withContext(Dispatchers.IO) { mysteriumApiClient.status() }
@@ -402,14 +452,27 @@ internal class JoynRepository(context: Context) {
                 country = country,
                 apiKey = protocolPrefs.getString("api_key_${country.name}", null),
                 maxAttempts = maxAttempts,
-                allTraffic = allTraffic,
+                allTraffic = true,
                 onProgress = progressRelay,
             )
         }
 
+        result.config?.let { config ->
+            val active = config.copy(enabled = true, automatic = true, allTraffic = true)
+            mysteriumSettings.saveLastSuccessful(country, active, result.expiresAt)
+            if (JoynMysteriumWireGuard.isConnected(appContext)) {
+                JoynMysteriumWireGuard.disconnect(appContext)
+            }
+            proxySettings.save(active)
+            ACTIVE_MYSTERIUM_PROXY_COUNTRY = country
+            multiCountryLiveApi.onRouteChanged()
+        }
+
+        // Compatibility for an older scanner result. The current proxy scanner leaves activated=false.
         if (result.activated) {
             mysteriumSettings.promoteWireGuardCandidate(country)
             JoynMysteriumWireGuard.adoptActiveCountry(country)
+            ACTIVE_MYSTERIUM_PROXY_COUNTRY = null
             multiCountryLiveApi.onRouteChanged()
         }
         return result
@@ -471,6 +534,9 @@ internal class JoynRepository(context: Context) {
         private const val REFRESH_TUNNEL_READY_TIMEOUT_MS = 4_000L
         private val GLOBAL_COUNTRY_ROUTING_MUTEX = Mutex()
         private val LIVE_COUNTRIES = listOf(JoynCountry.AT, JoynCountry.DE, JoynCountry.CH)
+
+        @Volatile
+        private var ACTIVE_MYSTERIUM_PROXY_COUNTRY: JoynCountry? = null
     }
 }
 
@@ -478,4 +544,12 @@ internal class JoynMysteriumRoutingException(message: String, cause: Throwable? 
 
 internal class JoynLoginRequiredException : Exception(
     "Für diesen geschützten Inhalt musst du in Joyn TV mit deinem Joyn-Konto angemeldet sein.",
+)
+
+internal class JoynPinRequiredException : Exception(
+    "Dieser Inhalt ist jugendgeschützt. Bitte Jugendschutz-PIN eingeben.",
+)
+
+internal class JoynPinInvalidException : Exception(
+    "Der eingegebene Jugendschutz-PIN ist nicht korrekt.",
 )
