@@ -3,6 +3,7 @@ package com.andreassamitsch.joyntv
 import android.content.Context
 import java.io.IOException
 import java.net.Authenticator
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.PasswordAuthentication
 import java.net.Proxy
@@ -39,9 +40,15 @@ internal data class JoynProxyConfig(
 /**
  * Process-wide routing for the active residential HTTP proxy.
  *
+ * The important detail is that the same [ProxySelector] instance stays installed for the whole
+ * process lifetime. OkHttp snapshots ProxySelector.getDefault() when a client is built. Replacing
+ * the system selector later therefore leaves already-created Joyn clients on the old route. The
+ * stable selector below reads the current config for every new connection, so enabling/disabling a
+ * proxy and rotating Mysterium leases immediately affects existing OkHttp/Media3 clients as well.
+ *
  * Mysterium leases use a loopback CONNECT bridge. That keeps short-lived upstream credentials out
- * of Media3/HttpURLConnection/OkHttp and lets every network stack use the same unauthenticated local
- * proxy. Manual HTTP proxies continue to use the normal Java/OkHttp proxy authentication path.
+ * of Media3/HttpURLConnection/OkHttp and lets every networking stack use the same unauthenticated
+ * local proxy. Manual HTTP proxies continue to use the normal Java/OkHttp proxy authentication path.
  */
 internal class JoynProxySettings(context: Context) {
     private val prefs = context.applicationContext
@@ -69,18 +76,20 @@ internal class JoynProxySettings(context: Context) {
 
     /** Installs dynamic authentication only for a directly configured manual HTTP proxy. */
     fun configure(builder: OkHttpClient.Builder): OkHttpClient.Builder {
-        return builder.proxyAuthenticator { _, response ->
-            val config = current()
-            if (!config.isUsable || config.isMysterium || config.username.isBlank()) {
-                null
-            } else if (response.request.header("Proxy-Authorization") != null) {
-                null
-            } else {
-                response.request.newBuilder()
-                    .header("Proxy-Authorization", Credentials.basic(config.username, config.password))
-                    .build()
+        return builder
+            .proxySelector(routingProxySelector)
+            .proxyAuthenticator { _, response ->
+                val config = current()
+                if (!config.isUsable || config.isMysterium || config.username.isBlank()) {
+                    null
+                } else if (response.request.header("Proxy-Authorization") != null) {
+                    null
+                } else {
+                    response.request.newBuilder()
+                        .header("Proxy-Authorization", Credentials.basic(config.username, config.password))
+                        .build()
+                }
             }
-        }
     }
 
     fun save(config: JoynProxyConfig) {
@@ -118,8 +127,11 @@ internal class JoynProxySettings(context: Context) {
         private const val KEY_LATENCY_MS = "test_proxy_latency_ms"
         private const val KEY_LAST_VERIFIED_AT = "test_proxy_last_verified_at"
 
-        private val originalProxySelector: ProxySelector? by lazy { ProxySelector.getDefault() }
+        // Capture this before installing our own selector. Making this lazy can accidentally capture
+        // routingProxySelector itself and recurse forever when direct/fallback traffic is selected.
+        private val originalProxySelector: ProxySelector? = ProxySelector.getDefault()
         private val originalAuthenticator: Authenticator? = null
+        private val deadProxyAddress = InetSocketAddress(InetAddress.getLoopbackAddress(), 1)
 
         @Volatile
         private var connectFailureHandler: ((String) -> Unit)? = null
@@ -135,6 +147,51 @@ internal class JoynProxySettings(context: Context) {
             "api.vod-prd.s.joyn.de",
         )
 
+        /**
+         * Stable selector intentionally kept for the lifetime of the app process.
+         *
+         * Existing OkHttp clients retain this object. Config changes only update the holder below;
+         * the next connection therefore resolves the current Mysterium lease instead of a stale
+         * local bridge address.
+         */
+        private val routingProxySelector = object : ProxySelector() {
+            override fun select(uri: URI?): MutableList<Proxy> {
+                if (uri == null) return mutableListOf(Proxy.NO_PROXY)
+                val config = JoynProxySettingsHolder.currentConfig()
+                val host = uri.host?.lowercase().orEmpty()
+                if (config?.isUsable == true && shouldProxy(config, host)) {
+                    val address = runCatching { proxyAddress(config) }.getOrElse { error ->
+                        connectFailureHandler?.invoke(
+                            buildString {
+                                append("Proxy bridge")
+                                error.message?.takeIf(String::isNotBlank)?.let { append(": $it") }
+                            },
+                        )
+                        // Never silently fall back to the direct connection when proxy mode is on.
+                        // A fast loopback refusal is safer than leaking the request outside the
+                        // selected market and lets the automatic Mysterium failover react.
+                        deadProxyAddress
+                    }
+                    return mutableListOf(Proxy(Proxy.Type.HTTP, address))
+                }
+                return fallbackSelect(uri)
+            }
+
+            override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) {
+                val config = JoynProxySettingsHolder.currentConfig()
+                val host = uri?.host?.lowercase().orEmpty()
+                if (config?.isUsable == true && shouldProxy(config, host)) {
+                    val reason = buildString {
+                        append(uri?.host ?: "Proxy")
+                        ioe?.message?.takeIf(String::isNotBlank)?.let { append(": $it") }
+                    }
+                    connectFailureHandler?.invoke(reason)
+                } else {
+                    runCatching { originalProxySelector?.connectFailed(uri, sa, ioe) }
+                }
+            }
+        }
+
         fun install(context: Context) {
             installProcessRouting(JoynProxySettings(context).current())
         }
@@ -146,49 +203,21 @@ internal class JoynProxySettings(context: Context) {
         fun installDirectForTunnel() {
             JoynMysteriumProxyBridge.stopShared()
             JoynProxySettingsHolder.clear()
-            ProxySelector.setDefault(originalProxySelector)
+            // Keep our stable selector installed so OkHttp clients created before/after this call
+            // behave identically. With an empty holder it simply delegates to the original route.
+            ProxySelector.setDefault(routingProxySelector)
             Authenticator.setDefault(originalAuthenticator)
         }
 
         private fun installProcessRouting(config: JoynProxyConfig) {
-            if (!config.isUsable) {
-                installDirectForTunnel()
-                return
-            }
-
-            val proxyAddress = if (config.isMysterium) {
-                JoynMysteriumProxyBridge.shared(config) { reason ->
-                    connectFailureHandler?.invoke(reason)
-                }
-            } else {
-                JoynMysteriumProxyBridge.stopShared()
-                InetSocketAddress.createUnresolved(config.host.trim(), config.port)
-            }
-            val proxy = Proxy(Proxy.Type.HTTP, proxyAddress)
-            val fallback = originalProxySelector
-            ProxySelector.setDefault(object : ProxySelector() {
-                override fun select(uri: URI?): MutableList<Proxy> {
-                    if (uri == null) return mutableListOf(Proxy.NO_PROXY)
-                    val host = uri.host?.lowercase().orEmpty()
-                    val shouldProxy = config.allTraffic || host in controlHosts
-                    if (shouldProxy) return mutableListOf(proxy)
-                    return runCatching { fallback?.select(uri)?.toMutableList() }
-                        .getOrNull()
-                        ?.takeIf { it.isNotEmpty() }
-                        ?: mutableListOf(Proxy.NO_PROXY)
-                }
-
-                override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) {
-                    val reason = buildString {
-                        append(uri?.host ?: "Proxy")
-                        ioe?.message?.takeIf(String::isNotBlank)?.let { append(": $it") }
-                    }
-                    connectFailureHandler?.invoke(reason)
-                }
-            })
-
             JoynProxySettingsHolder.update(config)
-            if (config.isMysterium) {
+            ProxySelector.setDefault(routingProxySelector)
+
+            if (!config.isUsable || !config.isMysterium) {
+                JoynMysteriumProxyBridge.stopShared()
+            }
+
+            if (!config.isUsable || config.isMysterium) {
                 // The local bridge is intentionally unauthenticated and injects the upstream lease
                 // credentials itself. Do not expose those credentials to Java networking stacks.
                 Authenticator.setDefault(originalAuthenticator)
@@ -204,10 +233,28 @@ internal class JoynProxySettings(context: Context) {
                 })
             }
         }
+
+        private fun shouldProxy(config: JoynProxyConfig, host: String): Boolean =
+            config.allTraffic || host in controlHosts
+
+        private fun proxyAddress(config: JoynProxyConfig): InetSocketAddress =
+            if (config.isMysterium) {
+                JoynMysteriumProxyBridge.shared(config) { reason ->
+                    connectFailureHandler?.invoke(reason)
+                }
+            } else {
+                InetSocketAddress.createUnresolved(config.host.trim(), config.port)
+            }
+
+        private fun fallbackSelect(uri: URI): MutableList<Proxy> =
+            runCatching { originalProxySelector?.select(uri)?.toMutableList() }
+                .getOrNull()
+                ?.takeIf { it.isNotEmpty() }
+                ?: mutableListOf(Proxy.NO_PROXY)
     }
 }
 
-/** Small process-local snapshot used by java.net.Authenticator without retaining an Activity. */
+/** Small process-local snapshot used by the stable ProxySelector and java.net.Authenticator. */
 private object JoynProxySettingsHolder {
     @Volatile
     private var config: JoynProxyConfig? = null
