@@ -37,11 +37,11 @@ internal data class JoynProxyConfig(
 }
 
 /**
- * Process-wide routing for the active Mysterium residential HTTP proxy.
+ * Process-wide routing for the active residential HTTP proxy.
  *
- * By default only Joyn's control-plane hosts use the proxy. Full traffic can be enabled per country
- * profile. Proxy credentials are read dynamically for every authentication challenge so an active
- * OkHttp client automatically picks up a newly rotated Mysterium lease.
+ * Mysterium leases use a loopback CONNECT bridge. That keeps short-lived upstream credentials out
+ * of Media3/HttpURLConnection/OkHttp and lets every network stack use the same unauthenticated local
+ * proxy. Manual HTTP proxies continue to use the normal Java/OkHttp proxy authentication path.
  */
 internal class JoynProxySettings(context: Context) {
     private val prefs = context.applicationContext
@@ -67,11 +67,11 @@ internal class JoynProxySettings(context: Context) {
         )
     }
 
-    /** Installs dynamic HTTP-proxy authentication on an OkHttp builder. */
+    /** Installs dynamic authentication only for a directly configured manual HTTP proxy. */
     fun configure(builder: OkHttpClient.Builder): OkHttpClient.Builder {
         return builder.proxyAuthenticator { _, response ->
             val config = current()
-            if (!config.isUsable || config.username.isBlank()) {
+            if (!config.isUsable || config.isMysterium || config.username.isBlank()) {
                 null
             } else if (response.request.header("Proxy-Authorization") != null) {
                 null
@@ -144,6 +144,8 @@ internal class JoynProxySettings(context: Context) {
         }
 
         fun installDirectForTunnel() {
+            JoynMysteriumProxyBridge.stopShared()
+            JoynProxySettingsHolder.clear()
             ProxySelector.setDefault(originalProxySelector)
             Authenticator.setDefault(originalAuthenticator)
         }
@@ -154,10 +156,15 @@ internal class JoynProxySettings(context: Context) {
                 return
             }
 
-            val proxy = Proxy(
-                Proxy.Type.HTTP,
-                InetSocketAddress.createUnresolved(config.host.trim(), config.port),
-            )
+            val proxyAddress = if (config.isMysterium) {
+                JoynMysteriumProxyBridge.shared(config) { reason ->
+                    connectFailureHandler?.invoke(reason)
+                }
+            } else {
+                JoynMysteriumProxyBridge.stopShared()
+                InetSocketAddress.createUnresolved(config.host.trim(), config.port)
+            }
+            val proxy = Proxy(Proxy.Type.HTTP, proxyAddress)
             val fallback = originalProxySelector
             ProxySelector.setDefault(object : ProxySelector() {
                 override fun select(uri: URI?): MutableList<Proxy> {
@@ -180,18 +187,22 @@ internal class JoynProxySettings(context: Context) {
                 }
             })
 
-            // HttpURLConnection/Media3 may use java.net.Authenticator. OkHttp receives the same
-            // current credentials through configure(), so both stacks survive lease rotation.
-            Authenticator.setDefault(object : Authenticator() {
-                override fun getPasswordAuthentication(): PasswordAuthentication? {
-                    if (requestorType != RequestorType.PROXY) return null
-                    val current = JoynProxySettingsHolder.currentConfig()
-                    return current
-                        ?.takeIf { it.isUsable && it.username.isNotBlank() }
-                        ?.let { PasswordAuthentication(it.username, it.password.toCharArray()) }
-                }
-            })
             JoynProxySettingsHolder.update(config)
+            if (config.isMysterium) {
+                // The local bridge is intentionally unauthenticated and injects the upstream lease
+                // credentials itself. Do not expose those credentials to Java networking stacks.
+                Authenticator.setDefault(originalAuthenticator)
+            } else {
+                Authenticator.setDefault(object : Authenticator() {
+                    override fun getPasswordAuthentication(): PasswordAuthentication? {
+                        if (requestorType != RequestorType.PROXY) return null
+                        val current = JoynProxySettingsHolder.currentConfig()
+                        return current
+                            ?.takeIf { it.isUsable && !it.isMysterium && it.username.isNotBlank() }
+                            ?.let { PasswordAuthentication(it.username, it.password.toCharArray()) }
+                    }
+                })
+            }
         }
     }
 }
@@ -203,6 +214,10 @@ private object JoynProxySettingsHolder {
 
     fun update(value: JoynProxyConfig) {
         config = value
+    }
+
+    fun clear() {
+        config = null
     }
 
     fun currentConfig(): JoynProxyConfig? = config
