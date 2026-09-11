@@ -17,10 +17,9 @@ import okhttp3.Request
  * Verifies that a newly switched app-scoped Mysterium tunnel is actually usable before Joyn starts
  * an entitlement/playback request.
  *
- * GoBackend reports Tunnel.State.UP as soon as the VPN interface is configured. A WireGuard
- * handshake and the actual Residential route can still need a short moment afterwards. Starting
- * Joyn immediately in that window caused the first channel start after AT/DE/CH switches to fail,
- * while a second click succeeded because the tunnel had become ready meanwhile.
+ * The probe is intentionally short. Normal AT/DE/CH switches now reuse prepared country-specific
+ * WireGuard connections; if that cached path is stale the repository refreshes exactly that target
+ * once instead of making the user wait through the old 12-second readiness timeout.
  */
 internal object JoynMysteriumTunnelProbe {
     private val ipv4OnlyDns = Dns { hostname ->
@@ -32,9 +31,9 @@ internal object JoynMysteriumTunnelProbe {
     private val client = OkHttpClient.Builder()
         .dns(ipv4OnlyDns)
         .proxy(Proxy.NO_PROXY)
-        .connectTimeout(3, TimeUnit.SECONDS)
-        .readTimeout(3, TimeUnit.SECONDS)
-        .callTimeout(4, TimeUnit.SECONDS)
+        .connectTimeout(1500, TimeUnit.MILLISECONDS)
+        .readTimeout(1500, TimeUnit.MILLISECONDS)
+        .callTimeout(2, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
@@ -69,9 +68,7 @@ internal object JoynMysteriumTunnelProbe {
                 delay(POLL_DELAY_MS)
             }
 
-            error(
-                "Mysterium ${country.name} Tunnel wurde nicht rechtzeitig bereit: $lastDetail",
-            )
+            error("Mysterium ${country.name} Tunnel wurde nicht rechtzeitig bereit: $lastDetail")
         }
     }
 
@@ -96,8 +93,8 @@ internal object JoynMysteriumTunnelProbe {
 
     private data class ExitTrace(val ip: String, val country: String)
 
-    private const val DEFAULT_TIMEOUT_MS = 12_000L
-    private const val POLL_DELAY_MS = 350L
+    private const val DEFAULT_TIMEOUT_MS = 5_000L
+    private const val POLL_DELAY_MS = 200L
     private const val USER_AGENT =
         "Mozilla/5.0 (Linux; Android 14; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 }
