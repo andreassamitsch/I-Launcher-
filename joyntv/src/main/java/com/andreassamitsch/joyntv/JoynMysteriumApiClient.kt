@@ -10,6 +10,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -30,10 +31,14 @@ internal data class JoynMysteriumApiStatus(
     val authenticated: Boolean?,
     val subscriptionText: String = "",
     val residentialCountryCount: Int? = null,
-    val resolvedBaseUrl: String = "",
+    val resolvedBaseUrl: String = PRODUCTION_BASE_URL,
     val accountEmail: String = "",
     val message: String,
-)
+) {
+    companion object {
+        const val PRODUCTION_BASE_URL = "https://api.mysteriumvpn.com/api/v1"
+    }
+}
 
 internal data class JoynMysteriumMagicLinkResult(
     val authenticated: Boolean,
@@ -42,11 +47,11 @@ internal data class JoynMysteriumMagicLinkResult(
 )
 
 /**
- * Minimal client for Mysterium VPN's consumer API.
+ * Client for Mysterium VPN's consumer API used by the current official app.
  *
- * Mysterium's official app authenticates with OAuth2/PKCE and then asks /connection/connect-proxy
- * for short-lived residential proxy credentials. Joyn TV follows that same public API contract and
- * never logs account tokens or proxy passwords.
+ * Mysterium provides short-lived HTTP proxy credentials through connect-proxy. Joyn TV requests
+ * residential leases directly from the consumer API; no localhost node, external Mysterium app or
+ * Android VPN tunnel is required. Account tokens and proxy passwords are never logged.
  */
 internal class JoynMysteriumApiClient(context: Context) {
     private val prefs = context.applicationContext
@@ -54,15 +59,14 @@ internal class JoynMysteriumApiClient(context: Context) {
 
     private val directClient = OkHttpClient.Builder()
         .proxy(Proxy.NO_PROXY)
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(12, TimeUnit.SECONDS)
-        .callTimeout(18, TimeUnit.SECONDS)
+        .connectTimeout(7, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .callTimeout(22, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
 
     fun savedEmail(): String = prefs.getString(KEY_EMAIL, "").orEmpty()
-
     fun hasStoredAccessToken(): Boolean = accessToken().isNotBlank()
 
     fun saveManualAccessToken(token: String) {
@@ -80,17 +84,31 @@ internal class JoynMysteriumApiClient(context: Context) {
             .apply()
     }
 
-    suspend fun status(configuredBaseUrl: String): JoynMysteriumApiStatus = withContext(Dispatchers.IO) {
-        val base = resolveBaseUrl(configuredBaseUrl)
+    suspend fun status(): JoynMysteriumApiStatus = withContext(Dispatchers.IO) {
+        val config = executeGet("$PRODUCTION_BASE_URL/auth/config")
             ?: return@withContext JoynMysteriumApiStatus(
                 reachable = false,
                 authenticated = null,
                 accountEmail = savedEmail(),
-                message = "Mysterium API ist nicht erreichbar. Geprüft: ${candidateBaseUrls(configuredBaseUrl).joinToString()}",
+                message = "Mysterium API nicht erreichbar · $PRODUCTION_BASE_URL",
             )
+        if (config.first !in 200..299) {
+            return@withContext JoynMysteriumApiStatus(
+                reachable = false,
+                authenticated = null,
+                accountEmail = savedEmail(),
+                message = "Mysterium API HTTP ${config.first}",
+            )
+        }
 
-        val token = accessToken()
-        val auth = if (token.isBlank()) null else executeAuthorizedGet(base, "/auth/check")
+        var token = accessToken()
+        var auth = if (token.isBlank()) null else executeAuthorizedGet("/auth/check")
+        if (token.isNotBlank() && (auth?.first == 401 || auth?.first == 403) && refreshToken().isNotBlank()) {
+            if (refreshAccessToken()) {
+                token = accessToken()
+                auth = executeAuthorizedGet("/auth/check")
+            }
+        }
         val authenticated = when {
             token.isBlank() -> false
             auth == null -> null
@@ -99,7 +117,7 @@ internal class JoynMysteriumApiClient(context: Context) {
             else -> null
         }
 
-        val subscription = if (authenticated == true) executeAuthorizedGet(base, "/subscription") else null
+        val subscription = if (authenticated == true) executeAuthorizedGet("/subscription") else null
         val subscriptionText = subscription
             ?.takeIf { it.first in 200..299 }
             ?.second
@@ -107,30 +125,21 @@ internal class JoynMysteriumApiClient(context: Context) {
             .orEmpty()
 
         val locations = if (authenticated == true) {
-            executeAuthorizedGet(base, "/connection/config/locations?ip_type=residential")
+            executeAuthorizedGet("/connection/config/locations?ip_type=residential")
         } else null
         val residentialCountries = locations
             ?.takeIf { it.first in 200..299 }
             ?.second
             ?.let(::countLocations)
 
-        if (authenticated == false && token.isNotBlank()) {
-            // Do not silently keep a rejected token forever. A refresh token is tried once first.
-            if (refreshToken().isNotBlank() && refreshAccessToken(base)) {
-                return@withContext status(base)
-            }
-        }
-
         JoynMysteriumApiStatus(
             reachable = true,
             authenticated = authenticated,
             subscriptionText = subscriptionText,
             residentialCountryCount = residentialCountries,
-            resolvedBaseUrl = base,
             accountEmail = savedEmail(),
             message = buildString {
                 append("Mysterium API erreichbar")
-                if (!sameBase(configuredBaseUrl, base)) append(" · API=$base")
                 when (authenticated) {
                     true -> append(" · angemeldet")
                     false -> append(" · nicht angemeldet")
@@ -142,13 +151,8 @@ internal class JoynMysteriumApiClient(context: Context) {
         )
     }
 
-    suspend fun requestMagicLink(
-        configuredBaseUrl: String,
-        email: String,
-    ): Result<JoynMysteriumMagicLinkResult> = withContext(Dispatchers.IO) {
+    suspend fun requestMagicLink(email: String): Result<JoynMysteriumMagicLinkResult> = withContext(Dispatchers.IO) {
         runCatching {
-            val base = resolveBaseUrl(configuredBaseUrl)
-                ?: error("Mysterium API nicht erreichbar")
             val cleanEmail = email.trim()
             require(cleanEmail.contains('@')) { "Bitte eine gültige Mysterium-E-Mail-Adresse eingeben." }
 
@@ -157,16 +161,15 @@ internal class JoynMysteriumApiClient(context: Context) {
             prefs.edit()
                 .putString(KEY_EMAIL, cleanEmail)
                 .putString(KEY_PKCE_VERIFIER, verifier)
-                .putString(KEY_LAST_BASE_URL, base)
                 .apply()
 
             val payload = JSONObject()
                 .put("email", cleanEmail)
                 .put("client_id", "app")
                 .put("code_challenge", challenge)
-                .put("code_challenge_method", "S256")
+                .put("code_challenge_method", "s256")
 
-            val response = executeJsonPost(base, "/magic-link", payload, authorized = false)
+            val response = executeJsonPost("/magic-link", payload, authorized = false)
                 ?: error("Keine Antwort von Mysterium")
             if (response.first !in 200..299) {
                 error("Magic-Link HTTP ${response.first}: ${extractError(response.second).ifBlank { compact(response.second) }}")
@@ -174,7 +177,7 @@ internal class JoynMysteriumApiClient(context: Context) {
             val json = runCatching { JSONObject(response.second) }.getOrElse { JSONObject() }
             val code = json.optString("code").trim()
             if (code.isNotBlank()) {
-                exchangeAuthorizationCode(base, code, verifier)
+                exchangeAuthorizationCode(code, verifier)
                 JoynMysteriumMagicLinkResult(
                     authenticated = true,
                     codeReturnedDirectly = true,
@@ -184,51 +187,43 @@ internal class JoynMysteriumApiClient(context: Context) {
                 JoynMysteriumMagicLinkResult(
                     authenticated = false,
                     codeReturnedDirectly = false,
-                    message = "Magic-Link an $cleanEmail gesendet. Öffne die Mail auf Handy/PC, kopiere die Link-Adresse und füge sie hier als Code/Link ein.",
+                    message = "Magic-Link wurde gesendet. Öffne die Mail auf Handy/PC und füge die Link-Adresse hier ein.",
                 )
             }
         }
     }
 
-    suspend fun completeMagicLink(
-        configuredBaseUrl: String,
-        linkOrCode: String,
-    ): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun completeMagicLink(linkOrCode: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val base = resolveBaseUrl(configuredBaseUrl)
-                ?: error("Mysterium API nicht erreichbar")
             val verifier = prefs.getString(KEY_PKCE_VERIFIER, "").orEmpty()
             if (verifier.isBlank()) error("Kein offener Mysterium-Login. Bitte zuerst Magic-Link senden.")
             val code = extractMagicLinkCode(linkOrCode)
                 ?: error("Kein gültiger Mysterium-Code im eingegebenen Link gefunden.")
-            exchangeAuthorizationCode(base, code, verifier)
+            exchangeAuthorizationCode(code, verifier)
         }
     }
 
     suspend fun requestResidentialProxy(
-        baseUrl: String,
         country: JoynCountry,
-        resetConnection: Boolean,
+        resetConnection: Boolean = true,
     ): Result<JoynMysteriumProxyLease> = withContext(Dispatchers.IO) {
         runCatching {
-            val base = resolveBaseUrl(baseUrl) ?: error("Mysterium API nicht erreichbar")
-            ensureAccessToken(base)
-
+            ensureAccessToken()
             val payload = JSONObject()
                 .put("country", country.name)
                 .put("ip_type", "residential")
                 .put("reset_connection", resetConnection)
                 .put("os_type", "android")
 
-            var response = executeJsonPost(base, "/connection/connect-proxy", payload, authorized = true)
+            var response = executeJsonPost("/connection/connect-proxy", payload, authorized = true)
                 ?: error("Keine Antwort von Mysterium")
-            if (response.first == 401 && refreshAccessToken(base)) {
-                response = executeJsonPost(base, "/connection/connect-proxy", payload, authorized = true)
+            if (response.first == 401 && refreshAccessToken()) {
+                response = executeJsonPost("/connection/connect-proxy", payload, authorized = true)
                     ?: error("Keine Antwort von Mysterium nach Token-Erneuerung")
             }
             val body = response.second
             if (response.first !in 200..299) {
-                val detail = extractError(body).ifBlank { body.take(300) }
+                val detail = extractError(body).ifBlank { compact(body) }
                 error("HTTP ${response.first}${detail.takeIf(String::isNotBlank)?.let { ": $it" }.orEmpty()}")
             }
             val root = JSONObject(body)
@@ -243,35 +238,32 @@ internal class JoynMysteriumApiClient(context: Context) {
             val username = proxy.optString("username")
             val password = proxy.optString("password")
             val expiresAt = proxy.optString("expires_at").ifBlank { proxy.optString("expiresAt") }
-            if (host.isBlank() || port !in 1..65535) {
-                error("Ungültige Mysterium-Proxyadresse: $host:$port")
-            }
+            if (host.isBlank() || port !in 1..65535) error("Ungültige Mysterium-Proxyadresse")
             JoynMysteriumProxyLease(host, port, username, password, expiresAt)
         }
     }
 
-    suspend fun residentialLocationSummary(baseUrl: String): String = withContext(Dispatchers.IO) {
-        val base = resolveBaseUrl(baseUrl) ?: return@withContext "Locations: API nicht erreichbar"
+    suspend fun residentialLocationSummary(): String = withContext(Dispatchers.IO) {
         if (accessToken().isBlank()) return@withContext "Locations: nicht angemeldet"
-        var response = executeAuthorizedGet(base, "/connection/config/locations?ip_type=residential")
+        var response = executeAuthorizedGet("/connection/config/locations?ip_type=residential")
             ?: return@withContext "Locations: API nicht erreichbar"
-        if (response.first == 401 && refreshAccessToken(base)) {
-            response = executeAuthorizedGet(base, "/connection/config/locations?ip_type=residential")
+        if (response.first == 401 && refreshAccessToken()) {
+            response = executeAuthorizedGet("/connection/config/locations?ip_type=residential")
                 ?: return@withContext "Locations: API nicht erreichbar"
         }
         if (response.first !in 200..299) return@withContext "Locations: HTTP ${response.first}"
         summarizeLocations(response.second)
     }
 
-    private fun exchangeAuthorizationCode(base: String, code: String, verifier: String) {
-        val payload = JSONObject()
-            .put("grant_type", "authorization_code")
-            .put("device_id", deviceId())
-            .put("client_id", "app")
-            .put("code_verifier", verifier)
-            .put("code", code)
-            .put("device", deviceJson())
-        val response = executeJsonPost(base, "/oauth/token", payload, authorized = false)
+    private fun exchangeAuthorizationCode(code: String, verifier: String) {
+        val form = FormBody.Builder()
+            .add("grant_type", "authorization_code")
+            .add("client_id", "app")
+            .add("device", deviceJson().toString())
+            .add("code_verifier", verifier)
+            .add("code", code)
+            .build()
+        val response = executeFormPost("/oauth/token", form)
             ?: error("Keine Antwort vom Mysterium-Token-Endpunkt")
         if (response.first !in 200..299) {
             error("Mysterium Login HTTP ${response.first}: ${extractError(response.second).ifBlank { compact(response.second) }}")
@@ -280,16 +272,16 @@ internal class JoynMysteriumApiClient(context: Context) {
         prefs.edit().remove(KEY_PKCE_VERIFIER).apply()
     }
 
-    private fun refreshAccessToken(base: String): Boolean {
+    private fun refreshAccessToken(): Boolean {
         val refresh = refreshToken()
         if (refresh.isBlank()) return false
-        val payload = JSONObject()
-            .put("grant_type", "refresh_token")
-            .put("device_id", deviceId())
-            .put("client_id", "app")
-            .put("refresh_token", refresh)
-            .put("device", deviceJson())
-        val response = executeJsonPost(base, "/oauth/token", payload, authorized = false) ?: return false
+        val form = FormBody.Builder()
+            .add("grant_type", "refresh_token")
+            .add("client_id", "app")
+            .add("device", deviceJson().toString())
+            .add("refresh_token", refresh)
+            .build()
+        val response = executeFormPost("/oauth/token", form) ?: return false
         if (response.first !in 200..299) return false
         return runCatching { saveTokenResponse(response.second); true }.getOrDefault(false)
     }
@@ -307,14 +299,14 @@ internal class JoynMysteriumApiClient(context: Context) {
             .apply()
     }
 
-    private fun ensureAccessToken(base: String) {
+    private fun ensureAccessToken() {
         if (accessToken().isNotBlank()) return
-        if (refreshAccessToken(base)) return
-        error("Nicht bei Mysterium angemeldet. Bitte zuerst Magic-Link oder Access-Token verwenden.")
+        if (refreshAccessToken()) return
+        error("Nicht bei Mysterium angemeldet. Bitte zuerst Magic-Link verwenden.")
     }
 
-    private fun executeAuthorizedGet(base: String, path: String): Pair<Int, String>? =
-        executeGet("$base$path", bearer = accessToken().takeIf(String::isNotBlank))
+    private fun executeAuthorizedGet(path: String): Pair<Int, String>? =
+        executeGet("$PRODUCTION_BASE_URL$path", bearer = accessToken().takeIf(String::isNotBlank))
 
     private fun executeGet(url: String, bearer: String? = null): Pair<Int, String>? = runCatching {
         val builder = Request.Builder()
@@ -324,58 +316,37 @@ internal class JoynMysteriumApiClient(context: Context) {
             .header("x-client-version", CLIENT_VERSION)
             .header("x-client-platform", "android")
         if (!bearer.isNullOrBlank()) builder.header("Authorization", "Bearer $bearer")
-        directClient.newCall(builder.get().build()).execute().use { response ->
-            response.code to response.body.string()
-        }
+        directClient.newCall(builder.get().build()).execute().use { response -> response.code to response.body.string() }
     }.getOrNull()
 
     private fun executeJsonPost(
-        base: String,
         path: String,
         payload: JSONObject,
         authorized: Boolean,
     ): Pair<Int, String>? = runCatching {
         val builder = Request.Builder()
-            .url("$base$path")
+            .url("$PRODUCTION_BASE_URL$path")
             .header("Accept", "application/json")
             .header("Content-Type", JSON_MEDIA_TYPE.toString())
             .header("User-Agent", USER_AGENT)
             .header("x-client-version", CLIENT_VERSION)
             .header("x-client-platform", "android")
             .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
-        if (authorized) {
-            val token = accessToken()
-            if (token.isNotBlank()) builder.header("Authorization", "Bearer $token")
-        }
-        directClient.newCall(builder.build()).execute().use { response ->
-            response.code to response.body.string()
-        }
+        if (authorized) accessToken().takeIf(String::isNotBlank)?.let { builder.header("Authorization", "Bearer $it") }
+        directClient.newCall(builder.build()).execute().use { response -> response.code to response.body.string() }
     }.getOrNull()
 
-    private fun resolveBaseUrl(configured: String): String? {
-        val savedResolved = prefs.getString(KEY_LAST_BASE_URL, "").orEmpty()
-        val candidates = buildList {
-            addAll(candidateBaseUrls(configured))
-            if (savedResolved.isNotBlank()) add(0, JoynMysteriumSettings.normalizeApiBaseUrl(savedResolved))
-        }.distinct()
-        for (base in candidates) {
-            val response = executeGet("$base/auth/config") ?: continue
-            if (response.first in 200..299) {
-                prefs.edit().putString(KEY_LAST_BASE_URL, base).apply()
-                return base
-            }
-        }
-        return null
-    }
-
-    private fun candidateBaseUrls(configured: String): List<String> = listOf(
-        JoynMysteriumSettings.normalizeApiBaseUrl(configured),
-        JoynMysteriumSettings.DEFAULT_API_BASE_URL,
-        JoynMysteriumSettings.LOCAL_NODE_API_BASE_URL,
-    ).distinct()
-
-    private fun sameBase(a: String, b: String): Boolean =
-        JoynMysteriumSettings.normalizeApiBaseUrl(a) == JoynMysteriumSettings.normalizeApiBaseUrl(b)
+    private fun executeFormPost(path: String, form: FormBody): Pair<Int, String>? = runCatching {
+        val request = Request.Builder()
+            .url("$PRODUCTION_BASE_URL$path")
+            .header("Accept", "application/json")
+            .header("User-Agent", USER_AGENT)
+            .header("x-client-version", CLIENT_VERSION)
+            .header("x-client-platform", "android")
+            .post(form)
+            .build()
+        directClient.newCall(request).execute().use { response -> response.code to response.body.string() }
+    }.getOrNull()
 
     private fun parseAuthenticated(body: String): Boolean? = runCatching {
         val json = JSONObject(body)
@@ -392,9 +363,7 @@ internal class JoynMysteriumApiClient(context: Context) {
         val json = JSONObject(body)
         val status = listOf("status", "state", "plan_status")
             .firstNotNullOfOrNull { key -> json.optString(key).takeIf(String::isNotBlank) }
-        val plan = json.optJSONObject("plan")?.let { p ->
-            p.optString("name").ifBlank { p.optString("id") }
-        }.orEmpty()
+        val plan = json.optJSONObject("plan")?.let { p -> p.optString("name").ifBlank { p.optString("id") } }.orEmpty()
         buildString {
             if (!status.isNullOrBlank()) append("Abo=$status")
             if (plan.isNotBlank()) {
@@ -405,19 +374,25 @@ internal class JoynMysteriumApiClient(context: Context) {
     }.getOrDefault("")
 
     private fun summarizeLocations(body: String): String = runCatching {
-        val arr = JSONArray(body)
+        val array = when {
+            body.trimStart().startsWith("[") -> JSONArray(body)
+            else -> JSONObject(body).optJSONArray("locations") ?: JSONArray()
+        }
         val countries = buildList {
-            for (i in 0 until arr.length()) {
-                val item = arr.optJSONObject(i) ?: continue
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
                 val code = item.optString("country").ifBlank { item.optString("country_code") }.uppercase()
                 val total = item.optInt("total", item.optInt("node_count", 0))
-                if (code.isNotBlank()) add("$code=$total")
+                if (code.isNotBlank()) add(if (total > 0) "$code=$total" else code)
             }
         }
         "Residential-Locations: ${countries.joinToString(", ")}".take(1500)
     }.getOrElse { "Locations: JSON nicht lesbar (${it.javaClass.simpleName})" }
 
-    private fun countLocations(body: String): Int? = runCatching { JSONArray(body).length() }.getOrNull()
+    private fun countLocations(body: String): Int? = runCatching {
+        if (body.trimStart().startsWith("[")) JSONArray(body).length()
+        else JSONObject(body).optJSONArray("locations")?.length()
+    }.getOrNull()
 
     private fun extractError(body: String): String = runCatching {
         val json = JSONObject(body)
@@ -458,29 +433,26 @@ internal class JoynMysteriumApiClient(context: Context) {
         val value = input.trim()
         if (UUID_REGEX.matches(value)) return value
         val queryCode = runCatching {
-            URI(value).rawQuery
-                ?.split('&')
-                ?.firstOrNull { it.startsWith("code=") }
-                ?.substringAfter("code=")
+            URI(value).rawQuery?.split('&')?.firstOrNull { it.startsWith("code=") }?.substringAfter("code=")
         }.getOrNull()
-        if (!queryCode.isNullOrBlank() && UUID_REGEX.matches(queryCode)) return queryCode
+        if (!queryCode.isNullOrBlank()) return queryCode
         return CODE_IN_TEXT.find(value)?.groupValues?.getOrNull(1)
     }
 
     private fun compact(value: String): String = value.replace('\n', ' ').replace('\r', ' ').take(240)
 
-    private companion object {
+    companion object {
+        const val PRODUCTION_BASE_URL = "https://api.mysteriumvpn.com/api/v1"
         private const val PREFS_NAME = "joyn_protocol"
         private const val KEY_EMAIL = "mysterium_account_email"
         private const val KEY_ACCESS_TOKEN = "mysterium_access_token"
         private const val KEY_REFRESH_TOKEN = "mysterium_refresh_token"
         private const val KEY_PKCE_VERIFIER = "mysterium_pkce_verifier"
         private const val KEY_DEVICE_ID = "mysterium_device_id"
-        private const val KEY_LAST_BASE_URL = "mysterium_resolved_api_base_url"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private const val CLIENT_VERSION = "joyntv-1"
         private const val USER_AGENT = "JoynTV/AndroidTV Mysterium-Residential-Integration"
-        private val UUID_REGEX = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
-        private val CODE_IN_TEXT = Regex("(?:[?&]code=|\\bcode=)([0-9a-fA-F-]{36})(?:&|\\b)")
+        private val UUID_REGEX = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}$")
+        private val CODE_IN_TEXT = Regex("(?:[?&]code=|\\bcode=)([^&\\s]+)")
     }
 }
