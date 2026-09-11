@@ -12,8 +12,8 @@ internal data class JoynMysteriumCountrySettings(
 }
 
 /**
- * Persistent Mysterium settings. The Mysterium VPN API itself owns the account/subscription;
- * Joyn TV only stores how it should ask that local API for residential proxy leases.
+ * Persistent Mysterium settings. Each Joyn market keeps its own scan depth and last successful
+ * residential proxy lease. Account/session tokens are stored separately by JoynMysteriumApiClient.
  */
 internal class JoynMysteriumSettings(context: Context) {
     private val prefs = context.applicationContext
@@ -98,7 +98,11 @@ internal class JoynMysteriumSettings(context: Context) {
     companion object {
         private const val PREFS_NAME = "joyn_protocol"
         private const val KEY_API_BASE_URL = "mysterium_api_base_url"
-        const val DEFAULT_API_BASE_URL = "http://127.0.0.1:3030/api/v1"
+
+        // Current Mysterium consumer app is built against the hosted VPN API. Keep the URL
+        // editable in the beta UI so a backend migration never requires a Joyn TV rebuild.
+        const val DEFAULT_API_BASE_URL = "https://api.mysteriumvpn.com/api/v1"
+        const val LOCAL_NODE_API_BASE_URL = "http://127.0.0.1:3030/api/v1"
         const val MIN_ATTEMPTS = 1
         const val MAX_ATTEMPTS = 100
 
@@ -106,7 +110,7 @@ internal class JoynMysteriumSettings(context: Context) {
             var normalized = value.trim().trimEnd('/')
             if (normalized.isBlank()) normalized = DEFAULT_API_BASE_URL
             if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
-                normalized = "http://$normalized"
+                normalized = "https://$normalized"
             }
             return normalized
         }
