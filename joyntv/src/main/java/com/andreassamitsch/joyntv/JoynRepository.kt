@@ -61,9 +61,11 @@ internal class JoynRepository(context: Context) {
             }
         }
 
-        val channels = LIVE_COUNTRIES.flatMap { country ->
-            byCountry[country].orEmpty().map { channel -> decorateLiveChannel(country, channel) }
-        }
+        val channels = JoynLiveChannelOrder.sort(
+            LIVE_COUNTRIES.flatMap { country ->
+                byCountry[country].orEmpty().map { channel -> country to channel }
+            },
+        ).map { (country, channel) -> decorateLiveChannel(country, channel) }
         if (channels.isEmpty()) {
             error(
                 "Live TV konnte für AT, DE und CH nicht geladen werden" +
