@@ -14,7 +14,6 @@ import okhttp3.OkHttpClient
 
 internal enum class JoynProxyTransport {
     HTTP,
-    SOCKS5,
 }
 
 internal data class JoynProxyConfig(
@@ -33,23 +32,16 @@ internal data class JoynProxyConfig(
     val isUsable: Boolean
         get() = enabled && host.isNotBlank() && port in 1..65535
 
-    /** Nord's proxy_ssl endpoint on port 89 requires TLS to the proxy itself. */
-    val usesTlsProxyBridge: Boolean
-        get() = transport == JoynProxyTransport.HTTP &&
-            source.startsWith(NORD_TLS_SOURCE_PREFIX, ignoreCase = true)
-
-    companion object {
-        const val NORD_TLS_SOURCE_PREFIX = "NordVPN · HTTPS proxy"
-    }
+    val isMysterium: Boolean
+        get() = source.startsWith("Mysterium", ignoreCase = true)
 }
 
 /**
- * Optional test proxy for validating DE/AT/CH markets from one physical location.
+ * Process-wide routing for the active Mysterium residential HTTP proxy.
  *
- * Default mode is deliberately selective: only Joyn control-plane hosts (web bootstrap,
- * auth/7Pass, GraphQL, entitlement and playlist resolution) use the proxy. Media CDN,
- * DRM/license and update traffic remain on the normal connection. Full proxy mode is
- * available only as an explicit test fallback.
+ * By default only Joyn's control-plane hosts use the proxy. Full traffic can be enabled per country
+ * profile. Proxy credentials are read dynamically for every authentication challenge so an active
+ * OkHttp client automatically picks up a newly rotated Mysterium lease.
  */
 internal class JoynProxySettings(context: Context) {
     private val prefs = context.applicationContext
@@ -75,22 +67,17 @@ internal class JoynProxySettings(context: Context) {
         )
     }
 
-    /** Adds authentication for ordinary HTTP proxies. Nord's TLS/HTTPS proxy authentication is
-     * injected inside JoynTlsProxyBridge; SOCKS authentication is handled by Authenticator. */
+    /** Installs dynamic HTTP-proxy authentication on an OkHttp builder. */
     fun configure(builder: OkHttpClient.Builder): OkHttpClient.Builder {
-        val config = current()
-        if (!config.isUsable || config.transport != JoynProxyTransport.HTTP ||
-            config.usesTlsProxyBridge || config.username.isBlank()
-        ) {
-            return builder
-        }
-        val credential = Credentials.basic(config.username, config.password)
         return builder.proxyAuthenticator { _, response ->
-            if (response.request.header("Proxy-Authorization") != null) {
+            val config = current()
+            if (!config.isUsable || config.username.isBlank()) {
+                null
+            } else if (response.request.header("Proxy-Authorization") != null) {
                 null
             } else {
                 response.request.newBuilder()
-                    .header("Proxy-Authorization", credential)
+                    .header("Proxy-Authorization", Credentials.basic(config.username, config.password))
                     .build()
             }
         }
@@ -115,6 +102,8 @@ internal class JoynProxySettings(context: Context) {
         installProcessRouting(config)
     }
 
+    fun disable() = save(current().copy(enabled = false))
+
     companion object {
         private const val PREFS_NAME = "joyn_protocol"
         private const val KEY_ENABLED = "test_proxy_enabled"
@@ -130,11 +119,10 @@ internal class JoynProxySettings(context: Context) {
         private const val KEY_LAST_VERIFIED_AT = "test_proxy_last_verified_at"
 
         private val originalProxySelector: ProxySelector? by lazy { ProxySelector.getDefault() }
-
-        // Android exposes Authenticator.setDefault(), but not Authenticator.getDefault()
-        // in its public SDK API. Joyn TV therefore restores the process authenticator to
-        // the platform default (null) when proxy authentication is disabled.
         private val originalAuthenticator: Authenticator? = null
+
+        @Volatile
+        private var connectFailureHandler: ((String) -> Unit)? = null
 
         private val controlHosts = setOf(
             "www.joyn.de",
@@ -151,13 +139,11 @@ internal class JoynProxySettings(context: Context) {
             installProcessRouting(JoynProxySettings(context).current())
         }
 
-        /**
-         * Temporarily removes java.net proxy routing while an Android VpnService tunnel is being
-         * tested. This does not touch persisted proxy settings; callers can restore them with
-         * install(context) after an unsuccessful tunnel scan.
-         */
+        fun setConnectFailureHandler(handler: ((String) -> Unit)?) {
+            connectFailureHandler = handler
+        }
+
         fun installDirectForTunnel() {
-            JoynTlsProxyBridge.stopShared()
             ProxySelector.setDefault(originalProxySelector)
             Authenticator.setDefault(originalAuthenticator)
         }
@@ -168,27 +154,10 @@ internal class JoynProxySettings(context: Context) {
                 return
             }
 
-            val proxy = when {
-                config.usesTlsProxyBridge -> {
-                    val local = JoynTlsProxyBridge.shared(config)
-                    Proxy(Proxy.Type.HTTP, local)
-                }
-                config.transport == JoynProxyTransport.HTTP -> {
-                    JoynTlsProxyBridge.stopShared()
-                    Proxy(
-                        Proxy.Type.HTTP,
-                        InetSocketAddress.createUnresolved(config.host.trim(), config.port),
-                    )
-                }
-                else -> {
-                    JoynTlsProxyBridge.stopShared()
-                    Proxy(
-                        Proxy.Type.SOCKS,
-                        InetSocketAddress.createUnresolved(config.host.trim(), config.port),
-                    )
-                }
-            }
-
+            val proxy = Proxy(
+                Proxy.Type.HTTP,
+                InetSocketAddress.createUnresolved(config.host.trim(), config.port),
+            )
             val fallback = originalProxySelector
             ProxySelector.setDefault(object : ProxySelector() {
                 override fun select(uri: URI?): MutableList<Proxy> {
@@ -202,20 +171,39 @@ internal class JoynProxySettings(context: Context) {
                         ?: mutableListOf(Proxy.NO_PROXY)
                 }
 
-                override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) = Unit
+                override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) {
+                    val reason = buildString {
+                        append(uri?.host ?: "Proxy")
+                        ioe?.message?.takeIf(String::isNotBlank)?.let { append(": $it") }
+                    }
+                    connectFailureHandler?.invoke(reason)
+                }
             })
 
-            if (config.transport == JoynProxyTransport.SOCKS5 && config.username.isNotBlank()) {
-                Authenticator.setDefault(object : Authenticator() {
-                    override fun getPasswordAuthentication(): PasswordAuthentication? {
-                        return if (requestorType == RequestorType.PROXY) {
-                            PasswordAuthentication(config.username, config.password.toCharArray())
-                        } else null
-                    }
-                })
-            } else {
-                Authenticator.setDefault(originalAuthenticator)
-            }
+            // HttpURLConnection/Media3 may use java.net.Authenticator. OkHttp receives the same
+            // current credentials through configure(), so both stacks survive lease rotation.
+            Authenticator.setDefault(object : Authenticator() {
+                override fun getPasswordAuthentication(): PasswordAuthentication? {
+                    if (requestorType != RequestorType.PROXY) return null
+                    val current = JoynProxySettingsHolder.currentConfig()
+                    return current
+                        ?.takeIf { it.isUsable && it.username.isNotBlank() }
+                        ?.let { PasswordAuthentication(it.username, it.password.toCharArray()) }
+                }
+            })
+            JoynProxySettingsHolder.update(config)
         }
     }
+}
+
+/** Small process-local snapshot used by java.net.Authenticator without retaining an Activity. */
+private object JoynProxySettingsHolder {
+    @Volatile
+    private var config: JoynProxyConfig? = null
+
+    fun update(value: JoynProxyConfig) {
+        config = value
+    }
+
+    fun currentConfig(): JoynProxyConfig? = config
 }
