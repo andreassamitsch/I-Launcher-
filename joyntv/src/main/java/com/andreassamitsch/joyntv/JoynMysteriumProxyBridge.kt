@@ -13,12 +13,17 @@ import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 
 /**
- * Local unauthenticated CONNECT bridge for Mysterium's short-lived authenticated HTTPS proxies.
+ * Local unauthenticated CONNECT bridge for Mysterium's short-lived authenticated proxies.
  *
- * Joyn clients in the app can keep using Android's process ProxySelector without each networking
- * stack knowing Mysterium credentials. The bridge listens only on loopback, establishes a
- * certificate-verified TLS session to Mysterium's HTTPS proxy, injects Proxy-Authorization there
- * and relays the encrypted Joyn tunnel byte-for-byte.
+ * Mysterium's consumer connect-proxy endpoint currently returns superproxy hosts on port 8080.
+ * Those endpoints speak a normal plaintext HTTP proxy protocol: CONNECT and Proxy-Authorization
+ * are sent over TCP and the target HTTPS/TLS traffic starts only after CONNECT 200. Some proxy
+ * deployments can expose a TLS-wrapped proxy endpoint instead, so the bridge keeps a verified TLS
+ * fallback for compatibility.
+ *
+ * Joyn clients in the app can therefore keep using Android's process ProxySelector without each
+ * networking stack knowing Mysterium credentials. The bridge listens only on loopback, injects the
+ * upstream Proxy-Authorization header and relays the established tunnel byte-for-byte.
  */
 internal class JoynMysteriumProxyBridge(
     private val remoteHost: String,
@@ -58,7 +63,7 @@ internal class JoynMysteriumProxyBridge(
     }
 
     private fun handle(client: Socket) {
-        var remote: SSLSocket? = null
+        var remote: Socket? = null
         var tunnelEstablished = false
         try {
             client.tcpNoDelay = true
@@ -69,19 +74,11 @@ internal class JoynMysteriumProxyBridge(
                 return
             }
 
-            remote = connectTlsProxy()
-            remote.outputStream.write(withProxyAuthorization(requestHeader).toByteArray(Charsets.ISO_8859_1))
-            remote.outputStream.flush()
+            val connection = connectUpstreamProxy(requestHeader)
+            remote = connection.socket
 
-            val responseHeader = readHeader(remote) ?: throw IOException("Mysterium HTTPS proxy sent no response")
-            client.outputStream.write(responseHeader.toByteArray(Charsets.ISO_8859_1))
+            client.outputStream.write(connection.responseHeader.toByteArray(Charsets.ISO_8859_1))
             client.outputStream.flush()
-            val statusLine = responseHeader.lineSequence().firstOrNull().orEmpty()
-            val successful = statusLine.startsWith("HTTP/1.1 200") || statusLine.startsWith("HTTP/1.0 200")
-            if (!successful) {
-                onFailure("Mysterium HTTPS proxy rejected CONNECT: $statusLine")
-                return
-            }
 
             // From this point on both ends are carrying the caller's encrypted HTTPS stream.
             // A player cancelling a request, changing channel or closing an idle keep-alive tunnel
@@ -119,6 +116,68 @@ internal class JoynMysteriumProxyBridge(
             runCatching { remote?.close() }
             runCatching { client.close() }
         }
+    }
+
+    /**
+     * Opens the upstream proxy and performs CONNECT + Basic authentication.
+     *
+     * Port 8080 is the Mysterium superproxy endpoint seen in the consumer API and is tried as plain
+     * HTTP first. TLS proxy ports are tried TLS-first. If the first transport is reset before an
+     * HTTP response is received, a fresh connection is opened with the other transport. A real HTTP
+     * rejection such as 407 is not retried using another transport because the protocol was already
+     * identified correctly.
+     */
+    private fun connectUpstreamProxy(requestHeader: String): ProxyConnection {
+        val transports = if (remotePort in TLS_FIRST_PORTS) {
+            listOf(UpstreamTransport.TLS, UpstreamTransport.PLAIN_HTTP)
+        } else {
+            listOf(UpstreamTransport.PLAIN_HTTP, UpstreamTransport.TLS)
+        }
+        val failures = mutableListOf<String>()
+
+        for (transport in transports) {
+            var socket: Socket? = null
+            try {
+                socket = when (transport) {
+                    UpstreamTransport.PLAIN_HTTP -> connectPlainProxy()
+                    UpstreamTransport.TLS -> connectTlsProxy()
+                }
+                socket.outputStream.write(withProxyAuthorization(requestHeader).toByteArray(Charsets.ISO_8859_1))
+                socket.outputStream.flush()
+
+                val responseHeader = readHeader(socket)
+                    ?: throw IOException("${transport.label} proxy sent no HTTP response")
+                val statusLine = responseHeader.lineSequence().firstOrNull().orEmpty()
+                val successful = statusLine.startsWith("HTTP/1.1 200") ||
+                    statusLine.startsWith("HTTP/1.0 200")
+                if (!successful) {
+                    throw ProxyRejectedException("${transport.label} CONNECT rejected: $statusLine")
+                }
+                return ProxyConnection(socket, responseHeader, transport)
+            } catch (rejected: ProxyRejectedException) {
+                runCatching { socket?.close() }
+                // Receiving a valid HTTP status proves that this is the correct upstream protocol.
+                throw rejected
+            } catch (error: Throwable) {
+                runCatching { socket?.close() }
+                failures += buildString {
+                    append(transport.label)
+                    append(": ")
+                    append(error.javaClass.simpleName)
+                    error.message?.takeIf(String::isNotBlank)?.let { append(" · $it") }
+                }
+            }
+        }
+
+        throw IOException(
+            "Mysterium upstream ${remoteHost}:${remotePort} failed (${failures.joinToString(" | ")})",
+        )
+    }
+
+    private fun connectPlainProxy(): Socket = Socket().apply {
+        tcpNoDelay = true
+        connect(InetSocketAddress(remoteHost, remotePort), HEADER_TIMEOUT_MS)
+        soTimeout = HEADER_TIMEOUT_MS
     }
 
     private fun connectTlsProxy(): SSLSocket {
@@ -178,7 +237,7 @@ internal class JoynMysteriumProxyBridge(
             }
             if (state == 4) return buffer.toString(Charsets.ISO_8859_1.name())
         }
-        return null
+        throw IOException("Proxy HTTP header exceeded $MAX_HEADER_BYTES bytes")
     }
 
     private fun writeLocalError(socket: Socket, code: Int, text: String) {
@@ -195,9 +254,23 @@ internal class JoynMysteriumProxyBridge(
         workers.shutdownNow()
     }
 
+    private data class ProxyConnection(
+        val socket: Socket,
+        val responseHeader: String,
+        val transport: UpstreamTransport,
+    )
+
+    private enum class UpstreamTransport(val label: String) {
+        PLAIN_HTTP("HTTP proxy"),
+        TLS("HTTPS/TLS proxy"),
+    }
+
+    private class ProxyRejectedException(message: String) : IOException(message)
+
     companion object {
         private const val HEADER_TIMEOUT_MS = 8_000
         private const val MAX_HEADER_BYTES = 32 * 1024
+        private val TLS_FIRST_PORTS = setOf(443, 8443)
         private val sharedLock = Any()
         private var sharedKey: String? = null
         private var sharedBridge: JoynMysteriumProxyBridge? = null
