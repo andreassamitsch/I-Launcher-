@@ -60,12 +60,8 @@ class LoginActivity : ComponentActivity() {
                         )
                         finish()
                     },
-                    onProxySettings = {
-                        startActivity(Intent(this, ProxySettingsActivity::class.java))
-                    },
-                    onPinSettings = {
-                        startActivity(Intent(this, PinSettingsActivity::class.java))
-                    },
+                    onProxySettings = { startActivity(Intent(this, ProxySettingsActivity::class.java)) },
+                    onPinSettings = { startActivity(Intent(this, PinSettingsActivity::class.java)) },
                 )
             }
         }
@@ -86,13 +82,20 @@ private fun LoginScreen(
     var message by remember { mutableStateOf<String?>(null) }
     var activeCountry by remember { mutableStateOf(repository.currentCountry()) }
     var automaticRegion by remember { mutableStateOf(repository.countryIsAutomatic()) }
+    var sessionVersion by remember { mutableStateOf(0) }
     val proxy = repository.proxyConfig()
     val pinConfigured = repository.hasStoredParentalPin()
     val pinAuto = repository.parentalPinAutoUse()
     val scope = rememberCoroutineScope()
 
+    fun hasSession(country: JoynCountry): Boolean {
+        sessionVersion // Compose dependency
+        return repository.hasStoredJoynAccountSession(country)
+    }
+
     suspend fun refreshAccount() {
         account = withContext(Dispatchers.IO) { repository.accountState(refreshRemote = true) }
+        sessionVersion++
     }
 
     LaunchedEffect(Unit) {
@@ -117,11 +120,11 @@ private fun LoginScreen(
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "Die Joyn-Region steuert Sender, Mediatheken und Katalog. Android TV meldet bei deutscher Sprache oft DE, auch wenn das Gerät in Österreich steht. Deshalb kann die Region hier fest eingestellt werden.",
+                "Die Hauptregion steuert Mediathek und Katalog. Live TV kombiniert AT, DE und CH automatisch. Joyn-Anmeldungen werden für jedes Land getrennt gespeichert und beim Senderstart automatisch verwendet.",
                 color = Color(0xFFD7DBE3),
                 fontSize = if (compact) 13.sp else 15.sp,
                 lineHeight = if (compact) 18.sp else 21.sp,
-                modifier = Modifier.widthIn(max = 860.dp),
+                modifier = Modifier.widthIn(max = 900.dp),
             )
             Spacer(Modifier.height(if (compact) 18.dp else 24.dp))
 
@@ -158,12 +161,24 @@ private fun LoginScreen(
                     onRegionChanged()
                 }
             }
+
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Gespeicherte Joyn-Anmeldungen: " + listOf(
+                    "AT ${if (hasSession(JoynCountry.AT)) "✓" else "–"}",
+                    "DE ${if (hasSession(JoynCountry.DE)) "✓" else "–"}",
+                    "CH ${if (hasSession(JoynCountry.CH)) "✓" else "–"}",
+                ).joinToString("   ·   "),
+                color = Color(0xFF9FD6AE),
+                fontSize = if (compact) 12.sp else 14.sp,
+                fontWeight = FontWeight.Medium,
+            )
             Spacer(Modifier.height(14.dp))
             LoginActionButton(
                 if (proxy.isUsable) {
                     "Test-Proxy · ${if (proxy.allTraffic) "Vollproxy" else "API/Token"} · ${proxy.host}:${proxy.port}"
                 } else {
-                    "Test-Proxy für DE / CH konfigurieren"
+                    "Mysterium / Netzwerk für ${activeCountry.name}"
                 },
                 onClick = onProxySettings,
             )
@@ -179,18 +194,18 @@ private fun LoginScreen(
             Spacer(Modifier.height(if (compact) 24.dp else 36.dp))
 
             Text(
-                "Die Anmeldung läuft direkt über Joyns aktuellen 7Pass/SSO-Ablauf. Das Passwort wird nicht gespeichert; gespeichert wird nur das von Joyn ausgegebene Sitzungstoken. Beim Regionswechsel wird dieses Token bewusst verworfen, weil Joyn Sitzungen marktabhängig sind.",
+                "Jedes Land besitzt eine eigene Joyn-Sitzung. Das Passwort wird nicht gespeichert; gespeichert werden nur die von Joyn ausgegebenen Sitzungstokens. Melde dich in AT, DE und CH jeweils einmal an. Danach bleiben alle drei Anmeldungen auch bei Regions- und Senderwechsel erhalten.",
                 color = Color(0xFF9FA8B5),
                 fontSize = if (compact) 12.sp else 13.sp,
                 lineHeight = if (compact) 17.sp else 19.sp,
-                modifier = Modifier.widthIn(max = 860.dp),
+                modifier = Modifier.widthIn(max = 900.dp),
             )
             Spacer(Modifier.height(if (compact) 22.dp else 34.dp))
 
             val current = account
             if (current?.loggedIn == true) {
                 Text(
-                    current.email ?: "Bei Joyn angemeldet",
+                    current.email ?: "Bei Joyn ${activeCountry.name} angemeldet",
                     color = Color.White,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -198,14 +213,15 @@ private fun LoginScreen(
                 Spacer(Modifier.height(8.dp))
                 Text(
                     listOfNotNull(
+                        "${activeCountry.name} aktiv",
                         if (current.hasPlus) "Joyn PLUS+" else null,
                         if (current.hasHd) "HD" else null,
-                    ).ifEmpty { listOf("Joyn Konto aktiv") }.joinToString(" · "),
+                    ).joinToString(" · "),
                     color = Color(0xFFD7DBE3),
                     fontSize = 15.sp,
                 )
                 Spacer(Modifier.height(24.dp))
-                LoginActionButton("Abmelden", enabled = !working) {
+                LoginActionButton("Nur ${activeCountry.name} abmelden", enabled = !working) {
                     scope.launch {
                         working = true
                         message = null
@@ -235,25 +251,24 @@ private fun LoginScreen(
                     password = true,
                 )
                 Spacer(Modifier.height(22.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    LoginActionButton(
-                        label = if (working) "Anmeldung läuft …" else "Anmelden",
-                        enabled = !working && email.contains('@') && password.length >= 6,
-                    ) {
-                        scope.launch {
-                            working = true
-                            message = null
-                            runCatching {
-                                val loggedIn = withContext(Dispatchers.IO) {
-                                    repository.login(email.trim(), password)
-                                }
-                                password = ""
-                                account = loggedIn
-                            }.onFailure { error ->
-                                message = error.message ?: error.javaClass.simpleName
+                LoginActionButton(
+                    label = if (working) "Anmeldung ${activeCountry.name} läuft …" else "Für ${activeCountry.name} anmelden",
+                    enabled = !working && email.contains('@') && password.length >= 6,
+                ) {
+                    scope.launch {
+                        working = true
+                        message = null
+                        runCatching {
+                            val loggedIn = withContext(Dispatchers.IO) {
+                                repository.login(email.trim(), password)
                             }
-                            working = false
+                            password = ""
+                            account = loggedIn
+                            sessionVersion++
+                        }.onFailure { error ->
+                            message = error.message ?: error.javaClass.simpleName
                         }
+                        working = false
                     }
                 }
             }
@@ -324,9 +339,7 @@ private fun LoginField(
                     .border(1.dp, Color(0xFF4F5966), RoundedCornerShape(12.dp))
                     .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
-                if (value.isBlank()) {
-                    Text(placeholder, color = Color(0xFF929AA6), fontSize = 16.sp)
-                }
+                if (value.isBlank()) Text(placeholder, color = Color(0xFF929AA6), fontSize = 16.sp)
                 inner()
             }
         },
