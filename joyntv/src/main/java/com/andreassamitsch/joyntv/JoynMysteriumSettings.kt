@@ -13,7 +13,18 @@ internal data class JoynMysteriumCountrySettings(
     }
 }
 
-/** Persistent Mysterium residential-proxy settings, stored separately for every Joyn market. */
+/** A Joyn-approved Residential exit that should be restored whenever this market is active. */
+internal data class JoynMysteriumWireGuardProfile(
+    val country: JoynCountry,
+    val exitIp: String,
+    val configTemplate: String,
+    val providerHash: String = "",
+    val connectionId: String = "",
+    val enabled: Boolean = true,
+    val verifiedAtEpochMs: Long = 0L,
+)
+
+/** Persistent Mysterium settings, stored separately for every Joyn market. */
 internal class JoynMysteriumSettings(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -35,6 +46,97 @@ internal class JoynMysteriumSettings(context: Context) {
             .apply()
     }
 
+    /**
+     * Stores the latest API candidate only. It is deliberately not enabled here: a candidate is
+     * promoted to a persistent country profile only after Joyn's Live entitlement probe accepts it.
+     */
+    fun saveWireGuardCandidate(country: JoynCountry, lease: JoynMysteriumWireGuardLease) {
+        prefs.edit()
+            .putString(key(country, "wg_candidate_exit_ip"), lease.exitIp.trim())
+            .putString(key(country, "wg_candidate_config"), lease.config)
+            .putString(key(country, "wg_candidate_hash"), lease.providerHash)
+            .putString(key(country, "wg_candidate_id"), lease.id)
+            .apply()
+    }
+
+    /** Promotes the last tested candidate after the scanner confirmed that Joyn accepts it. */
+    fun promoteWireGuardCandidate(country: JoynCountry): JoynMysteriumWireGuardProfile? {
+        val exitIp = prefs.getString(key(country, "wg_candidate_exit_ip"), "").orEmpty().trim()
+        val config = prefs.getString(key(country, "wg_candidate_config"), "").orEmpty()
+        if (exitIp.isBlank() || config.isBlank()) return null
+
+        val now = System.currentTimeMillis()
+        val providerHash = prefs.getString(key(country, "wg_candidate_hash"), "").orEmpty()
+        val connectionId = prefs.getString(key(country, "wg_candidate_id"), "").orEmpty()
+        prefs.edit()
+            .putString(key(country, "wg_exit_ip"), exitIp)
+            .putString(key(country, "wg_config"), config)
+            .putString(key(country, "wg_hash"), providerHash)
+            .putString(key(country, "wg_id"), connectionId)
+            .putBoolean(key(country, "wg_enabled"), true)
+            .putLong(key(country, "wg_verified_at"), now)
+            .apply()
+        return JoynMysteriumWireGuardProfile(
+            country = country,
+            exitIp = exitIp,
+            configTemplate = config,
+            providerHash = providerHash,
+            connectionId = connectionId,
+            enabled = true,
+            verifiedAtEpochMs = now,
+        )
+    }
+
+    /** Updates a persistent profile after target_ip restored the same accepted exit. */
+    fun saveWireGuardProfile(country: JoynCountry, lease: JoynMysteriumWireGuardLease) {
+        val current = wireGuardProfile(country)
+        val exitIp = lease.exitIp.trim().ifBlank { current?.exitIp.orEmpty() }
+        if (exitIp.isBlank() || lease.config.isBlank()) return
+        prefs.edit()
+            .putString(key(country, "wg_exit_ip"), exitIp)
+            .putString(key(country, "wg_config"), lease.config)
+            .putString(key(country, "wg_hash"), lease.providerHash)
+            .putString(key(country, "wg_id"), lease.id)
+            .putBoolean(key(country, "wg_enabled"), true)
+            .putLong(key(country, "wg_verified_at"), System.currentTimeMillis())
+            .apply()
+    }
+
+    fun wireGuardProfile(country: JoynCountry): JoynMysteriumWireGuardProfile? {
+        val exitIp = prefs.getString(key(country, "wg_exit_ip"), "").orEmpty().trim()
+        val config = prefs.getString(key(country, "wg_config"), "").orEmpty()
+        if (exitIp.isBlank() || config.isBlank()) return null
+        return JoynMysteriumWireGuardProfile(
+            country = country,
+            exitIp = exitIp,
+            configTemplate = config,
+            providerHash = prefs.getString(key(country, "wg_hash"), "").orEmpty(),
+            connectionId = prefs.getString(key(country, "wg_id"), "").orEmpty(),
+            enabled = prefs.getBoolean(key(country, "wg_enabled"), true),
+            verifiedAtEpochMs = prefs.getLong(key(country, "wg_verified_at"), 0L),
+        )
+    }
+
+    fun setWireGuardEnabled(country: JoynCountry, enabled: Boolean) {
+        prefs.edit().putBoolean(key(country, "wg_enabled"), enabled).apply()
+    }
+
+    fun clearWireGuardProfile(country: JoynCountry) {
+        prefs.edit()
+            .remove(key(country, "wg_exit_ip"))
+            .remove(key(country, "wg_config"))
+            .remove(key(country, "wg_hash"))
+            .remove(key(country, "wg_id"))
+            .remove(key(country, "wg_enabled"))
+            .remove(key(country, "wg_verified_at"))
+            .remove(key(country, "wg_candidate_exit_ip"))
+            .remove(key(country, "wg_candidate_config"))
+            .remove(key(country, "wg_candidate_hash"))
+            .remove(key(country, "wg_candidate_id"))
+            .apply()
+    }
+
+    // Legacy connect-proxy profile storage retained for migration/compatibility with old builds.
     fun saveLastSuccessful(
         country: JoynCountry,
         config: JoynProxyConfig,
