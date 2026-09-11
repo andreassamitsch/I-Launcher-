@@ -1,55 +1,45 @@
 package com.andreassamitsch.joyntv
 
 import android.content.Context
+import java.time.Instant
 
 internal data class JoynMysteriumCountrySettings(
     val country: JoynCountry,
     val maxAttempts: Int = DEFAULT_ATTEMPTS,
+    val allTraffic: Boolean = false,
 ) {
     companion object {
         const val DEFAULT_ATTEMPTS = 25
     }
 }
 
-/** Persistent Mysterium settings. Residential scan depth is stored per Joyn market. */
+/** Persistent Mysterium residential-proxy settings, stored separately for every Joyn market. */
 internal class JoynMysteriumSettings(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    /** Empty means automatic endpoint discovery. */
-    fun apiBaseUrl(): String = prefs
-        .getString(KEY_API_BASE_URL, "")
-        .orEmpty()
-        .trim()
-        .trimEnd('/')
-
-    fun saveApiBaseUrl(value: String) {
-        prefs.edit()
-            .putString(KEY_API_BASE_URL, normalizeApiBaseUrl(value))
-            .apply()
-    }
-
-    fun accessToken(): String = prefs
-        .getString(KEY_ACCESS_TOKEN, "")
-        .orEmpty()
-
-    fun saveAccessToken(value: String) {
-        prefs.edit().putString(KEY_ACCESS_TOKEN, value.trim()).apply()
-    }
-
     fun countrySettings(country: JoynCountry): JoynMysteriumCountrySettings {
-        val attempts = prefs.getInt(keyAttempts(country), JoynMysteriumCountrySettings.DEFAULT_ATTEMPTS)
+        val attempts = prefs.getInt(key(country, "max_attempts"), JoynMysteriumCountrySettings.DEFAULT_ATTEMPTS)
             .coerceIn(MIN_ATTEMPTS, MAX_ATTEMPTS)
-        return JoynMysteriumCountrySettings(country = country, maxAttempts = attempts)
+        return JoynMysteriumCountrySettings(
+            country = country,
+            maxAttempts = attempts,
+            allTraffic = prefs.getBoolean(key(country, "all_traffic"), false),
+        )
     }
 
     fun saveCountrySettings(settings: JoynMysteriumCountrySettings) {
         prefs.edit()
-            .putInt(keyAttempts(settings.country), settings.maxAttempts.coerceIn(MIN_ATTEMPTS, MAX_ATTEMPTS))
+            .putInt(key(settings.country, "max_attempts"), settings.maxAttempts.coerceIn(MIN_ATTEMPTS, MAX_ATTEMPTS))
+            .putBoolean(key(settings.country, "all_traffic"), settings.allTraffic)
             .apply()
     }
 
-    fun saveLastSuccessful(country: JoynCountry, config: JoynProxyConfig, expiresAt: String = "") {
+    fun saveLastSuccessful(
+        country: JoynCountry,
+        config: JoynProxyConfig,
+        expiresAt: String = "",
+    ) {
         prefs.edit()
             .putString(key(country, "host"), config.host)
             .putInt(key(country, "port"), config.port)
@@ -58,10 +48,11 @@ internal class JoynMysteriumSettings(context: Context) {
             .putString(key(country, "source"), config.source)
             .putString(key(country, "expires_at"), expiresAt)
             .putLong(key(country, "verified_at"), config.lastVerifiedAtEpochMs)
+            .putBoolean(key(country, "all_traffic"), config.allTraffic)
             .apply()
     }
 
-    fun lastSuccessful(country: JoynCountry, allTraffic: Boolean): JoynProxyConfig? {
+    fun lastSuccessful(country: JoynCountry): JoynProxyConfig? {
         val host = prefs.getString(key(country, "host"), "").orEmpty()
         val port = prefs.getInt(key(country, "port"), 0)
         if (host.isBlank() || port !in 1..65535) return null
@@ -73,7 +64,7 @@ internal class JoynMysteriumSettings(context: Context) {
             port = port,
             username = prefs.getString(key(country, "username"), "").orEmpty(),
             password = prefs.getString(key(country, "password"), "").orEmpty(),
-            allTraffic = allTraffic,
+            allTraffic = prefs.getBoolean(key(country, "all_traffic"), false),
             source = prefs.getString(key(country, "source"), "Mysterium · Residential · ${country.name}").orEmpty(),
             latencyMs = -1L,
             lastVerifiedAtEpochMs = prefs.getLong(key(country, "verified_at"), 0L),
@@ -82,6 +73,17 @@ internal class JoynMysteriumSettings(context: Context) {
 
     fun lastExpiresAt(country: JoynCountry): String =
         prefs.getString(key(country, "expires_at"), "").orEmpty()
+
+    fun leaseNeedsRefresh(country: JoynCountry, nowEpochMs: Long = System.currentTimeMillis()): Boolean {
+        val config = lastSuccessful(country) ?: return true
+        val expires = lastExpiresAt(country)
+        if (expires.isNotBlank()) {
+            val expiryMs = runCatching { Instant.parse(expires).toEpochMilli() }.getOrNull()
+            if (expiryMs != null) return expiryMs <= nowEpochMs + EXPIRY_MARGIN_MS
+        }
+        return config.lastVerifiedAtEpochMs <= 0L ||
+            nowEpochMs - config.lastVerifiedAtEpochMs >= FALLBACK_REFRESH_MS
+    }
 
     fun clearLastSuccessful(country: JoynCountry) {
         prefs.edit()
@@ -95,37 +97,14 @@ internal class JoynMysteriumSettings(context: Context) {
             .apply()
     }
 
-    private fun keyAttempts(country: JoynCountry) = key(country, "max_attempts")
-
     private fun key(country: JoynCountry, suffix: String) =
         "mysterium_${country.name.lowercase()}_$suffix"
 
     companion object {
         private const val PREFS_NAME = "joyn_protocol"
-        private const val KEY_API_BASE_URL = "mysterium_api_base_url"
-        private const val KEY_ACCESS_TOKEN = "mysterium_access_token"
-
-        // The consumer app injects BASE_URL at build time. Empty/"auto" therefore means:
-        // probe the known local API and hosted candidates instead of hardcoding one as truth.
-        const val DEFAULT_API_BASE_URL = ""
-        const val LOCAL_NODE_API_BASE_URL = "http://127.0.0.1:3030/api/v1"
         const val MIN_ATTEMPTS = 1
         const val MAX_ATTEMPTS = 100
-
-        val API_CANDIDATES = listOf(
-            LOCAL_NODE_API_BASE_URL,
-            "https://api.mysteriumvpn.com/api/v1",
-            "https://app.mysteriumvpn.com/api/v1",
-            "https://vpn-api.mysterium.network/api/v1",
-        )
-
-        fun normalizeApiBaseUrl(value: String): String {
-            var normalized = value.trim().trimEnd('/')
-            if (normalized.isBlank() || normalized.equals("auto", ignoreCase = true)) return ""
-            if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
-                normalized = "https://$normalized"
-            }
-            return normalized
-        }
+        private const val EXPIRY_MARGIN_MS = 90_000L
+        private const val FALLBACK_REFRESH_MS = 20 * 60_000L
     }
 }
