@@ -90,6 +90,10 @@ internal class JoynMysteriumSettings(context: Context) {
 
     /** Legacy/fallback promotion for candidates produced by builds that did expose exit_ip. */
     fun promoteWireGuardCandidate(country: JoynCountry): JoynMysteriumWireGuardProfile? {
+        // New scanners already persist the measured Joyn-approved exit directly. Never overwrite
+        // that authoritative trace with the optional API exit_ip field afterwards.
+        wireGuardProfile(country)?.let { return it }
+
         val exitIp = prefs.getString(key(country, "wg_candidate_exit_ip"), "").orEmpty().trim()
         val config = prefs.getString(key(country, "wg_candidate_config"), "").orEmpty()
         if (exitIp.isBlank() || config.isBlank()) return null
