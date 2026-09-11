@@ -31,6 +31,7 @@ internal class JoynMysteriumProxyScanner(
 ) {
     private val appContext = context.applicationContext
     private val wireGuardApi = JoynMysteriumWireGuardApiClient(appContext, apiClient)
+    private val settings = JoynMysteriumSettings(appContext)
 
     suspend fun findBest(
         country: JoynCountry,
@@ -210,6 +211,10 @@ internal class JoynMysteriumProxyScanner(
             val latencyMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNs)
             when (probe.status) {
                 ProbeStatus.OK -> {
+                    // Persist the IP actually observed through the tunnel, not merely Mysterium's
+                    // optional exit_ip response field. This is the authoritative Joyn-approved exit.
+                    settings.saveApprovedWireGuardProfile(country, lease, trace.ip)
+                    JoynMysteriumWireGuard.adoptActiveCountry(country)
                     log += "#$attempted OK · ${trace.ip} · Joyn Live freigegeben · ${latencyMs} ms"
                     return@withContext finish(
                         activated = true,
@@ -225,7 +230,7 @@ internal class JoynMysteriumProxyScanner(
                         joynVpnDetected = joynVpnDetected,
                         joynOtherFailure = joynOtherFailure,
                         log = log,
-                        extra = "Treffer: Residential-Exit ${trace.ip} besteht Joyns Live-Freigabe. App-eigener WireGuard-Tunnel bleibt aktiv.",
+                        extra = "Treffer: Residential-Exit ${trace.ip} besteht Joyns Live-Freigabe. Profil bleibt dauerhaft ${country.name} zugeordnet.",
                     )
                 }
                 ProbeStatus.VPN_DETECTED -> {
@@ -266,8 +271,6 @@ internal class JoynMysteriumProxyScanner(
     }
 
     private fun tunneledClient(): OkHttpClient = OkHttpClient.Builder()
-        // Only IPv4 is transported by our Mysterium WireGuard peer. Keeping the probe IPv4-only
-        // avoids Happy-Eyeballs selecting a native IPv6 path and makes the measured exit explicit.
         .dns(IPV4_ONLY_DNS)
         .proxy(Proxy.NO_PROXY)
         .connectTimeout(NETWORK_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
