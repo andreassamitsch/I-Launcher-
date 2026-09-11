@@ -1,11 +1,8 @@
 package com.andreassamitsch.joyntv
 
-import android.app.Activity
-import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -45,45 +42,19 @@ import androidx.tv.material3.Text
 import kotlinx.coroutines.launch
 
 class MysteriumSettingsActivity : ComponentActivity() {
-    private var vpnPermissionCallback: ((Boolean) -> Unit)? = null
-
-    private val vpnPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        val callback = vpnPermissionCallback
-        vpnPermissionCallback = null
-        callback?.invoke(result.resultCode == Activity.RESULT_OK)
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val repository = JoynRepository(applicationContext)
         setContent {
             JoynTvTheme {
-                MysteriumSettingsScreen(
-                    repository = repository,
-                    onBack = { finish() },
-                    ensureVpnPermission = { callback ->
-                        val intent: Intent? = repository.mysteriumVpnPermissionIntent(this@MysteriumSettingsActivity)
-                        if (intent == null) {
-                            callback(true)
-                        } else {
-                            vpnPermissionCallback = callback
-                            vpnPermissionLauncher.launch(intent)
-                        }
-                    },
-                )
+                MysteriumSettingsScreen(repository = repository, onBack = { finish() })
             }
         }
     }
 }
 
 @Composable
-private fun MysteriumSettingsScreen(
-    repository: JoynRepository,
-    onBack: () -> Unit,
-    ensureVpnPermission: ((Boolean) -> Unit) -> Unit,
-) {
+private fun MysteriumSettingsScreen(repository: JoynRepository, onBack: () -> Unit) {
     var countryName by rememberSaveable { mutableStateOf(repository.currentCountry().name) }
     val country = JoynCountry.valueOf(countryName)
     var email by rememberSaveable { mutableStateOf(repository.mysteriumSavedEmail()) }
@@ -93,13 +64,14 @@ private fun MysteriumSettingsScreen(
     var authenticated by remember { mutableStateOf(repository.mysteriumHasStoredAccessToken()) }
     var busy by remember { mutableStateOf(false) }
     var testing by remember { mutableStateOf(false) }
-    var status by rememberSaveable { mutableStateOf(if (authenticated) "Mysterium-Session gespeichert." else "Noch nicht angemeldet.") }
+    var status by rememberSaveable {
+        mutableStateOf(if (authenticated) "Mysterium-Session gespeichert." else "Noch nicht angemeldet.")
+    }
     val scope = rememberCoroutineScope()
 
     fun loadCountry(next: JoynCountry) {
         countryName = next.name
-        val profile = repository.mysteriumCountrySettings(next)
-        attempts = profile.maxAttempts.toString()
+        attempts = repository.mysteriumCountrySettings(next).maxAttempts.toString()
     }
 
     fun checkAccount() {
@@ -108,7 +80,11 @@ private fun MysteriumSettingsScreen(
             busy = true
             status = "Prüfe Mysterium-Konto …"
             val result = runCatching { repository.mysteriumApiStatus() }.getOrElse { error ->
-                JoynMysteriumApiStatus(false, null, message = "Prüfung fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}")
+                JoynMysteriumApiStatus(
+                    false,
+                    null,
+                    message = "Prüfung fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}",
+                )
             }
             authenticated = result.authenticated == true
             status = result.message
@@ -116,42 +92,8 @@ private fun MysteriumSettingsScreen(
         }
     }
 
-    fun startResidentialTest() {
-        if (busy || testing) return
-        val count = attempts.toIntOrNull() ?: return
-        scope.launch {
-            testing = true
-            status = "Starte Mysterium Residential ${country.name} über WireGuard …"
-            val result = runCatching {
-                repository.findMysteriumResidentialProxy(
-                    country = country,
-                    maxAttempts = count,
-                    // WireGuard is app-scoped: all Joyn-TV traffic uses the tunnel while the rest
-                    // of the device remains untouched.
-                    allTraffic = true,
-                ) { status = it.message }
-            }.getOrElse { error ->
-                JoynProxyDiscoveryResult(
-                    config = null,
-                    candidates = count,
-                    attempted = 0,
-                    message = "Test fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}",
-                )
-            }
-            testing = false
-            status = result.message
-            if (result.activated) {
-                repository.setCountry(country)
-                status = result.message + "\n\nWireGuard für Joyn TV aktiviert · Markt ${country.name}."
-            }
-        }
-    }
-
     LaunchedEffect(Unit) {
         if (authenticated) checkAccount()
-        if (repository.mysteriumVpnConnected()) {
-            status += "\nMysterium WireGuard ist für Joyn TV aktiv."
-        }
     }
 
     Column(
@@ -160,11 +102,13 @@ private fun MysteriumSettingsScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 56.dp, vertical = 38.dp),
     ) {
-        Text("Mysterium Residential", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.SemiBold)
+        Text("Mysterium Residential Proxy", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Joyn TV nutzt Mysteriums Residential-Netz jetzt über einen eigenen WireGuard-Tunnel. Android beschränkt den Tunnel ausschließlich auf diese Joyn-TV-App; andere Apps und das TV-System verwenden weiterhin die normale Internetverbindung.",
-            color = Color(0xFFD7DBE3), fontSize = 14.sp, lineHeight = 20.sp,
+            "Joyn TV nutzt Mysteriums kurzlebige Residential-HTTP-Proxies direkt. Es wird kein Android-VPN aufgebaut: API, Anmeldung, Manifest, DRM und Stream-Segmente laufen über einen lokalen CONNECT-Bridge zum gewählten Residential-Exit. Ein vorhandenes WireGuard-Profil bleibt nur als Fallback erhalten.",
+            color = Color(0xFFD7DBE3),
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
             modifier = Modifier.widthIn(max = 950.dp),
         )
         Spacer(Modifier.height(22.dp))
@@ -194,12 +138,14 @@ private fun MysteriumSettingsScreen(
                     scope.launch {
                         repository.disconnectMysteriumVpn()
                         repository.logoutMysterium()
+                        repository.disableProxy()
                         authenticated = false
-                        status = "Mysterium-Session gelöscht und VPN getrennt."
+                        status = "Mysterium-Session gelöscht; Proxy/VPN getrennt."
                     }
                 }
             }
         }
+
         Spacer(Modifier.height(12.dp))
         FieldLabel("Code oder Link aus der Mysterium-Mail")
         MField(codeOrLink, { codeOrLink = it }, "…?code=…", false)
@@ -218,6 +164,7 @@ private fun MysteriumSettingsScreen(
                 busy = false
             }
         }
+
         Spacer(Modifier.height(12.dp))
         FieldLabel("Access-Token (optional)")
         MField(manualToken, { manualToken = it }, "Bearer-Token", true)
@@ -230,7 +177,7 @@ private fun MysteriumSettingsScreen(
         }
 
         Spacer(Modifier.height(24.dp))
-        Text("2 · Residential-VPN", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+        Text("2 · Residential-Proxy", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             JoynCountry.entries.forEach { item ->
@@ -242,13 +189,21 @@ private fun MysteriumSettingsScreen(
         MField(attempts, { attempts = it.filter(Char::isDigit).take(3) }, "25", false)
         Spacer(Modifier.height(10.dp))
         Text(
-            "Beim ersten Start fragt Android einmal nach der VPN-Berechtigung. Innerhalb von Joyn TV laufen danach API, Anmeldung, Wiedergabe und Stream über den getesteten Residential-Tunnel.",
-            color = Color(0xFFADB5C1), fontSize = 13.sp, lineHeight = 18.sp,
+            "Für Leckschutz wird der gesamte Datenverkehr dieser Joyn-TV-App über den aktiven Mysterium-Proxy geführt. Andere Apps und das Android-TV-System bleiben auf der normalen Internetverbindung. Eine VPN-Berechtigung ist dafür nicht nötig.",
+            color = Color(0xFFADB5C1),
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
             modifier = Modifier.widthIn(max = 950.dp),
         )
 
         Spacer(Modifier.height(18.dp))
-        Text(status, color = Color(0xFFD7DBE3), fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.widthIn(max = 1000.dp))
+        Text(
+            status,
+            color = Color(0xFFD7DBE3),
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            modifier = Modifier.widthIn(max = 1000.dp),
+        )
         Spacer(Modifier.height(20.dp))
         val count = attempts.toIntOrNull() ?: 0
         val valid = count in JoynMysteriumSettings.MIN_ATTEMPTS..JoynMysteriumSettings.MAX_ATTEMPTS
@@ -256,14 +211,32 @@ private fun MysteriumSettingsScreen(
             MAction("Zurück", enabled = !busy && !testing, onClick = onBack)
             MAction("Profil speichern", enabled = !busy && !testing && valid) {
                 repository.saveMysteriumSettings(country, count, allTraffic = true)
-                status = "${country.name}-Profil gespeichert."
+                status = "${country.name}-Proxyprofil gespeichert."
             }
-            MAction("Residential-VPN testen & aktivieren", enabled = !busy && !testing && valid && authenticated) {
-                ensureVpnPermission { granted ->
-                    if (!granted) {
-                        status = "VPN-Berechtigung wurde nicht erteilt."
-                    } else {
-                        startResidentialTest()
+            MAction("Residential-Proxy testen & aktivieren", enabled = !busy && !testing && valid && authenticated) {
+                scope.launch {
+                    testing = true
+                    status = "Starte Mysterium Residential ${country.name} über HTTP-Proxy …"
+                    val result = runCatching {
+                        repository.findMysteriumResidentialProxy(
+                            country = country,
+                            maxAttempts = count,
+                            allTraffic = true,
+                        ) { status = it.message }
+                    }.getOrElse { error ->
+                        JoynProxyDiscoveryResult(
+                            config = null,
+                            candidates = count,
+                            attempted = 0,
+                            message = "Test fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}",
+                        )
+                    }
+                    testing = false
+                    status = result.message
+                    result.config?.let { config ->
+                        repository.setCountry(country)
+                        repository.setProxy(config.copy(allTraffic = true))
+                        status = result.message + "\n\nHTTP-Proxy für Joyn TV aktiviert · Markt ${country.name}."
                     }
                 }
             }
@@ -273,12 +246,13 @@ private fun MysteriumSettingsScreen(
                     repository.stopMysteriumResidentialScan()
                 }
             }
-            MAction("VPN trennen", enabled = !busy && !testing) {
+            MAction("Proxy/VPN trennen", enabled = !busy && !testing) {
                 scope.launch {
+                    repository.disableProxy()
                     repository.disconnectMysteriumVpn().onSuccess {
-                        status = "Mysterium WireGuard getrennt."
+                        status = "Mysterium-Proxy und WireGuard-Fallback getrennt."
                     }.onFailure { error ->
-                        status = "VPN konnte nicht getrennt werden: ${error.message ?: error.javaClass.simpleName}"
+                        status = "Proxy getrennt; VPN-Fallback konnte nicht getrennt werden: ${error.message ?: error.javaClass.simpleName}"
                     }
                 }
             }
