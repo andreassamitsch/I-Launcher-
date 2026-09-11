@@ -1,0 +1,35 @@
+name: Mysterium Endpoint Probe
+
+on:
+  push:
+    branches:
+      - feature/joyn-tv-client
+    paths:
+      - '.github/workflows/mysterium-endpoint-probe.yml'
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download official Mysterium VPN 2.4.9 Windows release
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 \
+            https://github.com/mysteriumnetwork/mysterium-vpn/releases/download/2.4.9/MysteriumVPN.msix \
+            -o /tmp/MysteriumVPN.msix
+          mkdir -p /tmp/myst
+          unzip -q /tmp/MysteriumVPN.msix -d /tmp/myst
+          echo "Downloaded official release: $(du -h /tmp/MysteriumVPN.msix | cut -f1)"
+      - name: Print only public URL and hostname candidates
+        run: |
+          set -euo pipefail
+          find /tmp/myst -type f -size -80M -print0 | while IFS= read -r -d '' f; do
+            strings -a "$f" 2>/dev/null || true
+          done \
+          | grep -Eo 'https?://[A-Za-z0-9._:/?=&%-]+' \
+          | grep -Ei 'mysterium|mystnodes|mysteriumnetwork|api' \
+          | sed -E 's/["'"'<>),;]+$//' \
+          | sort -u \
+          | head -n 300
