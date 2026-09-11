@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import okhttp3.ConnectionPool
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -17,9 +18,10 @@ import okhttp3.Request
  * Verifies that a newly switched app-scoped Mysterium tunnel is actually usable before Joyn starts
  * an entitlement/playback request.
  *
- * The probe is intentionally short. Normal AT/DE/CH switches now reuse prepared country-specific
- * WireGuard connections; if that cached path is stale the repository refreshes exactly that target
- * once instead of making the user wait through the old 12-second readiness timeout.
+ * A probe must never reuse an HTTP socket from the previously active country. Android keeps an
+ * established socket on the network it was created on even after the VpnService is reconfigured.
+ * Reusing that socket made a correct DE -> CH switch look like the old DE exit until the readiness
+ * timeout expired, which in turn triggered the slow server-side refresh path on every switch.
  */
 internal object JoynMysteriumTunnelProbe {
     private val ipv4OnlyDns = Dns { hostname ->
@@ -27,16 +29,6 @@ internal object JoynMysteriumTunnelProbe {
         if (addresses.isEmpty()) throw UnknownHostException("No IPv4 address for $hostname")
         addresses
     }
-
-    private val client = OkHttpClient.Builder()
-        .dns(ipv4OnlyDns)
-        .proxy(Proxy.NO_PROXY)
-        .connectTimeout(1500, TimeUnit.MILLISECONDS)
-        .readTimeout(1500, TimeUnit.MILLISECONDS)
-        .callTimeout(2, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .followSslRedirects(true)
-        .build()
 
     suspend fun awaitReady(
         context: Context,
@@ -49,34 +41,56 @@ internal object JoynMysteriumTunnelProbe {
             val deadline = System.currentTimeMillis() + timeoutMs.coerceAtLeast(1_000L)
             var lastDetail = "noch kein IPv4-Exit erreichbar"
 
-            while (System.currentTimeMillis() < deadline) {
-                if (!JoynMysteriumWireGuard.isConnected(appContext)) {
-                    lastDetail = "WireGuard meldet noch nicht UP"
-                } else {
-                    val trace = resolveExit()
-                    if (trace != null) {
-                        val countryOk = trace.country.equals(country.name, ignoreCase = true)
-                        val ipOk = expectedExitIp.isBlank() || trace.ip == expectedExitIp
-                        if (countryOk && ipOk) return@runCatching Unit
+            // A brand-new pool is intentional. A singleton OkHttp client can retain a TLS/HTTP2
+            // connection that was opened through the previous country tunnel and therefore report
+            // the previous public IP after the WireGuard handover.
+            val probeClient = newProbeClient()
+            try {
+                while (System.currentTimeMillis() < deadline) {
+                    if (!JoynMysteriumWireGuard.isConnected(appContext)) {
+                        lastDetail = "WireGuard meldet noch nicht UP"
+                    } else {
+                        val trace = resolveExit(probeClient)
+                        if (trace != null) {
+                            val countryOk = trace.country.equals(country.name, ignoreCase = true)
+                            val ipOk = expectedExitIp.isBlank() || trace.ip == expectedExitIp
+                            if (countryOk && ipOk) return@runCatching Unit
 
-                        lastDetail = when {
-                            !countryOk -> "Exit ${trace.ip} liegt in ${trace.country} statt ${country.name}"
-                            else -> "Exit ${trace.ip} statt gespeicherter IP $expectedExitIp"
+                            lastDetail = when {
+                                !countryOk -> "Exit ${trace.ip} liegt in ${trace.country} statt ${country.name}"
+                                else -> "Exit ${trace.ip} statt gespeicherter IP $expectedExitIp"
+                            }
                         }
                     }
+                    delay(POLL_DELAY_MS)
                 }
-                delay(POLL_DELAY_MS)
+            } finally {
+                probeClient.connectionPool.evictAll()
+                probeClient.dispatcher.cancelAll()
             }
 
             error("Mysterium ${country.name} Tunnel wurde nicht rechtzeitig bereit: $lastDetail")
         }
     }
 
-    private fun resolveExit(): ExitTrace? = runCatching {
+    private fun newProbeClient(): OkHttpClient = OkHttpClient.Builder()
+        .dns(ipv4OnlyDns)
+        .proxy(Proxy.NO_PROXY)
+        .connectionPool(ConnectionPool(0, 1, TimeUnit.MILLISECONDS))
+        .connectTimeout(1200, TimeUnit.MILLISECONDS)
+        .readTimeout(1200, TimeUnit.MILLISECONDS)
+        .callTimeout(1600, TimeUnit.MILLISECONDS)
+        .retryOnConnectionFailure(false)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .build()
+
+    private fun resolveExit(client: OkHttpClient): ExitTrace? = runCatching {
         client.newCall(
             Request.Builder()
                 .url("https://www.cloudflare.com/cdn-cgi/trace")
                 .header("User-Agent", USER_AGENT)
+                .header("Connection", "close")
                 .get()
                 .build(),
         ).execute().use { response ->
@@ -93,8 +107,8 @@ internal object JoynMysteriumTunnelProbe {
 
     private data class ExitTrace(val ip: String, val country: String)
 
-    private const val DEFAULT_TIMEOUT_MS = 5_000L
-    private const val POLL_DELAY_MS = 200L
+    private const val DEFAULT_TIMEOUT_MS = 3_000L
+    private const val POLL_DELAY_MS = 120L
     private const val USER_AGENT =
         "Mozilla/5.0 (Linux; Android 14; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 }
