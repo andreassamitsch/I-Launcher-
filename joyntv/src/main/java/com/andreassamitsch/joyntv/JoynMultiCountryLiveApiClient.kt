@@ -2,10 +2,14 @@ package com.andreassamitsch.joyntv
 
 import android.content.Context
 import java.io.IOException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
 import java.net.URI
+import java.net.UnknownHostException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -33,36 +37,40 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
     private val subscriptionCache = mutableMapOf<JoynCountry, SubscriptionSnapshot>()
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(25, TimeUnit.SECONDS)
-        .callTimeout(35, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(25, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
 
     suspend fun loadLiveChannels(country: JoynCountry): List<JoynLiveChannel> = withContext(Dispatchers.IO) {
         val config = bootstrapConfig(country)
-        runCatching { loadLiveChannelsOnce(config, forceRefreshAccount = false) }
-            .recoverCatching { error ->
-                if (!error.shouldRetryAuthorization()) throw error
-                invalidateAnonymousToken(country)
-                subscriptionCache.remove(country)
-                loadLiveChannelsOnce(config, forceRefreshAccount = true)
-            }
-            .getOrThrow()
+        withRouteWarmupRetry {
+            runCatching { loadLiveChannelsOnce(config, forceRefreshAccount = false) }
+                .recoverCatching { error ->
+                    if (!error.shouldRetryAuthorization()) throw error
+                    invalidateAnonymousToken(country)
+                    subscriptionCache.remove(country)
+                    loadLiveChannelsOnce(config, forceRefreshAccount = true)
+                }
+                .getOrThrow()
+        }
     }
 
     suspend fun resolveLivePlayback(country: JoynCountry, channelId: String): JoynPlayback =
         withContext(Dispatchers.IO) {
             val config = bootstrapConfig(country)
-            runCatching { resolveLivePlaybackOnce(config, channelId, forceRefreshAccount = false) }
-                .recoverCatching { error ->
-                    if (!error.shouldRetryAuthorization()) throw error
-                    invalidateAnonymousToken(country)
-                    subscriptionCache.remove(country)
-                    resolveLivePlaybackOnce(config, channelId, forceRefreshAccount = true)
-                }
-                .getOrThrow()
+            withRouteWarmupRetry {
+                runCatching { resolveLivePlaybackOnce(config, channelId, forceRefreshAccount = false) }
+                    .recoverCatching { error ->
+                        if (!error.shouldRetryAuthorization()) throw error
+                        invalidateAnonymousToken(country)
+                        subscriptionCache.remove(country)
+                        resolveLivePlaybackOnce(config, channelId, forceRefreshAccount = true)
+                    }
+                    .getOrThrow()
+            }
         }
 
     fun hasStoredAccountSession(country: JoynCountry): Boolean =
@@ -367,6 +375,36 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
         }
     }
 
+    private suspend fun <T> withRouteWarmupRetry(block: suspend () -> T): T {
+        var lastError: Throwable? = null
+        repeat(ROUTE_WARMUP_ATTEMPTS) { attempt ->
+            try {
+                return block()
+            } catch (error: Throwable) {
+                if (!error.isRouteWarmupFailure() || attempt == ROUTE_WARMUP_ATTEMPTS - 1) throw error
+                lastError = error
+                client.connectionPool.evictAll()
+                delay(ROUTE_WARMUP_RETRY_DELAY_MS * (attempt + 1))
+            }
+        }
+        throw lastError ?: IOException("Joyn Netzwerk nach Länderwechsel nicht bereit.")
+    }
+
+    private fun Throwable.isRouteWarmupFailure(): Boolean {
+        var current: Throwable? = this
+        while (current != null) {
+            if (
+                current is UnknownHostException ||
+                current is ConnectException ||
+                current is SocketTimeoutException
+            ) return true
+            current = current.cause
+        }
+        val details = message.orEmpty()
+        return details.contains("Unable to resolve host", ignoreCase = true) ||
+            details.contains("No address associated with hostname", ignoreCase = true)
+    }
+
     private fun JSONObject.toLiveChannel(now: Long): JoynLiveChannel? {
         val id = optString("id").takeIf(String::isNotBlank) ?: return null
         val title = optString("title").takeIf(String::isNotBlank) ?: return null
@@ -495,6 +533,8 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
         private const val TOKEN_MARGIN_SECONDS = 300L
         private const val API_KEY_TTL_MS = 5L * 24L * 60L * 60L * 1000L
         private const val SUBSCRIPTION_CACHE_MS = 10L * 60L * 1000L
+        private const val ROUTE_WARMUP_ATTEMPTS = 3
+        private const val ROUTE_WARMUP_RETRY_DELAY_MS = 250L
         private const val HASH_ACCOUNT = "55ebb3812b45628017ee6c7f36f0b88a94e9778b9f11ad8a6fc05849182c07ec"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private const val USER_AGENT =
