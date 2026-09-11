@@ -173,18 +173,27 @@ internal class JoynRepository(context: Context) {
 
     suspend fun login(email: String, password: String): JoynAccountState {
         ensureJoynCountryRouting()
-        return api.login(email, password)
+        val account = api.login(email, password)
+        regionSettings.persistActiveSession(currentCountry())
+        return account
     }
 
     suspend fun logout() {
         ensureJoynCountryRouting()
+        val country = currentCountry()
         api.logout()
+        regionSettings.clearSession(country)
     }
 
     suspend fun accountState(refreshRemote: Boolean = true): JoynAccountState {
         ensureJoynCountryRouting()
-        return api.accountState(refreshRemote)
+        val account = api.accountState(refreshRemote)
+        if (account.loggedIn) regionSettings.persistActiveSession(currentCountry())
+        return account
     }
+
+    fun hasStoredJoynAccountSession(country: JoynCountry): Boolean =
+        multiCountryLiveApi.hasStoredAccountSession(country)
 
     fun currentCountry(): JoynCountry = regionSettings.currentCountry()
     fun selectedCountry(): JoynCountry? = regionSettings.selectedCountry()
