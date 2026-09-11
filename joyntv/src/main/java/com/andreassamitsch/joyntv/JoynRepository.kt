@@ -35,14 +35,6 @@ internal class JoynRepository(context: Context) {
     private val previewPublisher = JoynPreviewChannelPublisher(appContext)
     private val networkOperationMutex = Mutex()
 
-    /**
-     * Loads Live TV from all three Joyn markets into one list.
-     *
-     * Only one app-scoped WireGuard tunnel can be active at a time. Therefore the markets are
-     * fetched sequentially. The currently selected catalogue market is loaded last so its tunnel is
-     * active again when this method returns. Channel IDs are decorated with their source country;
-     * resolveLivePlayback() uses that marker to switch the tunnel automatically on click.
-     */
     suspend fun loadLiveChannelsAndPublish(): List<JoynLiveChannel> = networkOperationMutex.withLock {
         val selected = currentCountry()
         val loadOrder = LIVE_COUNTRIES.filter { it != selected } + selected
@@ -52,8 +44,6 @@ internal class JoynRepository(context: Context) {
         loadOrder.forEach { country ->
             runCatching {
                 ensureJoynCountryRouting(country)
-                // Always use the country-explicit client. It owns the separate AT/DE/CH account
-                // sessions and filters PLUS streams against the subscription of that exact market.
                 multiCountryLiveApi.loadLiveChannels(country)
             }.onSuccess { channels ->
                 byCountry[country] = channels
@@ -128,7 +118,6 @@ internal class JoynRepository(context: Context) {
         return api.loadSeasonEpisodes(seasonId)
     }
 
-    /** Starts a country handover as soon as a Live-TV card is focused. */
     suspend fun prepareLiveChannel(channelId: String): Result<Unit> {
         val countryRef = parseLiveChannelRef(channelId) ?: return Result.success(Unit)
         return ensureMysteriumForCountry(countryRef.country)
@@ -144,8 +133,6 @@ internal class JoynRepository(context: Context) {
         val startedAt = SystemClock.elapsedRealtime()
         ensureJoynCountryRouting(countryRef.country)
         val routingMs = SystemClock.elapsedRealtime() - startedAt
-        // Decorated combined-list channels always use their country-explicit retained session,
-        // including the currently selected market.
         val playback = multiCountryLiveApi.resolveLivePlayback(countryRef.country, countryRef.channelId)
         Log.i(
             TAG,
@@ -220,8 +207,6 @@ internal class JoynRepository(context: Context) {
     fun setProxy(config: JoynProxyConfig) {
         proxySettings.save(config)
         if (!config.enabled) {
-            // "Direkt verwenden" is country-specific now. The next Joyn request will tear down an
-            // already running WireGuard tunnel before any direct traffic is sent.
             mysteriumSettings.setWireGuardEnabled(currentCountry(), false)
         }
     }
@@ -271,7 +256,6 @@ internal class JoynRepository(context: Context) {
     fun saveMysteriumAccessToken(token: String) = mysteriumApiClient.saveManualAccessToken(token)
     fun logoutMysterium() = mysteriumApiClient.clearSession()
 
-    /** Ensures the persistent Mysterium profile for an arbitrary Joyn country is active. */
     suspend fun ensureMysteriumForCountry(country: JoynCountry): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             GLOBAL_COUNTRY_ROUTING_MUTEX.withLock {
@@ -280,6 +264,7 @@ internal class JoynRepository(context: Context) {
                 if (profile == null || !profile.enabled) {
                     if (JoynMysteriumWireGuard.isConnected(appContext)) {
                         JoynMysteriumWireGuard.disconnect(appContext).getOrThrow()
+                        multiCountryLiveApi.onRouteChanged()
                     }
                     return@withLock
                 }
@@ -296,9 +281,6 @@ internal class JoynRepository(context: Context) {
                 val publicKey = JoynMysteriumWireGuard.publicKey(appContext, country)
 
                 suspend fun activateTarget(forceRefresh: Boolean, timeoutMs: Long): JoynMysteriumWireGuardLease {
-                    // Keep the old country tunnel alive while resolving the Mysterium API response
-                    // and the next WireGuard peer hostname. GoBackend itself performs the atomic-ish
-                    // DOWN/UP handover only after the new Config is completely prepared.
                     val lease = mysteriumWireGuardApi.requestResidentialTarget(
                         country = country,
                         publicKey = publicKey,
@@ -330,12 +312,11 @@ internal class JoynRepository(context: Context) {
                     if (JoynMysteriumWireGuard.activeCountry() == country) {
                         JoynMysteriumWireGuard.disconnect(appContext).getOrThrow()
                     }
-                    // The cached country-specific Mysterium connection may have expired server-side.
-                    // Refresh exactly the same approved target once, then retry the local handshake.
                     activateTarget(forceRefresh = true, timeoutMs = REFRESH_TUNNEL_READY_TIMEOUT_MS)
                 }
 
                 mysteriumSettings.saveWireGuardProfile(country, lease)
+                multiCountryLiveApi.onRouteChanged()
                 Log.i(
                     TAG,
                     "Mysterium switch ${previousCountry?.name ?: "DIRECT"}->${country.name} in " +
@@ -343,17 +324,12 @@ internal class JoynRepository(context: Context) {
                 )
             }
         }.onFailure {
-            // If GoBackend failed before the new country came up it restores its previous tunnel.
-            // Do not tear that restored working route down merely because the attempted switch failed.
             if (JoynMysteriumWireGuard.activeCountry() == country) {
                 runCatching { JoynMysteriumWireGuard.disconnect(appContext) }
             }
         }
     }
 
-    /**
-     * Ensures the saved Mysterium profile for the currently selected Joyn catalogue market is active.
-     */
     suspend fun ensureMysteriumForCurrentCountry(): Result<Unit> =
         ensureMysteriumForCountry(currentCountry())
 
@@ -366,9 +342,6 @@ internal class JoynRepository(context: Context) {
         saveMysteriumSettings(country, maxAttempts, allTraffic)
         val progressRelay = progressRelay(onProgress)
 
-        // Disable only the obsolete HTTP proxy. A previously accepted WireGuard profile remains
-        // stored until a new candidate has actually passed Joyn, so a failed rescan cannot destroy
-        // the known-good country configuration.
         proxySettings.disable()
         mysteriumSettings.clearLastSuccessful(country)
 
@@ -393,10 +366,9 @@ internal class JoynRepository(context: Context) {
         }
 
         if (result.activated) {
-            // New scanner builds persist the actually measured exit directly. The promotion remains
-            // as a compatibility fallback for profiles created by an older build.
             mysteriumSettings.promoteWireGuardCandidate(country)
             JoynMysteriumWireGuard.adoptActiveCountry(country)
+            multiCountryLiveApi.onRouteChanged()
         }
         return result
     }
@@ -453,8 +425,8 @@ internal class JoynRepository(context: Context) {
     companion object {
         private const val TAG = "JoynRepository"
         private const val MULTI_LIVE_PREFIX = "multi:"
-        private const val FAST_TUNNEL_READY_TIMEOUT_MS = 3_500L
-        private const val REFRESH_TUNNEL_READY_TIMEOUT_MS = 6_000L
+        private const val FAST_TUNNEL_READY_TIMEOUT_MS = 3_000L
+        private const val REFRESH_TUNNEL_READY_TIMEOUT_MS = 5_000L
         private val GLOBAL_COUNTRY_ROUTING_MUTEX = Mutex()
         private val LIVE_COUNTRIES = listOf(JoynCountry.AT, JoynCountry.DE, JoynCountry.CH)
     }
