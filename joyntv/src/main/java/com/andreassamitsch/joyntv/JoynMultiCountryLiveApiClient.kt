@@ -68,6 +68,15 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
     fun hasStoredAccountSession(country: JoynCountry): Boolean =
         readPersistentToken(country)?.hasAccount == true
 
+    /**
+     * Existing OkHttp sockets stay attached to the network/VPN on which they were created. After a
+     * country handover those sockets must not be reused for Joyn entitlement or GraphQL requests,
+     * otherwise the first request can still leave through the previous country's tunnel.
+     */
+    fun onRouteChanged() {
+        client.connectionPool.evictAll()
+    }
+
     private suspend fun loadLiveChannelsOnce(
         config: JoynRuntimeConfig,
         forceRefreshAccount: Boolean,
