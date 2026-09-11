@@ -1,6 +1,7 @@
 package com.andreassamitsch.joyntv
 
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import kotlinx.coroutines.Dispatchers
@@ -40,7 +41,6 @@ internal class JoynRepository(context: Context) {
     suspend fun loadCatalogue(path: String = "/neu-beliebt"): JoynCataloguePage {
         val page = api.loadCatalogue(path)
         if (path != "/neu-beliebt") return page
-
         val browseLanes = buildList {
             runCatching { browseApi.loadMediaLibraries() }.getOrNull()?.lanes?.let(::addAll)
             runCatching { browseApi.loadCategories("/") }.getOrNull()?.lanes?.let(::addAll)
@@ -48,28 +48,14 @@ internal class JoynRepository(context: Context) {
         return page.copy(lanes = browseLanes + page.lanes)
     }
 
-    suspend fun loadCategory(blockId: String, title: String): JoynCataloguePage =
-        categoryApi.loadCategory(blockId, title)
-
-    suspend fun loadChannel(path: String, title: String): JoynCataloguePage =
-        browseApi.loadChannel(path, title)
-
-    suspend fun loadCollection(path: String, title: String): JoynCataloguePage =
-        collectionApi.loadCollection(path, title)
-
-    suspend fun loadCompilation(path: String, title: String): JoynCataloguePage =
-        browseApi.loadCompilation(path, title)
-
+    suspend fun loadCategory(blockId: String, title: String): JoynCataloguePage = categoryApi.loadCategory(blockId, title)
+    suspend fun loadChannel(path: String, title: String): JoynCataloguePage = browseApi.loadChannel(path, title)
+    suspend fun loadCollection(path: String, title: String): JoynCataloguePage = collectionApi.loadCollection(path, title)
+    suspend fun loadCompilation(path: String, title: String): JoynCataloguePage = browseApi.loadCompilation(path, title)
     suspend fun searchMedia(text: String): List<JoynMediaItem> = api.searchMedia(text)
-
-    suspend fun loadSeriesDetails(item: JoynMediaItem): JoynSeriesDetails =
-        api.loadSeriesDetails(item)
-
-    suspend fun loadSeasonEpisodes(seasonId: String): List<JoynMediaItem> =
-        api.loadSeasonEpisodes(seasonId)
-
-    suspend fun resolveLivePlayback(channelId: String): JoynPlayback =
-        api.resolveLivePlayback(channelId)
+    suspend fun loadSeriesDetails(item: JoynMediaItem): JoynSeriesDetails = api.loadSeriesDetails(item)
+    suspend fun loadSeasonEpisodes(seasonId: String): List<JoynMediaItem> = api.loadSeasonEpisodes(seasonId)
+    suspend fun resolveLivePlayback(channelId: String): JoynPlayback = api.resolveLivePlayback(channelId)
 
     suspend fun resolveVodPlayback(contentRef: String, enteredPin: String? = null): JoynPlayback {
         val explicitPin = enteredPin?.takeIf { it.matches(Regex("^\\d{4}$")) }
@@ -77,59 +63,33 @@ internal class JoynRepository(context: Context) {
             if (!api.accountState(refreshRemote = false).loggedIn) throw JoynLoginRequiredException()
             return pinPlaybackApi.resolveVodPlayback(contentRef, explicitPin)
         }
-
         return try {
             api.resolveVodPlayback(contentRef)
         } catch (error: Throwable) {
             val details = error.message.orEmpty()
-
             if (details.contains("ENT_AgeVerificationSetupRequired", ignoreCase = true) &&
                 !api.accountState(refreshRemote = false).loggedIn
-            ) {
-                throw JoynLoginRequiredException()
-            }
-
+            ) throw JoynLoginRequiredException()
             if (!details.contains("ENT_PINRequired", ignoreCase = true)) throw error
-
             if (!api.accountState(refreshRemote = false).loggedIn) throw JoynLoginRequiredException()
-
             val automaticPin = if (pinSettings.autoUse()) pinSettings.readPin() else null
-            if (automaticPin != null) {
-                pinPlaybackApi.resolveVodPlayback(contentRef, automaticPin)
-            } else {
-                throw JoynPinRequiredException()
-            }
+            if (automaticPin != null) pinPlaybackApi.resolveVodPlayback(contentRef, automaticPin)
+            else throw JoynPinRequiredException()
         }
     }
 
     fun hasStoredParentalPin(): Boolean = pinSettings.hasPin()
-
     fun parentalPinAutoUse(): Boolean = pinSettings.autoUse()
-
     fun saveParentalPin(pin: String, autoUse: Boolean = true) = pinSettings.save(pin, autoUse)
-
     fun setParentalPinAutoUse(enabled: Boolean) = pinSettings.setAutoUse(enabled)
-
     fun clearParentalPin() = pinSettings.clear()
-
-    suspend fun login(email: String, password: String): JoynAccountState =
-        api.login(email, password)
-
+    suspend fun login(email: String, password: String): JoynAccountState = api.login(email, password)
     suspend fun logout() = api.logout()
-
-    suspend fun accountState(refreshRemote: Boolean = true): JoynAccountState =
-        api.accountState(refreshRemote)
-
+    suspend fun accountState(refreshRemote: Boolean = true): JoynAccountState = api.accountState(refreshRemote)
     fun currentCountry(): JoynCountry = regionSettings.currentCountry()
-
     fun selectedCountry(): JoynCountry? = regionSettings.selectedCountry()
-
     fun countryIsAutomatic(): Boolean = regionSettings.isAutomatic()
-
-    fun setCountry(country: JoynCountry?) {
-        regionSettings.setCountry(country)
-    }
-
+    fun setCountry(country: JoynCountry?) { regionSettings.setCountry(country) }
     fun proxyConfig(): JoynProxyConfig = proxySettings.current()
 
     suspend fun findAutomaticProxy(
@@ -146,26 +106,14 @@ internal class JoynRepository(context: Context) {
     }
 
     fun mysteriumApiBaseUrl(): String = mysteriumSettings.apiBaseUrl()
-
     fun mysteriumCountrySettings(country: JoynCountry = currentCountry()): JoynMysteriumCountrySettings =
         mysteriumSettings.countrySettings(country)
-
     fun mysteriumSavedEmail(): String = mysteriumApiClient.savedEmail()
-
     fun mysteriumHasStoredAccessToken(): Boolean = mysteriumApiClient.hasStoredAccessToken()
 
-    fun saveMysteriumSettings(
-        apiBaseUrl: String,
-        country: JoynCountry,
-        maxAttempts: Int,
-    ) {
+    fun saveMysteriumSettings(apiBaseUrl: String, country: JoynCountry, maxAttempts: Int) {
         mysteriumSettings.saveApiBaseUrl(apiBaseUrl)
-        mysteriumSettings.saveCountrySettings(
-            JoynMysteriumCountrySettings(
-                country = country,
-                maxAttempts = maxAttempts,
-            ),
-        )
+        mysteriumSettings.saveCountrySettings(JoynMysteriumCountrySettings(country, maxAttempts))
     }
 
     suspend fun mysteriumApiStatus(apiBaseUrl: String = mysteriumSettings.apiBaseUrl()): JoynMysteriumApiStatus =
@@ -186,13 +134,8 @@ internal class JoynRepository(context: Context) {
         mysteriumApiClient.completeMagicLink(apiBaseUrl, codeOrLink)
     }
 
-    fun saveMysteriumAccessToken(token: String) {
-        mysteriumApiClient.saveManualAccessToken(token)
-    }
-
-    fun logoutMysterium() {
-        mysteriumApiClient.clearSession()
-    }
+    fun saveMysteriumAccessToken(token: String) = mysteriumApiClient.saveManualAccessToken(token)
+    fun logoutMysterium() = mysteriumApiClient.clearSession()
 
     suspend fun findMysteriumResidentialProxy(
         country: JoynCountry,
@@ -203,42 +146,43 @@ internal class JoynRepository(context: Context) {
     ): JoynProxyDiscoveryResult {
         saveMysteriumSettings(apiBaseUrl, country, maxAttempts)
         val progressRelay = progressRelay(onProgress)
+        val accountStatus = withContext(Dispatchers.IO) { mysteriumApiClient.status(apiBaseUrl) }
+        if (accountStatus.authenticated != true) {
+            withContext(Dispatchers.Main) {
+                appContext.startActivity(
+                    Intent(appContext, MysteriumSettingsActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+            return JoynProxyDiscoveryResult(
+                config = null,
+                candidates = maxAttempts,
+                attempted = 0,
+                message = accountStatus.message + "\nMysterium-Konto/Länderprofile wurden geöffnet.",
+            )
+        }
         val result = withContext(Dispatchers.IO) {
             mysteriumScanner.findBest(
                 country = country,
                 apiKey = protocolPrefs.getString("api_key_${country.name}", null),
-                apiBaseUrl = apiBaseUrl,
+                apiBaseUrl = accountStatus.resolvedBaseUrl.ifBlank { apiBaseUrl },
                 maxAttempts = maxAttempts,
                 allTraffic = allTraffic,
                 onProgress = progressRelay,
             )
         }
-        result.config?.let { config ->
-            mysteriumSettings.saveLastSuccessful(country, config)
-        }
+        result.config?.let { mysteriumSettings.saveLastSuccessful(country, it) }
         return result
     }
 
-    fun stopMysteriumResidentialScan() {
-        JoynMysteriumScanControl.requestStop()
-    }
+    fun stopMysteriumResidentialScan() { JoynMysteriumScanControl.requestStop() }
+    fun mysteriumLastSuccessful(country: JoynCountry = currentCountry(), allTraffic: Boolean = false): JoynProxyConfig? =
+        mysteriumSettings.lastSuccessful(country, allTraffic)
 
-    fun mysteriumLastSuccessful(
-        country: JoynCountry = currentCountry(),
-        allTraffic: Boolean = false,
-    ): JoynProxyConfig? = mysteriumSettings.lastSuccessful(country, allTraffic)
-
-    fun nordVpnServiceUsername(): String =
-        protocolPrefs.getString(KEY_NORD_USERNAME, "").orEmpty()
-
-    fun nordVpnServicePassword(): String =
-        protocolPrefs.getString(KEY_NORD_PASSWORD, "").orEmpty()
-
+    fun nordVpnServiceUsername(): String = protocolPrefs.getString(KEY_NORD_USERNAME, "").orEmpty()
+    fun nordVpnServicePassword(): String = protocolPrefs.getString(KEY_NORD_PASSWORD, "").orEmpty()
     fun saveNordVpnServiceCredentials(username: String, password: String) {
-        protocolPrefs.edit()
-            .putString(KEY_NORD_USERNAME, username.trim())
-            .putString(KEY_NORD_PASSWORD, password)
-            .apply()
+        protocolPrefs.edit().putString(KEY_NORD_USERNAME, username.trim()).putString(KEY_NORD_PASSWORD, password).apply()
     }
 
     suspend fun findNordVpnProxy(
@@ -249,35 +193,19 @@ internal class JoynRepository(context: Context) {
     ): JoynProxyDiscoveryResult {
         val country = currentCountry()
         val progressRelay = progressRelay(onProgress)
-
         return try {
             progressRelay(JoynProxyDiscoveryProgress("Prüfe NordVPN HTTPS/89-Service-Credentials …"))
             val httpsCredentialDiagnostic = withContext(Dispatchers.IO) {
                 nordHttpsCredentialDiagnostics.run(country, username, password)
             }
-
             if (httpsCredentialDiagnostic.status == JoynNordHttpsCredentialStatus.REJECTED) {
-                return JoynProxyDiscoveryResult(
-                    config = null,
-                    candidates = httpsCredentialDiagnostic.attempted,
-                    attempted = httpsCredentialDiagnostic.attempted,
-                    message = httpsCredentialDiagnostic.summary,
-                )
+                return JoynProxyDiscoveryResult(null, httpsCredentialDiagnostic.attempted, httpsCredentialDiagnostic.attempted, httpsCredentialDiagnostic.summary)
             }
-
-            val diagnostic = runCatching {
-                nordVpnDiagnostics.run(country, progressRelay)
-            }.getOrElse { error ->
-                JoynNordVpnDiagnosticReport(
-                    "Diagnose selbst fehlgeschlagen: ${error.javaClass.simpleName}: ${error.message.orEmpty()}",
-                )
+            val diagnostic = runCatching { nordVpnDiagnostics.run(country, progressRelay) }.getOrElse { error ->
+                JoynNordVpnDiagnosticReport("Diagnose selbst fehlgeschlagen: ${error.javaClass.simpleName}: ${error.message.orEmpty()}")
             }
-
             progressRelay(JoynProxyDiscoveryProgress("Prüfe NordVPN-Service-Credentials zusätzlich über offiziellen SOCKS5-Dienst …"))
-            val credentialDiagnostic = withContext(Dispatchers.IO) {
-                nordCredentialDiagnostics.run(username, password)
-            }
-
+            val credentialDiagnostic = withContext(Dispatchers.IO) { nordCredentialDiagnostics.run(username, password) }
             val result = withContext(Dispatchers.IO) {
                 nordVpnProxyResolver.findBest(
                     country = country,
@@ -288,17 +216,12 @@ internal class JoynRepository(context: Context) {
                     onProgress = progressRelay,
                 )
             }
-
-            if (result.config == null) {
-                result.copy(
-                    message = result.message +
-                        "\n\nNordVPN HTTPS/89-Credential-Debug:\n" + httpsCredentialDiagnostic.summary +
-                        "\n\nNordVPN SOCKS5-Credential-Debug (nur Zusatztest):\n" + credentialDiagnostic.summary +
-                        "\n\nNordVPN API-Debug:\n" + diagnostic.summary,
-                )
-            } else {
-                result
-            }
+            if (result.config == null) result.copy(
+                message = result.message +
+                    "\n\nNordVPN HTTPS/89-Credential-Debug:\n" + httpsCredentialDiagnostic.summary +
+                    "\n\nNordVPN SOCKS5-Credential-Debug (nur Zusatztest):\n" + credentialDiagnostic.summary +
+                    "\n\nNordVPN API-Debug:\n" + diagnostic.summary,
+            ) else result
         } finally {
             JoynProxySettings.install(appContext)
         }
@@ -313,7 +236,6 @@ internal class JoynRepository(context: Context) {
         val progressRelay = progressRelay(onProgress)
         val previousProxy = proxySettings.current()
         JoynProxySettings.installDirectForTunnel()
-
         return try {
             val result = withContext(Dispatchers.IO) {
                 nordOpenVpnScanner.findBest(
@@ -324,11 +246,8 @@ internal class JoynRepository(context: Context) {
                     onProgress = progressRelay,
                 )
             }
-            if (result.connected) {
-                proxySettings.save(previousProxy.copy(enabled = false))
-            } else {
-                JoynProxySettings.install(appContext)
-            }
+            if (result.connected) proxySettings.save(previousProxy.copy(enabled = false))
+            else JoynProxySettings.install(appContext)
             result
         } catch (error: Throwable) {
             JoynProxySettings.install(appContext)
@@ -342,21 +261,13 @@ internal class JoynRepository(context: Context) {
     }
 
     fun nordVpnOpenVpnState(): JoynNordTunnelState = JoynNordTunnelRuntime.state.value
+    fun setProxy(config: JoynProxyConfig) { proxySettings.save(config) }
 
-    fun setProxy(config: JoynProxyConfig) {
-        proxySettings.save(config)
-    }
-
-    private fun progressRelay(
-        onProgress: (JoynProxyDiscoveryProgress) -> Unit,
-    ): (JoynProxyDiscoveryProgress) -> Unit {
+    private fun progressRelay(onProgress: (JoynProxyDiscoveryProgress) -> Unit): (JoynProxyDiscoveryProgress) -> Unit {
         val mainHandler = Handler(Looper.getMainLooper())
         return { progress ->
-            if (Looper.myLooper() == Looper.getMainLooper()) {
-                onProgress(progress)
-            } else {
-                mainHandler.post { onProgress(progress) }
-            }
+            if (Looper.myLooper() == Looper.getMainLooper()) onProgress(progress)
+            else mainHandler.post { onProgress(progress) }
         }
     }
 
