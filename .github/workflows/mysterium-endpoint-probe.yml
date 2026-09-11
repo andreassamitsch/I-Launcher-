@@ -13,22 +13,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Download official Mysterium VPN 2.4.9 Windows release
+      - name: Probe public Mysterium production API
         run: |
           set -euo pipefail
-          curl -fL --retry 3 \
-            https://github.com/mysteriumnetwork/mysterium-vpn/releases/download/2.4.9/MysteriumVPN.msix \
-            -o /tmp/MysteriumVPN.msix
-          mkdir -p /tmp/myst
-          unzip -q /tmp/MysteriumVPN.msix -d /tmp/myst
-          echo "Downloaded official release: $(du -h /tmp/MysteriumVPN.msix | cut -f1)"
-      - name: Print only public URL and hostname candidates
-        run: |
-          set -euo pipefail
-          find /tmp/myst -type f -size -80M -print0 | while IFS= read -r -d '' f; do
-            strings -a "$f" 2>/dev/null || true
-          done \
-          | grep -Eo 'https?://[A-Za-z0-9._:/?=&%-]+' \
-          | grep -Ei 'mysterium|mystnodes|mysteriumnetwork|api' \
-          | sort -u \
-          | head -n 300 || true
+          BASE='https://api.mysteriumvpn.com/api/v1'
+          for path in '/auth/config' '/auth/check' '/connection/config/locations?ip_type=residential' '/subscription'; do
+            echo "=== $path ==="
+            code=$(curl -sS -o /tmp/body -w '%{http_code}' \
+              -H 'Accept: application/json' \
+              -H 'x-client-platform: windows' \
+              -H 'x-client-version: 2.4.9' \
+              "$BASE$path" || true)
+            echo "HTTP $code"
+            head -c 3000 /tmp/body || true
+            echo
+          done
