@@ -98,19 +98,38 @@ internal object JoynMysteriumWireGuard {
         val withKey = template.replace("%private_key%", privateKey)
         require(!withKey.contains("%private_key%")) { "WireGuard Private-Key-Platzhalter konnte nicht ersetzt werden." }
 
-        val lines = withKey
+        val sourceLines = withKey
             .replace("\r\n", "\n")
             .split('\n')
+
+        val peerCount = sourceLines.count { it.trim().equals("[Peer]", ignoreCase = true) }
+        require(peerCount == 1) {
+            "Ungültige Mysterium-WireGuard-Konfiguration: erwartet genau einen Peer, erhalten $peerCount."
+        }
+
+        val lines = sourceLines
             .filterNot { line ->
                 val trimmed = line.trimStart()
                 trimmed.startsWith("IncludedApplications", ignoreCase = true) ||
-                    trimmed.startsWith("ExcludedApplications", ignoreCase = true)
+                    trimmed.startsWith("ExcludedApplications", ignoreCase = true) ||
+                    trimmed.startsWith("AllowedIPs", ignoreCase = true)
             }
             .toMutableList()
 
         val interfaceIndex = lines.indexOfFirst { it.trim().equals("[Interface]", ignoreCase = true) }
         require(interfaceIndex >= 0) { "Ungültige Mysterium-WireGuard-Konfiguration: [Interface] fehlt." }
         lines.add(interfaceIndex + 1, "IncludedApplications = $packageName")
+
+        // Mysterium templates can express the IPv4 default route as 0.0.0.0/1 + 128.0.0.0/1.
+        // WireGuard's Android GoBackend does not recognize that pair as a default route and then
+        // explicitly allows IPv6 outside the VPN. On IPv6-capable networks that leaks the device's
+        // native IPv6 address and defeats country selection. Normalize to one real IPv4 default
+        // route. With exactly one peer GoBackend enables its kill-switch semantics, so IPv6 is
+        // blocked for this app unless the tunnel itself explicitly carries IPv6.
+        val peerIndex = lines.indexOfFirst { it.trim().equals("[Peer]", ignoreCase = true) }
+        require(peerIndex >= 0) { "Ungültige Mysterium-WireGuard-Konfiguration: [Peer] fehlt." }
+        lines.add(peerIndex + 1, "AllowedIPs = 0.0.0.0/0")
+
         return lines.joinToString("\n")
     }
 }
