@@ -49,10 +49,12 @@ class LoginActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val repository = JoynRepository(applicationContext)
+        val accountLoginClient = JoynAccountLoginClient(applicationContext)
         setContent {
             JoynTvTheme {
                 LoginScreen(
                     repository = repository,
+                    accountLoginClient = accountLoginClient,
                     onRegionChanged = {
                         startActivity(
                             Intent(this, MainActivity::class.java)
@@ -71,6 +73,7 @@ class LoginActivity : ComponentActivity() {
 @Composable
 private fun LoginScreen(
     repository: JoynRepository,
+    accountLoginClient: JoynAccountLoginClient,
     onRegionChanged: () -> Unit,
     onProxySettings: () -> Unit,
     onPinSettings: () -> Unit,
@@ -260,7 +263,13 @@ private fun LoginScreen(
                         message = null
                         runCatching {
                             val loggedIn = withContext(Dispatchers.IO) {
-                                repository.login(email.trim(), password)
+                                // Authentication is performed through the same country-specific
+                                // Residential route that will later be used for that market. The new
+                                // login client sends the password exactly once and persists only the
+                                // resulting Joyn access/refresh token.
+                                repository.ensureMysteriumForCountry(activeCountry).getOrThrow()
+                                accountLoginClient.login(activeCountry, email.trim(), password)
+                                repository.accountState(refreshRemote = true)
                             }
                             password = ""
                             account = loggedIn
