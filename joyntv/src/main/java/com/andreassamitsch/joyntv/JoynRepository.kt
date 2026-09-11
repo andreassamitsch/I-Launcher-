@@ -20,6 +20,9 @@ internal class JoynRepository(context: Context) {
     private val nordCredentialDiagnostics = JoynNordCredentialDiagnostics()
     private val nordHttpsCredentialDiagnostics = JoynNordHttpsCredentialDiagnostics()
     private val nordOpenVpnScanner = JoynNordOpenVpnScanner(appContext)
+    private val mysteriumSettings = JoynMysteriumSettings(appContext)
+    private val mysteriumApiClient = JoynMysteriumApiClient()
+    private val mysteriumScanner = JoynMysteriumProxyScanner(mysteriumApiClient)
     private val pinSettings = JoynParentalPinSettings(appContext)
     private val api = JoynApiClient(appContext)
     private val pinPlaybackApi = JoynPinPlaybackApiClient(appContext)
@@ -142,6 +145,62 @@ internal class JoynRepository(context: Context) {
         )
     }
 
+    fun mysteriumApiBaseUrl(): String = mysteriumSettings.apiBaseUrl()
+
+    fun mysteriumCountrySettings(country: JoynCountry = currentCountry()): JoynMysteriumCountrySettings =
+        mysteriumSettings.countrySettings(country)
+
+    fun saveMysteriumSettings(
+        apiBaseUrl: String,
+        country: JoynCountry,
+        maxAttempts: Int,
+    ) {
+        mysteriumSettings.saveApiBaseUrl(apiBaseUrl)
+        mysteriumSettings.saveCountrySettings(
+            JoynMysteriumCountrySettings(
+                country = country,
+                maxAttempts = maxAttempts,
+            ),
+        )
+    }
+
+    suspend fun mysteriumApiStatus(apiBaseUrl: String = mysteriumSettings.apiBaseUrl()): JoynMysteriumApiStatus =
+        withContext(Dispatchers.IO) { mysteriumApiClient.status(apiBaseUrl) }
+
+    suspend fun findMysteriumResidentialProxy(
+        country: JoynCountry,
+        apiBaseUrl: String,
+        maxAttempts: Int,
+        allTraffic: Boolean,
+        onProgress: (JoynProxyDiscoveryProgress) -> Unit = {},
+    ): JoynProxyDiscoveryResult {
+        saveMysteriumSettings(apiBaseUrl, country, maxAttempts)
+        val progressRelay = progressRelay(onProgress)
+        val result = withContext(Dispatchers.IO) {
+            mysteriumScanner.findBest(
+                country = country,
+                apiKey = protocolPrefs.getString("api_key_${country.name}", null),
+                apiBaseUrl = apiBaseUrl,
+                maxAttempts = maxAttempts,
+                allTraffic = allTraffic,
+                onProgress = progressRelay,
+            )
+        }
+        result.config?.let { config ->
+            mysteriumSettings.saveLastSuccessful(country, config)
+        }
+        return result
+    }
+
+    fun stopMysteriumResidentialScan() {
+        JoynMysteriumScanControl.requestStop()
+    }
+
+    fun mysteriumLastSuccessful(
+        country: JoynCountry = currentCountry(),
+        allTraffic: Boolean = false,
+    ): JoynProxyConfig? = mysteriumSettings.lastSuccessful(country, allTraffic)
+
     fun nordVpnServiceUsername(): String =
         protocolPrefs.getString(KEY_NORD_USERNAME, "").orEmpty()
 
@@ -227,7 +286,7 @@ internal class JoynRepository(context: Context) {
     }
 
     /**
-     * Tests normal NordVPN OpenVPN TCP/443 exits through Android VpnService. The java.net proxy is
+     * Tests normal NordVPN OpenVPN exits through Android VpnService. The java.net proxy is
      * temporarily removed so there is never a proxy-inside-VPN during the scan. A successful tunnel
      * disables the persisted test proxy and clears Joyn's stored auth token because the source IP
      * has changed. On failure the previous proxy routing is restored unchanged.
@@ -253,8 +312,6 @@ internal class JoynRepository(context: Context) {
                 )
             }
             if (result.connected) {
-                // Tunnel and legacy proxy are mutually exclusive. save() also invalidates any Joyn
-                // token that may have been bound to the previous egress address.
                 proxySettings.save(previousProxy.copy(enabled = false))
             } else {
                 JoynProxySettings.install(appContext)
