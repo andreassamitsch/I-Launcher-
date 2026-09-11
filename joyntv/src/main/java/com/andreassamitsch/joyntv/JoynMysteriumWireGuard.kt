@@ -77,6 +77,12 @@ internal object JoynMysteriumWireGuard {
                 val parsed = Config.parse(ByteArrayInputStream(configText.toByteArray(Charsets.UTF_8)))
                 JoynMysteriumWireGuardConfig.validate(parsed)
 
+                // GoBackend resolves DNS peer endpoints only after it has already torn the previous
+                // tunnel down. Its resolver retries up to ten times with one-second sleeps. Resolve
+                // the endpoint once while the old country is still usable and keep that answer in
+                // InetEndpoint's cache, so the actual AT/DE/CH handover does not hit that 10 s path.
+                JoynMysteriumWireGuardConfig.preResolvePeerEndpoint(parsed)
+
                 val state = backend(appContext).setState(tunnel, Tunnel.State.UP, parsed)
                 check(state == Tunnel.State.UP) { "WireGuard-Tunnel wurde nicht aktiviert ($state)" }
                 if (country != null) activeMarket = country
@@ -217,6 +223,14 @@ internal object JoynMysteriumWireGuardConfig {
                 allowed.single().getMask() == 0
         ) {
             "WireGuard-Sicherheitsprüfung: IPv4-Default-Route 0.0.0.0/0 fehlt."
+        }
+    }
+
+    fun preResolvePeerEndpoint(config: Config) {
+        val endpoint = config.getPeers().single().getEndpoint().orElse(null) ?: return
+        val resolved = endpoint.getResolved().orElse(null)
+        require(resolved != null) {
+            "Mysterium-WireGuard-Endpunkt ${endpoint.getHost()} konnte vor dem Länderwechsel nicht aufgelöst werden."
         }
     }
 
