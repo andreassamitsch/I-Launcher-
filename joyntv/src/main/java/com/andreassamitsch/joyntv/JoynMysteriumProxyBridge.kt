@@ -9,13 +9,16 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.util.Base64
 import java.util.concurrent.Executors
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.SSLSocketFactory
 
 /**
- * Local unauthenticated CONNECT bridge for Mysterium's short-lived authenticated HTTP proxies.
+ * Local unauthenticated CONNECT bridge for Mysterium's short-lived authenticated HTTPS proxies.
  *
  * Joyn clients in the app can keep using Android's process ProxySelector without each networking
- * stack knowing Mysterium credentials. The bridge listens only on loopback, injects the current
- * lease's Proxy-Authorization header upstream and relays the encrypted Joyn tunnel byte-for-byte.
+ * stack knowing Mysterium credentials. The bridge listens only on loopback, establishes a
+ * certificate-verified TLS session to Mysterium's HTTPS proxy, injects Proxy-Authorization there
+ * and relays the encrypted Joyn tunnel byte-for-byte.
  */
 internal class JoynMysteriumProxyBridge(
     private val remoteHost: String,
@@ -55,7 +58,7 @@ internal class JoynMysteriumProxyBridge(
     }
 
     private fun handle(client: Socket) {
-        var remote: Socket? = null
+        var remote: SSLSocket? = null
         try {
             client.tcpNoDelay = true
             client.soTimeout = HEADER_TIMEOUT_MS
@@ -65,19 +68,17 @@ internal class JoynMysteriumProxyBridge(
                 return
             }
 
-            remote = Socket()
-            remote.tcpNoDelay = true
-            remote.connect(InetSocketAddress(remoteHost, remotePort), HEADER_TIMEOUT_MS)
-            remote.soTimeout = HEADER_TIMEOUT_MS
+            remote = connectTlsProxy()
             remote.outputStream.write(withProxyAuthorization(requestHeader).toByteArray(Charsets.ISO_8859_1))
             remote.outputStream.flush()
 
-            val responseHeader = readHeader(remote) ?: throw IOException("Mysterium proxy sent no response")
+            val responseHeader = readHeader(remote) ?: throw IOException("Mysterium HTTPS proxy sent no response")
             client.outputStream.write(responseHeader.toByteArray(Charsets.ISO_8859_1))
             client.outputStream.flush()
-            val successful = responseHeader.startsWith("HTTP/1.1 200") || responseHeader.startsWith("HTTP/1.0 200")
+            val statusLine = responseHeader.lineSequence().firstOrNull().orEmpty()
+            val successful = statusLine.startsWith("HTTP/1.1 200") || statusLine.startsWith("HTTP/1.0 200")
             if (!successful) {
-                onFailure("Mysterium proxy rejected CONNECT: ${responseHeader.lineSequence().firstOrNull().orEmpty()}")
+                onFailure("Mysterium HTTPS proxy rejected CONNECT: $statusLine")
                 return
             }
 
@@ -97,7 +98,11 @@ internal class JoynMysteriumProxyBridge(
                 upstream.cancel(true)
             }
         } catch (error: Throwable) {
-            onFailure(error.message ?: error.javaClass.simpleName)
+            val reason = buildString {
+                append(error.javaClass.simpleName)
+                error.message?.takeIf(String::isNotBlank)?.let { append(": $it") }
+            }
+            onFailure(reason)
             runCatching { writeLocalError(client, 502, "Mysterium proxy unavailable") }
         } finally {
             runCatching { remote?.close() }
@@ -105,10 +110,34 @@ internal class JoynMysteriumProxyBridge(
         }
     }
 
+    private fun connectTlsProxy(): SSLSocket {
+        val raw = Socket()
+        try {
+            raw.tcpNoDelay = true
+            raw.connect(InetSocketAddress(remoteHost, remotePort), HEADER_TIMEOUT_MS)
+            raw.soTimeout = HEADER_TIMEOUT_MS
+
+            val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
+            val tls = factory.createSocket(raw, remoteHost, remotePort, true) as SSLSocket
+            tls.useClientMode = true
+            tls.tcpNoDelay = true
+            tls.soTimeout = HEADER_TIMEOUT_MS
+            tls.sslParameters = tls.sslParameters.apply {
+                endpointIdentificationAlgorithm = "HTTPS"
+            }
+            tls.startHandshake()
+            return tls
+        } catch (error: Throwable) {
+            runCatching { raw.close() }
+            throw error
+        }
+    }
+
     private fun withProxyAuthorization(header: String): String {
         val lines = header.split("\r\n")
         val filtered = lines
             .filterNot { it.startsWith("Proxy-Authorization:", ignoreCase = true) }
+            .filterNot { it.startsWith("Proxy-Connection:", ignoreCase = true) }
             .filterNot(String::isEmpty)
             .toMutableList()
         if (username.isNotBlank()) {
