@@ -279,36 +279,48 @@ internal class JoynRepository(context: Context) {
                     return@withLock
                 }
 
-                // A WireGuard public key represents one prepared Mysterium connection. Always tear
-                // down the previous country first and recreate the stored Joyn-approved target IP.
                 JoynMysteriumWireGuard.disconnect(appContext).getOrThrow()
-                val publicKey = JoynMysteriumWireGuard.publicKey(appContext)
-                val lease = mysteriumWireGuardApi.requestResidentialTarget(
-                    country = country,
-                    publicKey = publicKey,
-                    targetIp = profile.exitIp,
-                ).getOrThrow()
+                val publicKey = JoynMysteriumWireGuard.publicKey(appContext, country)
 
-                JoynMysteriumWireGuard.connect(
-                    context = appContext,
-                    country = country,
-                    configTemplate = lease.config,
-                ).getOrThrow()
+                suspend fun activateTarget(forceRefresh: Boolean, timeoutMs: Long): JoynMysteriumWireGuardLease {
+                    val lease = mysteriumWireGuardApi.requestResidentialTarget(
+                        country = country,
+                        publicKey = publicKey,
+                        targetIp = profile.exitIp,
+                        forceRefresh = forceRefresh,
+                    ).getOrThrow()
+                    JoynMysteriumWireGuard.connect(
+                        context = appContext,
+                        country = country,
+                        configTemplate = lease.config,
+                    ).getOrThrow()
+                    JoynMysteriumTunnelProbe.awaitReady(
+                        context = appContext,
+                        country = country,
+                        expectedExitIp = profile.exitIp,
+                        timeoutMs = timeoutMs,
+                    ).getOrThrow()
+                    return lease
+                }
 
-                // Tunnel.State.UP only means Android configured the interface. Do not let the first
-                // Joyn entitlement race the WireGuard handshake. Wait until traffic demonstrably
-                // exits through the remembered Joyn-approved IP in the requested country.
-                JoynMysteriumTunnelProbe.awaitReady(
-                    context = appContext,
-                    country = country,
-                    expectedExitIp = profile.exitIp,
-                ).getOrElse { error ->
+                val firstAttempt = runCatching {
+                    activateTarget(forceRefresh = false, timeoutMs = FAST_TUNNEL_READY_TIMEOUT_MS)
+                }
+                val lease = firstAttempt.getOrElse { firstError ->
                     JoynMysteriumWireGuard.disconnect(appContext)
-                    throw error
+                    val details = firstError.message.orEmpty()
+                    if (details.contains("429") || details.contains("Sitzung ist abgelaufen", ignoreCase = true)) {
+                        throw firstError
+                    }
+                    // The cached country-specific Mysterium connection may have expired server-side.
+                    // Refresh exactly the same approved target once, then retry the local handshake.
+                    activateTarget(forceRefresh = true, timeoutMs = REFRESH_TUNNEL_READY_TIMEOUT_MS)
                 }
 
                 mysteriumSettings.saveWireGuardProfile(country, lease)
             }
+        }.onFailure {
+            runCatching { JoynMysteriumWireGuard.disconnect(appContext) }
         }
     }
 
@@ -414,6 +426,8 @@ internal class JoynRepository(context: Context) {
     companion object {
         private const val TAG = "JoynRepository"
         private const val MULTI_LIVE_PREFIX = "multi:"
+        private const val FAST_TUNNEL_READY_TIMEOUT_MS = 3_500L
+        private const val REFRESH_TUNNEL_READY_TIMEOUT_MS = 6_000L
         private val LIVE_COUNTRIES = listOf(JoynCountry.AT, JoynCountry.DE, JoynCountry.CH)
     }
 }
