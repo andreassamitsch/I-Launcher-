@@ -122,8 +122,10 @@ internal class JoynMysteriumWireGuardApiClient(
             if (token.isBlank()) error("Nicht bei Mysterium angemeldet.")
 
             // A public key represents one prepared connection. Close whichever country was active
-            // server-side and immediately reconnect the same key to the remembered Joyn-approved IP.
+            // server-side, give Mysterium a short settling window, then reconnect the same key to the
+            // remembered Joyn-approved IP. This avoids racing disconnect/connect on their backend.
             disconnectServerSide(publicKey, token)
+            delay(TARGET_DISCONNECT_SETTLE_MS)
             paceConnectRequests()
 
             val payload = JSONObject()
@@ -134,13 +136,13 @@ internal class JoynMysteriumWireGuardApiClient(
                 .put("reset_connection", false)
                 .put("os_type", "android")
 
-            var response = execute(payload, token)
+            var response = executeTargetWithRetry(payload, token)
             if (response.first == 401 || response.first == 403) {
                 sessionClient.status()
                 token = accessToken()
                 if (token.isBlank()) error("Mysterium-Sitzung ist abgelaufen.")
                 paceConnectRequests()
-                response = execute(payload, token)
+                response = executeTargetWithRetry(payload, token)
             }
 
             val lease = parseLease(response, country)
@@ -149,6 +151,23 @@ internal class JoynMysteriumWireGuardApiClient(
             }
             lease
         }
+    }
+
+    /**
+     * target_ip reconnects occasionally return a transient 5xx while Mysterium is still tearing
+     * down the previous prepared connection. A small bounded retry is safe here because it requests
+     * the same stored IP and does not consume the random Refresh-IP scan quota.
+     */
+    private suspend fun executeTargetWithRetry(payload: JSONObject, token: String): Pair<Int, String> {
+        var response = execute(payload, token)
+        var retry = 0
+        while (response.first in TRANSIENT_TARGET_HTTP_CODES && retry < TARGET_SERVER_RETRIES) {
+            retry++
+            delay(TARGET_RETRY_BASE_DELAY_MS * retry)
+            paceConnectRequests()
+            response = execute(payload, token)
+        }
+        return response
     }
 
     private fun parseLease(response: Pair<Int, String>, country: JoynCountry): JoynMysteriumWireGuardLease {
@@ -320,5 +339,9 @@ internal class JoynMysteriumWireGuardApiClient(
         private const val CLIENT_VERSION = "joyntv-1"
         private const val USER_AGENT = "JoynTV/AndroidTV Mysterium-WireGuard-Integration"
         private const val MIN_CONNECT_INTERVAL_MS = 1_750L
+        private const val TARGET_DISCONNECT_SETTLE_MS = 650L
+        private const val TARGET_SERVER_RETRIES = 2
+        private const val TARGET_RETRY_BASE_DELAY_MS = 650L
+        private val TRANSIENT_TARGET_HTTP_CODES = setOf(500, 502, 503, 504)
     }
 }
