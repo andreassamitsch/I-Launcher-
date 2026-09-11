@@ -59,6 +59,7 @@ internal class JoynMysteriumProxyBridge(
 
     private fun handle(client: Socket) {
         var remote: SSLSocket? = null
+        var tunnelEstablished = false
         try {
             client.tcpNoDelay = true
             client.soTimeout = HEADER_TIMEOUT_MS
@@ -82,6 +83,11 @@ internal class JoynMysteriumProxyBridge(
                 return
             }
 
+            // From this point on both ends are carrying the caller's encrypted HTTPS stream.
+            // A player cancelling a request, changing channel or closing an idle keep-alive tunnel
+            // is normal and must not rotate the residential IP. Real upstream failures will be
+            // detected when the next CONNECT cannot be established.
+            tunnelEstablished = true
             client.soTimeout = 0
             remote.soTimeout = 0
             val upstreamSocket = remote
@@ -90,6 +96,7 @@ internal class JoynMysteriumProxyBridge(
                     client.getInputStream().copyTo(upstreamSocket.getOutputStream(), 16 * 1024)
                     runCatching { upstreamSocket.shutdownOutput() }
                 } catch (_: Throwable) {
+                    // Normal when the downstream request is cancelled/closed.
                 }
             }
             try {
@@ -98,12 +105,16 @@ internal class JoynMysteriumProxyBridge(
                 upstream.cancel(true)
             }
         } catch (error: Throwable) {
-            val reason = buildString {
-                append(error.javaClass.simpleName)
-                error.message?.takeIf(String::isNotBlank)?.let { append(": $it") }
+            if (!tunnelEstablished) {
+                val reason = buildString {
+                    append(error.javaClass.simpleName)
+                    error.message?.takeIf(String::isNotBlank)?.let { append(": $it") }
+                }
+                onFailure(reason)
+                runCatching { writeLocalError(client, 502, "Mysterium proxy unavailable") }
             }
-            onFailure(reason)
-            runCatching { writeLocalError(client, 502, "Mysterium proxy unavailable") }
+            // Never inject a plaintext HTTP 502 after CONNECT 200. At that point the socket carries
+            // an encrypted TLS tunnel and writing an HTTP response would only corrupt the stream.
         } finally {
             runCatching { remote?.close() }
             runCatching { client.close() }
