@@ -46,10 +46,7 @@ internal class JoynMysteriumSettings(context: Context) {
             .apply()
     }
 
-    /**
-     * Stores the latest API candidate only. It is deliberately not enabled here: a candidate is
-     * promoted to a persistent country profile only after Joyn's Live entitlement probe accepts it.
-     */
+    /** Candidate bookkeeping used while the scanner is still testing exits. */
     fun saveWireGuardCandidate(country: JoynCountry, lease: JoynMysteriumWireGuardLease) {
         prefs.edit()
             .putString(key(country, "wg_candidate_exit_ip"), lease.exitIp.trim())
@@ -59,7 +56,39 @@ internal class JoynMysteriumSettings(context: Context) {
             .apply()
     }
 
-    /** Promotes the last tested candidate after the scanner confirmed that Joyn accepts it. */
+    /**
+     * Persists the exact exit that was actually measured through the tunnel and accepted by Joyn.
+     * Mysterium marks exit_ip as optional, so the verified trace IP is authoritative here.
+     */
+    fun saveApprovedWireGuardProfile(
+        country: JoynCountry,
+        lease: JoynMysteriumWireGuardLease,
+        verifiedExitIp: String,
+    ): JoynMysteriumWireGuardProfile {
+        val exitIp = verifiedExitIp.trim()
+        require(exitIp.isNotBlank()) { "Verifizierte Mysterium Exit-IP fehlt." }
+        require(lease.config.isNotBlank()) { "Verifizierte WireGuard-Konfiguration fehlt." }
+        val now = System.currentTimeMillis()
+        prefs.edit()
+            .putString(key(country, "wg_exit_ip"), exitIp)
+            .putString(key(country, "wg_config"), lease.config)
+            .putString(key(country, "wg_hash"), lease.providerHash)
+            .putString(key(country, "wg_id"), lease.id)
+            .putBoolean(key(country, "wg_enabled"), true)
+            .putLong(key(country, "wg_verified_at"), now)
+            .apply()
+        return JoynMysteriumWireGuardProfile(
+            country = country,
+            exitIp = exitIp,
+            configTemplate = lease.config,
+            providerHash = lease.providerHash,
+            connectionId = lease.id,
+            enabled = true,
+            verifiedAtEpochMs = now,
+        )
+    }
+
+    /** Legacy/fallback promotion for candidates produced by builds that did expose exit_ip. */
     fun promoteWireGuardCandidate(country: JoynCountry): JoynMysteriumWireGuardProfile? {
         val exitIp = prefs.getString(key(country, "wg_candidate_exit_ip"), "").orEmpty().trim()
         val config = prefs.getString(key(country, "wg_candidate_config"), "").orEmpty()
