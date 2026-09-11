@@ -11,25 +11,30 @@ internal data class JoynMysteriumCountrySettings(
     }
 }
 
-/**
- * Persistent Mysterium settings. Each Joyn market keeps its own scan depth and last successful
- * residential proxy lease. Account/session tokens are stored separately by JoynMysteriumApiClient.
- */
+/** Persistent Mysterium settings. Residential scan depth is stored per Joyn market. */
 internal class JoynMysteriumSettings(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    /** Empty means automatic endpoint discovery. */
     fun apiBaseUrl(): String = prefs
-        .getString(KEY_API_BASE_URL, DEFAULT_API_BASE_URL)
+        .getString(KEY_API_BASE_URL, "")
         .orEmpty()
         .trim()
-        .ifBlank { DEFAULT_API_BASE_URL }
         .trimEnd('/')
 
     fun saveApiBaseUrl(value: String) {
         prefs.edit()
             .putString(KEY_API_BASE_URL, normalizeApiBaseUrl(value))
             .apply()
+    }
+
+    fun accessToken(): String = prefs
+        .getString(KEY_ACCESS_TOKEN, "")
+        .orEmpty()
+
+    fun saveAccessToken(value: String) {
+        prefs.edit().putString(KEY_ACCESS_TOKEN, value.trim()).apply()
     }
 
     fun countrySettings(country: JoynCountry): JoynMysteriumCountrySettings {
@@ -98,17 +103,25 @@ internal class JoynMysteriumSettings(context: Context) {
     companion object {
         private const val PREFS_NAME = "joyn_protocol"
         private const val KEY_API_BASE_URL = "mysterium_api_base_url"
+        private const val KEY_ACCESS_TOKEN = "mysterium_access_token"
 
-        // Current Mysterium consumer app is built against the hosted VPN API. Keep the URL
-        // editable in the beta UI so a backend migration never requires a Joyn TV rebuild.
-        const val DEFAULT_API_BASE_URL = "https://api.mysteriumvpn.com/api/v1"
+        // The consumer app injects BASE_URL at build time. Empty/"auto" therefore means:
+        // probe the known local API and hosted candidates instead of hardcoding one as truth.
+        const val DEFAULT_API_BASE_URL = ""
         const val LOCAL_NODE_API_BASE_URL = "http://127.0.0.1:3030/api/v1"
         const val MIN_ATTEMPTS = 1
         const val MAX_ATTEMPTS = 100
 
+        val API_CANDIDATES = listOf(
+            LOCAL_NODE_API_BASE_URL,
+            "https://api.mysteriumvpn.com/api/v1",
+            "https://app.mysteriumvpn.com/api/v1",
+            "https://vpn-api.mysterium.network/api/v1",
+        )
+
         fun normalizeApiBaseUrl(value: String): String {
             var normalized = value.trim().trimEnd('/')
-            if (normalized.isBlank()) normalized = DEFAULT_API_BASE_URL
+            if (normalized.isBlank() || normalized.equals("auto", ignoreCase = true)) return ""
             if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
                 normalized = "https://$normalized"
             }
