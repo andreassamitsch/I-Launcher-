@@ -54,8 +54,10 @@ jobs:
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
 
+      # The long-running Joyn development branch is an internal same-repository branch. Publish it
+      # with the permanent key as well, so TV devices can update without uninstalling the app.
       - name: Configure permanent signing key
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' || github.head_ref == 'feature/joyn-tv-client'
         env:
           DEV_KEYSTORE_BASE64: ${{ secrets.IL_DEV_KEYSTORE_BASE64 }}
           DEV_STORE_PASSWORD: ${{ secrets.IL_DEV_STORE_PASSWORD }}
@@ -77,7 +79,7 @@ jobs:
           echo "IL_SIGNING_KEY_PASSWORD=$DEV_KEY_PASSWORD" >> "$GITHUB_ENV"
 
       - name: Unit tests and PR debug APK
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.head_ref != 'feature/joyn-tv-client'
         run: |
           gradle :joyntv:testDebugUnitTest :joyntv:assembleDebug \
             -PjoynVersionCode="$VERSION_CODE" \
@@ -85,7 +87,7 @@ jobs:
             --stacktrace
 
       - name: Unit tests and signed release APK
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' || github.head_ref == 'feature/joyn-tv-client'
         run: |
           gradle :joyntv:testDebugUnitTest :joyntv:assembleRelease \
             -PjoynVersionCode="$VERSION_CODE" \
@@ -93,7 +95,7 @@ jobs:
             --stacktrace
 
       - name: Verify signed release
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' || github.head_ref == 'feature/joyn-tv-client'
         run: |
           cp joyntv/build/outputs/apk/release/joyntv-release.apk /tmp/Joyn-TV.apk
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs /tmp/Joyn-TV.apk | tee /tmp/apksigner.txt
@@ -121,7 +123,7 @@ jobs:
           echo "SIGNER_SHA256=$SIGNER_SHA256" >> "$GITHUB_ENV"
 
       - name: Prepare update manifest
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' || github.head_ref == 'feature/joyn-tv-client'
         run: |
           cat > /tmp/joyn-update.json <<EOF
           {
@@ -135,7 +137,7 @@ jobs:
           EOF
 
       - name: Upload signed APK artifact
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' || github.head_ref == 'feature/joyn-tv-client'
         uses: actions/upload-artifact@v4
         with:
           name: Joyn-TV-${{ env.VERSION_NAME }}
@@ -144,7 +146,7 @@ jobs:
           retention-days: 30
 
       - name: Publish stable Joyn TV download branch
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' || github.head_ref == 'feature/joyn-tv-client'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
