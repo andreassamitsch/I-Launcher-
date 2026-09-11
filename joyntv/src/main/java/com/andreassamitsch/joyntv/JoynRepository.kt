@@ -10,6 +10,7 @@ internal class JoynRepository(context: Context) {
     private val appContext = context.applicationContext.also {
         JoynRegionSettings.install(it)
         JoynProxySettings.install(it)
+        JoynMysteriumAutoFailover.install(it)
     }
     private val protocolPrefs = appContext.getSharedPreferences("joyn_protocol", Context.MODE_PRIVATE)
     private val regionSettings = JoynRegionSettings(appContext)
