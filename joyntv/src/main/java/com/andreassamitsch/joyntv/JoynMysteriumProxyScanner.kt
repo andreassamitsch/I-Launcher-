@@ -21,7 +21,6 @@ internal class JoynMysteriumProxyScanner(
     suspend fun findBest(
         country: JoynCountry,
         apiKey: String?,
-        apiBaseUrl: String,
         maxAttempts: Int,
         allTraffic: Boolean,
         onProgress: (JoynProxyDiscoveryProgress) -> Unit = {},
@@ -41,30 +40,23 @@ internal class JoynMysteriumProxyScanner(
         )
         JoynMysteriumScanControl.reset()
 
-        onProgress(JoynProxyDiscoveryProgress("Prüfe Mysterium-VPN-API …", 0, attemptsLimit))
-        val apiStatus = apiClient.status(apiBaseUrl)
+        onProgress(JoynProxyDiscoveryProgress("Prüfe Mysterium-Konto …", 0, attemptsLimit))
+        val apiStatus = apiClient.status()
         if (!apiStatus.reachable) {
-            return@withContext JoynProxyDiscoveryResult(
-                config = null,
-                candidates = attemptsLimit,
-                attempted = 0,
-                message = apiStatus.message +
-                    "\n\nÖffne Mysterium-Einstellungen und melde dein Mysterium-Konto an bzw. hinterlege dort die API-Verbindung.",
-            )
+            return@withContext JoynProxyDiscoveryResult(null, attemptsLimit, 0, apiStatus.message)
         }
-        if (apiStatus.authenticated == false) {
+        if (apiStatus.authenticated != true) {
             return@withContext JoynProxyDiscoveryResult(
-                config = null,
-                candidates = attemptsLimit,
-                attempted = 0,
-                message = apiStatus.message +
-                    "\nBitte zuerst in den Mysterium-Einstellungen anmelden und den Test danach erneut starten.",
+                null,
+                attemptsLimit,
+                0,
+                apiStatus.message + "\nBitte zuerst bei Mysterium anmelden.",
             )
         }
 
         val log = mutableListOf<String>()
         log += "API: ${apiStatus.message}"
-        log += apiClient.residentialLocationSummary(apiBaseUrl)
+        log += apiClient.residentialLocationSummary()
 
         val seenExits = linkedSetOf<String>()
         val seenLeases = linkedSetOf<String>()
@@ -87,11 +79,7 @@ internal class JoynMysteriumProxyScanner(
                 ),
             )
 
-            val leaseResult = apiClient.requestResidentialProxy(
-                baseUrl = apiBaseUrl,
-                country = country,
-                resetConnection = true,
-            )
+            val leaseResult = apiClient.requestResidentialProxy(country = country, resetConnection = true)
             val lease = leaseResult.getOrElse { error ->
                 val reason = error.message ?: error.javaClass.simpleName
                 log += "#$attempted LEASE_FEHLER · $reason"
@@ -130,7 +118,7 @@ internal class JoynMysteriumProxyScanner(
             val trace = resolveExit(client)
             if (trace == null) {
                 proxyFailures++
-                log += "#$attempted PROXY_FEHLER · ${lease.host}:${lease.port} · Exit nicht ermittelbar"
+                log += "#$attempted PROXY_FEHLER · Exit nicht ermittelbar"
                 delay(RETRY_DELAY_MS)
                 continue
             }
@@ -161,7 +149,7 @@ internal class JoynMysteriumProxyScanner(
             val probe = probeJoyn(client, country, apiKey)
             val latencyMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNs)
             when (probe.status) {
-                JoynMysteriumProbeStatus.OK -> {
+                ProbeStatus.OK -> {
                     val config = JoynProxyConfig(
                         enabled = true,
                         automatic = true,
@@ -190,15 +178,15 @@ internal class JoynMysteriumProxyScanner(
                         joynVpnDetected = joynVpnDetected,
                         joynOtherFailure = joynOtherFailure,
                         log = log,
-                        extra = "Treffer: Residential-Exit ${trace.ip} besteht Joyns echte Live-Freigabe." +
-                            lease.expiresAt.takeIf(String::isNotBlank)?.let { " Proxy-Lease gültig bis $it." }.orEmpty(),
+                        extra = "Treffer: Residential-Exit ${trace.ip} besteht Joyns Live-Freigabe.",
+                        expiresAt = lease.expiresAt,
                     )
                 }
-                JoynMysteriumProbeStatus.VPN_DETECTED -> {
+                ProbeStatus.VPN_DETECTED -> {
                     joynVpnDetected++
                     log += "#$attempted VPN_ERKANNT · ${trace.ip} · ${probe.detail}"
                 }
-                JoynMysteriumProbeStatus.FAILED -> {
+                ProbeStatus.FAILED -> {
                     joynOtherFailure++
                     log += "#$attempted JOYN_FEHLER · ${trace.ip} · ${probe.detail}"
                 }
@@ -229,18 +217,13 @@ internal class JoynMysteriumProxyScanner(
     }
 
     private fun proxyClient(lease: JoynMysteriumProxyLease): OkHttpClient {
-        val proxy = Proxy(
-            Proxy.Type.HTTP,
-            InetSocketAddress.createUnresolved(lease.host, lease.port),
-        )
+        val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved(lease.host, lease.port))
         val credential = Credentials.basic(lease.username, lease.password)
         return OkHttpClient.Builder()
             .proxy(proxy)
             .proxyAuthenticator { _, response ->
                 if (response.request.header("Proxy-Authorization") != null) null
-                else response.request.newBuilder()
-                    .header("Proxy-Authorization", credential)
-                    .build()
+                else response.request.newBuilder().header("Proxy-Authorization", credential).build()
             }
             .connectTimeout(PROXY_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(PROXY_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -259,24 +242,17 @@ internal class JoynMysteriumProxyScanner(
                 .build(),
         ).execute().use { response ->
             if (!response.isSuccessful) return@runCatching null
-            val values = response.body.string()
-                .lineSequence()
-                .mapNotNull { line ->
-                    val index = line.indexOf('=')
-                    if (index <= 0) null else line.substring(0, index) to line.substring(index + 1)
-                }
-                .toMap()
+            val values = response.body.string().lineSequence().mapNotNull { line ->
+                val index = line.indexOf('=')
+                if (index <= 0) null else line.substring(0, index) to line.substring(index + 1)
+            }.toMap()
             val ip = values["ip"].orEmpty().trim()
             val country = values["loc"].orEmpty().trim().uppercase()
             if (ip.isBlank() || country.isBlank()) null else ExitTrace(ip, country)
         }
     }.getOrNull()
 
-    private fun probeJoyn(
-        client: OkHttpClient,
-        country: JoynCountry,
-        apiKey: String,
-    ): JoynMysteriumProbeResult {
+    private fun probeJoyn(client: OkHttpClient, country: JoynCountry, apiKey: String): ProbeResult {
         val webOk = runCatching {
             client.newCall(
                 Request.Builder()
@@ -286,19 +262,16 @@ internal class JoynMysteriumProxyScanner(
                     .build(),
             ).execute().use { it.code in 200..399 }
         }.getOrDefault(false)
-        if (!webOk) return JoynMysteriumProbeResult.failed("Joyn-Web nicht erreichbar")
+        if (!webOk) return ProbeResult.failed("Joyn-Web nicht erreichbar")
 
         val token = createAnonymousToken(client, country)
-            ?: return JoynMysteriumProbeResult.failed("anonymer Joyn-Login fehlgeschlagen")
+            ?: return ProbeResult.failed("anonymer Joyn-Login fehlgeschlagen")
         val channelId = loadFreeLiveChannel(client, country, apiKey, token)
-            ?: return JoynMysteriumProbeResult.failed("GraphQL/Free-Live-Kanal fehlgeschlagen")
+            ?: return ProbeResult.failed("GraphQL/Free-Live-Kanal fehlgeschlagen")
         return checkEntitlement(client, channelId, token)
     }
 
-    private fun createAnonymousToken(
-        client: OkHttpClient,
-        country: JoynCountry,
-    ): ProbeToken? = runCatching {
+    private fun createAnonymousToken(client: OkHttpClient, country: JoynCountry): ProbeToken? = runCatching {
         val payload = JSONObject()
             .put("anon_device_id", UUID.randomUUID().toString())
             .put("client_id", UUID.randomUUID().toString())
@@ -316,12 +289,8 @@ internal class JoynMysteriumProxyScanner(
             val body = response.body.string()
             if (!response.isSuccessful) return@runCatching null
             val json = JSONObject(body)
-            val accessToken = json.optString("access_token").takeIf(String::isNotBlank)
-                ?: return@runCatching null
-            ProbeToken(
-                accessToken = accessToken,
-                tokenType = json.optString("token_type").takeIf(String::isNotBlank) ?: "Bearer",
-            )
+            val accessToken = json.optString("access_token").takeIf(String::isNotBlank) ?: return@runCatching null
+            ProbeToken(accessToken, json.optString("token_type").takeIf(String::isNotBlank) ?: "Bearer")
         }
     }.getOrNull()
 
@@ -349,8 +318,7 @@ internal class JoynMysteriumProxyScanner(
         ).execute().use { response ->
             val body = response.body.string()
             if (!response.isSuccessful) return@runCatching null
-            val streams = JSONObject(body).optJSONObject("data")?.optJSONArray("liveStreams")
-                ?: return@runCatching null
+            val streams = JSONObject(body).optJSONObject("data")?.optJSONArray("liveStreams") ?: return@runCatching null
             for (i in 0 until streams.length()) {
                 val stream = streams.optJSONObject(i) ?: continue
                 val markings = stream.optJSONArray("markings")
@@ -363,22 +331,14 @@ internal class JoynMysteriumProxyScanner(
                         }
                     }
                 }
-                if (!paid) {
-                    stream.optString("id").takeIf(String::isNotBlank)?.let { return@runCatching it }
-                }
+                if (!paid) stream.optString("id").takeIf(String::isNotBlank)?.let { return@runCatching it }
             }
             null
         }
     }.getOrNull()
 
-    private fun checkEntitlement(
-        client: OkHttpClient,
-        channelId: String,
-        token: ProbeToken,
-    ): JoynMysteriumProbeResult = runCatching {
-        val payload = JSONObject()
-            .put("content_id", channelId)
-            .put("content_type", "LIVE")
+    private fun checkEntitlement(client: OkHttpClient, channelId: String, token: ProbeToken): ProbeResult = runCatching {
+        val payload = JSONObject().put("content_id", channelId).put("content_type", "LIVE")
         client.newCall(
             Request.Builder()
                 .url(JoynProtocol.entitlementUrl)
@@ -389,29 +349,15 @@ internal class JoynMysteriumProxyScanner(
                 .build(),
         ).execute().use { response ->
             val body = response.body.string()
-            val vpnDetected = body.contains("ENT_USER_VPN_DETECTED", ignoreCase = true) ||
-                body.contains("VPN_DETECTED", ignoreCase = true)
-            if (vpnDetected) {
-                return@runCatching JoynMysteriumProbeResult(
-                    JoynMysteriumProbeStatus.VPN_DETECTED,
-                    "ENT_USER_VPN_DETECTED",
-                )
+            if (body.contains("ENT_USER_VPN_DETECTED", ignoreCase = true) || body.contains("VPN_DETECTED", ignoreCase = true)) {
+                return@runCatching ProbeResult(ProbeStatus.VPN_DETECTED, "ENT_USER_VPN_DETECTED")
             }
-            if (!response.isSuccessful) {
-                return@runCatching JoynMysteriumProbeResult.failed(
-                    "Entitlement HTTP ${response.code}: ${compact(body)}",
-                )
-            }
-            val tokenValue = runCatching { JSONObject(body).optString("entitlement_token") }.getOrDefault("")
-            if (tokenValue.isNotBlank()) {
-                JoynMysteriumProbeResult(JoynMysteriumProbeStatus.OK, "Live freigegeben")
-            } else {
-                JoynMysteriumProbeResult.failed("Entitlement ohne Token: ${compact(body)}")
-            }
+            if (!response.isSuccessful) return@runCatching ProbeResult.failed("Entitlement HTTP ${response.code}: ${compact(body)}")
+            val entitlement = runCatching { JSONObject(body).optString("entitlement_token") }.getOrDefault("")
+            if (entitlement.isNotBlank()) ProbeResult(ProbeStatus.OK, "Live freigegeben")
+            else ProbeResult.failed("Entitlement ohne Token: ${compact(body)}")
         }
-    }.getOrElse { error ->
-        JoynMysteriumProbeResult.failed("Entitlement ${error.javaClass.simpleName}: ${error.message.orEmpty()}")
-    }
+    }.getOrElse { error -> ProbeResult.failed("Entitlement ${error.javaClass.simpleName}: ${error.message.orEmpty()}") }
 
     private fun finish(
         config: JoynProxyConfig?,
@@ -428,6 +374,7 @@ internal class JoynMysteriumProxyScanner(
         joynOtherFailure: Int,
         log: List<String>,
         extra: String,
+        expiresAt: String = "",
     ): JoynProxyDiscoveryResult {
         val message = buildString {
             append(if (config != null) "Mysterium Residential erfolgreich" else if (stopped) "Mysterium-Test gestoppt" else "Mysterium-Test abgeschlossen")
@@ -437,48 +384,36 @@ internal class JoynMysteriumProxyScanner(
             append(" · sonstige Joyn-Fehler=$joynOtherFailure")
             append(" · Proxyfehler=$proxyFailures · falsches Land=$wrongCountry · Duplikate=$duplicates\n")
             append(extra)
+            if (expiresAt.isNotBlank()) append(" · Lease bis $expiresAt")
             if (log.isNotEmpty()) {
                 append("\n\nTestlog:\n")
                 append(log.takeLast(MAX_LOG_LINES).joinToString("\n"))
                 if (log.size > MAX_LOG_LINES) append("\n… ${log.size - MAX_LOG_LINES} ältere Einträge ausgeblendet")
             }
         }
-        return JoynProxyDiscoveryResult(
-            config = config,
-            candidates = attemptsLimit,
-            attempted = attempted,
-            message = message,
-        )
+        return JoynProxyDiscoveryResult(config, attemptsLimit, attempted, message, expiresAt)
     }
 
     private fun shortStats(leases: Int, exits: Int, vpn: Int, proxyFailures: Int): String =
         "Leases=$leases · Exits=$exits · VPN erkannt=$vpn · Proxyfehler=$proxyFailures"
 
-    private fun compact(value: String): String = value
-        .replace(Regex("\\s+"), " ")
-        .trim()
-        .take(220)
+    private fun compact(value: String): String = value.replace(Regex("\\s+"), " ").trim().take(220)
 
     private data class ExitTrace(val ip: String, val country: String)
     private data class ProbeToken(val accessToken: String, val tokenType: String)
-
-    private enum class JoynMysteriumProbeStatus { OK, VPN_DETECTED, FAILED }
-
-    private data class JoynMysteriumProbeResult(
-        val status: JoynMysteriumProbeStatus,
-        val detail: String,
-    ) {
+    private enum class ProbeStatus { OK, VPN_DETECTED, FAILED }
+    private data class ProbeResult(val status: ProbeStatus, val detail: String) {
         companion object {
-            fun failed(detail: String) = JoynMysteriumProbeResult(JoynMysteriumProbeStatus.FAILED, detail)
+            fun failed(detail: String) = ProbeResult(ProbeStatus.FAILED, detail)
         }
     }
 
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private const val RETRY_DELAY_MS = 350L
-        private const val PROXY_CONNECT_TIMEOUT_SECONDS = 6L
-        private const val PROXY_READ_TIMEOUT_SECONDS = 10L
-        private const val PROXY_CALL_TIMEOUT_SECONDS = 18L
+        private const val PROXY_CONNECT_TIMEOUT_SECONDS = 7L
+        private const val PROXY_READ_TIMEOUT_SECONDS = 12L
+        private const val PROXY_CALL_TIMEOUT_SECONDS = 20L
         private const val MAX_LOG_LINES = 80
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
