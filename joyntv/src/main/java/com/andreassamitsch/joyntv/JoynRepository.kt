@@ -360,7 +360,7 @@ internal class JoynRepository(context: Context) {
 
     private fun decorateLiveChannel(country: JoynCountry, channel: JoynLiveChannel): JoynLiveChannel =
         channel.copy(
-            id = "$MULTI_LIVE_PREFIX${country.name}:$${channel.id}".replace(":$", ":"),
+            id = "${MULTI_LIVE_PREFIX}${country.name}:${channel.id}",
             title = "${channel.title} · ${country.name}",
         )
 
