@@ -50,7 +50,8 @@ class ProxySettingsActivity : ComponentActivity() {
                 NetworkSettingsScreen(
                     country = country,
                     initial = repository.proxyConfig(),
-                    profile = repository.mysteriumCountrySettings(country),
+                    countrySettings = repository.mysteriumCountrySettings(country),
+                    savedWireGuard = repository.mysteriumWireGuardProfile(country),
                     loggedIn = repository.mysteriumHasStoredAccessToken(),
                     onOpenAccount = { startActivity(Intent(this, MysteriumSettingsActivity::class.java)) },
                     onStop = repository::stopMysteriumResidentialScan,
@@ -76,7 +77,8 @@ class ProxySettingsActivity : ComponentActivity() {
 private fun NetworkSettingsScreen(
     country: JoynCountry,
     initial: JoynProxyConfig,
-    profile: JoynMysteriumCountrySettings,
+    countrySettings: JoynMysteriumCountrySettings,
+    savedWireGuard: JoynMysteriumWireGuardProfile?,
     loggedIn: Boolean,
     onOpenAccount: () -> Unit,
     onStop: () -> Unit,
@@ -85,15 +87,22 @@ private fun NetworkSettingsScreen(
     onActivate: (JoynProxyConfig) -> Unit,
     onBack: () -> Unit,
 ) {
-    var attempts by rememberSaveable { mutableStateOf(profile.maxAttempts.toString()) }
-    var allTraffic by rememberSaveable { mutableStateOf(if (initial.isMysterium) initial.allTraffic else profile.allTraffic) }
+    var attempts by rememberSaveable { mutableStateOf(countrySettings.maxAttempts.toString()) }
+    var allTraffic by rememberSaveable {
+        mutableStateOf(if (initial.isMysterium) initial.allTraffic else countrySettings.allTraffic)
+    }
     var testing by remember { mutableStateOf(false) }
     var status by rememberSaveable {
         mutableStateOf(
-            if (initial.isUsable && initial.isMysterium) {
-                "Aktiv: Mysterium Residential · ${initial.host}:${initial.port}"
-            } else {
-                "Direkte Verbindung aktiv."
+            when {
+                savedWireGuard?.enabled == true ->
+                    "Dauerhaft aktiv für ${country.name} · Mysterium Residential · Exit ${savedWireGuard.exitIp}\n" +
+                        "Beim Start und beim Länderwechsel wird genau dieses bereits von Joyn akzeptierte Profil automatisch wiederhergestellt."
+                savedWireGuard != null ->
+                    "Residential-Profil für ${country.name} gespeichert (${savedWireGuard.exitIp}), derzeit aber deaktiviert."
+                initial.isUsable && initial.isMysterium ->
+                    "Aktiv: Mysterium Residential · ${initial.host}:${initial.port}"
+                else -> "Direkte Verbindung aktiv. Für ${country.name} ist noch kein dauerhaftes Residential-Profil gespeichert."
             },
         )
     }
@@ -111,13 +120,13 @@ private fun NetworkSettingsScreen(
         Text("Joyn Netzwerk", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Automatische Verbindungen laufen über Mysterium Residential. Die bisherige NordVPN- und Gratis-Proxy-Suche ist entfernt.",
+            "Mysterium Residential wird je Joyn-Land separat gespeichert. Ein erfolgreich getesteter Exit bleibt für dieses Land hinterlegt und wird beim Länderwechsel automatisch wieder aktiviert.",
             color = Color(0xFFD7DBE3), fontSize = 14.sp, lineHeight = 20.sp,
             modifier = Modifier.widthIn(max = 900.dp),
         )
         Spacer(Modifier.height(22.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            NetAction("Direkt verwenden", enabled = !testing, onClick = onUseDirect)
+            NetAction("Für ${country.name} direkt verwenden", enabled = !testing, onClick = onUseDirect)
             NetAction("Mysterium Konto & Login", enabled = !testing, onClick = onOpenAccount)
             NetAction("Zurück", enabled = !testing, onClick = onBack)
         }
@@ -128,6 +137,18 @@ private fun NetworkSettingsScreen(
             if (loggedIn) "Mysterium-Session gespeichert." else "Noch nicht bei Mysterium angemeldet.",
             color = if (loggedIn) Color(0xFF9FD6AE) else Color(0xFFF1C27D), fontSize = 13.sp,
         )
+        savedWireGuard?.let { saved ->
+            Spacer(Modifier.height(8.dp))
+            Text(
+                if (saved.enabled) {
+                    "Gespeicherter Joyn-Treffer: ${saved.exitIp} · automatische Wiederherstellung EIN"
+                } else {
+                    "Gespeicherter Joyn-Treffer: ${saved.exitIp} · automatische Wiederherstellung AUS"
+                },
+                color = if (saved.enabled) Color(0xFF9FD6AE) else Color(0xFFF1C27D),
+                fontSize = 13.sp,
+            )
+        }
         Spacer(Modifier.height(14.dp))
         Text("Max. neue Residential-IPs testen (1–100)", color = Color(0xFFD7DBE3), fontSize = 13.sp)
         Spacer(Modifier.height(6.dp))
@@ -153,17 +174,26 @@ private fun NetworkSettingsScreen(
         }
         Spacer(Modifier.height(20.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            NetAction("Residential testen & aktivieren", enabled = !testing && loggedIn && validCount) {
+            NetAction("Residential testen & dauerhaft aktivieren", enabled = !testing && loggedIn && validCount) {
                 scope.launch {
                     testing = true
                     status = "Starte Mysterium Residential ${country.name} …"
                     val result = runCatching {
                         onTest(count, allTraffic) { status = it.message }
                     }.getOrElse { error ->
-                        JoynProxyDiscoveryResult(null, count, 0, "Mysterium-Test fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}")
+                        JoynProxyDiscoveryResult(
+                            null,
+                            count,
+                            0,
+                            "Mysterium-Test fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}",
+                        )
                     }
                     testing = false
-                    status = result.message
+                    status = if (result.activated) {
+                        result.message + "\n\nDieses Profil ist jetzt dauerhaft ${country.name} zugeordnet und wird automatisch wieder aktiviert."
+                    } else {
+                        result.message
+                    }
                     result.config?.let(onActivate)
                 }
             }
@@ -175,7 +205,13 @@ private fun NetworkSettingsScreen(
             }
         }
         Spacer(Modifier.height(18.dp))
-        Text(status, color = Color(0xFFD7DBE3), fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.widthIn(max = 1000.dp))
+        Text(
+            status,
+            color = Color(0xFFD7DBE3),
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            modifier = Modifier.widthIn(max = 1000.dp),
+        )
         Spacer(Modifier.height(42.dp))
     }
 }
