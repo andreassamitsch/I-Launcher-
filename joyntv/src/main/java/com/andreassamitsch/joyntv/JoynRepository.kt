@@ -278,41 +278,83 @@ internal class JoynRepository(context: Context) {
 
                 val switchStartedAt = SystemClock.elapsedRealtime()
                 val previousCountry = JoynMysteriumWireGuard.activeCountry()
+                val crossCountrySwitch = previousCountry != null && previousCountry != country
                 val publicKey = JoynMysteriumWireGuard.publicKey(appContext, country)
 
-                suspend fun activateTarget(forceRefresh: Boolean, timeoutMs: Long): JoynMysteriumWireGuardLease {
+                suspend fun activateTarget(
+                    forceRefresh: Boolean,
+                    verifyExit: Boolean,
+                    timeoutMs: Long,
+                ): JoynMysteriumWireGuardLease {
+                    val apiStartedAt = SystemClock.elapsedRealtime()
                     val lease = mysteriumWireGuardApi.requestResidentialTarget(
                         country = country,
                         publicKey = publicKey,
                         targetIp = profile.exitIp,
                         forceRefresh = forceRefresh,
                     ).getOrThrow()
+                    val apiMs = SystemClock.elapsedRealtime() - apiStartedAt
+
+                    val wgStartedAt = SystemClock.elapsedRealtime()
                     JoynMysteriumWireGuard.connect(
                         context = appContext,
                         country = country,
                         configTemplate = lease.config,
                     ).getOrThrow()
-                    JoynMysteriumTunnelProbe.awaitReady(
-                        context = appContext,
-                        country = country,
-                        expectedExitIp = profile.exitIp,
-                        timeoutMs = timeoutMs,
-                    ).getOrThrow()
+                    val wgMs = SystemClock.elapsedRealtime() - wgStartedAt
+
+                    var verifyMs = 0L
+                    if (verifyExit) {
+                        val verifyStartedAt = SystemClock.elapsedRealtime()
+                        JoynMysteriumTunnelProbe.awaitReady(
+                            context = appContext,
+                            country = country,
+                            expectedExitIp = profile.exitIp,
+                            timeoutMs = timeoutMs,
+                        ).getOrThrow()
+                        verifyMs = SystemClock.elapsedRealtime() - verifyStartedAt
+                    }
+                    Log.i(
+                        TAG,
+                        "Mysterium phase ${previousCountry?.name ?: "DIRECT"}->${country.name}: " +
+                            "api=${apiMs}ms wg=${wgMs}ms verify=${verifyMs}ms refresh=$forceRefresh",
+                    )
                     return lease
                 }
 
-                val firstAttempt = runCatching {
-                    activateTarget(forceRefresh = false, timeoutMs = FAST_TUNNEL_READY_TIMEOUT_MS)
-                }
-                val lease = firstAttempt.getOrElse { firstError ->
-                    val details = firstError.message.orEmpty()
-                    if (details.contains("429") || details.contains("Sitzung ist abgelaufen", ignoreCase = true)) {
-                        throw firstError
+                val lease = if (crossCountrySwitch) {
+                    // A Mysterium country session that has been left is not reliably reusable. The old
+                    // implementation first tried that stale wg_config for 3 s and only then refreshed
+                    // the exact same target, which is why every country change clustered around
+                    // 10-12 s. Reactivate the approved target immediately while the old tunnel still
+                    // carries the Mysterium API request. Playback traffic below is the readiness probe.
+                    activateTarget(
+                        forceRefresh = true,
+                        verifyExit = false,
+                        timeoutMs = 0L,
+                    )
+                } else {
+                    val firstAttempt = runCatching {
+                        activateTarget(
+                            forceRefresh = false,
+                            verifyExit = true,
+                            timeoutMs = FAST_TUNNEL_READY_TIMEOUT_MS,
+                        )
                     }
-                    if (JoynMysteriumWireGuard.activeCountry() == country) {
-                        JoynMysteriumWireGuard.disconnect(appContext).getOrThrow()
+                    firstAttempt.getOrElse { firstError ->
+                        val details = firstError.message.orEmpty()
+                        if (details.contains("429") || details.contains("Sitzung ist abgelaufen", ignoreCase = true)) {
+                            throw firstError
+                        }
+                        if (JoynMysteriumWireGuard.activeCountry() == country) {
+                            JoynMysteriumWireGuard.disconnect(appContext).getOrThrow()
+                        }
+                        activateTarget(
+                            forceRefresh = true,
+                            verifyExit = true,
+                            timeoutMs = REFRESH_TUNNEL_READY_TIMEOUT_MS,
+                        )
                     }
-                    activateTarget(forceRefresh = true, timeoutMs = REFRESH_TUNNEL_READY_TIMEOUT_MS)
                 }
 
                 mysteriumSettings.saveWireGuardProfile(country, lease)
@@ -425,8 +467,8 @@ internal class JoynRepository(context: Context) {
     companion object {
         private const val TAG = "JoynRepository"
         private const val MULTI_LIVE_PREFIX = "multi:"
-        private const val FAST_TUNNEL_READY_TIMEOUT_MS = 3_000L
-        private const val REFRESH_TUNNEL_READY_TIMEOUT_MS = 5_000L
+        private const val FAST_TUNNEL_READY_TIMEOUT_MS = 2_500L
+        private const val REFRESH_TUNNEL_READY_TIMEOUT_MS = 4_000L
         private val GLOBAL_COUNTRY_ROUTING_MUTEX = Mutex()
         private val LIVE_COUNTRIES = listOf(JoynCountry.AT, JoynCountry.DE, JoynCountry.CH)
     }
