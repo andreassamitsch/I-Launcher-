@@ -29,10 +29,12 @@ internal data class JoynMysteriumWireGuardLease(
 )
 
 /**
- * Requests the same WireGuard connection template used by Mysterium's current VPN client.
+ * Requests WireGuard configurations from Mysterium.
  *
- * Residential discovery cycles locations deliberately. Persistent country profiles use target_ip
- * to reconnect to the exact Residential exit that has already passed Joyn's Live entitlement check.
+ * Discovery deliberately rotates Residential locations. Persistent AT/DE/CH profiles use a stable
+ * WireGuard public key per country and keep the prepared target_ip connection cached. That turns a
+ * normal country switch into a local WireGuard reconfiguration; Mysterium's API is contacted again
+ * only when the prepared connection is missing or its tunnel readiness check fails.
  */
 internal class JoynMysteriumWireGuardApiClient(
     context: Context,
@@ -106,26 +108,25 @@ internal class JoynMysteriumWireGuardApiClient(
     }
 
     /**
-     * Recreates the already approved country tunnel using Mysterium's documented target_ip field.
-     * No random Refresh-IP is requested here, so switching DE/AT/CH does not consume scan quota.
+     * Returns the already prepared target configuration when possible. Set [forceRefresh] only after
+     * a local tunnel readiness check has proved that the cached server-side connection is stale.
      */
     suspend fun requestResidentialTarget(
         country: JoynCountry,
         publicKey: String,
         targetIp: String,
+        forceRefresh: Boolean = false,
     ): Result<JoynMysteriumWireGuardLease> = withContext(Dispatchers.IO) {
         runCatching {
             require(publicKey.isNotBlank()) { "WireGuard Public Key fehlt." }
             require(targetIp.isNotBlank()) { "Gespeicherte Mysterium Exit-IP fehlt." }
 
+            if (!forceRefresh) {
+                cachedPreparedLease(country, publicKey, targetIp)?.let { return@runCatching it }
+            }
+
             var token = accessToken()
             if (token.isBlank()) error("Nicht bei Mysterium angemeldet.")
-
-            // A public key represents one prepared connection. Close whichever country was active
-            // server-side, give Mysterium a short settling window, then reconnect the same key to the
-            // remembered Joyn-approved IP. This avoids racing disconnect/connect on their backend.
-            disconnectServerSide(publicKey, token)
-            delay(TARGET_DISCONNECT_SETTLE_MS)
             paceConnectRequests()
 
             val payload = JSONObject()
@@ -136,32 +137,70 @@ internal class JoynMysteriumWireGuardApiClient(
                 .put("reset_connection", false)
                 .put("os_type", "android")
 
-            var response = executeTargetWithRetry(payload, token)
+            var response = executeTargetWithRetry(payload, token, publicKey)
             if (response.first == 401 || response.first == 403) {
                 sessionClient.status()
                 token = accessToken()
                 if (token.isBlank()) error("Mysterium-Sitzung ist abgelaufen.")
                 paceConnectRequests()
-                response = executeTargetWithRetry(payload, token)
+                response = executeTargetWithRetry(payload, token, publicKey)
             }
 
             val lease = parseLease(response, country)
             if (lease.exitIp.isNotBlank() && lease.exitIp != targetIp) {
                 error("Mysterium lieferte ${lease.exitIp} statt der gespeicherten Exit-IP $targetIp.")
             }
+            savePreparedTarget(country, publicKey, targetIp)
             lease
         }
     }
 
+    private fun cachedPreparedLease(
+        country: JoynCountry,
+        publicKey: String,
+        targetIp: String,
+    ): JoynMysteriumWireGuardLease? {
+        if (prefs.getString(preparedPublicKeyKey(country), "").orEmpty() != publicKey) return null
+        if (prefs.getString(preparedTargetIpKey(country), "").orEmpty() != targetIp) return null
+        val profile = settings.wireGuardProfile(country) ?: return null
+        if (!profile.enabled || profile.exitIp != targetIp || profile.configTemplate.isBlank()) return null
+        return JoynMysteriumWireGuardLease(
+            id = profile.connectionId,
+            config = profile.configTemplate,
+            providerHash = profile.providerHash,
+            exitIp = profile.exitIp,
+            country = country.name,
+            ipType = "residential",
+        )
+    }
+
+    private fun savePreparedTarget(country: JoynCountry, publicKey: String, targetIp: String) {
+        prefs.edit()
+            .putString(preparedPublicKeyKey(country), publicKey)
+            .putString(preparedTargetIpKey(country), targetIp)
+            .putLong(preparedAtKey(country), System.currentTimeMillis())
+            .apply()
+    }
+
     /**
-     * target_ip reconnects occasionally return a transient 5xx while Mysterium is still tearing
-     * down the previous prepared connection. A small bounded retry is safe here because it requests
-     * the same stored IP and does not consume the random Refresh-IP scan quota.
+     * A target reconnect normally needs no server-side disconnect because every market now has its
+     * own public key. Only if Mysterium returns a transient 5xx do we clear that one country's stale
+     * prepared connection and retry the exact same target IP.
      */
-    private suspend fun executeTargetWithRetry(payload: JSONObject, token: String): Pair<Int, String> {
+    private suspend fun executeTargetWithRetry(
+        payload: JSONObject,
+        token: String,
+        publicKey: String,
+    ): Pair<Int, String> {
         var response = execute(payload, token)
         var retry = 0
+        var disconnected = false
         while (response.first in TRANSIENT_TARGET_HTTP_CODES && retry < TARGET_SERVER_RETRIES) {
+            if (!disconnected) {
+                disconnectServerSide(publicKey, token)
+                delay(TARGET_RECONNECT_SETTLE_MS)
+                disconnected = true
+            }
             retry++
             delay(TARGET_RETRY_BASE_DELAY_MS * retry)
             paceConnectRequests()
@@ -326,6 +365,15 @@ internal class JoynMysteriumWireGuardApiClient(
 
     private fun compact(value: String): String = value.replace(Regex("\\s+"), " ").trim().take(280)
 
+    private fun preparedPublicKeyKey(country: JoynCountry) =
+        "mysterium_${country.name.lowercase()}_wg_prepared_public_key"
+
+    private fun preparedTargetIpKey(country: JoynCountry) =
+        "mysterium_${country.name.lowercase()}_wg_prepared_target_ip"
+
+    private fun preparedAtKey(country: JoynCountry) =
+        "mysterium_${country.name.lowercase()}_wg_prepared_at"
+
     private data class CityTarget(
         val city: String,
         val round: Int,
@@ -339,9 +387,9 @@ internal class JoynMysteriumWireGuardApiClient(
         private const val CLIENT_VERSION = "joyntv-1"
         private const val USER_AGENT = "JoynTV/AndroidTV Mysterium-WireGuard-Integration"
         private const val MIN_CONNECT_INTERVAL_MS = 1_750L
-        private const val TARGET_DISCONNECT_SETTLE_MS = 650L
+        private const val TARGET_RECONNECT_SETTLE_MS = 250L
         private const val TARGET_SERVER_RETRIES = 2
-        private const val TARGET_RETRY_BASE_DELAY_MS = 650L
+        private const val TARGET_RETRY_BASE_DELAY_MS = 450L
         private val TRANSIENT_TARGET_HTTP_CODES = setOf(500, 502, 503, 504)
     }
 }
