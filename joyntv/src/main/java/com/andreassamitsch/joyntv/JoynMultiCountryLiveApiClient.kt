@@ -18,17 +18,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Lightweight anonymous Joyn client used only for the combined AT/DE/CH Live-TV view.
+ * Country-explicit Joyn client used by the combined AT/DE/CH Live-TV view.
  *
- * The normal JoynApiClient deliberately owns the account/session of the selected catalogue market.
- * Reusing that token for another country would mix Joyn tenants. This client therefore keeps one
- * anonymous in-memory session per country and never touches the user's account token or region.
+ * Every market keeps its own account session. If a retained account token exists, this client uses
+ * and refreshes it for that country, so PLUS/PREMIUM stations remain available across the combined
+ * list. Countries without an account session still fall back to an isolated anonymous session.
  */
 internal class JoynMultiCountryLiveApiClient(context: Context) {
-    private val prefs = context.applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val regionSettings = JoynRegionSettings(appContext)
     private val tokenMutex = Mutex()
-    private val tokens = mutableMapOf<JoynCountry, LiveToken>()
+    private val anonymousTokens = mutableMapOf<JoynCountry, LiveToken>()
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -40,11 +41,11 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
 
     suspend fun loadLiveChannels(country: JoynCountry): List<JoynLiveChannel> = withContext(Dispatchers.IO) {
         val config = bootstrapConfig(country)
-        runCatching { loadLiveChannelsOnce(config, forceNewToken = false) }
+        runCatching { loadLiveChannelsOnce(config, forceRefreshAccount = false) }
             .recoverCatching { error ->
                 if (!error.shouldRetryAuthorization()) throw error
-                invalidateToken(country)
-                loadLiveChannelsOnce(config, forceNewToken = true)
+                invalidateAnonymousToken(country)
+                loadLiveChannelsOnce(config, forceRefreshAccount = true)
             }
             .getOrThrow()
     }
@@ -52,20 +53,23 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
     suspend fun resolveLivePlayback(country: JoynCountry, channelId: String): JoynPlayback =
         withContext(Dispatchers.IO) {
             val config = bootstrapConfig(country)
-            runCatching { resolveLivePlaybackOnce(config, channelId, forceNewToken = false) }
+            runCatching { resolveLivePlaybackOnce(config, channelId, forceRefreshAccount = false) }
                 .recoverCatching { error ->
                     if (!error.shouldRetryAuthorization()) throw error
-                    invalidateToken(country)
-                    resolveLivePlaybackOnce(config, channelId, forceNewToken = true)
+                    invalidateAnonymousToken(country)
+                    resolveLivePlaybackOnce(config, channelId, forceRefreshAccount = true)
                 }
                 .getOrThrow()
         }
 
+    fun hasStoredAccountSession(country: JoynCountry): Boolean =
+        readPersistentToken(country)?.hasAccount == true
+
     private suspend fun loadLiveChannelsOnce(
         config: JoynRuntimeConfig,
-        forceNewToken: Boolean,
+        forceRefreshAccount: Boolean,
     ): List<JoynLiveChannel> {
-        val authorization = authorizationHeader(config.country, forceNewToken)
+        val authorization = authorization(config.country, forceRefreshAccount)
         val url = JoynProtocol.graphQlUrl.toHttpUrl().newBuilder()
             .addQueryParameter("query", JoynProtocol.liveStreamsQuery)
             .build()
@@ -77,7 +81,7 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
                 .header("Joyn-Platform", "web")
                 .header("Joyn-Country", config.country.name)
                 .header("Joyn-Distribution-Tenant", config.country.graphqlTenant)
-                .header("Authorization", authorization)
+                .header("Authorization", authorization.header)
                 .get()
                 .build(),
         )
@@ -94,9 +98,7 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
         return buildList {
             for (index in 0 until streams.length()) {
                 streams.optJSONObject(index)?.toLiveChannel(now)?.let { channel ->
-                    // Cross-market sessions are anonymous by design. Do not show PLUS/PREMIUM
-                    // stations which cannot be started with that anonymous country session.
-                    if (channel.isFree) add(channel)
+                    if (channel.isFree || authorization.hasAccount) add(channel)
                 }
             }
         }
@@ -105,9 +107,9 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
     private suspend fun resolveLivePlaybackOnce(
         config: JoynRuntimeConfig,
         channelId: String,
-        forceNewToken: Boolean,
+        forceRefreshAccount: Boolean,
     ): JoynPlayback {
-        val authorization = authorizationHeader(config.country, forceNewToken)
+        val authorization = authorization(config.country, forceRefreshAccount)
         val entitlementPayload = JSONObject()
             .put("content_id", channelId)
             .put("content_type", "LIVE")
@@ -116,7 +118,7 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
             Request.Builder()
                 .url(JoynProtocol.entitlementUrl)
                 .header("User-Agent", USER_AGENT)
-                .header("Authorization", authorization)
+                .header("Authorization", authorization.header)
                 .header("Content-Type", JSON_MEDIA_TYPE.toString())
                 .post(entitlementPayload.toRequestBody(JSON_MEDIA_TYPE))
                 .build(),
@@ -163,18 +165,84 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
         )
     }
 
-    private suspend fun authorizationHeader(country: JoynCountry, forceNewToken: Boolean): String =
+    private suspend fun authorization(country: JoynCountry, forceRefreshAccount: Boolean): LiveAuthorization =
         tokenMutex.withLock {
-            if (forceNewToken) tokens.remove(country)
             val now = System.currentTimeMillis() / 1000L
-            val token = tokens[country]
+            val persisted = readPersistentToken(country)?.takeIf { it.hasAccount }
+            if (persisted != null) {
+                val validUntil = persisted.createdAtEpochSeconds + persisted.expiresInSeconds - TOKEN_MARGIN_SECONDS
+                val accountToken = when {
+                    !forceRefreshAccount && now < validUntil -> persisted
+                    else -> refreshAccountToken(country, persisted)
+                }
+                return@withLock LiveAuthorization(
+                    header = "${accountToken.tokenType} ${accountToken.accessToken}",
+                    hasAccount = true,
+                )
+            }
+
+            val token = anonymousTokens[country]
                 ?.takeIf { now < it.createdAtEpochSeconds + it.expiresInSeconds - TOKEN_MARGIN_SECONDS }
-                ?: createAnonymousToken(country).also { tokens[country] = it }
-            "${token.tokenType} ${token.accessToken}"
+                ?: createAnonymousToken(country).also { anonymousTokens[country] = it }
+            LiveAuthorization(
+                header = "${token.tokenType} ${token.accessToken}",
+                hasAccount = false,
+            )
         }
 
-    private suspend fun invalidateToken(country: JoynCountry) {
-        tokenMutex.withLock { tokens.remove(country) }
+    private fun refreshAccountToken(country: JoynCountry, token: LiveToken): LiveToken {
+        if (token.refreshToken.isBlank()) {
+            throw LiveSessionException("Joyn ${country.name}: gespeicherte Anmeldung hat keinen Refresh-Token. Bitte einmal neu anmelden.")
+        }
+        val payload = JSONObject()
+            .put("refresh_token", token.refreshToken)
+            .put("grant_type", token.tokenType)
+            .put("client_id", stableUuid("client_id"))
+            .put("client_name", "web")
+        val response = JSONObject(
+            executeText(
+                Request.Builder()
+                    .url("${JoynProtocol.authBaseUrl}/refresh")
+                    .header("User-Agent", USER_AGENT)
+                    .header("Joyn-Country", country.name)
+                    .header("Joyn-Distribution-Tenant", country.authTenant)
+                    .header("Content-Type", JSON_MEDIA_TYPE.toString())
+                    .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
+                    .build(),
+            ),
+        )
+        val refreshed = LiveToken(
+            accessToken = response.optString("access_token").takeIf(String::isNotBlank)
+                ?: throw LiveSessionException("Joyn ${country.name}: Refresh lieferte keinen Access-Token."),
+            refreshToken = response.optString("refresh_token").takeIf(String::isNotBlank) ?: token.refreshToken,
+            tokenType = response.optString("token_type").takeIf(String::isNotBlank) ?: token.tokenType,
+            expiresInSeconds = response.optLong("expires_in").takeIf { it > 0L } ?: token.expiresInSeconds,
+            createdAtEpochSeconds = System.currentTimeMillis() / 1000L,
+            hasAccount = true,
+            email = token.email,
+        )
+        regionSettings.saveSessionJson(country, refreshed.toPersistentJson())
+        return refreshed
+    }
+
+    private fun readPersistentToken(country: JoynCountry): LiveToken? {
+        val raw = regionSettings.sessionJson(country) ?: return null
+        return runCatching {
+            val json = JSONObject(raw)
+            LiveToken(
+                accessToken = json.getString("accessToken"),
+                refreshToken = json.optString("refreshToken"),
+                tokenType = json.optString("tokenType").takeIf(String::isNotBlank) ?: "Bearer",
+                expiresInSeconds = json.optLong("expiresIn").takeIf { it > 0L } ?: 3600L,
+                createdAtEpochSeconds = json.optLong("createdAt").takeIf { it > 0L } ?: 0L,
+                hasAccount = json.optBoolean("hasAccount", false),
+                email = json.optString("email").takeIf(String::isNotBlank),
+            )
+        }.getOrNull()
+    }
+
+    private suspend fun invalidateAnonymousToken(country: JoynCountry) {
+        tokenMutex.withLock { anonymousTokens.remove(country) }
     }
 
     private fun createAnonymousToken(country: JoynCountry): LiveToken {
@@ -197,9 +265,11 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
         return LiveToken(
             accessToken = response.optString("access_token").takeIf(String::isNotBlank)
                 ?: error("Joyn ${country.name}: anonymer Access-Token fehlt."),
+            refreshToken = response.optString("refresh_token"),
             tokenType = response.optString("token_type").takeIf(String::isNotBlank) ?: "Bearer",
             expiresInSeconds = response.optLong("expires_in").takeIf { it > 0L } ?: 3600L,
             createdAtEpochSeconds = System.currentTimeMillis() / 1000L,
+            hasAccount = false,
         )
     }
 
@@ -310,6 +380,16 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
         return value
     }
 
+    private fun LiveToken.toPersistentJson(): String = JSONObject()
+        .put("accessToken", accessToken)
+        .put("refreshToken", refreshToken)
+        .put("tokenType", tokenType)
+        .put("expiresIn", expiresInSeconds)
+        .put("createdAt", createdAtEpochSeconds)
+        .put("hasAccount", hasAccount)
+        .apply { email?.let { put("email", it) } }
+        .toString()
+
     private fun executeText(request: Request): String =
         client.newCall(request).execute().use { response ->
             val body = response.body.string()
@@ -330,11 +410,16 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
 
     private fun compact(value: String): String = value.replace(Regex("\\s+"), " ").trim().take(260)
 
+    private data class LiveAuthorization(val header: String, val hasAccount: Boolean)
+
     private data class LiveToken(
         val accessToken: String,
+        val refreshToken: String,
         val tokenType: String,
         val expiresInSeconds: Long,
         val createdAtEpochSeconds: Long,
+        val hasAccount: Boolean,
+        val email: String? = null,
     )
 
     private class LiveHttpException(val statusCode: Int, val responseBody: String) :
