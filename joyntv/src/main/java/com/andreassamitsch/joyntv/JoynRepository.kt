@@ -294,6 +294,19 @@ internal class JoynRepository(context: Context) {
                     country = country,
                     configTemplate = lease.config,
                 ).getOrThrow()
+
+                // Tunnel.State.UP only means Android configured the interface. Do not let the first
+                // Joyn entitlement race the WireGuard handshake. Wait until traffic demonstrably
+                // exits through the remembered Joyn-approved IP in the requested country.
+                JoynMysteriumTunnelProbe.awaitReady(
+                    context = appContext,
+                    country = country,
+                    expectedExitIp = profile.exitIp,
+                ).getOrElse { error ->
+                    JoynMysteriumWireGuard.disconnect(appContext)
+                    throw error
+                }
+
                 mysteriumSettings.saveWireGuardProfile(country, lease)
             }
         }
