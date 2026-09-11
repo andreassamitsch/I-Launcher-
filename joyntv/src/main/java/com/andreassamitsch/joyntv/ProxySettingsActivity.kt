@@ -1,24 +1,19 @@
 package com.andreassamitsch.joyntv
 
 import android.content.Intent
-import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -27,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,83 +35,34 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
 
 class ProxySettingsActivity : ComponentActivity() {
-    private lateinit var vpnPermissionLauncher: ActivityResultLauncher<Intent>
-    private var vpnPermissionCallback: ((Boolean) -> Unit)? = null
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        vpnPermissionLauncher = registerForActivityResult(
-            ActivityResultContracts.StartActivityForResult(),
-        ) {
-            val granted = VpnService.prepare(this) == null
-            vpnPermissionCallback?.invoke(granted)
-            vpnPermissionCallback = null
-        }
-
         val repository = JoynRepository(applicationContext)
-        val currentCountry = repository.currentCountry()
+        val country = repository.currentCountry()
         setContent {
             JoynTvTheme {
-                ProxySettingsScreen(
+                NetworkSettingsScreen(
+                    country = country,
                     initial = repository.proxyConfig(),
-                    initialTunnelState = repository.nordVpnOpenVpnState(),
-                    country = currentCountry,
-                    savedNordUsername = repository.nordVpnServiceUsername(),
-                    savedNordPassword = repository.nordVpnServicePassword(),
-                    savedMysteriumApiBaseUrl = repository.mysteriumApiBaseUrl(),
-                    savedMysteriumCountrySettings = repository.mysteriumCountrySettings(currentCountry),
-                    onAutoResolve = { allTraffic, onProgress ->
-                        repository.findAutomaticProxy(allTraffic, onProgress)
+                    profile = repository.mysteriumCountrySettings(country),
+                    loggedIn = repository.mysteriumHasStoredAccessToken(),
+                    onOpenAccount = { startActivity(Intent(this, MysteriumSettingsActivity::class.java)) },
+                    onStop = repository::stopMysteriumResidentialScan,
+                    onUseDirect = {
+                        repository.setProxy(repository.proxyConfig().copy(enabled = false, automatic = false, source = ""))
+                        finish()
                     },
-                    onNordResolve = { username, password, allTraffic, onProgress ->
-                        repository.findNordVpnProxy(username, password, allTraffic, onProgress)
+                    onTest = { attempts, allTraffic, onProgress ->
+                        repository.findMysteriumResidentialProxy(country, attempts, allTraffic, onProgress)
                     },
-                    onNordTunnelResolve = { username, password, onProgress ->
-                        if (!ensureVpnPermission()) {
-                            JoynNordTunnelDiscoveryResult(
-                                connected = false,
-                                message = "Android-VPN-Berechtigung wurde nicht erteilt.",
-                            )
-                        } else {
-                            repository.findNordVpnOpenVpnTunnel(username, password, onProgress)
-                        }
-                    },
-                    onNordTunnelDisconnect = {
-                        repository.disconnectNordVpnOpenVpnTunnel()
-                    },
-                    onRememberNordCredentials = { username, password ->
-                        repository.saveNordVpnServiceCredentials(username, password)
-                    },
-                    onMysteriumResolve = { apiBaseUrl, maxAttempts, allTraffic, onProgress ->
-                        repository.findMysteriumResidentialProxy(
-                            country = currentCountry,
-                            apiBaseUrl = apiBaseUrl,
-                            maxAttempts = maxAttempts,
-                            allTraffic = allTraffic,
-                            onProgress = onProgress,
-                        )
-                    },
-                    onMysteriumStop = {
-                        repository.stopMysteriumResidentialScan()
-                    },
-                    onMysteriumSaveSettings = { apiBaseUrl, maxAttempts ->
-                        repository.saveMysteriumSettings(apiBaseUrl, currentCountry, maxAttempts)
-                    },
-                    onSave = { config ->
+                    onActivate = { config ->
                         repository.setProxy(config)
-                        startActivity(
-                            Intent(this, MainActivity::class.java)
-                                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
-                        )
                         finish()
                     },
                     onBack = { finish() },
@@ -125,608 +70,154 @@ class ProxySettingsActivity : ComponentActivity() {
             }
         }
     }
-
-    private suspend fun ensureVpnPermission(): Boolean {
-        val intent = VpnService.prepare(this) ?: return true
-        return suspendCancellableCoroutine { continuation ->
-            vpnPermissionCallback = { granted ->
-                if (continuation.isActive) continuation.resume(granted)
-            }
-            continuation.invokeOnCancellation { vpnPermissionCallback = null }
-            vpnPermissionLauncher.launch(intent)
-        }
-    }
 }
 
 @Composable
-private fun ProxySettingsScreen(
-    initial: JoynProxyConfig,
-    initialTunnelState: JoynNordTunnelState,
+private fun NetworkSettingsScreen(
     country: JoynCountry,
-    savedNordUsername: String,
-    savedNordPassword: String,
-    savedMysteriumApiBaseUrl: String,
-    savedMysteriumCountrySettings: JoynMysteriumCountrySettings,
-    onAutoResolve: suspend (
-        allTraffic: Boolean,
-        onProgress: (JoynProxyDiscoveryProgress) -> Unit,
-    ) -> JoynProxyDiscoveryResult,
-    onNordResolve: suspend (
-        username: String,
-        password: String,
-        allTraffic: Boolean,
-        onProgress: (JoynProxyDiscoveryProgress) -> Unit,
-    ) -> JoynProxyDiscoveryResult,
-    onNordTunnelResolve: suspend (
-        username: String,
-        password: String,
-        onProgress: (JoynProxyDiscoveryProgress) -> Unit,
-    ) -> JoynNordTunnelDiscoveryResult,
-    onNordTunnelDisconnect: suspend () -> Unit,
-    onRememberNordCredentials: (String, String) -> Unit,
-    onMysteriumResolve: suspend (
-        apiBaseUrl: String,
-        maxAttempts: Int,
-        allTraffic: Boolean,
-        onProgress: (JoynProxyDiscoveryProgress) -> Unit,
-    ) -> JoynProxyDiscoveryResult,
-    onMysteriumStop: () -> Unit,
-    onMysteriumSaveSettings: (String, Int) -> Unit,
-    onSave: (JoynProxyConfig) -> Unit,
+    initial: JoynProxyConfig,
+    profile: JoynMysteriumCountrySettings,
+    loggedIn: Boolean,
+    onOpenAccount: () -> Unit,
+    onStop: () -> Unit,
+    onUseDirect: () -> Unit,
+    onTest: suspend (Int, Boolean, (JoynProxyDiscoveryProgress) -> Unit) -> JoynProxyDiscoveryResult,
+    onActivate: (JoynProxyConfig) -> Unit,
     onBack: () -> Unit,
 ) {
-    val liveTunnelState by JoynNordTunnelRuntime.state.collectAsState()
-    val initialTunnelActive = initialTunnelState is JoynNordTunnelState.Connected
-    val tunnelConnected = liveTunnelState is JoynNordTunnelState.Connected
-    val initialNord = initialTunnelActive || (initial.automatic && initial.source.startsWith("NordVPN"))
-    val initialMysterium = initial.automatic && initial.source.startsWith("Mysterium")
-    var enabled by rememberSaveable { mutableStateOf(initial.enabled || initialTunnelActive) }
-    var automatic by rememberSaveable { mutableStateOf(if (initialTunnelActive) true else initial.automatic) }
-    var nordVpn by rememberSaveable { mutableStateOf(initialNord) }
-    var mysterium by rememberSaveable { mutableStateOf(initialMysterium) }
-    var nordTunnel by rememberSaveable { mutableStateOf(initialTunnelActive) }
-    var allTraffic by rememberSaveable { mutableStateOf(initial.allTraffic) }
-    var host by remember { mutableStateOf(initial.host) }
-    var port by remember { mutableStateOf(initial.port.takeIf { it > 0 }?.toString().orEmpty()) }
-    var username by remember { mutableStateOf(initial.username) }
-    var password by remember { mutableStateOf(initial.password) }
-    var nordUsername by remember {
-        mutableStateOf(savedNordUsername.ifBlank { if (initialNord) initial.username else "" })
-    }
-    var nordPassword by remember {
-        mutableStateOf(savedNordPassword.ifBlank { if (initialNord) initial.password else "" })
-    }
-    var mysteriumApiBaseUrl by rememberSaveable { mutableStateOf(savedMysteriumApiBaseUrl) }
-    var mysteriumAttempts by rememberSaveable {
-        mutableStateOf(savedMysteriumCountrySettings.maxAttempts.toString())
-    }
+    var attempts by rememberSaveable { mutableStateOf(profile.maxAttempts.toString()) }
+    var allTraffic by rememberSaveable { mutableStateOf(if (initial.isMysterium) initial.allTraffic else profile.allTraffic) }
     var testing by remember { mutableStateOf(false) }
     var status by rememberSaveable {
         mutableStateOf(
-            when (val tunnel = initialTunnelState) {
-                is JoynNordTunnelState.Connected ->
-                    "Aktiver NordVPN OpenVPN-Tunnel: ${tunnel.host}" +
-                        tunnel.peerAddress.takeIf(String::isNotBlank)?.let { " · TUN $it" }.orEmpty()
-                else -> if (initial.enabled && initial.automatic && initial.isUsable) {
-                    buildString {
-                        append("Aktuell automatisch gewählt: ${initial.host}:${initial.port}")
-                        if (initial.latencyMs >= 0) append(" · ${initial.latencyMs} ms")
-                        if (initial.source.isNotBlank()) append(" · ${initial.source}")
-                    }
-                } else {
-                    ""
-                }
+            if (initial.isUsable && initial.isMysterium) {
+                "Aktiv: Mysterium Residential · ${initial.host}:${initial.port}"
+            } else {
+                "Direkte Verbindung aktiv."
             },
         )
     }
     val scope = rememberCoroutineScope()
+    val count = attempts.toIntOrNull() ?: 0
+    val validCount = count in JoynMysteriumSettings.MIN_ATTEMPTS..JoynMysteriumSettings.MAX_ATTEMPTS
 
-    BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF080A0E))) {
-        val compact = maxHeight < 520.dp
-        val horizontal = if (compact) 28.dp else 64.dp
-        Column(
-            Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = horizontal, vertical = if (compact) 24.dp else 46.dp),
-        ) {
-            Text(
-                "Joyn Netzwerk-Test",
-                color = Color.White,
-                fontSize = if (compact) 29.sp else 40.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "Für DE/AT/CH kann Joyn über öffentliche Proxys, NordVPN oder Mysterium Residential getestet werden. Aktiviert bleibt nur eine Verbindung, die Joyns echte Live-Freigabe besteht.",
-                color = Color(0xFFD7DBE3),
-                fontSize = if (compact) 13.sp else 15.sp,
-                lineHeight = if (compact) 18.sp else 21.sp,
-                modifier = Modifier.widthIn(max = 930.dp),
-            )
-            Spacer(Modifier.height(22.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ProxyChoice("Direkt", !enabled) {
-                    if (!testing) enabled = false
-                }
-                ProxyChoice("Proxy / VPN", enabled) {
-                    if (!testing) enabled = true
-                }
-            }
-
-            if (enabled) {
-                Spacer(Modifier.height(14.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ProxyChoice("Automatisch", automatic) {
-                        if (!testing) automatic = true
-                    }
-                    ProxyChoice("Manuell", !automatic) {
-                        if (!testing) {
-                            automatic = false
-                            nordTunnel = false
-                        }
-                    }
-                }
-
-                if (!(automatic && nordVpn && nordTunnel)) {
-                    Spacer(Modifier.height(14.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ProxyChoice("Nur API / Token", !allTraffic) {
-                            if (!testing) allTraffic = false
-                        }
-                        ProxyChoice("Alles inkl. Stream", allTraffic) {
-                            if (!testing) allTraffic = true
-                        }
-                    }
-                }
-                Spacer(Modifier.height(22.dp))
-
-                if (automatic) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ProxyChoice("Öffentliche Proxys", !nordVpn && !mysterium) {
-                            if (!testing) {
-                                nordVpn = false
-                                mysterium = false
-                                nordTunnel = false
-                            }
-                        }
-                        ProxyChoice("NordVPN", nordVpn) {
-                            if (!testing) {
-                                nordVpn = true
-                                mysterium = false
-                            }
-                        }
-                        ProxyChoice("Mysterium", mysterium) {
-                            if (!testing) {
-                                mysterium = true
-                                nordVpn = false
-                                nordTunnel = false
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(18.dp))
-
-                    when {
-                        mysterium -> {
-                            Text(
-                                "Mysterium Residential für ${country.name}: Joyn TV fordert nacheinander neue private Residential-IP-Leases an, prüft Exit-IP und Land und testet jede eindeutige IP bis zur echten Joyn-Live-Freigabe.",
-                                color = Color(0xFFD7DBE3),
-                                fontSize = 14.sp,
-                                lineHeight = 20.sp,
-                                modifier = Modifier.widthIn(max = 930.dp),
-                            )
-                            Spacer(Modifier.height(10.dp))
-                            Text(
-                                "Die Mysterium-VPN-Komponente muss auf demselben Gerät laufen und angemeldet sein. Die Einstellungen unten werden für ${country.name} gespeichert. Residential ist fest aktiviert; bei jedem Versuch wird eine neue IP angefordert.",
-                                color = Color(0xFFF1C27D),
-                                fontSize = 13.sp,
-                                lineHeight = 18.sp,
-                                modifier = Modifier.widthIn(max = 930.dp),
-                            )
-                            Spacer(Modifier.height(16.dp))
-                            ProxyFieldLabel("Mysterium API auf diesem Gerät")
-                            ProxyField(
-                                mysteriumApiBaseUrl,
-                                { mysteriumApiBaseUrl = it },
-                                JoynMysteriumSettings.DEFAULT_API_BASE_URL,
-                                false,
-                            )
-                            Spacer(Modifier.height(12.dp))
-                            ProxyFieldLabel("Max. neue Residential-IPs für ${country.name} testen (1–100)")
-                            ProxyField(
-                                mysteriumAttempts,
-                                { mysteriumAttempts = it.filter(Char::isDigit).take(3) },
-                                "25",
-                                false,
-                            )
-                        }
-
-                        nordVpn -> {
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                ProxyChoice("HTTPS Proxy :89", !nordTunnel) {
-                                    if (!testing) nordTunnel = false
-                                }
-                                ProxyChoice("OpenVPN Tunnel Beta", nordTunnel) {
-                                    if (!testing) nordTunnel = true
-                                }
-                            }
-                            Spacer(Modifier.height(16.dp))
-
-                            if (nordTunnel) {
-                                Text(
-                                    "OpenVPN für ${country.name}: Die App lädt normale NordVPN-Server mit OpenVPN UDP/TCP und routet ausschließlich Joyn TV durch Androids VPN. Andere Apps und der I Launcher bleiben auf der normalen Verbindung. Nach jedem Tunnel wird die Exit-IP geprüft; gleiche Exit-IPs werden nur einmal gegen Joyn Live getestet.",
-                                    color = Color(0xFFD7DBE3),
-                                    fontSize = 14.sp,
-                                    lineHeight = 20.sp,
-                                    modifier = Modifier.widthIn(max = 900.dp),
-                                )
-                                Spacer(Modifier.height(10.dp))
-                                Text(
-                                    "UDP wird zuerst getestet, TCP dient als Fallback. Während der längeren Suche kannst du den Test jederzeit stoppen; danach bleibt die Zwischenbilanz mit den bisher getesteten Servern sichtbar.",
-                                    color = Color(0xFFF1C27D),
-                                    fontSize = 13.sp,
-                                    lineHeight = 18.sp,
-                                    modifier = Modifier.widthIn(max = 900.dp),
-                                )
-                            } else {
-                                Text(
-                                    "HTTPS-Proxy für ${country.name}: Die App lädt alle von Nord als proxy_ssl markierten Server auf Port 89, ermittelt deren tatsächliche Exit-IP und prüft jede eindeutige Exit-IP nur einmal gegen Joyn Live.",
-                                    color = Color(0xFFD7DBE3),
-                                    fontSize = 14.sp,
-                                    lineHeight = 20.sp,
-                                    modifier = Modifier.widthIn(max = 900.dp),
-                                )
-                            }
-
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                "Verwende die NordVPN-Service-Zugangsdaten aus der manuellen Einrichtung. Sie werden auf diesem Gerät gespeichert, damit du sie nur einmal eingeben musst.",
-                                color = Color(0xFFF1C27D),
-                                fontSize = 13.sp,
-                                lineHeight = 18.sp,
-                                modifier = Modifier.widthIn(max = 900.dp),
-                            )
-                            Spacer(Modifier.height(16.dp))
-                            ProxyFieldLabel("NordVPN Service-Benutzername")
-                            ProxyField(nordUsername, { nordUsername = it }, "Service username", false)
-                            Spacer(Modifier.height(12.dp))
-                            ProxyFieldLabel("NordVPN Service-Passwort")
-                            ProxyField(nordPassword, { nordPassword = it }, "Service password", true)
-                        }
-
-                        else -> {
-                            Text(
-                                "Öffentliche Proxys für ${country.name}: Die App lädt aktuelle Proxylisten und verwirft Kandidaten, die Joyns API- oder Live-Prüfung nicht bestehen.",
-                                color = Color(0xFFD7DBE3),
-                                fontSize = 14.sp,
-                                lineHeight = 20.sp,
-                                modifier = Modifier.widthIn(max = 900.dp),
-                            )
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                "Öffentliche Gratis-Proxys werden von Joyn häufig als VPN/Proxy erkannt. Diese Option bleibt vor allem für Tests erhalten.",
-                                color = Color(0xFFF1C27D),
-                                fontSize = 13.sp,
-                                lineHeight = 18.sp,
-                                modifier = Modifier.widthIn(max = 900.dp),
-                            )
-                        }
-                    }
-
-                    if (status.isNotBlank()) {
-                        Spacer(Modifier.height(14.dp))
-                        Text(
-                            status,
-                            color = if (testing) Color(0xFFD7DBE3) else Color(0xFF9FD6AE),
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            modifier = Modifier.widthIn(max = 980.dp),
-                        )
-                    }
-                } else {
-                    ProxyFieldLabel("Proxy Host")
-                    ProxyField(host, { host = it }, "z. B. de1465.proxy.nordvpn.com", false)
-                    Spacer(Modifier.height(12.dp))
-                    ProxyFieldLabel("Port")
-                    ProxyField(port, { port = it.filter(Char::isDigit).take(5) }, "89", false)
-                    Spacer(Modifier.height(12.dp))
-                    ProxyFieldLabel("Benutzername (optional)")
-                    ProxyField(username, { username = it }, "proxy-user", false)
-                    Spacer(Modifier.height(12.dp))
-                    ProxyFieldLabel("Passwort (optional)")
-                    ProxyField(password, { password = it }, "proxy-passwort", true)
-                }
-            }
-
-            Spacer(Modifier.height(24.dp))
-            Text(
-                when {
-                    !enabled -> if (tunnelConnected) {
-                        "Direkt gewählt. Beim Speichern wird der aktive OpenVPN-Tunnel getrennt."
-                    } else {
-                        "Direkt: Joyn verwendet die normale Internetverbindung."
-                    }
-                    automatic && mysterium ->
-                        "Mysterium Residential: neue Residential-IP anfordern → Exit-IP/Land prüfen → eindeutige IP einmal gegen Joyn Live testen → ersten Treffer aktivieren."
-                    automatic && nordVpn && nordTunnel ->
-                        "NordVPN OpenVPN Beta: UDP/TCP-Server laden → Android-Tunnel nur für Joyn → Exit-IP deduplizieren → Joyn Live prüfen → ersten geeigneten Tunnel aktiv lassen."
-                    automatic && nordVpn ->
-                        "NordVPN HTTPS/89: Credentials prüfen → proxy_ssl-Server laden → Exit-IPs deduplizieren → Joyn Live prüfen. SOCKS5-Credential-Test separat auf Port 1080."
-                    automatic -> "Öffentliche Automatik: Nur Proxys, die Joyns vollständige Live-Prüfung bestehen, werden aktiviert."
-                    else -> "Aktiv: ${if (allTraffic) "gesamter App-Verkehr" else "Joyn API/Auth/Entitlement/Playlist"} über den manuellen Proxy."
-                },
-                color = Color(0xFF9FA8B5),
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
-                modifier = Modifier.widthIn(max = 930.dp),
-            )
-            Spacer(Modifier.height(22.dp))
-
-            val manualValid = host.isNotBlank() && (port.toIntOrNull() ?: 0) in 1..65535
-            val nordValid = nordUsername.isNotBlank() && nordPassword.isNotBlank()
-            val mysteriumMaxAttempts = mysteriumAttempts.toIntOrNull() ?: 0
-            val mysteriumValid = mysteriumApiBaseUrl.isNotBlank() &&
-                mysteriumMaxAttempts in JoynMysteriumSettings.MIN_ATTEMPTS..JoynMysteriumSettings.MAX_ATTEMPTS
-            val autoValid = when {
-                mysterium -> mysteriumValid
-                nordVpn -> nordValid
-                else -> true
-            }
-            val saveEnabled = !testing && (!enabled || (automatic && autoValid) || (!automatic && manualValid))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ProxyAction("Zurück", enabled = !testing, onClick = onBack)
-                ProxyAction(
-                    label = when {
-                        testing && mysterium -> "Residential-IPs werden getestet …"
-                        testing -> if (nordTunnel) "OpenVPN wird getestet …" else "Proxys werden getestet …"
-                        enabled && automatic && mysterium -> "Residential testen & aktivieren"
-                        enabled && automatic && nordVpn && nordTunnel -> "OpenVPN suchen & verbinden"
-                        enabled && automatic && nordVpn -> "NordVPN suchen & aktivieren"
-                        enabled && automatic -> "Suchen & aktivieren"
-                        else -> "Speichern"
-                    },
-                    enabled = saveEnabled,
-                ) {
-                    when {
-                        !enabled -> {
-                            if (tunnelConnected) {
-                                scope.launch {
-                                    testing = true
-                                    status = "Trenne NordVPN OpenVPN-Tunnel …"
-                                    runCatching { onNordTunnelDisconnect() }
-                                    testing = false
-                                    onSave(initial.copy(enabled = false))
-                                }
-                            } else {
-                                onSave(
-                                    initial.copy(
-                                        enabled = false,
-                                        automatic = automatic,
-                                        allTraffic = allTraffic,
-                                    ),
-                                )
-                            }
-                        }
-
-                        !automatic -> onSave(
-                            JoynProxyConfig(
-                                enabled = true,
-                                automatic = false,
-                                host = host.trim(),
-                                port = port.toIntOrNull() ?: 0,
-                                username = username,
-                                password = password,
-                                allTraffic = allTraffic,
-                            ),
-                        )
-
-                        automatic && nordVpn && nordTunnel -> scope.launch {
-                            testing = true
-                            onRememberNordCredentials(nordUsername, nordPassword)
-                            status = "Prüfe Android-VPN-Berechtigung …"
-                            val result = runCatching {
-                                onNordTunnelResolve(nordUsername, nordPassword) { progress ->
-                                    status = progress.message
-                                }
-                            }.getOrElse { error ->
-                                JoynNordTunnelDiscoveryResult(
-                                    connected = false,
-                                    message = "OpenVPN-Suche fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}",
-                                )
-                            }
-                            testing = false
-                            status = result.message
-                            if (result.connected) {
-                                onSave(initial.copy(enabled = false, automatic = true))
-                            }
-                        }
-
-                        automatic && mysterium -> scope.launch {
-                            testing = true
-                            onMysteriumSaveSettings(mysteriumApiBaseUrl, mysteriumMaxAttempts)
-                            status = "Prüfe Mysterium Residential für ${country.name} …"
-                            val result = runCatching {
-                                onMysteriumResolve(
-                                    mysteriumApiBaseUrl,
-                                    mysteriumMaxAttempts,
-                                    allTraffic,
-                                ) { progress ->
-                                    status = progress.message
-                                }
-                            }.getOrElse { error ->
-                                JoynProxyDiscoveryResult(
-                                    config = null,
-                                    candidates = mysteriumMaxAttempts,
-                                    attempted = 0,
-                                    message = "Mysterium-Suche fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}",
-                                )
-                            }
-                            testing = false
-                            val config = result.config
-                            status = result.message
-                            if (config != null) onSave(config)
-                        }
-
-                        else -> scope.launch {
-                            testing = true
-                            val result = if (nordVpn) {
-                                onRememberNordCredentials(nordUsername, nordPassword)
-                                status = "Lade NordVPN-Proxyserver für ${country.name} …"
-                                runCatching {
-                                    onNordResolve(nordUsername, nordPassword, allTraffic) { progress ->
-                                        status = progress.message
-                                    }
-                                }.getOrElse { error ->
-                                    JoynProxyDiscoveryResult(
-                                        config = null,
-                                        candidates = 0,
-                                        attempted = 0,
-                                        message = "NordVPN-Suche fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}",
-                                    )
-                                }
-                            } else {
-                                status = "Lade aktuelle Proxylisten für ${country.name} …"
-                                runCatching {
-                                    onAutoResolve(allTraffic) { progress ->
-                                        status = progress.message
-                                    }
-                                }.getOrElse { error ->
-                                    JoynProxyDiscoveryResult(
-                                        config = null,
-                                        candidates = 0,
-                                        attempted = 0,
-                                        message = "Proxy-Suche fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}",
-                                    )
-                                }
-                            }
-                            testing = false
-                            val config = result.config
-                            if (config != null) {
-                                status = result.message
-                                onSave(config)
-                            } else {
-                                status = result.message
-                            }
-                        }
-                    }
-                }
-
-                if (testing && enabled && automatic && mysterium) {
-                    ProxyAction("Test stoppen") {
-                        status = "Stop angefordert … Zwischenbilanz der getesteten Residential-IPs wird vorbereitet."
-                        onMysteriumStop()
-                    }
-                }
-
-                if (testing && enabled && automatic && nordVpn && nordTunnel) {
-                    ProxyAction("Test stoppen") {
-                        status = "Stop angefordert … aktueller Tunnel wird getrennt; Zwischenbilanz wird vorbereitet."
-                        JoynNordOpenVpnScanControl.requestStop()
-                    }
-                }
-
-                if (tunnelConnected && !testing) {
-                    ProxyAction("Tunnel trennen") {
-                        scope.launch {
-                            testing = true
-                            status = "Trenne NordVPN OpenVPN-Tunnel …"
-                            runCatching { onNordTunnelDisconnect() }
-                                .onSuccess { status = "OpenVPN-Tunnel getrennt." }
-                                .onFailure { status = "Trennen fehlgeschlagen: ${it.message ?: it.javaClass.simpleName}" }
-                            testing = false
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.height(44.dp))
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Color(0xFF080A0E))
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 56.dp, vertical = 38.dp),
+    ) {
+        Text("Joyn Netzwerk", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Automatische Verbindungen laufen über Mysterium Residential. Die bisherige NordVPN- und Gratis-Proxy-Suche ist entfernt.",
+            color = Color(0xFFD7DBE3), fontSize = 14.sp, lineHeight = 20.sp,
+            modifier = Modifier.widthIn(max = 900.dp),
+        )
+        Spacer(Modifier.height(22.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            NetAction("Direkt verwenden", enabled = !testing, onClick = onUseDirect)
+            NetAction("Mysterium Konto & Login", enabled = !testing, onClick = onOpenAccount)
+            NetAction("Zurück", enabled = !testing, onClick = onBack)
         }
+        Spacer(Modifier.height(24.dp))
+        Text("Residential-Profil ${country.name}", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(10.dp))
+        Text(
+            if (loggedIn) "Mysterium-Session gespeichert." else "Noch nicht bei Mysterium angemeldet.",
+            color = if (loggedIn) Color(0xFF9FD6AE) else Color(0xFFF1C27D), fontSize = 13.sp,
+        )
+        Spacer(Modifier.height(14.dp))
+        Text("Max. neue Residential-IPs testen (1–100)", color = Color(0xFFD7DBE3), fontSize = 13.sp)
+        Spacer(Modifier.height(6.dp))
+        BasicTextField(
+            value = attempts,
+            onValueChange = { attempts = it.filter(Char::isDigit).take(3) },
+            singleLine = true,
+            textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
+            cursorBrush = SolidColor(Color.White),
+            decorationBox = { inner ->
+                Box(
+                    Modifier.background(Color(0xFF171C24), RoundedCornerShape(12.dp))
+                        .border(1.dp, Color(0xFF535D6A), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .widthIn(min = 150.dp, max = 260.dp),
+                ) { inner() }
+            },
+        )
+        Spacer(Modifier.height(14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            NetChoice("Nur API / Token", !allTraffic) { if (!testing) allTraffic = false }
+            NetChoice("Alles inkl. Stream", allTraffic) { if (!testing) allTraffic = true }
+        }
+        Spacer(Modifier.height(20.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            NetAction("Residential testen & aktivieren", enabled = !testing && loggedIn && validCount) {
+                scope.launch {
+                    testing = true
+                    status = "Starte Mysterium Residential ${country.name} …"
+                    val result = runCatching {
+                        onTest(count, allTraffic) { status = it.message }
+                    }.getOrElse { error ->
+                        JoynProxyDiscoveryResult(null, count, 0, "Mysterium-Test fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}")
+                    }
+                    testing = false
+                    status = result.message
+                    result.config?.let(onActivate)
+                }
+            }
+            if (testing) {
+                NetAction("Test stoppen") {
+                    status = "Stop angefordert …"
+                    onStop()
+                }
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        Text(status, color = Color(0xFFD7DBE3), fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.widthIn(max = 1000.dp))
+        Spacer(Modifier.height(42.dp))
     }
 }
 
 @Composable
-private fun ProxyFieldLabel(text: String) {
-    Text(text, color = Color(0xFFD7DBE3), fontSize = 13.sp)
-    Spacer(Modifier.height(6.dp))
-}
-
-@Composable
-private fun ProxyField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    placeholder: String,
-    password: Boolean,
-) {
-    BasicTextField(
-        value = value,
-        onValueChange = onValueChange,
-        singleLine = true,
-        textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
-        cursorBrush = SolidColor(Color.White),
-        visualTransformation = if (password) PasswordVisualTransformation()
-        else androidx.compose.ui.text.input.VisualTransformation.None,
-        decorationBox = { inner ->
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF171C24), RoundedCornerShape(12.dp))
-                    .border(1.dp, Color(0xFF4F5966), RoundedCornerShape(12.dp))
-                    .padding(horizontal = 16.dp, vertical = 13.dp),
-            ) {
-                if (value.isBlank()) Text(placeholder, color = Color(0xFF929AA6), fontSize = 15.sp)
-                inner()
-            }
-        },
-        modifier = Modifier.widthIn(max = 620.dp).fillMaxWidth(),
-    )
-}
-
-@Composable
-private fun ProxyChoice(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun NetChoice(label: String, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(18.dp)
     Box(
-        Modifier
-            .clip(shape)
+        Modifier.clip(shape)
             .background(if (selected || focused) Color.White else Color(0xFF171C24))
             .border(1.dp, if (focused) Color.White else Color(0xFF535D6A), shape)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .focusable()
-            .padding(horizontal = 18.dp, vertical = 10.dp),
+            .padding(horizontal = 17.dp, vertical = 9.dp),
     ) {
-        Text(
-            label,
-            color = if (selected || focused) Color(0xFF11151B) else Color.White,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-        )
+        Text(label, color = if (selected || focused) Color(0xFF11151B) else Color.White, fontSize = 13.sp)
     }
 }
 
 @Composable
-private fun ProxyAction(label: String, enabled: Boolean = true, onClick: () -> Unit) {
+private fun NetAction(label: String, enabled: Boolean = true, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(22.dp)
+    val shape = RoundedCornerShape(12.dp)
     Box(
-        Modifier
-            .clip(shape)
-            .background(
-                when {
-                    !enabled -> Color(0xFF252A32)
-                    focused -> Color.White
-                    else -> Color(0xFF1B212A)
-                },
-            )
-            .border(1.dp, if (focused) Color.White else Color(0xFF535D6A), shape)
+        Modifier.clip(shape)
+            .background(if (focused && enabled) Color.White else Color(0xFF171C24))
+            .border(1.dp, if (focused && enabled) Color.White else Color(0xFF535D6A), shape)
             .onFocusChanged { focused = it.isFocused }
-            .then(if (enabled) Modifier.clickable(onClick = onClick).focusable() else Modifier)
-            .padding(horizontal = 22.dp, vertical = 11.dp),
+            .clickable(enabled = enabled, onClick = onClick)
+            .focusable(enabled)
+            .padding(horizontal = 18.dp, vertical = 11.dp),
     ) {
         Text(
             label,
-            color = if (focused && enabled) Color(0xFF11151B) else Color.White,
-            fontSize = 14.sp,
+            color = when {
+                !enabled -> Color(0xFF68717D)
+                focused -> Color(0xFF11151B)
+                else -> Color.White
+            },
+            fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
         )
     }
