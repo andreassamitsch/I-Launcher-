@@ -52,8 +52,9 @@ internal class JoynRepository(context: Context) {
         loadOrder.forEach { country ->
             runCatching {
                 ensureJoynCountryRouting(country)
-                if (country == selected) api.loadLiveChannels()
-                else multiCountryLiveApi.loadLiveChannels(country)
+                // Always use the country-explicit client. It owns the separate AT/DE/CH account
+                // sessions and filters PLUS streams against the subscription of that exact market.
+                multiCountryLiveApi.loadLiveChannels(country)
             }.onSuccess { channels ->
                 byCountry[country] = channels
             }.onFailure { error ->
@@ -135,11 +136,9 @@ internal class JoynRepository(context: Context) {
         }
 
         ensureJoynCountryRouting(countryRef.country)
-        if (countryRef.country == currentCountry()) {
-            api.resolveLivePlayback(countryRef.channelId)
-        } else {
-            multiCountryLiveApi.resolveLivePlayback(countryRef.country, countryRef.channelId)
-        }
+        // Decorated combined-list channels always use their country-explicit retained session,
+        // including the currently selected market.
+        multiCountryLiveApi.resolveLivePlayback(countryRef.country, countryRef.channelId)
     }
 
     suspend fun resolveVodPlayback(contentRef: String, enteredPin: String? = null): JoynPlayback {
