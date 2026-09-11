@@ -1,6 +1,8 @@
 package com.andreassamitsch.joyntv
 
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import kotlinx.coroutines.Dispatchers
@@ -17,7 +19,7 @@ internal class JoynRepository(context: Context) {
     private val proxySettings = JoynProxySettings(appContext)
     private val mysteriumSettings = JoynMysteriumSettings(appContext)
     private val mysteriumApiClient = JoynMysteriumApiClient(appContext)
-    private val mysteriumScanner = JoynMysteriumProxyScanner(mysteriumApiClient)
+    private val mysteriumScanner = JoynMysteriumProxyScanner(appContext, mysteriumApiClient)
     private val pinSettings = JoynParentalPinSettings(appContext)
     private val api = JoynApiClient(appContext)
     private val pinPlaybackApi = JoynPinPlaybackApiClient(appContext)
@@ -114,6 +116,11 @@ internal class JoynRepository(context: Context) {
 
     fun mysteriumSavedEmail(): String = mysteriumApiClient.savedEmail()
     fun mysteriumHasStoredAccessToken(): Boolean = mysteriumApiClient.hasStoredAccessToken()
+    fun mysteriumVpnPermissionIntent(activity: Activity): Intent? = JoynMysteriumWireGuard.permissionIntent(activity)
+
+    suspend fun mysteriumVpnConnected(): Boolean = JoynMysteriumWireGuard.isConnected(appContext)
+
+    suspend fun disconnectMysteriumVpn(): Result<Unit> = JoynMysteriumWireGuard.disconnect(appContext)
 
     fun saveMysteriumSettings(
         country: JoynCountry,
@@ -149,6 +156,12 @@ internal class JoynRepository(context: Context) {
     ): JoynProxyDiscoveryResult {
         saveMysteriumSettings(country, maxAttempts, allTraffic)
         val progressRelay = progressRelay(onProgress)
+
+        // The old connect-proxy transport and WireGuard must never be active at the same time.
+        // Persistently disable it before asking Android to route this APK through WireGuard.
+        proxySettings.disable()
+        mysteriumSettings.clearLastSuccessful(country)
+
         val accountStatus = withContext(Dispatchers.IO) { mysteriumApiClient.status() }
         if (accountStatus.authenticated != true) {
             return JoynProxyDiscoveryResult(
@@ -159,7 +172,7 @@ internal class JoynRepository(context: Context) {
             )
         }
 
-        val result = withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             mysteriumScanner.findBest(
                 country = country,
                 apiKey = protocolPrefs.getString("api_key_${country.name}", null),
@@ -168,10 +181,6 @@ internal class JoynRepository(context: Context) {
                 onProgress = progressRelay,
             )
         }
-        result.config?.let { config ->
-            mysteriumSettings.saveLastSuccessful(country, config, result.expiresAt)
-        }
-        return result
     }
 
     fun stopMysteriumResidentialScan() {
