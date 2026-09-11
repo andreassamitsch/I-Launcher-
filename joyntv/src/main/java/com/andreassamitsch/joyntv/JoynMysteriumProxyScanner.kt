@@ -16,7 +16,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 internal class JoynMysteriumProxyScanner(
-    private val apiClient: JoynMysteriumApiClient = JoynMysteriumApiClient(),
+    private val apiClient: JoynMysteriumApiClient,
 ) {
     suspend fun findBest(
         country: JoynCountry,
@@ -41,7 +41,7 @@ internal class JoynMysteriumProxyScanner(
         )
         JoynMysteriumScanControl.reset()
 
-        onProgress(JoynProxyDiscoveryProgress("Prüfe lokale Mysterium-VPN-API …", 0, attemptsLimit))
+        onProgress(JoynProxyDiscoveryProgress("Prüfe Mysterium-VPN-API …", 0, attemptsLimit))
         val apiStatus = apiClient.status(apiBaseUrl)
         if (!apiStatus.reachable) {
             return@withContext JoynProxyDiscoveryResult(
@@ -49,7 +49,7 @@ internal class JoynMysteriumProxyScanner(
                 candidates = attemptsLimit,
                 attempted = 0,
                 message = apiStatus.message +
-                    "\n\nDie Mysterium-VPN-Komponente muss auf diesem Gerät laufen. Standard: ${JoynMysteriumSettings.DEFAULT_API_BASE_URL}",
+                    "\n\nÖffne Mysterium-Einstellungen und melde dein Mysterium-Konto an bzw. hinterlege dort die API-Verbindung.",
             )
         }
         if (apiStatus.authenticated == false) {
@@ -58,7 +58,7 @@ internal class JoynMysteriumProxyScanner(
                 candidates = attemptsLimit,
                 attempted = 0,
                 message = apiStatus.message +
-                    "\nBitte zuerst in Mysterium VPN anmelden/aktivieren und den Test danach erneut starten.",
+                    "\nBitte zuerst in den Mysterium-Einstellungen anmelden und den Test danach erneut starten.",
             )
         }
 
