@@ -94,6 +94,11 @@ dependencies {
     implementation(platform("com.squareup.okhttp3:okhttp-bom:5.3.0"))
     implementation("com.squareup.okhttp3:okhttp")
 
+    // Same Android WireGuard backend used by the current Mysterium VPN client. The returned
+    // Mysterium configuration is restricted to this APK via IncludedApplications, so the rest of
+    // the TV keeps using its normal network connection.
+    implementation("com.wireguard.android:tunnel:1.0.20260102")
+
     implementation("io.coil-kt.coil3:coil-compose:3.5.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.5.0")
 
