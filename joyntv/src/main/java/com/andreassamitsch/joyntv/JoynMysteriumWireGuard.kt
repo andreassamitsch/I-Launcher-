@@ -19,9 +19,10 @@ import kotlinx.coroutines.withContext
 /**
  * App-scoped WireGuard tunnel used for Mysterium Residential.
  *
- * The tunnel itself is process-global, but Joyn keeps a separate remembered Residential profile per
- * market. [activeCountry] identifies which market currently owns the live tunnel so switching
- * DE/AT/CH can deterministically replace it with that country's approved exit.
+ * Discovery still uses the legacy process key. Persistent country profiles use one independent
+ * WireGuard key per market, allowing Mysterium to keep AT, DE and CH prepared server-side at the
+ * same time. Android still has only one active VPN tunnel, but switching countries then only needs
+ * a local tunnel reconfiguration instead of a full Mysterium disconnect/reconnect round-trip.
  */
 internal object JoynMysteriumWireGuard {
     private const val PREFS_NAME = "joyn_protocol"
@@ -43,7 +44,12 @@ internal object JoynMysteriumWireGuard {
 
     fun permissionIntent(activity: Activity): Intent? = GoBackend.VpnService.prepare(activity)
 
-    fun publicKey(context: Context): String = keyPair(context.applicationContext).publicKey.toBase64()
+    /** Legacy key used by the Residential scanner while it evaluates candidates. */
+    fun publicKey(context: Context): String = keyPair(context.applicationContext, country = null).publicKey.toBase64()
+
+    /** Stable per-country key used by persistent AT/DE/CH profiles. */
+    fun publicKey(context: Context, country: JoynCountry): String =
+        keyPair(context.applicationContext, country).publicKey.toBase64()
 
     fun activeCountry(): JoynCountry? = activeMarket
 
@@ -62,7 +68,7 @@ internal object JoynMysteriumWireGuard {
         runCatching {
             operationMutex.withLock {
                 val appContext = context.applicationContext
-                val keys = keyPair(appContext)
+                val keys = keyPair(appContext, country)
                 val configText = JoynMysteriumWireGuardConfig.materialize(
                     template = configTemplate,
                     privateKey = keys.privateKey.toBase64(),
@@ -102,15 +108,16 @@ internal object JoynMysteriumWireGuard {
         }
     }
 
-    private fun keyPair(context: Context): KeyPair {
+    private fun keyPair(context: Context, country: JoynCountry?): KeyPair {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val stored = prefs.getString(KEY_PRIVATE, "").orEmpty()
+        val preferenceKey = country?.let { "${KEY_PRIVATE}_${it.name.lowercase()}" } ?: KEY_PRIVATE
+        val stored = prefs.getString(preferenceKey, "").orEmpty()
         if (stored.isNotBlank()) {
             runCatching { KeyPair(Key.fromBase64(stored)) }.getOrNull()?.let { return it }
         }
 
         val generated = KeyPair()
-        prefs.edit().putString(KEY_PRIVATE, generated.privateKey.toBase64()).apply()
+        prefs.edit().putString(preferenceKey, generated.privateKey.toBase64()).apply()
         return generated
     }
 }
