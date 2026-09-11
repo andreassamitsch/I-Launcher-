@@ -20,9 +20,9 @@ import org.json.JSONObject
 /**
  * Country-explicit Joyn client used by the combined AT/DE/CH Live-TV view.
  *
- * Every market keeps its own account session. If a retained account token exists, this client uses
- * and refreshes it for that country, so PLUS/PREMIUM stations remain available across the combined
- * list. Countries without an account session still fall back to an isolated anonymous session.
+ * Every market keeps its own account session. Premium streams are only exposed when the retained
+ * account for that country actually has an active Joyn PLUS subscription; a plain login alone is
+ * not enough. This keeps channels in the UI that the active account can really play.
  */
 internal class JoynMultiCountryLiveApiClient(context: Context) {
     private val appContext = context.applicationContext
@@ -30,6 +30,7 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
     private val regionSettings = JoynRegionSettings(appContext)
     private val tokenMutex = Mutex()
     private val anonymousTokens = mutableMapOf<JoynCountry, LiveToken>()
+    private val subscriptionCache = mutableMapOf<JoynCountry, SubscriptionSnapshot>()
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -45,6 +46,7 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
             .recoverCatching { error ->
                 if (!error.shouldRetryAuthorization()) throw error
                 invalidateAnonymousToken(country)
+                subscriptionCache.remove(country)
                 loadLiveChannelsOnce(config, forceRefreshAccount = true)
             }
             .getOrThrow()
@@ -57,6 +59,7 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
                 .recoverCatching { error ->
                     if (!error.shouldRetryAuthorization()) throw error
                     invalidateAnonymousToken(country)
+                    subscriptionCache.remove(country)
                     resolveLivePlaybackOnce(config, channelId, forceRefreshAccount = true)
                 }
                 .getOrThrow()
@@ -70,6 +73,7 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
         forceRefreshAccount: Boolean,
     ): List<JoynLiveChannel> {
         val authorization = authorization(config.country, forceRefreshAccount)
+        val hasPlus = authorization.hasAccount && hasActivePlus(config, authorization.header)
         val url = JoynProtocol.graphQlUrl.toHttpUrl().newBuilder()
             .addQueryParameter("query", JoynProtocol.liveStreamsQuery)
             .build()
@@ -98,10 +102,54 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
         return buildList {
             for (index in 0 until streams.length()) {
                 streams.optJSONObject(index)?.toLiveChannel(now)?.let { channel ->
-                    if (channel.isFree || authorization.hasAccount) add(channel)
+                    if (channel.isFree || hasPlus) add(channel)
                 }
             }
         }
+    }
+
+    private fun hasActivePlus(config: JoynRuntimeConfig, authorizationHeader: String): Boolean {
+        val now = System.currentTimeMillis()
+        subscriptionCache[config.country]
+            ?.takeIf { now - it.checkedAtEpochMs < SUBSCRIPTION_CACHE_MS }
+            ?.let { return it.hasPlus }
+
+        val extensions = JSONObject().put(
+            "persistedQuery",
+            JSONObject().put("version", 1).put("sha256Hash", HASH_ACCOUNT),
+        )
+        val url = JoynProtocol.graphQlUrl.toHttpUrl().newBuilder()
+            .addQueryParameter("operationName", "GetMeState")
+            .addQueryParameter("variables", JSONObject().toString())
+            .addQueryParameter("extensions", extensions.toString())
+            .build()
+        val body = executeText(
+            Request.Builder()
+                .url(url)
+                .header("User-Agent", USER_AGENT)
+                .header("x-api-key", config.apiKey)
+                .header("Joyn-Platform", "web")
+                .header("Joyn-Country", config.country.name)
+                .header("Joyn-Distribution-Tenant", config.country.graphqlTenant)
+                .header("Authorization", authorizationHeader)
+                .get()
+                .build(),
+        )
+        val json = JSONObject(body)
+        val errors = json.optJSONArray("errors")
+        if (errors != null && errors.length() > 0) {
+            val details = errors.toString()
+            if (details.contains("INVALID_JWT", true)) throw LiveSessionException(details)
+            return false
+        }
+        val hasPlus = json.optJSONObject("data")
+            ?.optJSONObject("me")
+            ?.optJSONObject("subscriptionsData")
+            ?.optJSONObject("config")
+            ?.optBoolean("hasActivePlus", false)
+            ?: false
+        subscriptionCache[config.country] = SubscriptionSnapshot(hasPlus, now)
+        return hasPlus
     }
 
     private suspend fun resolveLivePlaybackOnce(
@@ -221,6 +269,7 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
             hasAccount = true,
             email = token.email,
         )
+        subscriptionCache.remove(country)
         regionSettings.saveSessionJson(country, refreshed.toPersistentJson())
         return refreshed
     }
@@ -422,6 +471,11 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
         val email: String? = null,
     )
 
+    private data class SubscriptionSnapshot(
+        val hasPlus: Boolean,
+        val checkedAtEpochMs: Long,
+    )
+
     private class LiveHttpException(val statusCode: Int, val responseBody: String) :
         IOException("Joyn Live HTTP $statusCode: ${responseBody.take(260)}")
 
@@ -431,6 +485,8 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
         private const val PREFS_NAME = "joyn_protocol"
         private const val TOKEN_MARGIN_SECONDS = 300L
         private const val API_KEY_TTL_MS = 5L * 24L * 60L * 60L * 1000L
+        private const val SUBSCRIPTION_CACHE_MS = 10L * 60L * 1000L
+        private const val HASH_ACCOUNT = "55ebb3812b45628017ee6c7f36f0b88a94e9778b9f11ad8a6fc05849182c07ec"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
