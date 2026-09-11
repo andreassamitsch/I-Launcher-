@@ -64,14 +64,17 @@ class ProxySettingsActivity : ComponentActivity() {
         }
 
         val repository = JoynRepository(applicationContext)
+        val currentCountry = repository.currentCountry()
         setContent {
             JoynTvTheme {
                 ProxySettingsScreen(
                     initial = repository.proxyConfig(),
                     initialTunnelState = repository.nordVpnOpenVpnState(),
-                    country = repository.currentCountry(),
+                    country = currentCountry,
                     savedNordUsername = repository.nordVpnServiceUsername(),
                     savedNordPassword = repository.nordVpnServicePassword(),
+                    savedMysteriumApiBaseUrl = repository.mysteriumApiBaseUrl(),
+                    savedMysteriumCountrySettings = repository.mysteriumCountrySettings(currentCountry),
                     onAutoResolve = { allTraffic, onProgress ->
                         repository.findAutomaticProxy(allTraffic, onProgress)
                     },
@@ -93,6 +96,21 @@ class ProxySettingsActivity : ComponentActivity() {
                     },
                     onRememberNordCredentials = { username, password ->
                         repository.saveNordVpnServiceCredentials(username, password)
+                    },
+                    onMysteriumResolve = { apiBaseUrl, maxAttempts, allTraffic, onProgress ->
+                        repository.findMysteriumResidentialProxy(
+                            country = currentCountry,
+                            apiBaseUrl = apiBaseUrl,
+                            maxAttempts = maxAttempts,
+                            allTraffic = allTraffic,
+                            onProgress = onProgress,
+                        )
+                    },
+                    onMysteriumStop = {
+                        repository.stopMysteriumResidentialScan()
+                    },
+                    onMysteriumSaveSettings = { apiBaseUrl, maxAttempts ->
+                        repository.saveMysteriumSettings(apiBaseUrl, currentCountry, maxAttempts)
                     },
                     onSave = { config ->
                         repository.setProxy(config)
@@ -127,6 +145,8 @@ private fun ProxySettingsScreen(
     country: JoynCountry,
     savedNordUsername: String,
     savedNordPassword: String,
+    savedMysteriumApiBaseUrl: String,
+    savedMysteriumCountrySettings: JoynMysteriumCountrySettings,
     onAutoResolve: suspend (
         allTraffic: Boolean,
         onProgress: (JoynProxyDiscoveryProgress) -> Unit,
@@ -144,6 +164,14 @@ private fun ProxySettingsScreen(
     ) -> JoynNordTunnelDiscoveryResult,
     onNordTunnelDisconnect: suspend () -> Unit,
     onRememberNordCredentials: (String, String) -> Unit,
+    onMysteriumResolve: suspend (
+        apiBaseUrl: String,
+        maxAttempts: Int,
+        allTraffic: Boolean,
+        onProgress: (JoynProxyDiscoveryProgress) -> Unit,
+    ) -> JoynProxyDiscoveryResult,
+    onMysteriumStop: () -> Unit,
+    onMysteriumSaveSettings: (String, Int) -> Unit,
     onSave: (JoynProxyConfig) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -151,9 +179,11 @@ private fun ProxySettingsScreen(
     val initialTunnelActive = initialTunnelState is JoynNordTunnelState.Connected
     val tunnelConnected = liveTunnelState is JoynNordTunnelState.Connected
     val initialNord = initialTunnelActive || (initial.automatic && initial.source.startsWith("NordVPN"))
+    val initialMysterium = initial.automatic && initial.source.startsWith("Mysterium")
     var enabled by rememberSaveable { mutableStateOf(initial.enabled || initialTunnelActive) }
     var automatic by rememberSaveable { mutableStateOf(if (initialTunnelActive) true else initial.automatic) }
     var nordVpn by rememberSaveable { mutableStateOf(initialNord) }
+    var mysterium by rememberSaveable { mutableStateOf(initialMysterium) }
     var nordTunnel by rememberSaveable { mutableStateOf(initialTunnelActive) }
     var allTraffic by rememberSaveable { mutableStateOf(initial.allTraffic) }
     var host by remember { mutableStateOf(initial.host) }
@@ -165,6 +195,10 @@ private fun ProxySettingsScreen(
     }
     var nordPassword by remember {
         mutableStateOf(savedNordPassword.ifBlank { if (initialNord) initial.password else "" })
+    }
+    var mysteriumApiBaseUrl by rememberSaveable { mutableStateOf(savedMysteriumApiBaseUrl) }
+    var mysteriumAttempts by rememberSaveable {
+        mutableStateOf(savedMysteriumCountrySettings.maxAttempts.toString())
     }
     var testing by remember { mutableStateOf(false) }
     var status by rememberSaveable {
@@ -204,11 +238,11 @@ private fun ProxySettingsScreen(
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "Für DE/AT/CH-Tests kann Joyn wahlweise über einen Proxy oder über einen app-eigenen NordVPN-Tunnel laufen. Aktiviert bleibt nur eine Variante, die Joyns echte Live-Freigabe besteht.",
+                "Für DE/AT/CH kann Joyn über öffentliche Proxys, NordVPN oder Mysterium Residential getestet werden. Aktiviert bleibt nur eine Verbindung, die Joyns echte Live-Freigabe besteht.",
                 color = Color(0xFFD7DBE3),
                 fontSize = if (compact) 13.sp else 15.sp,
                 lineHeight = if (compact) 18.sp else 21.sp,
-                modifier = Modifier.widthIn(max = 900.dp),
+                modifier = Modifier.widthIn(max = 930.dp),
             )
             Spacer(Modifier.height(22.dp))
 
@@ -250,85 +284,134 @@ private fun ProxySettingsScreen(
 
                 if (automatic) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ProxyChoice("Öffentliche Proxys", !nordVpn) {
+                        ProxyChoice("Öffentliche Proxys", !nordVpn && !mysterium) {
                             if (!testing) {
                                 nordVpn = false
+                                mysterium = false
                                 nordTunnel = false
                             }
                         }
                         ProxyChoice("NordVPN", nordVpn) {
-                            if (!testing) nordVpn = true
+                            if (!testing) {
+                                nordVpn = true
+                                mysterium = false
+                            }
+                        }
+                        ProxyChoice("Mysterium", mysterium) {
+                            if (!testing) {
+                                mysterium = true
+                                nordVpn = false
+                                nordTunnel = false
+                            }
                         }
                     }
                     Spacer(Modifier.height(18.dp))
 
-                    if (nordVpn) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            ProxyChoice("HTTPS Proxy :89", !nordTunnel) {
-                                if (!testing) nordTunnel = false
-                            }
-                            ProxyChoice("OpenVPN Tunnel Beta", nordTunnel) {
-                                if (!testing) nordTunnel = true
-                            }
-                        }
-                        Spacer(Modifier.height(16.dp))
-
-                        if (nordTunnel) {
+                    when {
+                        mysterium -> {
                             Text(
-                                "OpenVPN für ${country.name}: Die App lädt normale NordVPN-Server mit OpenVPN UDP/TCP und routet ausschließlich Joyn TV durch Androids VPN. Andere Apps und der I Launcher bleiben auf der normalen Verbindung. Nach jedem Tunnel wird die Exit-IP geprüft; gleiche Exit-IPs werden nur einmal gegen Joyn Live getestet.",
+                                "Mysterium Residential für ${country.name}: Joyn TV fordert nacheinander neue private Residential-IP-Leases an, prüft Exit-IP und Land und testet jede eindeutige IP bis zur echten Joyn-Live-Freigabe.",
                                 color = Color(0xFFD7DBE3),
                                 fontSize = 14.sp,
                                 lineHeight = 20.sp,
-                                modifier = Modifier.widthIn(max = 900.dp),
+                                modifier = Modifier.widthIn(max = 930.dp),
                             )
                             Spacer(Modifier.height(10.dp))
                             Text(
-                                "UDP wird zuerst getestet, TCP dient als Fallback. Während der längeren Suche kannst du den Test jederzeit stoppen; danach bleibt die Zwischenbilanz mit den bisher getesteten Servern sichtbar.",
+                                "Die Mysterium-VPN-Komponente muss auf demselben Gerät laufen und angemeldet sein. Die Einstellungen unten werden für ${country.name} gespeichert. Residential ist fest aktiviert; bei jedem Versuch wird eine neue IP angefordert.",
+                                color = Color(0xFFF1C27D),
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                                modifier = Modifier.widthIn(max = 930.dp),
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            ProxyFieldLabel("Mysterium API auf diesem Gerät")
+                            ProxyField(
+                                mysteriumApiBaseUrl,
+                                { mysteriumApiBaseUrl = it },
+                                JoynMysteriumSettings.DEFAULT_API_BASE_URL,
+                                false,
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            ProxyFieldLabel("Max. neue Residential-IPs für ${country.name} testen (1–100)")
+                            ProxyField(
+                                mysteriumAttempts,
+                                { mysteriumAttempts = it.filter(Char::isDigit).take(3) },
+                                "25",
+                                false,
+                            )
+                        }
+
+                        nordVpn -> {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                ProxyChoice("HTTPS Proxy :89", !nordTunnel) {
+                                    if (!testing) nordTunnel = false
+                                }
+                                ProxyChoice("OpenVPN Tunnel Beta", nordTunnel) {
+                                    if (!testing) nordTunnel = true
+                                }
+                            }
+                            Spacer(Modifier.height(16.dp))
+
+                            if (nordTunnel) {
+                                Text(
+                                    "OpenVPN für ${country.name}: Die App lädt normale NordVPN-Server mit OpenVPN UDP/TCP und routet ausschließlich Joyn TV durch Androids VPN. Andere Apps und der I Launcher bleiben auf der normalen Verbindung. Nach jedem Tunnel wird die Exit-IP geprüft; gleiche Exit-IPs werden nur einmal gegen Joyn Live getestet.",
+                                    color = Color(0xFFD7DBE3),
+                                    fontSize = 14.sp,
+                                    lineHeight = 20.sp,
+                                    modifier = Modifier.widthIn(max = 900.dp),
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                Text(
+                                    "UDP wird zuerst getestet, TCP dient als Fallback. Während der längeren Suche kannst du den Test jederzeit stoppen; danach bleibt die Zwischenbilanz mit den bisher getesteten Servern sichtbar.",
+                                    color = Color(0xFFF1C27D),
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp,
+                                    modifier = Modifier.widthIn(max = 900.dp),
+                                )
+                            } else {
+                                Text(
+                                    "HTTPS-Proxy für ${country.name}: Die App lädt alle von Nord als proxy_ssl markierten Server auf Port 89, ermittelt deren tatsächliche Exit-IP und prüft jede eindeutige Exit-IP nur einmal gegen Joyn Live.",
+                                    color = Color(0xFFD7DBE3),
+                                    fontSize = 14.sp,
+                                    lineHeight = 20.sp,
+                                    modifier = Modifier.widthIn(max = 900.dp),
+                                )
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "Verwende die NordVPN-Service-Zugangsdaten aus der manuellen Einrichtung. Sie werden auf diesem Gerät gespeichert, damit du sie nur einmal eingeben musst.",
                                 color = Color(0xFFF1C27D),
                                 fontSize = 13.sp,
                                 lineHeight = 18.sp,
                                 modifier = Modifier.widthIn(max = 900.dp),
                             )
-                        } else {
+                            Spacer(Modifier.height(16.dp))
+                            ProxyFieldLabel("NordVPN Service-Benutzername")
+                            ProxyField(nordUsername, { nordUsername = it }, "Service username", false)
+                            Spacer(Modifier.height(12.dp))
+                            ProxyFieldLabel("NordVPN Service-Passwort")
+                            ProxyField(nordPassword, { nordPassword = it }, "Service password", true)
+                        }
+
+                        else -> {
                             Text(
-                                "HTTPS-Proxy für ${country.name}: Die App lädt alle von Nord als proxy_ssl markierten Server auf Port 89, ermittelt deren tatsächliche Exit-IP und prüft jede eindeutige Exit-IP nur einmal gegen Joyn Live.",
+                                "Öffentliche Proxys für ${country.name}: Die App lädt aktuelle Proxylisten und verwirft Kandidaten, die Joyns API- oder Live-Prüfung nicht bestehen.",
                                 color = Color(0xFFD7DBE3),
                                 fontSize = 14.sp,
                                 lineHeight = 20.sp,
                                 modifier = Modifier.widthIn(max = 900.dp),
                             )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "Öffentliche Gratis-Proxys werden von Joyn häufig als VPN/Proxy erkannt. Diese Option bleibt vor allem für Tests erhalten.",
+                                color = Color(0xFFF1C27D),
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                                modifier = Modifier.widthIn(max = 900.dp),
+                            )
                         }
-
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            "Verwende die NordVPN-Service-Zugangsdaten aus der manuellen Einrichtung. Sie werden auf diesem Gerät gespeichert, damit du sie nur einmal eingeben musst.",
-                            color = Color(0xFFF1C27D),
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            modifier = Modifier.widthIn(max = 900.dp),
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        ProxyFieldLabel("NordVPN Service-Benutzername")
-                        ProxyField(nordUsername, { nordUsername = it }, "Service username", false)
-                        Spacer(Modifier.height(12.dp))
-                        ProxyFieldLabel("NordVPN Service-Passwort")
-                        ProxyField(nordPassword, { nordPassword = it }, "Service password", true)
-                    } else {
-                        Text(
-                            "Öffentliche Proxys für ${country.name}: Die App lädt aktuelle Proxylisten und verwirft Kandidaten, die Joyns API- oder Live-Prüfung nicht bestehen.",
-                            color = Color(0xFFD7DBE3),
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp,
-                            modifier = Modifier.widthIn(max = 900.dp),
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            "Öffentliche Gratis-Proxys werden von Joyn häufig als VPN/Proxy erkannt. Diese Option bleibt vor allem für Tests erhalten.",
-                            color = Color(0xFFF1C27D),
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            modifier = Modifier.widthIn(max = 900.dp),
-                        )
                     }
 
                     if (status.isNotBlank()) {
@@ -338,7 +421,7 @@ private fun ProxySettingsScreen(
                             color = if (testing) Color(0xFFD7DBE3) else Color(0xFF9FD6AE),
                             fontSize = 13.sp,
                             lineHeight = 18.sp,
-                            modifier = Modifier.widthIn(max = 900.dp),
+                            modifier = Modifier.widthIn(max = 980.dp),
                         )
                     }
                 } else {
@@ -364,6 +447,8 @@ private fun ProxySettingsScreen(
                     } else {
                         "Direkt: Joyn verwendet die normale Internetverbindung."
                     }
+                    automatic && mysterium ->
+                        "Mysterium Residential: neue Residential-IP anfordern → Exit-IP/Land prüfen → eindeutige IP einmal gegen Joyn Live testen → ersten Treffer aktivieren."
                     automatic && nordVpn && nordTunnel ->
                         "NordVPN OpenVPN Beta: UDP/TCP-Server laden → Android-Tunnel nur für Joyn → Exit-IP deduplizieren → Joyn Live prüfen → ersten geeigneten Tunnel aktiv lassen."
                     automatic && nordVpn ->
@@ -374,18 +459,28 @@ private fun ProxySettingsScreen(
                 color = Color(0xFF9FA8B5),
                 fontSize = 13.sp,
                 lineHeight = 18.sp,
-                modifier = Modifier.widthIn(max = 900.dp),
+                modifier = Modifier.widthIn(max = 930.dp),
             )
             Spacer(Modifier.height(22.dp))
 
             val manualValid = host.isNotBlank() && (port.toIntOrNull() ?: 0) in 1..65535
             val nordValid = nordUsername.isNotBlank() && nordPassword.isNotBlank()
-            val saveEnabled = !testing && (!enabled || (automatic && (!nordVpn || nordValid)) || (!automatic && manualValid))
+            val mysteriumMaxAttempts = mysteriumAttempts.toIntOrNull() ?: 0
+            val mysteriumValid = mysteriumApiBaseUrl.isNotBlank() &&
+                mysteriumMaxAttempts in JoynMysteriumSettings.MIN_ATTEMPTS..JoynMysteriumSettings.MAX_ATTEMPTS
+            val autoValid = when {
+                mysterium -> mysteriumValid
+                nordVpn -> nordValid
+                else -> true
+            }
+            val saveEnabled = !testing && (!enabled || (automatic && autoValid) || (!automatic && manualValid))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 ProxyAction("Zurück", enabled = !testing, onClick = onBack)
                 ProxyAction(
                     label = when {
+                        testing && mysterium -> "Residential-IPs werden getestet …"
                         testing -> if (nordTunnel) "OpenVPN wird getestet …" else "Proxys werden getestet …"
+                        enabled && automatic && mysterium -> "Residential testen & aktivieren"
                         enabled && automatic && nordVpn && nordTunnel -> "OpenVPN suchen & verbinden"
                         enabled && automatic && nordVpn -> "NordVPN suchen & aktivieren"
                         enabled && automatic -> "Suchen & aktivieren"
@@ -447,6 +542,32 @@ private fun ProxySettingsScreen(
                             }
                         }
 
+                        automatic && mysterium -> scope.launch {
+                            testing = true
+                            onMysteriumSaveSettings(mysteriumApiBaseUrl, mysteriumMaxAttempts)
+                            status = "Prüfe Mysterium Residential für ${country.name} …"
+                            val result = runCatching {
+                                onMysteriumResolve(
+                                    mysteriumApiBaseUrl,
+                                    mysteriumMaxAttempts,
+                                    allTraffic,
+                                ) { progress ->
+                                    status = progress.message
+                                }
+                            }.getOrElse { error ->
+                                JoynProxyDiscoveryResult(
+                                    config = null,
+                                    candidates = mysteriumMaxAttempts,
+                                    attempted = 0,
+                                    message = "Mysterium-Suche fehlgeschlagen: ${error.message ?: error.javaClass.simpleName}",
+                                )
+                            }
+                            testing = false
+                            val config = result.config
+                            status = result.message
+                            if (config != null) onSave(config)
+                        }
+
                         else -> scope.launch {
                             testing = true
                             val result = if (nordVpn) {
@@ -488,6 +609,13 @@ private fun ProxySettingsScreen(
                                 status = result.message
                             }
                         }
+                    }
+                }
+
+                if (testing && enabled && automatic && mysterium) {
+                    ProxyAction("Test stoppen") {
+                        status = "Stop angefordert … Zwischenbilanz der getesteten Residential-IPs wird vorbereitet."
+                        onMysteriumStop()
                     }
                 }
 
