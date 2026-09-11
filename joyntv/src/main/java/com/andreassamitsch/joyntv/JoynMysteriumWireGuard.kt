@@ -20,9 +20,9 @@ import kotlinx.coroutines.withContext
  * App-scoped WireGuard tunnel used for Mysterium Residential.
  *
  * Discovery still uses the legacy process key. Persistent country profiles use one independent
- * WireGuard key per market, allowing Mysterium to keep AT, DE and CH prepared server-side at the
- * same time. Android still has only one active VPN tunnel, but switching countries then only needs
- * a local tunnel reconfiguration instead of a full Mysterium disconnect/reconnect round-trip.
+ * WireGuard key per market. Android itself can only keep one VpnService tunnel active, therefore
+ * switching countries replaces the local WireGuard configuration atomically as far as GoBackend
+ * permits.
  */
 internal object JoynMysteriumWireGuard {
     private const val PREFS_NAME = "joyn_protocol"
@@ -80,7 +80,7 @@ internal object JoynMysteriumWireGuard {
                 // GoBackend resolves DNS peer endpoints only after it has already torn the previous
                 // tunnel down. Its resolver retries up to ten times with one-second sleeps. Resolve
                 // the endpoint once while the old country is still usable and keep that answer in
-                // InetEndpoint's cache, so the actual AT/DE/CH handover does not hit that 10 s path.
+                // InetEndpoint's cache, so the actual AT/DE/CH handover cannot enter that 10 s loop.
                 JoynMysteriumWireGuardConfig.preResolvePeerEndpoint(parsed)
 
                 val state = backend(appContext).setState(tunnel, Tunnel.State.UP, parsed)
@@ -131,13 +131,18 @@ internal object JoynMysteriumWireGuard {
 /**
  * Converts a Mysterium wg-quick template into the leak-safe configuration consumed by GoBackend.
  *
- * Important Android VpnService behaviour: adding any IPv6 address, route or DNS server implicitly
- * enables IPv6 for that VPN. If the VPN does not then route IPv6, traffic may use the underlying
- * network. Therefore simply changing AllowedIPs is not sufficient: every IPv6 interface address
- * and IPv6 DNS server must also be removed before GoBackend creates VpnService.Builder.
+ * Besides stripping IPv6, use deterministic public IPv4 DNS servers instead of carrying a stale
+ * provider DNS route from one country session into the next. Mysterium itself supports public DNS
+ * (including 1.1.1.1), while its Android mobile node uses MTU 1280 and a WireGuard keepalive of 18 s.
+ * Those values avoid the DNS bootstrap race seen immediately after DE/AT/CH handovers.
  */
 internal object JoynMysteriumWireGuardConfig {
     private enum class Section { NONE, INTERFACE, PEER }
+
+    private const val SAFE_MTU = 1280
+    private const val KEEPALIVE_SECONDS = 18
+    private const val DNS_PRIMARY = "1.1.1.1"
+    private const val DNS_SECONDARY = "8.8.8.8"
 
     fun materialize(template: String, privateKey: String, packageName: String): String {
         require(template.isNotBlank()) { "Mysterium hat keine WireGuard-Konfiguration geliefert." }
@@ -176,10 +181,10 @@ internal object JoynMysteriumWireGuardConfig {
                 section == Section.INTERFACE && keyEquals(line, "Address") -> {
                     sanitizeAddressLine(line)?.let(lines::add)
                 }
-                section == Section.INTERFACE && keyEquals(line, "DNS") -> {
-                    sanitizeDnsLine(line)?.let(lines::add)
-                }
+                section == Section.INTERFACE && keyEquals(line, "DNS") -> Unit
+                section == Section.INTERFACE && keyEquals(line, "MTU") -> Unit
                 section == Section.PEER && keyEquals(line, "AllowedIPs") -> Unit
+                section == Section.PEER && keyEquals(line, "PersistentKeepalive") -> Unit
                 else -> lines += line
             }
         }
@@ -188,6 +193,8 @@ internal object JoynMysteriumWireGuardConfig {
         require(interfaceIndex >= 0) {
             "Ungültige Mysterium-WireGuard-Konfiguration: [Interface] fehlt."
         }
+        lines.add(interfaceIndex + 1, "MTU = $SAFE_MTU")
+        lines.add(interfaceIndex + 1, "DNS = $DNS_PRIMARY, $DNS_SECONDARY")
         lines.add(interfaceIndex + 1, "IncludedApplications = $packageName")
 
         val peerIndex = lines.indexOfFirst { it.trim().equals("[Peer]", ignoreCase = true) }
@@ -195,6 +202,7 @@ internal object JoynMysteriumWireGuardConfig {
             "Ungültige Mysterium-WireGuard-Konfiguration: [Peer] fehlt."
         }
 
+        lines.add(peerIndex + 1, "PersistentKeepalive = $KEEPALIVE_SECONDS")
         lines.add(peerIndex + 1, "AllowedIPs = 0.0.0.0/0")
         return lines.joinToString("\n")
     }
@@ -212,8 +220,15 @@ internal object JoynMysteriumWireGuardConfig {
         require(interfaceConfig.getDnsServers().none { it is Inet6Address }) {
             "WireGuard-Sicherheitsprüfung: IPv6-DNS im VPN-Interface erkannt."
         }
+        require(interfaceConfig.getDnsServers().map { it.hostAddress }.toSet() == setOf(DNS_PRIMARY, DNS_SECONDARY)) {
+            "WireGuard-Sicherheitsprüfung: erwartete IPv4-DNS-Server fehlen."
+        }
+        require(interfaceConfig.getMtu().orElse(SAFE_MTU) == SAFE_MTU) {
+            "WireGuard-Sicherheitsprüfung: MTU muss $SAFE_MTU sein."
+        }
 
-        val allowed = peers.single().getAllowedIps()
+        val peer = peers.single()
+        val allowed = peer.getAllowedIps()
         require(allowed.none { it.getAddress() is Inet6Address }) {
             "WireGuard-Sicherheitsprüfung: IPv6-Route im Peer erkannt."
         }
@@ -223,6 +238,9 @@ internal object JoynMysteriumWireGuardConfig {
                 allowed.single().getMask() == 0
         ) {
             "WireGuard-Sicherheitsprüfung: IPv4-Default-Route 0.0.0.0/0 fehlt."
+        }
+        require(peer.getPersistentKeepalive().orElse(0) == KEEPALIVE_SECONDS) {
+            "WireGuard-Sicherheitsprüfung: PersistentKeepalive muss $KEEPALIVE_SECONDS s sein."
         }
     }
 
@@ -239,11 +257,6 @@ internal object JoynMysteriumWireGuardConfig {
             isIpv4Literal(token.substringBefore('/').trim())
         }
         return ipv4.takeIf { it.isNotEmpty() }?.joinToString(", ", prefix = "Address = ")
-    }
-
-    private fun sanitizeDnsLine(line: String): String? {
-        val safe = values(line).filter { token -> !token.contains(':') }
-        return safe.takeIf { it.isNotEmpty() }?.joinToString(", ", prefix = "DNS = ")
     }
 
     private fun values(line: String): List<String> {
