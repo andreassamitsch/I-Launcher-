@@ -74,6 +74,7 @@ internal fun JoynHomeScreen(
     var liveError by remember { mutableStateOf<String?>(null) }
     var selectedMedia by remember { mutableStateOf<JoynMediaItem?>(null) }
     var selectedLive by remember { mutableStateOf<JoynLiveChannel?>(null) }
+    var prewarmLive by remember { mutableStateOf<JoynLiveChannel?>(null) }
     var account by remember { mutableStateOf(JoynAccountState(loggedIn = false)) }
     val updateState by updateManager.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -95,6 +96,17 @@ internal fun JoynHomeScreen(
         while (updateState is JoynUpdateState.Downloading) {
             delay(700)
             updateManager.refreshDownloadState()
+        }
+    }
+
+    // TV users normally focus a card shortly before pressing OK. Use that small dwell time to
+    // prepare the target country's already-approved Mysterium route. Moving focus again cancels the
+    // debounce before any unnecessary country switch starts.
+    LaunchedEffect(prewarmLive?.id) {
+        val channel = prewarmLive ?: return@LaunchedEffect
+        delay(LIVE_ROUTE_PREWARM_DELAY_MS)
+        withContext(Dispatchers.IO) {
+            repository.prepareLiveChannel(channel.id)
         }
     }
 
@@ -172,7 +184,10 @@ internal fun JoynHomeScreen(
                         else -> LiveRow(
                             channels = liveChannels,
                             compact = compact,
-                            onFocused = { selectedLive = it },
+                            onFocused = {
+                                selectedLive = it
+                                prewarmLive = it
+                            },
                             onPlay = onPlayLive,
                         )
                     }
@@ -186,6 +201,7 @@ internal fun JoynHomeScreen(
                             compact = compact,
                             onFocused = {
                                 selectedLive = it
+                                prewarmLive = it
                                 selectedMedia = null
                             },
                             onPlay = onPlayLive,
@@ -207,6 +223,7 @@ internal fun JoynHomeScreen(
                                     onFocused = {
                                         selectedMedia = it
                                         selectedLive = null
+                                        prewarmLive = null
                                     },
                                     onOpen = onOpenMedia,
                                 )
@@ -610,3 +627,5 @@ private fun UpdateChipHome(
         )
     }
 }
+
+private const val LIVE_ROUTE_PREWARM_DELAY_MS = 180L
