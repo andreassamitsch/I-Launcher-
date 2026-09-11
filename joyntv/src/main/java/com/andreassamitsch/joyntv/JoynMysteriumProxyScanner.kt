@@ -1,6 +1,6 @@
 package com.andreassamitsch.joyntv
 
-import java.net.InetSocketAddress
+import android.content.Context
 import java.net.Proxy
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -14,9 +14,20 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
+/**
+ * Finds a Mysterium Residential exit that Joyn accepts.
+ *
+ * Despite the historical class name, this no longer consumes Mysterium's connect-proxy gateway.
+ * The current Mysterium client uses /connection/connect to obtain a WireGuard configuration, then
+ * establishes an Android VPN tunnel. We do the same and restrict the tunnel to this Joyn TV APK.
+ */
 internal class JoynMysteriumProxyScanner(
+    context: Context,
     private val apiClient: JoynMysteriumApiClient,
 ) {
+    private val appContext = context.applicationContext
+    private val wireGuardApi = JoynMysteriumWireGuardApiClient(appContext, apiClient)
+
     suspend fun findBest(
         country: JoynCountry,
         apiKey: String?,
@@ -39,6 +50,10 @@ internal class JoynMysteriumProxyScanner(
         )
         JoynMysteriumScanControl.reset()
 
+        // Configuration requests must be made outside a previous test tunnel. Once a candidate
+        // succeeds we deliberately leave its app-scoped tunnel active.
+        JoynMysteriumWireGuard.disconnect(appContext)
+
         onProgress(JoynProxyDiscoveryProgress("Prüfe Mysterium-Konto …", 0, attemptsLimit))
         val apiStatus = apiClient.status()
         if (!apiStatus.reachable) {
@@ -53,73 +68,110 @@ internal class JoynMysteriumProxyScanner(
             )
         }
 
+        val publicKey = runCatching { JoynMysteriumWireGuard.publicKey(appContext) }.getOrElse { error ->
+            return@withContext JoynProxyDiscoveryResult(
+                null,
+                attemptsLimit,
+                0,
+                "WireGuard-Schlüssel konnte nicht erstellt werden: ${error.message ?: error.javaClass.simpleName}",
+            )
+        }
+
         val log = mutableListOf<String>()
         log += "API: ${apiStatus.message}"
         log += apiClient.residentialLocationSummary()
-        log += "Proxytransport: HTTPS CONNECT über lokale TLS-Bridge"
+        log += "Transport: Mysterium WireGuard · Android VPN · nur Joyn TV"
+        if (!allTraffic) {
+            log += "Hinweis: Die frühere Option 'Nur API / Token' entfällt bei WireGuard; innerhalb von Joyn TV läuft der gesamte Traffic durch den Tunnel."
+        }
 
         val seenExits = linkedSetOf<String>()
-        val seenLeases = linkedSetOf<String>()
+        val seenConfigs = linkedSetOf<String>()
         var attempted = 0
-        var leasesReceived = 0
+        var configsReceived = 0
         var duplicates = 0
         var wrongCountry = 0
-        var proxyFailures = 0
+        var tunnelFailures = 0
         var joynVpnDetected = 0
         var joynOtherFailure = 0
 
         while (attempted < attemptsLimit && !JoynMysteriumScanControl.isStopRequested()) {
             attempted++
+            JoynMysteriumWireGuard.disconnect(appContext)
+
             onProgress(
                 JoynProxyDiscoveryProgress(
-                    message = "Mysterium Residential ${country.name}: fordere IP $attempted/$attemptsLimit an …\n" +
-                        shortStats(leasesReceived, seenExits.size, joynVpnDetected, proxyFailures),
+                    message = "Mysterium Residential ${country.name}: fordere WireGuard-IP $attempted/$attemptsLimit an …\n" +
+                        shortStats(configsReceived, seenExits.size, joynVpnDetected, tunnelFailures),
                     attempted = attempted - 1,
                     total = attemptsLimit,
                 ),
             )
 
-            val leaseResult = apiClient.requestResidentialProxy(country = country, resetConnection = true)
-            val lease = leaseResult.getOrElse { error ->
+            val lease = wireGuardApi.requestResidential(
+                country = country,
+                publicKey = publicKey,
+                resetConnection = true,
+            ).getOrElse { error ->
                 val reason = error.message ?: error.javaClass.simpleName
-                log += "#$attempted LEASE_FEHLER · $reason"
+                log += "#$attempted CONFIG_FEHLER · $reason"
                 if (reason.contains("limit", ignoreCase = true)) {
+                    JoynMysteriumWireGuard.disconnect(appContext)
                     return@withContext finish(
-                        config = null,
+                        activated = false,
                         country = country,
                         attemptsLimit = attemptsLimit,
                         attempted = attempted,
                         stopped = false,
-                        leasesReceived = leasesReceived,
+                        configsReceived = configsReceived,
                         uniqueExits = seenExits.size,
                         duplicates = duplicates,
                         wrongCountry = wrongCountry,
-                        proxyFailures = proxyFailures,
+                        tunnelFailures = tunnelFailures,
                         joynVpnDetected = joynVpnDetected,
                         joynOtherFailure = joynOtherFailure,
                         log = log,
-                        extra = "Mysterium meldet ein IP-/Proxy-Limit; Scan wurde beendet.",
+                        extra = "Mysterium meldet ein IP-Wechsel-Limit; Scan wurde beendet.",
                     )
                 }
                 delay(RETRY_DELAY_MS)
                 continue
             }
-            leasesReceived++
+            configsReceived++
 
-            val leaseKey = "${lease.host}:${lease.port}:${lease.username}:${lease.expiresAt}"
-            if (!seenLeases.add(leaseKey)) {
+            val configKey = listOf(lease.id, lease.providerHash, lease.exitIp, lease.config.hashCode().toString())
+                .joinToString(":")
+            if (!seenConfigs.add(configKey)) {
                 duplicates++
-                log += "#$attempted LEASE_DUPLIKAT · ${lease.host}:${lease.port}"
+                log += "#$attempted CONFIG_DUPLIKAT · ${lease.exitIp.ifBlank { lease.id }}"
                 delay(RETRY_DELAY_MS)
                 continue
             }
 
-            val exitAttempt = throughProxyLease(lease) { client -> resolveExit(client) }
-            val trace = exitAttempt.value
+            onProgress(
+                JoynProxyDiscoveryProgress(
+                    message = "Mysterium Residential ${country.name}: starte app-eigenen WireGuard-Tunnel …",
+                    attempted = attempted,
+                    total = attemptsLimit,
+                ),
+            )
+
+            val connectResult = JoynMysteriumWireGuard.connect(appContext, lease.config)
+            if (connectResult.isFailure) {
+                tunnelFailures++
+                val error = connectResult.exceptionOrNull()
+                log += "#$attempted TUNNEL_FEHLER · ${error?.javaClass?.simpleName ?: "Fehler"}: ${error?.message.orEmpty()}"
+                JoynMysteriumWireGuard.disconnect(appContext)
+                delay(RETRY_DELAY_MS)
+                continue
+            }
+
+            val client = tunneledClient()
+            val trace = resolveExit(client)
             if (trace == null) {
-                proxyFailures++
-                val detail = exitAttempt.failure.ifBlank { "Exit nicht ermittelbar" }
-                log += "#$attempted PROXY_FEHLER · ${lease.host}:${lease.port} · $detail"
+                tunnelFailures++
+                log += "#$attempted TUNNEL_FEHLER · WireGuard aktiv, Exit-IP über Tunnel nicht ermittelbar"
+                JoynMysteriumWireGuard.disconnect(appContext)
                 delay(RETRY_DELAY_MS)
                 continue
             }
@@ -127,6 +179,7 @@ internal class JoynMysteriumProxyScanner(
             if (!trace.country.equals(country.name, ignoreCase = true)) {
                 wrongCountry++
                 log += "#$attempted FALSCHES_LAND · ${trace.ip} · ${trace.country} statt ${country.name}"
+                JoynMysteriumWireGuard.disconnect(appContext)
                 delay(RETRY_DELAY_MS)
                 continue
             }
@@ -134,6 +187,7 @@ internal class JoynMysteriumProxyScanner(
             if (!seenExits.add(trace.ip)) {
                 duplicates++
                 log += "#$attempted EXIT_DUPLIKAT · ${trace.ip}"
+                JoynMysteriumWireGuard.disconnect(appContext)
                 delay(RETRY_DELAY_MS)
                 continue
             }
@@ -147,43 +201,26 @@ internal class JoynMysteriumProxyScanner(
             )
 
             val startedNs = System.nanoTime()
-            val probeAttempt = throughProxyLease(lease) { client -> probeJoyn(client, country, apiKey) }
+            val probe = probeJoyn(client, country, apiKey)
             val latencyMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNs)
-            val probe = probeAttempt.value ?: ProbeResult.failed(
-                probeAttempt.failure.ifBlank { "Proxyverbindung während Joyn-Test abgebrochen" },
-            )
             when (probe.status) {
                 ProbeStatus.OK -> {
-                    val config = JoynProxyConfig(
-                        enabled = true,
-                        automatic = true,
-                        transport = JoynProxyTransport.HTTP,
-                        host = lease.host,
-                        port = lease.port,
-                        username = lease.username,
-                        password = lease.password,
-                        allTraffic = allTraffic,
-                        source = "Mysterium · Residential · ${country.name}",
-                        latencyMs = latencyMs,
-                        lastVerifiedAtEpochMs = System.currentTimeMillis(),
-                    )
                     log += "#$attempted OK · ${trace.ip} · Joyn Live freigegeben · ${latencyMs} ms"
                     return@withContext finish(
-                        config = config,
+                        activated = true,
                         country = country,
                         attemptsLimit = attemptsLimit,
                         attempted = attempted,
                         stopped = false,
-                        leasesReceived = leasesReceived,
+                        configsReceived = configsReceived,
                         uniqueExits = seenExits.size,
                         duplicates = duplicates,
                         wrongCountry = wrongCountry,
-                        proxyFailures = proxyFailures,
+                        tunnelFailures = tunnelFailures,
                         joynVpnDetected = joynVpnDetected,
                         joynOtherFailure = joynOtherFailure,
                         log = log,
-                        extra = "Treffer: Residential-Exit ${trace.ip} besteht Joyns Live-Freigabe.",
-                        expiresAt = lease.expiresAt,
+                        extra = "Treffer: Residential-Exit ${trace.ip} besteht Joyns Live-Freigabe. App-eigener WireGuard-Tunnel bleibt aktiv.",
                     )
                 }
                 ProbeStatus.VPN_DETECTED -> {
@@ -195,20 +232,23 @@ internal class JoynMysteriumProxyScanner(
                     log += "#$attempted JOYN_FEHLER · ${trace.ip} · ${probe.detail}"
                 }
             }
+
+            JoynMysteriumWireGuard.disconnect(appContext)
             delay(RETRY_DELAY_MS)
         }
 
+        JoynMysteriumWireGuard.disconnect(appContext)
         finish(
-            config = null,
+            activated = false,
             country = country,
             attemptsLimit = attemptsLimit,
             attempted = attempted,
             stopped = JoynMysteriumScanControl.isStopRequested(),
-            leasesReceived = leasesReceived,
+            configsReceived = configsReceived,
             uniqueExits = seenExits.size,
             duplicates = duplicates,
             wrongCountry = wrongCountry,
-            proxyFailures = proxyFailures,
+            tunnelFailures = tunnelFailures,
             joynVpnDetected = joynVpnDetected,
             joynOtherFailure = joynOtherFailure,
             log = log,
@@ -220,46 +260,15 @@ internal class JoynMysteriumProxyScanner(
         )
     }
 
-    private fun <T> throughProxyLease(
-        lease: JoynMysteriumProxyLease,
-        block: (OkHttpClient) -> T,
-    ): ProxyAttempt<T> {
-        var bridgeFailure = ""
-        return try {
-            JoynMysteriumProxyBridge(
-                remoteHost = lease.host,
-                remotePort = lease.port,
-                username = lease.username,
-                password = lease.password,
-                onFailure = { reason -> bridgeFailure = reason },
-            ).use { bridge ->
-                val client = proxyClient(bridge.localAddress)
-                ProxyAttempt(block(client), bridgeFailure)
-            }
-        } catch (error: Throwable) {
-            ProxyAttempt(
-                value = null,
-                failure = bridgeFailure.ifBlank {
-                    buildString {
-                        append(error.javaClass.simpleName)
-                        error.message?.takeIf(String::isNotBlank)?.let { append(": $it") }
-                    }
-                },
-            )
-        }
-    }
-
-    private fun proxyClient(localProxyAddress: InetSocketAddress): OkHttpClient {
-        val proxy = Proxy(Proxy.Type.HTTP, localProxyAddress)
-        return OkHttpClient.Builder()
-            .proxy(proxy)
-            .connectTimeout(PROXY_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .readTimeout(PROXY_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .callTimeout(PROXY_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .followRedirects(true)
-            .followSslRedirects(true)
-            .build()
-    }
+    private fun tunneledClient(): OkHttpClient = OkHttpClient.Builder()
+        // NO_PROXY only disables Java HTTP proxies. Android's app-scoped VPN route remains active.
+        .proxy(Proxy.NO_PROXY)
+        .connectTimeout(NETWORK_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(NETWORK_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(NETWORK_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .build()
 
     private fun resolveExit(client: OkHttpClient): ExitTrace? = runCatching {
         client.newCall(
@@ -388,46 +397,49 @@ internal class JoynMysteriumProxyScanner(
     }.getOrElse { error -> ProbeResult.failed("Entitlement ${error.javaClass.simpleName}: ${error.message.orEmpty()}") }
 
     private fun finish(
-        config: JoynProxyConfig?,
+        activated: Boolean,
         country: JoynCountry,
         attemptsLimit: Int,
         attempted: Int,
         stopped: Boolean,
-        leasesReceived: Int,
+        configsReceived: Int,
         uniqueExits: Int,
         duplicates: Int,
         wrongCountry: Int,
-        proxyFailures: Int,
+        tunnelFailures: Int,
         joynVpnDetected: Int,
         joynOtherFailure: Int,
         log: List<String>,
         extra: String,
-        expiresAt: String = "",
     ): JoynProxyDiscoveryResult {
         val message = buildString {
-            append(if (config != null) "Mysterium Residential erfolgreich" else if (stopped) "Mysterium-Test gestoppt" else "Mysterium-Test abgeschlossen")
+            append(if (activated) "Mysterium Residential erfolgreich" else if (stopped) "Mysterium-Test gestoppt" else "Mysterium-Test abgeschlossen")
             append(" · ${country.name}\n")
-            append("Versuche=$attempted/$attemptsLimit · Leases=$leasesReceived · eindeutige Exits=$uniqueExits")
+            append("Versuche=$attempted/$attemptsLimit · VPN-Configs=$configsReceived · eindeutige Exits=$uniqueExits")
             append(" · Joyn VPN erkannt=$joynVpnDetected")
             append(" · sonstige Joyn-Fehler=$joynOtherFailure")
-            append(" · Proxyfehler=$proxyFailures · falsches Land=$wrongCountry · Duplikate=$duplicates\n")
+            append(" · Tunnel-Fehler=$tunnelFailures · falsches Land=$wrongCountry · Duplikate=$duplicates\n")
             append(extra)
-            if (expiresAt.isNotBlank()) append(" · Lease bis $expiresAt")
             if (log.isNotEmpty()) {
                 append("\n\nTestlog:\n")
                 append(log.takeLast(MAX_LOG_LINES).joinToString("\n"))
                 if (log.size > MAX_LOG_LINES) append("\n… ${log.size - MAX_LOG_LINES} ältere Einträge ausgeblendet")
             }
         }
-        return JoynProxyDiscoveryResult(config, attemptsLimit, attempted, message, expiresAt)
+        return JoynProxyDiscoveryResult(
+            config = null,
+            candidates = attemptsLimit,
+            attempted = attempted,
+            message = message,
+            activated = activated,
+        )
     }
 
-    private fun shortStats(leases: Int, exits: Int, vpn: Int, proxyFailures: Int): String =
-        "Leases=$leases · Exits=$exits · VPN erkannt=$vpn · Proxyfehler=$proxyFailures"
+    private fun shortStats(configs: Int, exits: Int, vpn: Int, tunnelFailures: Int): String =
+        "VPN-Configs=$configs · Exits=$exits · VPN erkannt=$vpn · Tunnel-Fehler=$tunnelFailures"
 
     private fun compact(value: String): String = value.replace(Regex("\\s+"), " ").trim().take(220)
 
-    private data class ProxyAttempt<T>(val value: T?, val failure: String)
     private data class ExitTrace(val ip: String, val country: String)
     private data class ProbeToken(val accessToken: String, val tokenType: String)
     private enum class ProbeStatus { OK, VPN_DETECTED, FAILED }
@@ -439,10 +451,10 @@ internal class JoynMysteriumProxyScanner(
 
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
-        private const val RETRY_DELAY_MS = 350L
-        private const val PROXY_CONNECT_TIMEOUT_SECONDS = 7L
-        private const val PROXY_READ_TIMEOUT_SECONDS = 12L
-        private const val PROXY_CALL_TIMEOUT_SECONDS = 20L
+        private const val RETRY_DELAY_MS = 450L
+        private const val NETWORK_CONNECT_TIMEOUT_SECONDS = 10L
+        private const val NETWORK_READ_TIMEOUT_SECONDS = 15L
+        private const val NETWORK_CALL_TIMEOUT_SECONDS = 25L
         private const val MAX_LOG_LINES = 80
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
