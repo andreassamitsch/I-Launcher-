@@ -1,12 +1,16 @@
 package com.andreassamitsch.joyntv
 
 import android.content.Context
+import java.net.Inet4Address
+import java.net.InetAddress
 import java.net.Proxy
+import java.net.UnknownHostException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import okhttp3.Dns
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -81,6 +85,7 @@ internal class JoynMysteriumProxyScanner(
         log += "API: ${apiStatus.message}"
         log += apiClient.residentialLocationSummary()
         log += "Transport: Mysterium WireGuard · Android VPN · nur Joyn TV"
+        log += "Routing: IPv4 durch WireGuard · IPv6 für Joyn TV blockiert · Exit-/Joyn-Test IPv4-only"
         if (!allTraffic) {
             log += "Hinweis: Die frühere Option 'Nur API / Token' entfällt bei WireGuard; innerhalb von Joyn TV läuft der gesamte Traffic durch den Tunnel."
         }
@@ -170,7 +175,7 @@ internal class JoynMysteriumProxyScanner(
             val trace = resolveExit(client)
             if (trace == null) {
                 tunnelFailures++
-                log += "#$attempted TUNNEL_FEHLER · WireGuard aktiv, Exit-IP über Tunnel nicht ermittelbar"
+                log += "#$attempted TUNNEL_FEHLER · WireGuard aktiv, IPv4-Exit über Tunnel nicht ermittelbar"
                 JoynMysteriumWireGuard.disconnect(appContext)
                 delay(RETRY_DELAY_MS)
                 continue
@@ -261,7 +266,9 @@ internal class JoynMysteriumProxyScanner(
     }
 
     private fun tunneledClient(): OkHttpClient = OkHttpClient.Builder()
-        // NO_PROXY only disables Java HTTP proxies. Android's app-scoped VPN route remains active.
+        // Only IPv4 is transported by our Mysterium WireGuard peer. Keeping the probe IPv4-only
+        // avoids Happy-Eyeballs selecting a native IPv6 path and makes the measured exit explicit.
+        .dns(IPV4_ONLY_DNS)
         .proxy(Proxy.NO_PROXY)
         .connectTimeout(NETWORK_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(NETWORK_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -285,7 +292,7 @@ internal class JoynMysteriumProxyScanner(
             }.toMap()
             val ip = values["ip"].orEmpty().trim()
             val country = values["loc"].orEmpty().trim().uppercase()
-            if (ip.isBlank() || country.isBlank()) null else ExitTrace(ip, country)
+            if (ip.isBlank() || country.isBlank() || ip.contains(':')) null else ExitTrace(ip, country)
         }
     }.getOrNull()
 
@@ -451,6 +458,13 @@ internal class JoynMysteriumProxyScanner(
 
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        private val IPV4_ONLY_DNS = object : Dns {
+            override fun lookup(hostname: String): List<InetAddress> {
+                val ipv4 = Dns.SYSTEM.lookup(hostname).filterIsInstance<Inet4Address>()
+                if (ipv4.isEmpty()) throw UnknownHostException("Keine IPv4-Adresse für $hostname")
+                return ipv4
+            }
+        }
         private const val RETRY_DELAY_MS = 450L
         private const val NETWORK_CONNECT_TIMEOUT_SECONDS = 10L
         private const val NETWORK_READ_TIMEOUT_SECONDS = 15L
