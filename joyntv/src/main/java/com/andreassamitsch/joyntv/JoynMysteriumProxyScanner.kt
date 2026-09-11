@@ -7,7 +7,6 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import okhttp3.Credentials
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -57,6 +56,7 @@ internal class JoynMysteriumProxyScanner(
         val log = mutableListOf<String>()
         log += "API: ${apiStatus.message}"
         log += apiClient.residentialLocationSummary()
+        log += "Proxytransport: HTTPS CONNECT über lokale TLS-Bridge"
 
         val seenExits = linkedSetOf<String>()
         val seenLeases = linkedSetOf<String>()
@@ -114,11 +114,12 @@ internal class JoynMysteriumProxyScanner(
                 continue
             }
 
-            val client = proxyClient(lease)
-            val trace = resolveExit(client)
+            val exitAttempt = throughProxyLease(lease) { client -> resolveExit(client) }
+            val trace = exitAttempt.value
             if (trace == null) {
                 proxyFailures++
-                log += "#$attempted PROXY_FEHLER · Exit nicht ermittelbar"
+                val detail = exitAttempt.failure.ifBlank { "Exit nicht ermittelbar" }
+                log += "#$attempted PROXY_FEHLER · ${lease.host}:${lease.port} · $detail"
                 delay(RETRY_DELAY_MS)
                 continue
             }
@@ -146,8 +147,11 @@ internal class JoynMysteriumProxyScanner(
             )
 
             val startedNs = System.nanoTime()
-            val probe = probeJoyn(client, country, apiKey)
+            val probeAttempt = throughProxyLease(lease) { client -> probeJoyn(client, country, apiKey) }
             val latencyMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNs)
+            val probe = probeAttempt.value ?: ProbeResult.failed(
+                probeAttempt.failure.ifBlank { "Proxyverbindung während Joyn-Test abgebrochen" },
+            )
             when (probe.status) {
                 ProbeStatus.OK -> {
                     val config = JoynProxyConfig(
@@ -216,15 +220,39 @@ internal class JoynMysteriumProxyScanner(
         )
     }
 
-    private fun proxyClient(lease: JoynMysteriumProxyLease): OkHttpClient {
-        val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved(lease.host, lease.port))
-        val credential = Credentials.basic(lease.username, lease.password)
+    private fun <T> throughProxyLease(
+        lease: JoynMysteriumProxyLease,
+        block: (OkHttpClient) -> T,
+    ): ProxyAttempt<T> {
+        var bridgeFailure = ""
+        return try {
+            JoynMysteriumProxyBridge(
+                remoteHost = lease.host,
+                remotePort = lease.port,
+                username = lease.username,
+                password = lease.password,
+                onFailure = { reason -> bridgeFailure = reason },
+            ).use { bridge ->
+                val client = proxyClient(bridge.localAddress)
+                ProxyAttempt(block(client), bridgeFailure)
+            }
+        } catch (error: Throwable) {
+            ProxyAttempt(
+                value = null,
+                failure = bridgeFailure.ifBlank {
+                    buildString {
+                        append(error.javaClass.simpleName)
+                        error.message?.takeIf(String::isNotBlank)?.let { append(": $it") }
+                    }
+                },
+            )
+        }
+    }
+
+    private fun proxyClient(localProxyAddress: InetSocketAddress): OkHttpClient {
+        val proxy = Proxy(Proxy.Type.HTTP, localProxyAddress)
         return OkHttpClient.Builder()
             .proxy(proxy)
-            .proxyAuthenticator { _, response ->
-                if (response.request.header("Proxy-Authorization") != null) null
-                else response.request.newBuilder().header("Proxy-Authorization", credential).build()
-            }
             .connectTimeout(PROXY_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(PROXY_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .callTimeout(PROXY_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -399,6 +427,7 @@ internal class JoynMysteriumProxyScanner(
 
     private fun compact(value: String): String = value.replace(Regex("\\s+"), " ").trim().take(220)
 
+    private data class ProxyAttempt<T>(val value: T?, val failure: String)
     private data class ExitTrace(val ip: String, val country: String)
     private data class ProbeToken(val accessToken: String, val tokenType: String)
     private enum class ProbeStatus { OK, VPN_DETECTED, FAILED }
