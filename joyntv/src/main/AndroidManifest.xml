@@ -46,6 +46,11 @@
             android:screenOrientation="landscape" />
 
         <activity
+            android:name=".MysteriumSettingsActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <activity
             android:name=".ProxySettingsActivity"
             android:exported="false"
             android:screenOrientation="landscape" />
