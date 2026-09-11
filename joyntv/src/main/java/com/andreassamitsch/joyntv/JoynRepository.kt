@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -25,30 +26,69 @@ internal class JoynRepository(context: Context) {
     private val mysteriumScanner = JoynMysteriumProxyScanner(appContext, mysteriumApiClient)
     private val pinSettings = JoynParentalPinSettings(appContext)
     private val api = JoynApiClient(appContext)
+    private val multiCountryLiveApi = JoynMultiCountryLiveApiClient(appContext)
     private val pinPlaybackApi = JoynPinPlaybackApiClient(appContext)
     private val browseApi = JoynBrowseApiClient(appContext)
     private val categoryApi = JoynCategoryApiClient(appContext)
     private val collectionApi = JoynCollectionApiClient(appContext)
     private val previewPublisher = JoynPreviewChannelPublisher(appContext)
     private val countryRoutingMutex = Mutex()
+    private val networkOperationMutex = Mutex()
 
-    suspend fun loadLiveChannelsAndPublish(): List<JoynLiveChannel> {
-        ensureJoynCountryRouting()
-        val channels = api.loadLiveChannels()
-        previewPublisher.publishLive(channels)
-        return channels
-    }
+    /**
+     * Loads Live TV from all three Joyn markets into one list.
+     *
+     * Only one app-scoped WireGuard tunnel can be active at a time. Therefore the markets are
+     * fetched sequentially. The currently selected catalogue market is loaded last so its tunnel is
+     * active again when this method returns. Channel IDs are decorated with their source country;
+     * resolveLivePlayback() uses that marker to switch the tunnel automatically on click.
+     */
+    suspend fun loadLiveChannelsAndPublish(): List<JoynLiveChannel> = networkOperationMutex.withLock {
+        val selected = currentCountry()
+        val loadOrder = LIVE_COUNTRIES.filter { it != selected } + selected
+        val byCountry = mutableMapOf<JoynCountry, List<JoynLiveChannel>>()
+        val failures = mutableListOf<String>()
 
-    suspend fun loadCatalogue(path: String = "/neu-beliebt"): JoynCataloguePage {
-        ensureJoynCountryRouting()
-        val page = api.loadCatalogue(path)
-        if (path != "/neu-beliebt") return page
-        val browseLanes = buildList {
-            runCatching { browseApi.loadMediaLibraries() }.getOrNull()?.lanes?.let(::addAll)
-            runCatching { browseApi.loadCategories("/") }.getOrNull()?.lanes?.let(::addAll)
+        loadOrder.forEach { country ->
+            runCatching {
+                ensureJoynCountryRouting(country)
+                if (country == selected) api.loadLiveChannels()
+                else multiCountryLiveApi.loadLiveChannels(country)
+            }.onSuccess { channels ->
+                byCountry[country] = channels
+            }.onFailure { error ->
+                failures += "${country.name}: ${error.message ?: error.javaClass.simpleName}"
+            }
         }
-        return page.copy(lanes = browseLanes + page.lanes)
+
+        val channels = LIVE_COUNTRIES.flatMap { country ->
+            byCountry[country].orEmpty().map { channel -> decorateLiveChannel(country, channel) }
+        }
+        if (channels.isEmpty()) {
+            error(
+                "Live TV konnte für AT, DE und CH nicht geladen werden" +
+                    failures.takeIf { it.isNotEmpty() }?.joinToString(prefix = ": ", separator = " · ").orEmpty(),
+            )
+        }
+        if (failures.isNotEmpty()) {
+            Log.w(TAG, "Einzelne Live-TV-Länder konnten nicht geladen werden: ${failures.joinToString(" · ")}")
+        }
+
+        previewPublisher.publishLive(channels)
+        channels
     }
+
+    suspend fun loadCatalogue(path: String = "/neu-beliebt"): JoynCataloguePage =
+        networkOperationMutex.withLock {
+            ensureJoynCountryRouting()
+            val page = api.loadCatalogue(path)
+            if (path != "/neu-beliebt") return@withLock page
+            val browseLanes = buildList {
+                runCatching { browseApi.loadMediaLibraries() }.getOrNull()?.lanes?.let(::addAll)
+                runCatching { browseApi.loadCategories("/") }.getOrNull()?.lanes?.let(::addAll)
+            }
+            page.copy(lanes = browseLanes + page.lanes)
+        }
 
     suspend fun loadCategory(blockId: String, title: String): JoynCataloguePage {
         ensureJoynCountryRouting()
@@ -85,9 +125,19 @@ internal class JoynRepository(context: Context) {
         return api.loadSeasonEpisodes(seasonId)
     }
 
-    suspend fun resolveLivePlayback(channelId: String): JoynPlayback {
-        ensureJoynCountryRouting()
-        return api.resolveLivePlayback(channelId)
+    suspend fun resolveLivePlayback(channelId: String): JoynPlayback = networkOperationMutex.withLock {
+        val countryRef = parseLiveChannelRef(channelId)
+        if (countryRef == null) {
+            ensureJoynCountryRouting()
+            return@withLock api.resolveLivePlayback(channelId)
+        }
+
+        ensureJoynCountryRouting(countryRef.country)
+        if (countryRef.country == currentCountry()) {
+            api.resolveLivePlayback(countryRef.channelId)
+        } else {
+            multiCountryLiveApi.resolveLivePlayback(countryRef.country, countryRef.channelId)
+        }
     }
 
     suspend fun resolveVodPlayback(contentRef: String, enteredPin: String? = null): JoynPlayback {
@@ -198,17 +248,10 @@ internal class JoynRepository(context: Context) {
     fun saveMysteriumAccessToken(token: String) = mysteriumApiClient.saveManualAccessToken(token)
     fun logoutMysterium() = mysteriumApiClient.clearSession()
 
-    /**
-     * Ensures the saved Mysterium profile for the currently selected Joyn market is active.
-     *
-     * Each country remembers the exact Residential IP which already passed Joyn. When the user
-     * switches markets or the app process restarts, target_ip asks Mysterium to recreate that same
-     * approved exit instead of running the expensive scanner again.
-     */
-    suspend fun ensureMysteriumForCurrentCountry(): Result<Unit> = withContext(Dispatchers.IO) {
+    /** Ensures the persistent Mysterium profile for an arbitrary Joyn country is active. */
+    suspend fun ensureMysteriumForCountry(country: JoynCountry): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             countryRoutingMutex.withLock {
-                val country = currentCountry()
                 val profile = mysteriumSettings.wireGuardProfile(country)
 
                 if (profile == null || !profile.enabled) {
@@ -226,7 +269,7 @@ internal class JoynRepository(context: Context) {
                 }
 
                 // A WireGuard public key represents one prepared Mysterium connection. Always tear
-                // down the old local market first, then recreate the remembered exit server-side.
+                // down the previous country first and recreate the stored Joyn-approved target IP.
                 JoynMysteriumWireGuard.disconnect(appContext).getOrThrow()
                 val publicKey = JoynMysteriumWireGuard.publicKey(appContext)
                 val lease = mysteriumWireGuardApi.requestResidentialTarget(
@@ -244,6 +287,12 @@ internal class JoynRepository(context: Context) {
             }
         }
     }
+
+    /**
+     * Ensures the saved Mysterium profile for the currently selected Joyn catalogue market is active.
+     */
+    suspend fun ensureMysteriumForCurrentCountry(): Result<Unit> =
+        ensureMysteriumForCountry(currentCountry())
 
     suspend fun findMysteriumResidentialProxy(
         country: JoynCountry,
@@ -281,8 +330,8 @@ internal class JoynRepository(context: Context) {
         }
 
         if (result.activated) {
-            // requestResidential() saved the last candidate; because the scanner leaves only the
-            // successful tunnel UP, this candidate is exactly the Joyn-approved exit.
+            // New scanner builds persist the actually measured exit directly. The promotion remains
+            // as a compatibility fallback for profiles created by an older build.
             mysteriumSettings.promoteWireGuardCandidate(country)
             JoynMysteriumWireGuard.adoptActiveCountry(country)
         }
@@ -299,14 +348,31 @@ internal class JoynRepository(context: Context) {
     fun mysteriumLeaseNeedsRefresh(country: JoynCountry = currentCountry()): Boolean =
         mysteriumSettings.leaseNeedsRefresh(country)
 
-    private suspend fun ensureJoynCountryRouting() {
-        ensureMysteriumForCurrentCountry().getOrElse { error ->
+    private suspend fun ensureJoynCountryRouting(country: JoynCountry = currentCountry()) {
+        ensureMysteriumForCountry(country).getOrElse { error ->
             throw JoynMysteriumRoutingException(
-                "Mysterium ${currentCountry().name} konnte nicht wiederhergestellt werden: " +
+                "Mysterium ${country.name} konnte nicht wiederhergestellt werden: " +
                     (error.message ?: error.javaClass.simpleName),
                 error,
             )
         }
+    }
+
+    private fun decorateLiveChannel(country: JoynCountry, channel: JoynLiveChannel): JoynLiveChannel =
+        channel.copy(
+            id = "$MULTI_LIVE_PREFIX${country.name}:$${channel.id}".replace(":$", ":"),
+            title = "${channel.title} · ${country.name}",
+        )
+
+    private fun parseLiveChannelRef(value: String): CountryLiveRef? {
+        if (!value.startsWith(MULTI_LIVE_PREFIX)) return null
+        val payload = value.removePrefix(MULTI_LIVE_PREFIX)
+        val separator = payload.indexOf(':')
+        if (separator <= 0 || separator == payload.lastIndex) return null
+        val country = runCatching { JoynCountry.valueOf(payload.substring(0, separator)) }.getOrNull() ?: return null
+        val channelId = payload.substring(separator + 1)
+        if (channelId.isBlank()) return null
+        return CountryLiveRef(country, channelId)
     }
 
     private fun progressRelay(
@@ -317,6 +383,14 @@ internal class JoynRepository(context: Context) {
             if (Looper.myLooper() == Looper.getMainLooper()) onProgress(progress)
             else mainHandler.post { onProgress(progress) }
         }
+    }
+
+    private data class CountryLiveRef(val country: JoynCountry, val channelId: String)
+
+    companion object {
+        private const val TAG = "JoynRepository"
+        private const val MULTI_LIVE_PREFIX = "multi:"
+        private val LIVE_COUNTRIES = listOf(JoynCountry.AT, JoynCountry.DE, JoynCountry.CH)
     }
 }
 
