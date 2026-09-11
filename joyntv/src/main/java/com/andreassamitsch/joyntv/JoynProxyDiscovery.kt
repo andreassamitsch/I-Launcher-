@@ -12,4 +12,6 @@ internal data class JoynProxyDiscoveryResult(
     val attempted: Int,
     val message: String,
     val expiresAt: String = "",
+    /** True when a non-proxy transport (currently app-scoped Mysterium WireGuard) is active. */
+    val activated: Boolean = false,
 )
