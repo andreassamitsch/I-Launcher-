@@ -92,6 +92,7 @@ private fun NetworkSettingsScreen(
         mutableStateOf(if (initial.isMysterium) initial.allTraffic else countrySettings.allTraffic)
     }
     var testing by remember { mutableStateOf(false) }
+    val initialMode = if (initial.allTraffic) "Vollproxy inkl. Stream" else "API/Token · Stream direkt"
     var status by rememberSaveable {
         mutableStateOf(
             when {
@@ -101,7 +102,7 @@ private fun NetworkSettingsScreen(
                 savedWireGuard != null ->
                     "Residential-Profil für ${country.name} gespeichert (${savedWireGuard.exitIp}), derzeit aber deaktiviert."
                 initial.isUsable && initial.isMysterium ->
-                    "Aktiv: Mysterium Residential · ${initial.host}:${initial.port}"
+                    "Aktiv: Mysterium Residential · ${initial.host}:${initial.port} · $initialMode"
                 else -> "Direkte Verbindung aktiv. Für ${country.name} ist noch kein dauerhaftes Residential-Profil gespeichert."
             },
         )
@@ -109,6 +110,7 @@ private fun NetworkSettingsScreen(
     val scope = rememberCoroutineScope()
     val count = attempts.toIntOrNull() ?: 0
     val validCount = count in JoynMysteriumSettings.MIN_ATTEMPTS..JoynMysteriumSettings.MAX_ATTEMPTS
+    val selectedMode = if (allTraffic) "Vollproxy inkl. Stream" else "API/Token · Stream direkt"
 
     Column(
         Modifier
@@ -120,7 +122,7 @@ private fun NetworkSettingsScreen(
         Text("Joyn Netzwerk", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Mysterium Residential wird je Joyn-Land separat gespeichert. Ein erfolgreich getesteter Exit bleibt für dieses Land hinterlegt und wird beim Länderwechsel automatisch wieder aktiviert.",
+            "Mysterium Residential wird je Joyn-Land separat gespeichert. Ein erfolgreich getesteter Lease bleibt für dieses Land hinterlegt und wird beim Länderwechsel automatisch wieder aktiviert.",
             color = Color(0xFFD7DBE3), fontSize = 14.sp, lineHeight = 20.sp,
             modifier = Modifier.widthIn(max = 900.dp),
         )
@@ -150,7 +152,7 @@ private fun NetworkSettingsScreen(
             )
         }
         Spacer(Modifier.height(14.dp))
-        Text("Max. neue Residential-IPs testen (1–100)", color = Color(0xFFD7DBE3), fontSize = 13.sp)
+        Text("Max. Joyn-Proxyversuche (1–100)", color = Color(0xFFD7DBE3), fontSize = 13.sp)
         Spacer(Modifier.height(6.dp))
         BasicTextField(
             value = attempts,
@@ -169,15 +171,27 @@ private fun NetworkSettingsScreen(
         )
         Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            NetChoice("Nur API / Token", !allTraffic) { if (!testing) allTraffic = false }
-            NetChoice("Alles inkl. Stream", allTraffic) { if (!testing) allTraffic = true }
+            NetChoice("API/Token · Stream direkt", !allTraffic) { if (!testing) allTraffic = false }
+            NetChoice("Vollproxy inkl. Stream", allTraffic) { if (!testing) allTraffic = true }
         }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            if (allTraffic) {
+                "Vollproxy: Joyn API, Login, Entitlement, Manifest, DRM und Stream-Traffic laufen über Mysterium."
+            } else {
+                "API/Token: Joyn-Steuerverkehr läuft über Mysterium; nicht als Joyn-Control-Host erkannter Manifest-, CDN-, DRM- und Stream-Traffic läuft direkt."
+            },
+            color = Color(0xFFADB5C1),
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            modifier = Modifier.widthIn(max = 950.dp),
+        )
         Spacer(Modifier.height(20.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             NetAction("Residential testen & dauerhaft aktivieren", enabled = !testing && loggedIn && validCount) {
                 scope.launch {
                     testing = true
-                    status = "Starte Mysterium Residential ${country.name} …"
+                    status = "Starte Mysterium Residential ${country.name} · gewünschter Modus: $selectedMode …"
                     val result = runCatching {
                         onTest(count, allTraffic) { status = it.message }
                     }.getOrElse { error ->
@@ -189,7 +203,9 @@ private fun NetworkSettingsScreen(
                         )
                     }
                     testing = false
-                    status = if (result.activated) {
+                    status = if (result.config != null) {
+                        result.message + "\n\nAktiver Routing-Modus: $selectedMode"
+                    } else if (result.activated) {
                         result.message + "\n\nDieses Profil ist jetzt dauerhaft ${country.name} zugeordnet und wird automatisch wieder aktiviert."
                     } else {
                         result.message
