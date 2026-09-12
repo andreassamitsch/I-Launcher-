@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,6 +66,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class PlayerActivity : ComponentActivity() {
@@ -125,6 +127,7 @@ private fun JoynPlayer(
     streamType: String,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val streamProxyFallback = remember(context.applicationContext) {
         JoynStreamProxyFallback(context.applicationContext)
     }
@@ -140,6 +143,8 @@ private fun JoynPlayer(
     var fullProxyActive by remember(contentId, streamType) { mutableStateOf(false) }
     var fallbackAttempted by remember(contentId, streamType) { mutableStateOf(false) }
     var fallbackPendingConfirmation by remember(contentId, streamType) { mutableStateOf(false) }
+    var wireGuardFallbackAttempted by remember(contentId, streamType) { mutableStateOf(false) }
+    var routeRecoveryInProgress by remember(contentId, streamType) { mutableStateOf(false) }
 
     DisposableEffect(contentId, streamType) {
         onDispose {
@@ -156,13 +161,16 @@ private fun JoynPlayer(
         loginRequired = false
         fallbackAttempted = false
         fallbackPendingConfirmation = false
+        wireGuardFallbackAttempted = false
+        routeRecoveryInProgress = false
         fullProxyActive = false
         playerRouteKey = 0
         runCatching {
             withContext(Dispatchers.IO) {
                 if (streamType == "LIVE") {
-                    // A previous player may have temporarily promoted the process route. Resolve the
-                    // entitlement/playback URL in the user's saved API/Token mode first.
+                    // Restore the pinned HTTP-proxy base route when one exists. When MainActivity
+                    // prepared an app-scoped WireGuard route, JoynProxySettings keeps an explicit
+                    // direct/tunnel runtime marker and this call deliberately leaves that route alone.
                     streamProxyFallback.restoreSavedRouting()
                 }
                 val resolved = if (streamType == "VOD") {
@@ -214,27 +222,68 @@ private fun JoynPlayer(
                     }
                 },
                 onPlaybackError = { error ->
-                    val canTryFullProxy =
-                        streamType == "LIVE" &&
-                            !fullProxyActive &&
-                            !fallbackAttempted &&
-                            error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
+                    if (!routeRecoveryInProgress) {
+                        val httpStatus = playbackHttpStatus(error)
+                        val badHttpStatus = error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
+                        val canTryFullProxy =
+                            streamType == "LIVE" &&
+                                !fullProxyActive &&
+                                !fallbackAttempted &&
+                                badHttpStatus
+                        val canTryWireGuard =
+                            streamType == "LIVE" &&
+                                !wireGuardFallbackAttempted &&
+                                badHttpStatus &&
+                                httpStatus == 403 &&
+                                (fullProxyActive || fallbackAttempted)
 
-                    if (canTryFullProxy && streamProxyFallback.tryTemporaryFullProxy()) {
-                        // Keep the already resolved Joyn playback data. Only restart Media3 so the
-                        // manifest/DRM/segments open through the same residential exit.
-                        fallbackAttempted = true
-                        fallbackPendingConfirmation = true
-                        fullProxyActive = true
-                        playerRouteKey++
-                    } else {
-                        if (streamType == "LIVE") {
-                            streamProxyFallback.restoreSavedRouting()
+                        when {
+                            canTryFullProxy && streamProxyFallback.tryTemporaryFullProxy() -> {
+                                // Keep the already resolved Joyn playback data. Only restart Media3 so
+                                // manifest/DRM/segments open through the same residential proxy lease.
+                                fallbackAttempted = true
+                                fallbackPendingConfirmation = true
+                                fullProxyActive = true
+                                playerRouteKey++
+                            }
+
+                            canTryWireGuard -> {
+                                // Some live CDNs (notably the SRF/P7S1 path) can accept Joyn's
+                                // entitlement through the residential HTTP proxy and still reject the
+                                // manifest itself with HTTP 403. Retry the exact manifest once through
+                                // an app-scoped stable Mysterium WireGuard exit for the channel country.
+                                wireGuardFallbackAttempted = true
+                                routeRecoveryInProgress = true
+                                fallbackPendingConfirmation = false
+                                scope.launch {
+                                    val tunnelResult = withContext(Dispatchers.IO) {
+                                        streamProxyFallback.tryWireGuardFallback(contentId)
+                                    }
+                                    routeRecoveryInProgress = false
+                                    if (tunnelResult.isSuccess) {
+                                        fullProxyActive = true
+                                        playerRouteKey++
+                                    } else {
+                                        playback = null
+                                        fullProxyActive = false
+                                        val detail = tunnelResult.exceptionOrNull()?.message
+                                            ?: tunnelResult.exceptionOrNull()?.javaClass?.simpleName
+                                            ?: "unbekannter Fehler"
+                                        errorText = "${playbackErrorMessage(error)} · Tunnel-Fallback: $detail"
+                                    }
+                                }
+                            }
+
+                            else -> {
+                                if (streamType == "LIVE") {
+                                    streamProxyFallback.restoreSavedRouting()
+                                }
+                                playback = null
+                                fullProxyActive = false
+                                fallbackPendingConfirmation = false
+                                errorText = playbackErrorMessage(error)
+                            }
                         }
-                        playback = null
-                        fullProxyActive = false
-                        fallbackPendingConfirmation = false
-                        errorText = playbackErrorMessage(error)
                     }
                 },
             )
@@ -547,6 +596,15 @@ private fun Media3Player(
         update = { view -> view.player = player },
         modifier = Modifier.fillMaxSize(),
     )
+}
+
+private fun playbackHttpStatus(error: PlaybackException): Int? {
+    var current: Throwable? = error
+    while (current != null) {
+        if (current is HttpDataSource.InvalidResponseCodeException) return current.responseCode
+        current = current.cause
+    }
+    return null
 }
 
 private fun playbackErrorMessage(error: PlaybackException): String {
