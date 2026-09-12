@@ -16,12 +16,12 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 /**
- * Finds a Mysterium Residential HTTP proxy exit that Joyn accepts.
+ * Finds a Mysterium Residential HTTP proxy lease that Joyn actually accepts.
  *
- * Mysterium's consumer API exposes short-lived connect-proxy leases. We test every lease through
- * the same local unauthenticated CONNECT bridge that the running app uses later. No Android
- * VpnService/TUN interface is required for this path. The older app-scoped WireGuard profiles stay
- * available as a fallback in JoynRepository when no valid proxy lease is stored.
+ * Mysterium's connect-proxy credentials represent a reusable proxy lease, not a guaranteed fixed
+ * public exit IP. Authenticated PC measurements showed that separate CONNECTs with the same lease
+ * can use different public exits while Joyn still grants entitlement. Cloudflare traces are
+ * therefore diagnostic only; a successful Joyn entitlement is the acceptance signal.
  */
 internal class JoynMysteriumProxyScanner(
     context: Context,
@@ -52,9 +52,8 @@ internal class JoynMysteriumProxyScanner(
         )
         JoynMysteriumScanControl.reset()
 
-        // The Mysterium control API and the upstream proxy socket must be reached directly. Tear
-        // down a previous app VPN and clear only the process routing holder before requesting a new
-        // proxy lease. Persisted fallback profiles remain untouched.
+        // Mysterium's control API and upstream proxy socket must be reached directly. The selected
+        // lease is installed as process proxy only after Joyn has accepted it.
         JoynMysteriumWireGuard.disconnect(appContext)
         JoynProxySettings.installDirectForTunnel()
 
@@ -75,8 +74,9 @@ internal class JoynMysteriumProxyScanner(
         val log = mutableListOf<String>()
         log += "API: ${apiStatus.message}"
         log += apiClient.residentialLocationSummary()
-        log += "Transport: Mysterium HTTP CONNECT · lokale Auth-Bridge · kein Android VPN"
+        log += "Transport: Mysterium HTTP CONNECT · lokale Auth-Bridge · TLS:443 für verifizierte EU-Superproxies · kein Android VPN"
         log += "Routing: gesamter Joyn-TV-Traffic inkl. Manifest, DRM und Stream-Segmente"
+        log += "Auswahl: Joyn-Entitlement entscheidet; öffentliche Trace-IP dient nur der Diagnose"
         if (!allTraffic) {
             log += "Hinweis: Proxy-Modus erzwingt für Leckschutz den gesamten Joyn-TV-Traffic."
         }
@@ -95,7 +95,7 @@ internal class JoynMysteriumProxyScanner(
             attempted++
             onProgress(
                 JoynProxyDiscoveryProgress(
-                    message = "Mysterium Residential ${country.name}: fordere Proxy-IP $attempted/$attemptsLimit an …\n" +
+                    message = "Mysterium Residential ${country.name}: fordere Lease $attempted/$attemptsLimit an …\n" +
                         shortStats(leasesReceived, seenExits.size, joynVpnDetected, proxyFailures),
                     attempted = attempted - 1,
                     total = attemptsLimit,
@@ -131,39 +131,33 @@ internal class JoynMysteriumProxyScanner(
 
             val leaseKey = "${lease.host}:${lease.port}:${lease.username}:${lease.expiresAt}"
             if (!seenLeases.add(leaseKey)) {
+                // An identical lease is still worth probing: one lease can route separate CONNECTs
+                // through different public exits. Skipping it would throw away possible Joyn hits.
                 duplicates++
-                log += "#$attempted LEASE_DUPLIKAT · ${lease.host}:${lease.port}"
-                delay(RETRY_DELAY_MS)
-                continue
+                log += "#$attempted LEASE_DUPLIKAT · ${lease.host}:${lease.port} · wird trotzdem gegen Joyn getestet"
             }
 
+            // Trace is deliberately non-authoritative. It helps diagnose country/rotation but the
+            // Joyn request below may leave through another public exit on the same lease.
             val exitAttempt = throughProxyLease(lease) { client -> resolveExit(client) }
             val trace = exitAttempt.value
             if (trace == null) {
-                proxyFailures++
-                val detail = exitAttempt.failure.ifBlank { "Exit nicht ermittelbar" }
-                log += "#$attempted PROXY_FEHLER · ${lease.host}:${lease.port} · $detail"
-                delay(RETRY_DELAY_MS)
-                continue
+                log += "#$attempted TRACE_FEHLER · ${exitAttempt.failure.ifBlank { "öffentliche Exit-IP nicht ermittelbar" }} · Joyn-Test läuft trotzdem"
+            } else {
+                if (!trace.country.equals(country.name, ignoreCase = true)) {
+                    wrongCountry++
+                    log += "#$attempted TRACE_LAND_ABWEICHUNG · ${trace.ip} · ${trace.country} statt ${country.name} · nur Diagnose"
+                }
+                if (!seenExits.add(trace.ip)) {
+                    duplicates++
+                    log += "#$attempted EXIT_DUPLIKAT · ${trace.ip} · Lease wird trotzdem gegen Joyn getestet"
+                }
             }
 
-            if (!trace.country.equals(country.name, ignoreCase = true)) {
-                wrongCountry++
-                log += "#$attempted FALSCHES_LAND · ${trace.ip} · ${trace.country} statt ${country.name}"
-                delay(RETRY_DELAY_MS)
-                continue
-            }
-
-            if (!seenExits.add(trace.ip)) {
-                duplicates++
-                log += "#$attempted EXIT_DUPLIKAT · ${trace.ip}"
-                delay(RETRY_DELAY_MS)
-                continue
-            }
-
+            val traceLabel = trace?.let { "${it.ip}/${it.country}" } ?: "keine Trace-IP"
             onProgress(
                 JoynProxyDiscoveryProgress(
-                    message = "Mysterium Residential ${country.name}: Exit ${trace.ip} (${seenExits.size}. eindeutige IP) → Joyn Live …",
+                    message = "Mysterium Residential ${country.name}: $traceLabel → Joyn Live-Freigabe …",
                     attempted = attempted,
                     total = attemptsLimit,
                 ),
@@ -175,20 +169,24 @@ internal class JoynMysteriumProxyScanner(
             val probe = probeAttempt.value ?: ProbeResult.failed(
                 probeAttempt.failure.ifBlank { "Proxyverbindung während Joyn-Test abgebrochen" },
             )
+
             when (probe.status) {
                 ProbeStatus.OK -> {
-                    // connect-proxy credentials are reusable but PC tests observed rotating exits
-                    // across CONNECTs. A successful entitlement alone must not promote a profile
-                    // whose measured IP/country already changed during this very probe.
+                    // A second trace is useful for diagnostics only. The PC reference test proved
+                    // that IP changes across CONNECTs are normal and can coexist with a valid Joyn
+                    // entitlement. Never discard a Joyn-approved lease because this trace changes.
                     val afterAttempt = throughProxyLease(lease) { client -> resolveExit(client) }
                     val after = afterAttempt.value
-                    if (after == null || after.ip != trace.ip || !after.country.equals(country.name, ignoreCase = true)) {
-                        joynOtherFailure++
-                        log += "#$attempted EXIT_NICHT_STABIL · ${trace.ip}/${trace.country} → " +
-                            "${after?.ip ?: "unbekannt"}/${after?.country ?: "unbekannt"} · Profil nicht gespeichert"
-                        delay(RETRY_DELAY_MS)
-                        continue
+                    after?.let { seenExits.add(it.ip) }
+                    val rotationNote = when {
+                        after == null -> "Exit nach Joyn-Test nicht erneut messbar"
+                        trace == null -> "Exit nach Joyn-Test ${after.ip}/${after.country}"
+                        after.ip != trace.ip -> "Exit-Rotation ${trace.ip}/${trace.country} → ${after.ip}/${after.country}"
+                        !after.country.equals(trace.country, ignoreCase = true) ->
+                            "Exit-Landwechsel ${trace.ip}/${trace.country} → ${after.ip}/${after.country}"
+                        else -> "Trace ${after.ip}/${after.country} unverändert"
                     }
+
                     val config = JoynProxyConfig(
                         enabled = true,
                         automatic = true,
@@ -205,7 +203,7 @@ internal class JoynMysteriumProxyScanner(
                         lastVerifiedAtEpochMs = System.currentTimeMillis(),
                     )
                     settings.saveLastSuccessful(country, config, lease.expiresAt)
-                    log += "#$attempted OK · ${trace.ip} · Joyn Live freigegeben · ${latencyMs} ms"
+                    log += "#$attempted OK · Joyn Live freigegeben · ${latencyMs} ms · $rotationNote"
                     return@withContext finish(
                         config = config,
                         country = country,
@@ -220,17 +218,20 @@ internal class JoynMysteriumProxyScanner(
                         joynVpnDetected = joynVpnDetected,
                         joynOtherFailure = joynOtherFailure,
                         log = log,
-                        extra = "Treffer: Residential-Exit ${trace.ip} besteht Joyns Live-Freigabe. HTTP-Proxy-Profil gespeichert.",
+                        extra = "Treffer: Mysterium-Lease besteht Joyns Live-Freigabe. Exit-Rotation wird toleriert; Trace-IP dient nur der Diagnose.",
                         expiresAt = lease.expiresAt,
                     )
                 }
+
                 ProbeStatus.VPN_DETECTED -> {
                     joynVpnDetected++
-                    log += "#$attempted VPN_ERKANNT · ${trace.ip} · ${probe.detail}"
+                    log += "#$attempted VPN_ERKANNT · $traceLabel · ${probe.detail}"
                 }
+
                 ProbeStatus.FAILED -> {
                     joynOtherFailure++
-                    log += "#$attempted JOYN_FEHLER · ${trace.ip} · ${probe.detail}"
+                    if (probeAttempt.value == null && probeAttempt.failure.isNotBlank()) proxyFailures++
+                    log += "#$attempted JOYN_FEHLER · $traceLabel · ${probe.detail}"
                 }
             }
             delay(RETRY_DELAY_MS)
@@ -253,7 +254,7 @@ internal class JoynMysteriumProxyScanner(
             extra = if (JoynMysteriumScanControl.isStopRequested()) {
                 "Scan vom Benutzer gestoppt."
             } else {
-                "Kein getesteter Residential-Exit bestand Joyns Live-Freigabe."
+                "Kein getesteter Mysterium-Lease bestand Joyns Live-Freigabe."
             },
         )
     }
@@ -418,12 +419,16 @@ internal class JoynMysteriumProxyScanner(
             if (body.contains("ENT_USER_VPN_DETECTED", ignoreCase = true) || body.contains("VPN_DETECTED", ignoreCase = true)) {
                 return@runCatching ProbeResult(ProbeStatus.VPN_DETECTED, "ENT_USER_VPN_DETECTED")
             }
-            if (!response.isSuccessful) return@runCatching ProbeResult.failed("Entitlement HTTP ${response.code}: ${compact(body)}")
+            if (!response.isSuccessful) {
+                return@runCatching ProbeResult.failed("Entitlement HTTP ${response.code}: ${compact(body)}")
+            }
             val entitlement = runCatching { JSONObject(body).optString("entitlement_token") }.getOrDefault("")
             if (entitlement.isNotBlank()) ProbeResult(ProbeStatus.OK, "Live freigegeben")
             else ProbeResult.failed("Entitlement ohne Token: ${compact(body)}")
         }
-    }.getOrElse { error -> ProbeResult.failed("Entitlement ${error.javaClass.simpleName}: ${error.message.orEmpty()}") }
+    }.getOrElse { error ->
+        ProbeResult.failed("Entitlement ${error.javaClass.simpleName}: ${error.message.orEmpty()}")
+    }
 
     private fun finish(
         config: JoynProxyConfig?,
@@ -445,10 +450,10 @@ internal class JoynMysteriumProxyScanner(
         val message = buildString {
             append(if (config != null) "Mysterium Proxy erfolgreich" else if (stopped) "Mysterium-Test gestoppt" else "Mysterium-Test abgeschlossen")
             append(" · ${country.name}\n")
-            append("Versuche=$attempted/$attemptsLimit · Leases=$leasesReceived · eindeutige Exits=$uniqueExits")
+            append("Versuche=$attempted/$attemptsLimit · Leases=$leasesReceived · beobachtete Exits=$uniqueExits")
             append(" · Joyn VPN erkannt=$joynVpnDetected")
             append(" · sonstige Joyn-Fehler=$joynOtherFailure")
-            append(" · Proxyfehler=$proxyFailures · falsches Land=$wrongCountry · Duplikate=$duplicates\n")
+            append(" · Proxyfehler=$proxyFailures · Trace-Landabweichungen=$wrongCountry · Duplikate=$duplicates\n")
             append(extra)
             if (expiresAt.isNotBlank()) append(" · Lease bis $expiresAt")
             if (log.isNotEmpty()) {
