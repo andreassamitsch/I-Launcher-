@@ -96,6 +96,3 @@ internal class JoynParentalPinSettings(context: Context) {
         private val PIN_REGEX = Regex("^\\d{4}$")
     }
 }
-
-internal class JoynPinRequiredException : Exception("Joyn verlangt den Jugendschutz-PIN.")
-internal class JoynPinInvalidException : Exception("Der Jugendschutz-PIN wurde von Joyn abgelehnt.")
