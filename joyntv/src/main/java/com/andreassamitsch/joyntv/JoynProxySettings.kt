@@ -105,8 +105,8 @@ internal class JoynProxySettings(context: Context) {
             .putString(KEY_SOURCE, config.source)
             .putLong(KEY_LATENCY_MS, config.latencyMs)
             .putLong(KEY_LAST_VERIFIED_AT, config.lastVerifiedAtEpochMs)
-            // A Joyn auth token can be tied to the previous source IP/market.
-            .remove("auth_token")
+            // Proxy/exit changes must not destroy account sessions. Joyn refreshes account access
+            // tokens normally; the per-country refresh tokens remain valid across route changes.
             .apply()
         installProcessRouting(config)
     }
