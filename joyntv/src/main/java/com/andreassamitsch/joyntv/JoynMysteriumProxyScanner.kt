@@ -177,6 +177,18 @@ internal class JoynMysteriumProxyScanner(
             )
             when (probe.status) {
                 ProbeStatus.OK -> {
+                    // connect-proxy credentials are reusable but PC tests observed rotating exits
+                    // across CONNECTs. A successful entitlement alone must not promote a profile
+                    // whose measured IP/country already changed during this very probe.
+                    val afterAttempt = throughProxyLease(lease) { client -> resolveExit(client) }
+                    val after = afterAttempt.value
+                    if (after == null || after.ip != trace.ip || !after.country.equals(country.name, ignoreCase = true)) {
+                        joynOtherFailure++
+                        log += "#$attempted EXIT_NICHT_STABIL · ${trace.ip}/${trace.country} → " +
+                            "${after?.ip ?: "unbekannt"}/${after?.country ?: "unbekannt"} · Profil nicht gespeichert"
+                        delay(RETRY_DELAY_MS)
+                        continue
+                    }
                     val config = JoynProxyConfig(
                         enabled = true,
                         automatic = true,

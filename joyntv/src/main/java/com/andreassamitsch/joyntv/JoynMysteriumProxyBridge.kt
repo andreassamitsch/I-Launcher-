@@ -16,10 +16,10 @@ import javax.net.ssl.SSLSocketFactory
  * Local unauthenticated CONNECT bridge for Mysterium's short-lived authenticated proxies.
  *
  * Mysterium's consumer connect-proxy endpoint currently returns superproxy hosts on port 8080.
- * Those endpoints speak a normal plaintext HTTP proxy protocol: CONNECT and Proxy-Authorization
- * are sent over TCP and the target HTTPS/TLS traffic starts only after CONNECT 200. Some proxy
- * deployments can expose a TLS-wrapped proxy endpoint instead, so the bridge keeps a verified TLS
- * fallback for compatibility.
+ * PC measurements on 2026-09-12 found that the returned EU superproxy port 8080 refuses TCP,
+ * while the same hosts accept authenticated CONNECT over verified TLS on port 443. Prefer that
+ * measured endpoint for this specific legacy API response, retaining the original port as fallback.
+ * Other proxy hosts/ports retain their original transport selection.
  *
  * Joyn clients in the app can therefore keep using Android's process ProxySelector without each
  * networking stack knowing Mysterium credentials. The bridge listens only on loopback, injects the
@@ -121,26 +121,23 @@ internal class JoynMysteriumProxyBridge(
     /**
      * Opens the upstream proxy and performs CONNECT + Basic authentication.
      *
-     * Port 8080 is the Mysterium superproxy endpoint seen in the consumer API and is tried as plain
-     * HTTP first. TLS proxy ports are tried TLS-first. If the first transport is reset before an
+     * The known EU superproxy API response uses TLS:443 first (see PC test report). Other TLS
+     * proxy ports are tried TLS-first. If the first transport is reset before an
      * HTTP response is received, a fresh connection is opened with the other transport. A real HTTP
      * rejection such as 407 is not retried using another transport because the protocol was already
      * identified correctly.
      */
     private fun connectUpstreamProxy(requestHeader: String): ProxyConnection {
-        val transports = if (remotePort in TLS_FIRST_PORTS) {
-            listOf(UpstreamTransport.TLS, UpstreamTransport.PLAIN_HTTP)
-        } else {
-            listOf(UpstreamTransport.PLAIN_HTTP, UpstreamTransport.TLS)
-        }
+        val endpoints = upstreamEndpoints(remoteHost, remotePort)
         val failures = mutableListOf<String>()
 
-        for (transport in transports) {
+        for (endpoint in endpoints) {
+            val transport = endpoint.transport
             var socket: Socket? = null
             try {
                 socket = when (transport) {
-                    UpstreamTransport.PLAIN_HTTP -> connectPlainProxy()
-                    UpstreamTransport.TLS -> connectTlsProxy()
+                    UpstreamTransport.PLAIN_HTTP -> connectPlainProxy(endpoint.port)
+                    UpstreamTransport.TLS -> connectTlsProxy(endpoint.port)
                 }
                 socket.outputStream.write(withProxyAuthorization(requestHeader).toByteArray(Charsets.ISO_8859_1))
                 socket.outputStream.flush()
@@ -162,6 +159,7 @@ internal class JoynMysteriumProxyBridge(
                 runCatching { socket?.close() }
                 failures += buildString {
                     append(transport.label)
+                    append(":${endpoint.port}")
                     append(": ")
                     append(error.javaClass.simpleName)
                     error.message?.takeIf(String::isNotBlank)?.let { append(" · $it") }
@@ -174,21 +172,21 @@ internal class JoynMysteriumProxyBridge(
         )
     }
 
-    private fun connectPlainProxy(): Socket = Socket().apply {
+    private fun connectPlainProxy(port: Int): Socket = Socket().apply {
         tcpNoDelay = true
-        connect(InetSocketAddress(remoteHost, remotePort), HEADER_TIMEOUT_MS)
+        connect(InetSocketAddress(remoteHost, port), HEADER_TIMEOUT_MS)
         soTimeout = HEADER_TIMEOUT_MS
     }
 
-    private fun connectTlsProxy(): SSLSocket {
+    private fun connectTlsProxy(port: Int): SSLSocket {
         val raw = Socket()
         try {
             raw.tcpNoDelay = true
-            raw.connect(InetSocketAddress(remoteHost, remotePort), HEADER_TIMEOUT_MS)
+            raw.connect(InetSocketAddress(remoteHost, port), HEADER_TIMEOUT_MS)
             raw.soTimeout = HEADER_TIMEOUT_MS
 
             val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-            val tls = factory.createSocket(raw, remoteHost, remotePort, true) as SSLSocket
+            val tls = factory.createSocket(raw, remoteHost, port, true) as SSLSocket
             tls.useClientMode = true
             tls.tcpNoDelay = true
             tls.soTimeout = HEADER_TIMEOUT_MS
@@ -260,10 +258,12 @@ internal class JoynMysteriumProxyBridge(
         val transport: UpstreamTransport,
     )
 
-    private enum class UpstreamTransport(val label: String) {
+    internal enum class UpstreamTransport(val label: String) {
         PLAIN_HTTP("HTTP proxy"),
         TLS("HTTPS/TLS proxy"),
     }
+
+    internal data class UpstreamEndpoint(val port: Int, val transport: UpstreamTransport)
 
     private class ProxyRejectedException(message: String) : IOException(message)
 
@@ -271,6 +271,19 @@ internal class JoynMysteriumProxyBridge(
         private const val HEADER_TIMEOUT_MS = 8_000
         private const val MAX_HEADER_BYTES = 32 * 1024
         private val TLS_FIRST_PORTS = setOf(443, 8443)
+        private val LEGACY_EU_SUPERPROXY = Regex("supervpn-dc-eu-[0-9]+\\.mysterium\\.network", RegexOption.IGNORE_CASE)
+
+        internal fun upstreamEndpoints(host: String, port: Int): List<UpstreamEndpoint> = buildList {
+            if (port == 8080 && LEGACY_EU_SUPERPROXY.matches(host.trim())) {
+                add(UpstreamEndpoint(443, UpstreamTransport.TLS))
+            }
+            val transports = if (port in TLS_FIRST_PORTS) {
+                listOf(UpstreamTransport.TLS, UpstreamTransport.PLAIN_HTTP)
+            } else {
+                listOf(UpstreamTransport.PLAIN_HTTP, UpstreamTransport.TLS)
+            }
+            transports.forEach { add(UpstreamEndpoint(port, it)) }
+        }
         private val sharedLock = Any()
         private var sharedKey: String? = null
         private var sharedBridge: JoynMysteriumProxyBridge? = null
