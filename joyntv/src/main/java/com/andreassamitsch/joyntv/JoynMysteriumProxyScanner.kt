@@ -73,16 +73,19 @@ internal class JoynMysteriumProxyScanner(
             )
         }
 
+        val modeLabel = if (allTraffic) {
+            "Vollproxy inkl. Manifest, DRM und Stream-Segmente"
+        } else {
+            "Nur API/Token über Proxy · Manifest/CDN/Stream direkt"
+        }
         val log = mutableListOf<String>()
         log += "API: ${apiStatus.message}"
         log += apiClient.residentialLocationSummary()
         log += "Transport: Mysterium HTTP CONNECT · lokale Auth-Bridge · TLS:443 für verifizierte EU-Superproxies · kein Android VPN"
-        log += "Routing: gesamter Joyn-TV-Traffic inkl. Manifest, DRM und Stream-Segmente"
+        log += "Aktiver Routing-Modus nach erfolgreichem Test: $modeLabel"
+        log += "Scanner-Prüfung: Joyn-Freigabe wird vollständig über den Kandidaten getestet; danach gilt der gewählte Routing-Modus"
         log += "Auswahl: Joyn-Entitlement entscheidet; öffentliche Trace-IP dient nur der Diagnose"
         log += "Lease-Strategie: ein Residential-Lease wird über viele CONNECTs wiederverwendet; neuer Lease nur bei wiederholten Transportfehlern"
-        if (!allTraffic) {
-            log += "Hinweis: Proxy-Modus erzwingt für Leckschutz den gesamten Joyn-TV-Traffic."
-        }
 
         val seenExits = linkedSetOf<String>()
         val seenLeases = linkedSetOf<String>()
@@ -225,13 +228,13 @@ internal class JoynMysteriumProxyScanner(
                         port = lease.port,
                         username = lease.username,
                         password = lease.password,
-                        allTraffic = true,
+                        allTraffic = allTraffic,
                         source = "Mysterium Proxy · Residential · ${country.name}",
                         latencyMs = latencyMs,
                         lastVerifiedAtEpochMs = System.currentTimeMillis(),
                     )
                     settings.saveLastSuccessful(country, config, lease.expiresAt)
-                    log += "#$attempted OK · Joyn Live freigegeben · ${latencyMs} ms · $rotationNote"
+                    log += "#$attempted OK · Joyn Live freigegeben · ${latencyMs} ms · $rotationNote · Modus: $modeLabel"
                     return@withContext finish(
                         config = config,
                         country = country,
@@ -246,7 +249,7 @@ internal class JoynMysteriumProxyScanner(
                         joynVpnDetected = joynVpnDetected,
                         joynOtherFailure = joynOtherFailure,
                         log = log,
-                        extra = "Treffer: derselbe Mysterium-Lease bestand Joyns Live-Freigabe. Exit-Rotation wird toleriert.",
+                        extra = "Treffer: derselbe Mysterium-Lease bestand Joyns Live-Freigabe. Exit-Rotation wird toleriert. Aktiv: $modeLabel.",
                         expiresAt = lease.expiresAt,
                     )
                 }
