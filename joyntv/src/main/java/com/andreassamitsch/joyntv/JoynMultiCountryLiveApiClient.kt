@@ -383,6 +383,9 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
             } catch (error: Throwable) {
                 if (!error.isRouteWarmupFailure() || attempt == ROUTE_WARMUP_ATTEMPTS - 1) throw error
                 lastError = error
+                // Mysterium can occasionally rotate the public residential exit between CONNECTs.
+                // Close pooled sockets before retrying so a wrong-country entitlement does not get
+                // repeated over the exact same upstream connection.
                 client.connectionPool.evictAll()
                 delay(ROUTE_WARMUP_RETRY_DELAY_MS * (attempt + 1))
             }
@@ -391,6 +394,14 @@ internal class JoynMultiCountryLiveApiClient(context: Context) {
     }
 
     private fun Throwable.isRouteWarmupFailure(): Boolean {
+        if (
+            this is LiveHttpException &&
+            statusCode == 400 &&
+            responseBody.contains("ENT_AssetNotAvailableInCountry", ignoreCase = true)
+        ) {
+            return true
+        }
+
         var current: Throwable? = this
         while (current != null) {
             if (
