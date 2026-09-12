@@ -113,6 +113,22 @@ internal class JoynProxySettings(context: Context) {
 
     fun disable() = save(current().copy(enabled = false))
 
+    /**
+     * Temporarily promotes the currently saved Mysterium route to all-traffic without persisting
+     * the mode or invalidating the Joyn token. Used when a CDN/manifest rejects a direct stream.
+     */
+    fun enableTemporaryAllTraffic(): Boolean {
+        val config = current()
+        if (!config.isUsable || !config.isMysterium || config.allTraffic) return false
+        installProcessRouting(config.copy(allTraffic = true))
+        return true
+    }
+
+    /** Restores the persisted routing mode after a temporary player-only promotion. */
+    fun restoreSavedRouting() {
+        installProcessRouting(current())
+    }
+
     companion object {
         private const val PREFS_NAME = "joyn_protocol"
         private const val KEY_ENABLED = "test_proxy_enabled"
