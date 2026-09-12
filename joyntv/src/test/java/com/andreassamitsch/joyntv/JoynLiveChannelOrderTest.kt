@@ -70,6 +70,31 @@ class JoynLiveChannelOrderTest {
     }
 
     @Test
+    fun `duplicate feeds prefer explicit highest resolution`() {
+        val source = listOf(
+            JoynCountry.DE to channel("ZDF", quality = "720p"),
+            JoynCountry.DE to channel("ZDF", quality = "1080p"),
+            JoynCountry.DE to channel("ZDF", quality = "SD"),
+        )
+
+        val winner = JoynLiveChannelOrder.sort(source).single().second
+
+        assertEquals("1080p", winner.quality)
+    }
+
+    @Test
+    fun `duplicate feeds fall back to quality in title`() {
+        val source = listOf(
+            JoynCountry.DE to channel("SAT.1 SD"),
+            JoynCountry.DE to channel("SAT.1 HD"),
+        )
+
+        val winner = JoynLiveChannelOrder.sort(source).single().second
+
+        assertEquals("SAT.1 HD", winner.title)
+    }
+
+    @Test
     fun `thematic variants do not accidentally match a popular base channel`() {
         val source = listOf(
             JoynCountry.DE to channel("Kabel Eins"),
@@ -85,9 +110,10 @@ class JoynLiveChannelOrderTest {
         )
     }
 
-    private fun channel(title: String) = JoynLiveChannel(
-        id = title,
+    private fun channel(title: String, quality: String? = null) = JoynLiveChannel(
+        id = listOfNotNull(title, quality).joinToString("-"),
         title = title,
         type = "LINEAR",
+        quality = quality,
     )
 }
