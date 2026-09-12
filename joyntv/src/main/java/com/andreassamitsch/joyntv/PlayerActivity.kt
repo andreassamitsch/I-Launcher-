@@ -57,7 +57,11 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
 import kotlinx.coroutines.Dispatchers
@@ -230,7 +234,7 @@ private fun JoynPlayer(
                         playback = null
                         fullProxyActive = false
                         fallbackPendingConfirmation = false
-                        errorText = "${error.errorCodeName}: ${error.message.orEmpty()}".trim()
+                        errorText = playbackErrorMessage(error)
                     }
                 },
             )
@@ -483,27 +487,36 @@ private fun Media3Player(
 ) {
     val context = LocalContext.current
     val player = remember(playback, routeKey) {
-        ExoPlayer.Builder(context).build().apply {
-            val drm = playback.licenseUrl?.let { licenseUrl ->
-                MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
-                    .setLicenseUri(licenseUrl)
-                    .setLicenseRequestHeaders(
-                        mapOf(
-                            "User-Agent" to USER_AGENT,
-                            "Content-Type" to "application/octet-stream",
-                        ),
-                    )
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(USER_AGENT)
+            .setAllowCrossProtocolRedirects(true)
+        val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
+        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build()
+            .apply {
+                val drm = playback.licenseUrl?.let { licenseUrl ->
+                    MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
+                        .setLicenseUri(licenseUrl)
+                        .setLicenseRequestHeaders(
+                            mapOf(
+                                "User-Agent" to USER_AGENT,
+                                "Content-Type" to "application/octet-stream",
+                            ),
+                        )
+                        .build()
+                }
+                val media = MediaItem.Builder()
+                    .setUri(playback.manifestUrl)
+                    .setMimeType(MimeTypes.APPLICATION_MPD)
+                    .apply { if (drm != null) setDrmConfiguration(drm) }
                     .build()
+                setMediaItem(media)
+                prepare()
+                playWhenReady = true
             }
-            val media = MediaItem.Builder()
-                .setUri(playback.manifestUrl)
-                .setMimeType(MimeTypes.APPLICATION_MPD)
-                .apply { if (drm != null) setDrmConfiguration(drm) }
-                .build()
-            setMediaItem(media)
-            prepare()
-            playWhenReady = true
-        }
     }
 
     DisposableEffect(player) {
@@ -534,6 +547,18 @@ private fun Media3Player(
         update = { view -> view.player = player },
         modifier = Modifier.fillMaxSize(),
     )
+}
+
+private fun playbackErrorMessage(error: PlaybackException): String {
+    var current: Throwable? = error
+    while (current != null) {
+        if (current is HttpDataSource.InvalidResponseCodeException) {
+            val uri = current.dataSpec.uri.toString().take(420)
+            return "${error.errorCodeName}: HTTP ${current.responseCode} · $uri"
+        }
+        current = current.cause
+    }
+    return "${error.errorCodeName}: ${error.message.orEmpty()}".trim()
 }
 
 private const val USER_AGENT =
