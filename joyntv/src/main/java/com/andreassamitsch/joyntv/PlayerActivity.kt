@@ -121,6 +121,9 @@ private fun JoynPlayer(
     streamType: String,
 ) {
     val context = LocalContext.current
+    val streamProxyFallback = remember(context.applicationContext) {
+        JoynStreamProxyFallback(context.applicationContext)
+    }
     var playback by remember(contentId, streamType) { mutableStateOf<JoynPlayback?>(null) }
     var errorText by remember(contentId, streamType) { mutableStateOf<String?>(null) }
     var retryKey by remember(contentId, streamType) { mutableIntStateOf(0) }
@@ -129,19 +132,51 @@ private fun JoynPlayer(
     var pinRequested by remember(contentId, streamType) { mutableStateOf(false) }
     var pinInvalid by remember(contentId, streamType) { mutableStateOf(false) }
     var loginRequired by remember(contentId, streamType) { mutableStateOf(false) }
+    var playerRouteKey by remember(contentId, streamType) { mutableIntStateOf(0) }
+    var fullProxyActive by remember(contentId, streamType) { mutableStateOf(false) }
+    var fallbackAttempted by remember(contentId, streamType) { mutableStateOf(false) }
+    var fallbackPendingConfirmation by remember(contentId, streamType) { mutableStateOf(false) }
+
+    DisposableEffect(contentId, streamType) {
+        onDispose {
+            if (streamType == "LIVE") {
+                streamProxyFallback.restoreSavedRouting()
+            }
+        }
+    }
 
     LaunchedEffect(contentId, streamType, retryKey, pinAttemptKey) {
         playback = null
         errorText = null
         pinRequested = false
         loginRequired = false
+        fallbackAttempted = false
+        fallbackPendingConfirmation = false
+        fullProxyActive = false
+        playerRouteKey = 0
         runCatching {
             withContext(Dispatchers.IO) {
-                if (streamType == "VOD") repository.resolveVodPlayback(contentId, pinOverride)
-                else repository.resolveLivePlayback(contentId)
+                if (streamType == "LIVE") {
+                    // A previous player may have temporarily promoted the process route. Resolve the
+                    // entitlement/playback URL in the user's saved API/Token mode first.
+                    streamProxyFallback.restoreSavedRouting()
+                }
+                val resolved = if (streamType == "VOD") {
+                    repository.resolveVodPlayback(contentId, pinOverride)
+                } else {
+                    repository.resolveLivePlayback(contentId)
+                }
+                val useFullProxy = if (streamType == "LIVE") {
+                    // Known geo-blocked channels are promoted only after the playback URL is resolved.
+                    streamProxyFallback.prepareLiveChannel(contentId)
+                } else {
+                    false
+                }
+                resolved to useFullProxy
             }
-        }.onSuccess {
-            playback = it
+        }.onSuccess { (resolved, useFullProxy) ->
+            playback = resolved
+            fullProxyActive = useFullProxy
             pinInvalid = false
         }.onFailure { error ->
             val message = error.message.orEmpty()
@@ -167,9 +202,36 @@ private fun JoynPlayer(
         when {
             playback != null -> Media3Player(
                 playback = requireNotNull(playback),
+                routeKey = playerRouteKey,
+                onPlaybackReady = {
+                    if (streamType == "LIVE" && fallbackPendingConfirmation) {
+                        streamProxyFallback.confirmFullProxyRequired(contentId)
+                        fallbackPendingConfirmation = false
+                    }
+                },
                 onPlaybackError = { error ->
-                    playback = null
-                    errorText = "${error.errorCodeName}: ${error.message.orEmpty()}".trim()
+                    val canTryFullProxy =
+                        streamType == "LIVE" &&
+                            !fullProxyActive &&
+                            !fallbackAttempted &&
+                            error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
+
+                    if (canTryFullProxy && streamProxyFallback.tryTemporaryFullProxy()) {
+                        // Keep the already resolved Joyn playback data. Only restart Media3 so the
+                        // manifest/DRM/segments open through the same residential exit.
+                        fallbackAttempted = true
+                        fallbackPendingConfirmation = true
+                        fullProxyActive = true
+                        playerRouteKey++
+                    } else {
+                        if (streamType == "LIVE") {
+                            streamProxyFallback.restoreSavedRouting()
+                        }
+                        playback = null
+                        fullProxyActive = false
+                        fallbackPendingConfirmation = false
+                        errorText = "${error.errorCodeName}: ${error.message.orEmpty()}".trim()
+                    }
                 },
             )
             loginRequired -> PlaybackLoginRequired(
@@ -195,6 +257,9 @@ private fun JoynPlayer(
                 title = title,
                 message = errorText.orEmpty(),
                 onRetry = {
+                    if (streamType == "LIVE") {
+                        streamProxyFallback.restoreSavedRouting()
+                    }
                     pinOverride = null
                     retryKey++
                 },
@@ -410,9 +475,14 @@ private fun RetryButton(onRetry: () -> Unit, label: String = "Erneut versuchen")
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun Media3Player(playback: JoynPlayback, onPlaybackError: (PlaybackException) -> Unit) {
+private fun Media3Player(
+    playback: JoynPlayback,
+    routeKey: Int,
+    onPlaybackReady: () -> Unit,
+    onPlaybackError: (PlaybackException) -> Unit,
+) {
     val context = LocalContext.current
-    val player = remember(playback) {
+    val player = remember(playback, routeKey) {
         ExoPlayer.Builder(context).build().apply {
             val drm = playback.licenseUrl?.let { licenseUrl ->
                 MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
@@ -438,6 +508,10 @@ private fun Media3Player(playback: JoynPlayback, onPlaybackError: (PlaybackExcep
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) onPlaybackReady()
+            }
+
             override fun onPlayerError(error: PlaybackException) = onPlaybackError(error)
         }
         player.addListener(listener)
