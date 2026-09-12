@@ -20,14 +20,30 @@ class MainActivity : ComponentActivity() {
                     repository = repository,
                     updateManager = updateManager,
                     onPlayLive = { channel ->
-                        // Prepare the selected country before PlayerActivity exists and pin that
-                        // residential route for the player's lifetime. Home can keep running in the
-                        // background without being able to switch entitlement/manifest traffic to a
-                        // different AT/DE/CH exit while the stream starts or plays.
+                        // Prepare the selected country before PlayerActivity exists and pin exactly
+                        // that residential route for the player's lifetime. Do not simply re-read the
+                        // process-wide current proxy after preparation: Home may still finish another
+                        // AT/DE/CH background request in between and otherwise pin the wrong market.
                         lifecycleScope.launch {
                             val pinned = withContext(Dispatchers.IO) {
-                                repository.prepareLiveChannel(channel.id).isSuccess &&
-                                    JoynPlaybackRouteGuard.pinCurrent(applicationContext)
+                                val prepared = repository.prepareLiveChannel(channel.id)
+                                if (prepared.isFailure) {
+                                    false
+                                } else {
+                                    val country = liveCountryFromChannelId(channel.id)
+                                    val preparedProxy = country
+                                        ?.takeUnless(repository::mysteriumLeaseNeedsRefresh)
+                                        ?.let(repository::mysteriumLastSuccessful)
+                                        ?.copy(enabled = true, automatic = true)
+
+                                    if (preparedProxy != null) {
+                                        JoynPlaybackRouteGuard.pin(applicationContext, preparedProxy)
+                                    } else {
+                                        // WireGuard/manual/direct routes do not have a reusable
+                                        // Mysterium CONNECT profile; retain the existing behaviour.
+                                        JoynPlaybackRouteGuard.pinCurrent(applicationContext)
+                                    }
+                                }
                             }
                             runCatching {
                                 startActivity(PlayerActivity.intent(this@MainActivity, channel.id, channel.title))
@@ -43,4 +59,11 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+private fun liveCountryFromChannelId(channelId: String): JoynCountry? {
+    if (!channelId.startsWith("multi:")) return null
+    val payload = channelId.removePrefix("multi:")
+    val countryName = payload.substringBefore(':')
+    return runCatching { JoynCountry.valueOf(countryName) }.getOrNull()
 }
