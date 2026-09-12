@@ -5,7 +5,8 @@ package com.andreassamitsch.joyntv
  *
  * The TV app deliberately does not expose every thematic/event/FAST stream Joyn happens to return.
  * It keeps the well-known general-interest channels in a stable order: Austria first, then Germany,
- * then Switzerland. Mirrored brands from AT/CH are omitted when the German original is available.
+ * then Switzerland. When Joyn exposes the same station more than once, the highest-resolution feed
+ * wins; the station's preferred origin is only used as a tie-breaker at equal quality.
  */
 internal object JoynLiveChannelOrder {
     private const val NOT_LISTED = 10_000
@@ -91,13 +92,48 @@ internal object JoynLiveChannelOrder {
         val winners = grouped.values.map { duplicates ->
             if (duplicates.size == 1) return@map duplicates.first()
 
+            val highestResolution = duplicates.maxOf { (_, channel) -> resolutionRank(channel) }
+            val highestQualityFeeds = duplicates.filter { (_, channel) ->
+                resolutionRank(channel) == highestResolution
+            }
+
             val key = duplicateKey(duplicates.first().second.title)
             val preferredCountry = preferredOrigin(key)
-            duplicates.firstOrNull { it.first == preferredCountry }
-                ?: countryOrder.firstNotNullOfOrNull { country -> duplicates.firstOrNull { it.first == country } }
-                ?: duplicates.first()
+            highestQualityFeeds.firstOrNull { it.first == preferredCountry }
+                ?: countryOrder.firstNotNullOfOrNull { country ->
+                    highestQualityFeeds.firstOrNull { it.first == country }
+                }
+                ?: highestQualityFeeds.first()
         }.toSet()
         return channels.filter { it in winners }
+    }
+
+    /**
+     * Prefer Joyn's explicit `quality` field. Some feeds only carry the quality in their display
+     * title, so title parsing is used as a fallback. The returned number roughly represents vertical
+     * resolution and is only used to compare duplicate stations.
+     */
+    private fun resolutionRank(channel: JoynLiveChannel): Int {
+        val explicit = qualityRank(channel.quality)
+        return if (explicit > 0) explicit else qualityRank(channel.title)
+    }
+
+    private fun qualityRank(value: String?): Int {
+        val normalized = value?.lowercase()?.trim().orEmpty()
+        if (normalized.isBlank()) return 0
+
+        RESOLUTION_HEIGHT.findAll(normalized)
+            .mapNotNull { it.groupValues.getOrNull(1)?.toIntOrNull() }
+            .maxOrNull()
+            ?.let { return it }
+
+        return when {
+            "uhd" in normalized || FOUR_K.containsMatchIn(normalized) -> 2160
+            "full hd" in normalized || "fullhd" in normalized || FHD.containsMatchIn(normalized) -> 1080
+            HD.containsMatchIn(normalized) -> 720
+            SD.containsMatchIn(normalized) -> 576
+            else -> 0
+        }
     }
 
     private fun rankingKey(title: String): String {
@@ -122,7 +158,7 @@ internal object JoynLiveChannelOrder {
     private fun normalize(value: String): String =
         value
             .lowercase()
-            .replace(Regex("\\b(?:hd|uhd|sd)\\b"), " ")
+            .replace(QUALITY_TOKEN, " ")
             .replace(Regex("[^a-z0-9äöü+]+"), " ")
             .trim()
             .replace(Regex("\\s+"), " ")
@@ -134,6 +170,15 @@ internal object JoynLiveChannelOrder {
     )
 
     private val STREAM_SUFFIXES = setOf("live", "livestream")
+
+    private val QUALITY_TOKEN = Regex(
+        "\\b(?:uhd|fhd|full\\s*hd|hd|sd|4k|(?:2160|1440|1080|720|576|540|480)[pi]?)\\b",
+    )
+    private val RESOLUTION_HEIGHT = Regex("(?:\\d{3,4}\\s*[x×]\\s*)?(2160|1440|1080|720|576|540|480)[pi]?")
+    private val FOUR_K = Regex("\\b4k\\b")
+    private val FHD = Regex("\\bfhd\\b")
+    private val HD = Regex("\\bhd\\b")
+    private val SD = Regex("\\bsd\\b")
 
     private val AUSTRIAN_ORIGIN_ALIASES = setOf(
         "orf 1", "orf1", "orf 2 steiermark", "orf2 steiermark", "orf iii", "orf 3", "orf3",
