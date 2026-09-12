@@ -103,6 +103,12 @@ private fun MysteriumSettingsScreen(repository: JoynRepository, onBack: () -> Un
             .padding(horizontal = 56.dp, vertical = 38.dp),
     ) {
         Text("Mysterium Residential Proxy", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Joyn TV ${BuildConfig.VERSION_NAME} · Build ${BuildConfig.VERSION_CODE}",
+            color = Color(0xFF929AA6),
+            fontSize = 12.sp,
+        )
         Spacer(Modifier.height(8.dp))
         Text(
             "Joyn TV nutzt Mysteriums kurzlebige Residential-HTTP-Proxies direkt. Es wird kein Android-VPN aufgebaut: API, Anmeldung, Manifest, DRM und Stream-Segmente laufen über einen lokalen CONNECT-Bridge zum gewählten Residential-Exit. Ein vorhandenes WireGuard-Profil bleibt nur als Fallback erhalten.",
@@ -185,11 +191,11 @@ private fun MysteriumSettingsScreen(repository: JoynRepository, onBack: () -> Un
             }
         }
         Spacer(Modifier.height(12.dp))
-        FieldLabel("Max. neue Residential-IPs testen (1–100)")
+        FieldLabel("Max. Joyn-Proxyversuche (1–100)")
         MField(attempts, { attempts = it.filter(Char::isDigit).take(3) }, "25", false)
         Spacer(Modifier.height(10.dp))
         Text(
-            "Für Leckschutz wird der gesamte Datenverkehr dieser Joyn-TV-App über den aktiven Mysterium-Proxy geführt. Andere Apps und das Android-TV-System bleiben auf der normalen Internetverbindung. Eine VPN-Berechtigung ist dafür nicht nötig.",
+            "Ein Mysterium Residential-Lease wird für mehrere CONNECT-Verbindungen wiederverwendet. Dadurch können verschiedene Residential-Exits getestet werden, ohne für jeden Versuch einen neuen Lease oder VPN-Tunnel aufzubauen. Der gesamte Datenverkehr dieser Joyn-TV-App läuft über den aktiven Proxy; andere Apps und Android TV bleiben direkt.",
             color = Color(0xFFADB5C1),
             fontSize = 13.sp,
             lineHeight = 18.sp,
