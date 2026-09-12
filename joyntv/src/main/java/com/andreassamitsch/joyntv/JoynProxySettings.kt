@@ -49,12 +49,20 @@ internal data class JoynProxyConfig(
  * Mysterium leases use a loopback CONNECT bridge. That keeps short-lived upstream credentials out
  * of Media3/HttpURLConnection/OkHttp and lets every networking stack use the same unauthenticated
  * local proxy. Manual HTTP proxies continue to use the normal Java/OkHttp proxy authentication path.
+ *
+ * Live playback additionally pins the selected residential route. MainActivity and PlayerActivity
+ * deliberately use separate repository instances, and Home can still finish background AT/DE/CH
+ * loading while the player is starting. Without a process-level pin such a background route change
+ * can move entitlement, manifest or DRM requests to another country between two network calls.
  */
 internal class JoynProxySettings(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun current(): JoynProxyConfig {
+    /** Returns the route that is really active. During playback this is the pinned route. */
+    fun current(): JoynProxyConfig = JoynProxyPlaybackPin.effective() ?: persistedCurrent()
+
+    private fun persistedCurrent(): JoynProxyConfig {
         val host = prefs.getString(KEY_HOST, "").orEmpty()
         val transport = prefs.getString(KEY_TRANSPORT, null)
             ?.let { value -> runCatching { JoynProxyTransport.valueOf(value) }.getOrNull() }
@@ -79,7 +87,7 @@ internal class JoynProxySettings(context: Context) {
         return builder
             .proxySelector(routingProxySelector)
             .proxyAuthenticator { _, response ->
-                val config = current()
+                val config = effectiveCurrentConfig() ?: current()
                 if (!config.isUsable || config.isMysterium || config.username.isBlank()) {
                     null
                 } else if (response.request.header("Proxy-Authorization") != null) {
@@ -93,6 +101,14 @@ internal class JoynProxySettings(context: Context) {
     }
 
     fun save(config: JoynProxyConfig) {
+        // A live player owns the process route until it is destroyed. Background channel loading or
+        // focus-prewarming may still ask for another country in the meantime; ignoring that save is
+        // intentional. Otherwise the next Media3 CONNECT could leave through a different market.
+        JoynProxyPlaybackPin.effective()?.let { pinned ->
+            installProcessRouting(pinned)
+            return
+        }
+
         prefs.edit()
             .putBoolean(KEY_ENABLED, config.enabled)
             .putBoolean(KEY_AUTOMATIC, config.automatic)
@@ -114,19 +130,41 @@ internal class JoynProxySettings(context: Context) {
     fun disable() = save(current().copy(enabled = false))
 
     /**
-     * Temporarily promotes the currently saved Mysterium route to all-traffic without persisting
+     * Pins the already prepared country route until the active PlayerActivity is destroyed.
+     * Temporary all-traffic promotion remains possible inside the same pinned lease.
+     */
+    fun beginPlaybackRoutePin(config: JoynProxyConfig = current()): Boolean {
+        if (!config.isUsable || !config.isMysterium) return false
+        JoynProxyPlaybackPin.begin(config)
+        installProcessRouting(config)
+        return true
+    }
+
+    fun endPlaybackRoutePin() {
+        if (!JoynProxyPlaybackPin.end()) return
+        installProcessRouting(persistedCurrent())
+    }
+
+    /**
+     * Temporarily promotes the currently active Mysterium route to all-traffic without persisting
      * the mode or invalidating the Joyn token. Used when a CDN/manifest rejects a direct stream.
      */
     fun enableTemporaryAllTraffic(): Boolean {
-        val config = current()
+        JoynProxyPlaybackPin.promoteAllTraffic()?.let { pinned ->
+            installProcessRouting(pinned)
+            return true
+        }
+
+        val config = persistedCurrent()
         if (!config.isUsable || !config.isMysterium || config.allTraffic) return false
         installProcessRouting(config.copy(allTraffic = true))
         return true
     }
 
-    /** Restores the persisted routing mode after a temporary player-only promotion. */
+    /** Restores the pinned playback base route, or the persisted route when no player is active. */
     fun restoreSavedRouting() {
-        installProcessRouting(current())
+        val config = JoynProxyPlaybackPin.restoreBase() ?: persistedCurrent()
+        installProcessRouting(config)
     }
 
     companion object {
@@ -173,7 +211,7 @@ internal class JoynProxySettings(context: Context) {
         private val routingProxySelector = object : ProxySelector() {
             override fun select(uri: URI?): MutableList<Proxy> {
                 if (uri == null) return mutableListOf(Proxy.NO_PROXY)
-                val config = JoynProxySettingsHolder.currentConfig()
+                val config = effectiveCurrentConfig()
                 val host = uri.host?.lowercase().orEmpty()
                 if (config?.isUsable == true && shouldProxy(config, host)) {
                     val address = runCatching { proxyAddress(config) }.getOrElse { error ->
@@ -194,7 +232,7 @@ internal class JoynProxySettings(context: Context) {
             }
 
             override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) {
-                val config = JoynProxySettingsHolder.currentConfig()
+                val config = effectiveCurrentConfig()
                 val host = uri?.host?.lowercase().orEmpty()
                 if (config?.isUsable == true && shouldProxy(config, host)) {
                     val reason = buildString {
@@ -209,7 +247,8 @@ internal class JoynProxySettings(context: Context) {
         }
 
         fun install(context: Context) {
-            installProcessRouting(JoynProxySettings(context).current())
+            val settings = JoynProxySettings(context)
+            installProcessRouting(JoynProxyPlaybackPin.effective() ?: settings.persistedCurrent())
         }
 
         fun setConnectFailureHandler(handler: ((String) -> Unit)?) {
@@ -217,6 +256,12 @@ internal class JoynProxySettings(context: Context) {
         }
 
         fun installDirectForTunnel() {
+            // A background fallback is not allowed to tear down the bridge owned by a running live
+            // player. Keep the pinned route until PlayerActivity releases it.
+            JoynProxyPlaybackPin.effective()?.let { pinned ->
+                installProcessRouting(pinned)
+                return
+            }
             JoynMysteriumProxyBridge.stopShared()
             JoynProxySettingsHolder.clear()
             // Keep our stable selector installed so OkHttp clients created before/after this call
@@ -226,14 +271,15 @@ internal class JoynProxySettings(context: Context) {
         }
 
         private fun installProcessRouting(config: JoynProxyConfig) {
-            JoynProxySettingsHolder.update(config)
+            val effective = JoynProxyPlaybackPin.effective() ?: config
+            JoynProxySettingsHolder.update(effective)
             ProxySelector.setDefault(routingProxySelector)
 
-            if (!config.isUsable || !config.isMysterium) {
+            if (!effective.isUsable || !effective.isMysterium) {
                 JoynMysteriumProxyBridge.stopShared()
             }
 
-            if (!config.isUsable || config.isMysterium) {
+            if (!effective.isUsable || effective.isMysterium) {
                 // The local bridge is intentionally unauthenticated and injects the upstream lease
                 // credentials itself. Do not expose those credentials to Java networking stacks.
                 Authenticator.setDefault(originalAuthenticator)
@@ -241,7 +287,7 @@ internal class JoynProxySettings(context: Context) {
                 Authenticator.setDefault(object : Authenticator() {
                     override fun getPasswordAuthentication(): PasswordAuthentication? {
                         if (requestorType != RequestorType.PROXY) return null
-                        val current = JoynProxySettingsHolder.currentConfig()
+                        val current = effectiveCurrentConfig()
                         return current
                             ?.takeIf { it.isUsable && !it.isMysterium && it.username.isNotBlank() }
                             ?.let { PasswordAuthentication(it.username, it.password.toCharArray()) }
@@ -249,6 +295,9 @@ internal class JoynProxySettings(context: Context) {
                 })
             }
         }
+
+        private fun effectiveCurrentConfig(): JoynProxyConfig? =
+            JoynProxyPlaybackPin.effective() ?: JoynProxySettingsHolder.currentConfig()
 
         private fun shouldProxy(config: JoynProxyConfig, host: String): Boolean =
             config.allTraffic || host in controlHosts
@@ -267,6 +316,43 @@ internal class JoynProxySettings(context: Context) {
                 .getOrNull()
                 ?.takeIf { it.isNotEmpty() }
                 ?: mutableListOf(Proxy.NO_PROXY)
+    }
+}
+
+/** Process-global route ownership while a live PlayerActivity exists. */
+private object JoynProxyPlaybackPin {
+    private val lock = Any()
+
+    @Volatile
+    private var baseConfig: JoynProxyConfig? = null
+
+    @Volatile
+    private var effectiveConfig: JoynProxyConfig? = null
+
+    fun begin(config: JoynProxyConfig) = synchronized(lock) {
+        baseConfig = config
+        effectiveConfig = config
+    }
+
+    fun effective(): JoynProxyConfig? = effectiveConfig
+
+    fun promoteAllTraffic(): JoynProxyConfig? = synchronized(lock) {
+        val current = effectiveConfig ?: return@synchronized null
+        if (!current.isUsable || !current.isMysterium || current.allTraffic) return@synchronized null
+        current.copy(allTraffic = true).also { effectiveConfig = it }
+    }
+
+    fun restoreBase(): JoynProxyConfig? = synchronized(lock) {
+        val base = baseConfig ?: return@synchronized null
+        effectiveConfig = base
+        base
+    }
+
+    fun end(): Boolean = synchronized(lock) {
+        if (baseConfig == null && effectiveConfig == null) return@synchronized false
+        baseConfig = null
+        effectiveConfig = null
+        true
     }
 }
 
