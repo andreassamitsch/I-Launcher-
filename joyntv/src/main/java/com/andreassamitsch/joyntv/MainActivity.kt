@@ -32,8 +32,8 @@ class MainActivity : ComponentActivity() {
                                 } else {
                                     val country = liveCountryFromChannelId(channel.id)
                                     val preparedProxy = country
-                                        ?.takeUnless(repository::mysteriumLeaseNeedsRefresh)
-                                        ?.let(repository::mysteriumLastSuccessful)
+                                        ?.takeUnless { repository.mysteriumLeaseNeedsRefresh(it) }
+                                        ?.let { repository.mysteriumLastSuccessful(it) }
                                         ?.copy(enabled = true, automatic = true)
 
                                     if (preparedProxy != null) {
