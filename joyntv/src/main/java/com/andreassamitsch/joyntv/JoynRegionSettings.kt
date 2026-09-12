@@ -20,6 +20,10 @@ internal class JoynRegionSettings(context: Context) {
     private val appContext = context.applicationContext.also(::install)
     private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    init {
+        restoreActiveSessionIfMissing()
+    }
+
     fun currentCountry(): JoynCountry = resolveCountry(Locale.getDefault().country)
 
     fun selectedCountry(): JoynCountry? = prefs.getString(KEY_COUNTRY_OVERRIDE, null)
@@ -54,6 +58,17 @@ internal class JoynRegionSettings(context: Context) {
             if (token.isNullOrBlank()) remove(authKey(country))
             else putString(authKey(country), token)
         }.apply()
+    }
+
+    /**
+     * Repairs the legacy active-token slot if an older app version cleared it during a proxy
+     * switch while the market-specific session was still intact.
+     */
+    fun restoreActiveSessionIfMissing(country: JoynCountry = currentCountry()) {
+        val active = prefs.getString(KEY_ACTIVE_AUTH_TOKEN, null)
+        if (!active.isNullOrBlank()) return
+        val saved = prefs.getString(authKey(country), null)?.takeIf(String::isNotBlank) ?: return
+        prefs.edit().putString(KEY_ACTIVE_AUTH_TOKEN, saved).apply()
     }
 
     fun clearSession(country: JoynCountry) {
