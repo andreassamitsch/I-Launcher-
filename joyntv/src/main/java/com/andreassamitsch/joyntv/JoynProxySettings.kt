@@ -59,8 +59,17 @@ internal class JoynProxySettings(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    /** Returns the route that is really active. During playback this is the pinned route. */
-    fun current(): JoynProxyConfig = JoynProxyPlaybackPin.effective() ?: persistedCurrent()
+    /**
+     * Returns the route that is really active right now.
+     *
+     * This must not blindly fall back to the persisted proxy while an app-scoped WireGuard tunnel is
+     * active. `installDirectForTunnel()` installs an explicit disabled runtime marker so callers can
+     * distinguish "direct through the active tunnel" from "restore the last saved HTTP proxy".
+     */
+    fun current(): JoynProxyConfig =
+        JoynProxyPlaybackPin.effective()
+            ?: JoynProxySettingsHolder.currentConfig()
+            ?: persistedCurrent()
 
     private fun persistedCurrent(): JoynProxyConfig {
         val host = prefs.getString(KEY_HOST, "").orEmpty()
@@ -127,7 +136,7 @@ internal class JoynProxySettings(context: Context) {
         installProcessRouting(config)
     }
 
-    fun disable() = save(current().copy(enabled = false))
+    fun disable() = save(persistedCurrent().copy(enabled = false))
 
     /**
      * Pins the already prepared country route until the active PlayerActivity is destroyed.
@@ -161,9 +170,15 @@ internal class JoynProxySettings(context: Context) {
         return true
     }
 
-    /** Restores the pinned playback base route, or the persisted route when no player is active. */
+    /**
+     * Restores the pinned playback base route, or the saved HTTP proxy when normal proxy routing is
+     * active. If the runtime is intentionally direct because WireGuard owns the app route, keep that
+     * tunnel marker instead of resurrecting a stale AT/DE/CH proxy from preferences.
+     */
     fun restoreSavedRouting() {
-        val config = JoynProxyPlaybackPin.restoreBase() ?: persistedCurrent()
+        val pinned = JoynProxyPlaybackPin.restoreBase()
+        val runtime = JoynProxySettingsHolder.currentConfig()
+        val config = pinned ?: if (runtime?.source == DIRECT_TUNNEL_SOURCE) runtime else persistedCurrent()
         installProcessRouting(config)
     }
 
@@ -180,6 +195,14 @@ internal class JoynProxySettings(context: Context) {
         private const val KEY_SOURCE = "test_proxy_source"
         private const val KEY_LATENCY_MS = "test_proxy_latency_ms"
         private const val KEY_LAST_VERIFIED_AT = "test_proxy_last_verified_at"
+        private const val DIRECT_TUNNEL_SOURCE = "Runtime direct · app tunnel"
+
+        private val directTunnelConfig = JoynProxyConfig(
+            enabled = false,
+            automatic = true,
+            allTraffic = false,
+            source = DIRECT_TUNNEL_SOURCE,
+        )
 
         // Capture this before installing our own selector. Making this lazy can accidentally capture
         // routingProxySelector itself and recurse forever when direct/fallback traffic is selected.
@@ -257,15 +280,16 @@ internal class JoynProxySettings(context: Context) {
 
         fun installDirectForTunnel() {
             // A background fallback is not allowed to tear down the bridge owned by a running live
-            // player. Keep the pinned route until PlayerActivity releases it.
+            // player. Keep the pinned route until PlayerActivity releases it explicitly.
             JoynProxyPlaybackPin.effective()?.let { pinned ->
                 installProcessRouting(pinned)
                 return
             }
             JoynMysteriumProxyBridge.stopShared()
-            JoynProxySettingsHolder.clear()
+            JoynProxySettingsHolder.update(directTunnelConfig)
             // Keep our stable selector installed so OkHttp clients created before/after this call
-            // behave identically. With an empty holder it simply delegates to the original route.
+            // behave identically. The explicit disabled runtime marker delegates every request to
+            // the original route, which is then carried by the app-scoped WireGuard interface.
             ProxySelector.setDefault(routingProxySelector)
             Authenticator.setDefault(originalAuthenticator)
         }
