@@ -228,29 +228,33 @@ internal class JoynAccountLoginClient(context: Context) {
         sevenPassClientId: String,
     ): HttpUrl {
         val subject = redirect.queryParameter("sub")?.takeIf(String::isNotBlank)
-            ?: throw JoynLoginException("Joyn Login benötigt eine zusätzliche Bestätigung, aber 'sub' fehlt.")
         val trackId = redirect.queryParameter("track_id")
             ?.takeIf(String::isNotBlank)
             ?: redirect.queryParameter("cd1")?.takeIf(String::isNotBlank)
             ?: throw JoynLoginException("Joyn Login benötigt eine zusätzliche Bestätigung, aber die Tracking-ID fehlt.")
 
-        val consentPayload = JSONObject()
-            .put("sub", subject)
-            .put("client_id", sevenPassClientId)
-            .put("scopes", JSONArray().put(JSONObject().put("offline_access", "denied")))
-        execute(
-            client = client,
-            request = Request.Builder()
-                .url(SEVENPASS_CONSENT)
-                .header("User-Agent", BROWSER_USER_AGENT)
-                .header("Accept", "application/json")
-                .header("Accept-Language", ACCEPT_LANGUAGE)
-                .header("Origin", SEVENPASS_ORIGIN)
-                .header("Referer", redirect.toString())
-                .header("Content-Type", JSON_MEDIA_TYPE.toString())
-                .post(consentPayload.toString().toRequestBody(JSON_MEDIA_TYPE))
-                .build(),
-        )
+        // 7Pass does not always return `sub` for accounts that already accepted the current
+        // consent. In that case the pending login only needs precheck/continue. Sending another
+        // consent request is both unnecessary and can trigger the 7Pass abuse protection.
+        if (subject != null) {
+            val consentPayload = JSONObject()
+                .put("sub", subject)
+                .put("client_id", sevenPassClientId)
+                .put("scopes", JSONArray().put(JSONObject().put("offline_access", "denied")))
+            execute(
+                client = client,
+                request = Request.Builder()
+                    .url(SEVENPASS_CONSENT)
+                    .header("User-Agent", BROWSER_USER_AGENT)
+                    .header("Accept", "application/json")
+                    .header("Accept-Language", ACCEPT_LANGUAGE)
+                    .header("Origin", SEVENPASS_ORIGIN)
+                    .header("Referer", redirect.toString())
+                    .header("Content-Type", JSON_MEDIA_TYPE.toString())
+                    .post(consentPayload.toString().toRequestBody(JSON_MEDIA_TYPE))
+                    .build(),
+            )
+        }
 
         val continued = execute(
             client = client,
