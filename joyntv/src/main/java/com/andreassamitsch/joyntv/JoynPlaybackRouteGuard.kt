@@ -24,12 +24,24 @@ internal object JoynPlaybackRouteGuard {
     private var application: Application? = null
 
     fun pinCurrent(context: Context): Boolean {
+        val settings = JoynProxySettings(context.applicationContext)
+        return pin(context, settings.current())
+    }
+
+    /**
+     * Pins an explicitly prepared proxy route instead of re-reading the process-wide current route.
+     *
+     * This matters during the tiny handover window between MainActivity preparing AT/DE/CH and
+     * PlayerActivity starting: Home can still finish a background country load and switch the global
+     * route in that window. Re-reading `current()` here could therefore pin CH for an AT channel (or
+     * vice versa). Installing the exact route prepared for the selected channel closes that race.
+     */
+    fun pin(context: Context, config: JoynProxyConfig): Boolean {
         val app = context.applicationContext as? Application ?: return false
         installCallbacks(app)
 
-        val settings = JoynProxySettings(app)
-        val config = settings.current()
         if (!config.isUsable || !config.isMysterium) return false
+        val settings = JoynProxySettings(app)
         if (!settings.beginPlaybackRoutePin(config)) return false
 
         synchronized(lock) {
