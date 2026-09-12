@@ -146,7 +146,7 @@ jobs:
           retention-days: 30
 
       - name: Publish stable Joyn TV download branch
-        if: github.event_name != 'pull_request' || github.head_ref == 'feature/joyn-tv-client'
+        if: github.event_name != 'pull_request'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
