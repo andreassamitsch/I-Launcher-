@@ -20,10 +20,12 @@ class MainActivity : ComponentActivity() {
                     repository = repository,
                     updateManager = updateManager,
                     onPlayLive = { channel ->
-                        // Prepare the selected country before PlayerActivity exists and pin exactly
-                        // that residential route for the player's lifetime. Do not simply re-read the
-                        // process-wide current proxy after preparation: Home may still finish another
-                        // AT/DE/CH background request in between and otherwise pin the wrong market.
+                        // Prepare exactly the market encoded in the combined live-channel id before
+                        // PlayerActivity exists. If that market has a fresh Mysterium CONNECT lease,
+                        // pin that exact proxy. If preparation had to fall back to app-scoped
+                        // WireGuard, do NOT call pinCurrent(): persisted proxy preferences can still
+                        // point at the UI-selected AT/DE/CH market and would immediately overwrite the
+                        // correctly prepared tunnel route.
                         lifecycleScope.launch {
                             val pinned = withContext(Dispatchers.IO) {
                                 val prepared = repository.prepareLiveChannel(channel.id)
@@ -36,13 +38,9 @@ class MainActivity : ComponentActivity() {
                                         ?.let { repository.mysteriumLastSuccessful(it) }
                                         ?.copy(enabled = true, automatic = true)
 
-                                    if (preparedProxy != null) {
-                                        JoynPlaybackRouteGuard.pin(applicationContext, preparedProxy)
-                                    } else {
-                                        // WireGuard/manual/direct routes do not have a reusable
-                                        // Mysterium CONNECT profile; retain the existing behaviour.
-                                        JoynPlaybackRouteGuard.pinCurrent(applicationContext)
-                                    }
+                                    preparedProxy?.let {
+                                        JoynPlaybackRouteGuard.pin(applicationContext, it)
+                                    } ?: false
                                 }
                             }
                             runCatching {
