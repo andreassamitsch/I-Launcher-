@@ -1,12 +1,16 @@
 package com.andreassamitsch.joyntv
 
 /**
- * Curated combined AT/DE/CH Live-TV list.
+ * Curated combined AT/DE/CH Live-TV list plus logical sorting for the full per-country rows.
  *
- * The TV app deliberately does not expose every thematic/event/FAST stream Joyn happens to return.
- * It keeps the well-known general-interest channels in a stable order: Austria first, then Germany,
- * then Switzerland. When Joyn exposes the same station more than once, the highest-resolution feed
- * wins; the station's preferred origin is only used as a tie-breaker at equal quality.
+ * The combined row deliberately does not expose every thematic/event/FAST stream Joyn happens to
+ * return. It keeps the well-known general-interest channels in a stable order. When Joyn exposes
+ * the same station more than once, the highest-resolution feed wins; the station's preferred origin
+ * is only used as a tie-breaker at equal quality.
+ *
+ * The country rows, on the other hand, keep every channel the corresponding account may access.
+ * Known stations are shown first in a familiar order, followed by the remaining linear channels
+ * alphabetically and event streams after them.
  */
 internal object JoynLiveChannelOrder {
     private const val NOT_LISTED = 10_000
@@ -35,6 +39,10 @@ internal object JoynLiveChannelOrder {
             setOf("vox"),
             setOf("kabel eins", "kabeleins"),
             setOf("rtlzwei", "rtl zwei", "rtl2"),
+            setOf("super rtl", "superrtl"),
+            setOf("nitro", "rtl nitro"),
+            setOf("rtl up", "rtlup"),
+            setOf("voxup", "vox up"),
             setOf("3sat"),
             setOf("arte"),
             setOf("zdfneo", "zdf neo"),
@@ -52,6 +60,15 @@ internal object JoynLiveChannelOrder {
             setOf("4+", "4 plus"),
             setOf("5+", "5 plus"),
             setOf("6+", "6 plus"),
+            // Joyn CH carries the RTL family while Joyn DE may not expose those live channels.
+            setOf("rtl"),
+            setOf("vox"),
+            setOf("rtlzwei", "rtl zwei", "rtl2"),
+            setOf("super rtl", "superrtl"),
+            setOf("nitro", "rtl nitro"),
+            setOf("rtl up", "rtlup"),
+            setOf("voxup", "vox up"),
+            setOf("ntv", "n tv"),
             setOf("tv24", "tv 24"),
             setOf("tv25", "tv 25"),
             setOf("srf info"),
@@ -78,11 +95,37 @@ internal object JoynLiveChannelOrder {
         }
     }
 
+    /**
+     * Keep every accessible channel for one market, while making the row useful on TV: familiar
+     * linear channels first, then the remaining linear channels alphabetically, and event streams
+     * afterwards. Duplicate SD/HD representations of the same station collapse to the best feed.
+     */
+    fun sortCountry(country: JoynCountry, channels: List<JoynLiveChannel>): List<JoynLiveChannel> {
+        val deduplicated = deduplicate(channels.map { country to it }).map { it.second }
+        return deduplicated
+            .withIndex()
+            .sortedWith(
+                compareBy<IndexedValue<JoynLiveChannel>>(
+                    { channelTypeRank(it.value) },
+                    { rankedChannel(country, it.value.title) },
+                    { rankingKey(it.value.title) },
+                    { it.index },
+                ),
+            )
+            .map { it.value }
+    }
+
     internal fun rankedChannel(country: JoynCountry, title: String): Int {
         val normalized = rankingKey(title)
         val priorities = popularChannelsByCountry[country].orEmpty()
         val rank = priorities.indexOfFirst { aliases -> normalized in aliases }
         return if (rank >= 0) rank else NOT_LISTED
+    }
+
+    private fun channelTypeRank(channel: JoynLiveChannel): Int = when (channel.type.uppercase()) {
+        "LINEAR" -> 0
+        "EVENT" -> 1
+        else -> 2
     }
 
     private fun deduplicate(

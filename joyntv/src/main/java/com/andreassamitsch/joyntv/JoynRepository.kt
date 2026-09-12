@@ -12,6 +12,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
+internal data class JoynLiveTvRows(
+    val combined: List<JoynLiveChannel>,
+    val byCountry: Map<JoynCountry, List<JoynLiveChannel>>,
+)
+
 internal class JoynRepository(context: Context) {
     private val appContext = context.applicationContext.also {
         JoynRegionSettings.install(it)
@@ -35,7 +40,7 @@ internal class JoynRepository(context: Context) {
     private val previewPublisher = JoynPreviewChannelPublisher(appContext)
     private val networkOperationMutex = Mutex()
 
-    suspend fun loadLiveChannelsAndPublish(): List<JoynLiveChannel> = networkOperationMutex.withLock {
+    suspend fun loadLiveTvRowsAndPublish(): JoynLiveTvRows = networkOperationMutex.withLock {
         val selected = currentCountry()
         val loadOrder = LIVE_COUNTRIES.filter { it != selected } + selected
         val byCountry = mutableMapOf<JoynCountry, List<JoynLiveChannel>>()
@@ -52,12 +57,16 @@ internal class JoynRepository(context: Context) {
             }
         }
 
-        val channels = JoynLiveChannelOrder.sort(
+        val combined = JoynLiveChannelOrder.sort(
             LIVE_COUNTRIES.flatMap { country ->
                 byCountry[country].orEmpty().map { channel -> country to channel }
             },
         ).map { (country, channel) -> decorateLiveChannel(country, channel) }
-        if (channels.isEmpty()) {
+        val countryRows = LIVE_COUNTRIES.associateWith { country ->
+            JoynLiveChannelOrder.sortCountry(country, byCountry[country].orEmpty())
+                .map { channel -> decorateLiveChannel(country, channel, includeCountrySuffix = false) }
+        }
+        if (combined.isEmpty() && countryRows.values.all { it.isEmpty() }) {
             error(
                 "Live TV konnte für AT, DE und CH nicht geladen werden" +
                     failures.takeIf { it.isNotEmpty() }?.joinToString(prefix = ": ", separator = " · ").orEmpty(),
@@ -67,9 +76,12 @@ internal class JoynRepository(context: Context) {
             Log.w(TAG, "Einzelne Live-TV-Länder konnten nicht geladen werden: ${failures.joinToString(" · ")}")
         }
 
-        previewPublisher.publishLive(channels)
-        channels
+        previewPublisher.publishLive(combined)
+        JoynLiveTvRows(combined = combined, byCountry = countryRows)
     }
+
+    suspend fun loadLiveChannelsAndPublish(): List<JoynLiveChannel> =
+        loadLiveTvRowsAndPublish().combined
 
     suspend fun loadCatalogue(path: String = "/neu-beliebt"): JoynCataloguePage =
         networkOperationMutex.withLock {
@@ -500,11 +512,14 @@ internal class JoynRepository(context: Context) {
         }
     }
 
-    private fun decorateLiveChannel(country: JoynCountry, channel: JoynLiveChannel): JoynLiveChannel =
-        channel.copy(
-            id = "${MULTI_LIVE_PREFIX}${country.name}:${channel.id}",
-            title = "${channel.title} · ${country.name}",
-        )
+    private fun decorateLiveChannel(
+        country: JoynCountry,
+        channel: JoynLiveChannel,
+        includeCountrySuffix: Boolean = true,
+    ): JoynLiveChannel = channel.copy(
+        id = "${MULTI_LIVE_PREFIX}${country.name}:${channel.id}",
+        title = if (includeCountrySuffix) "${channel.title} · ${country.name}" else channel.title,
+    )
 
     private fun parseLiveChannelRef(value: String): CountryLiveRef? {
         if (!value.startsWith(MULTI_LIVE_PREFIX)) return null

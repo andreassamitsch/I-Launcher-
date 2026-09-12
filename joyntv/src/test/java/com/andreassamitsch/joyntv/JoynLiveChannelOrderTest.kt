@@ -70,6 +70,34 @@ class JoynLiveChannelOrderTest {
     }
 
     @Test
+    fun `rtl family can come from switzerland when germany does not expose it`() {
+        val source = listOf(
+            JoynCountry.CH to channel("RTL CH HD"),
+            JoynCountry.CH to channel("VOX CH"),
+            JoynCountry.CH to channel("RTLZWEI CH"),
+            JoynCountry.CH to channel("Super RTL CH"),
+            JoynCountry.CH to channel("NITRO CH"),
+            JoynCountry.CH to channel("RTL UP CH"),
+            JoynCountry.CH to channel("VOXup CH"),
+            JoynCountry.CH to channel("n-tv CH"),
+        )
+
+        assertEquals(
+            listOf(
+                "RTL CH HD",
+                "VOX CH",
+                "RTLZWEI CH",
+                "Super RTL CH",
+                "NITRO CH",
+                "RTL UP CH",
+                "VOXup CH",
+                "n-tv CH",
+            ),
+            JoynLiveChannelOrder.sort(source).map { it.second.title },
+        )
+    }
+
+    @Test
     fun `duplicate feeds prefer explicit highest resolution`() {
         val source = listOf(
             JoynCountry.DE to channel("ZDF", quality = "720p"),
@@ -95,6 +123,36 @@ class JoynLiveChannelOrderTest {
     }
 
     @Test
+    fun `country row keeps all channels and orders known stations before the rest`() {
+        val source = listOf(
+            channel("Tele 5"),
+            channel("RTL CH SD"),
+            channel("AAA FAST"),
+            channel("SRF 1"),
+            channel("RTL CH HD"),
+        )
+
+        assertEquals(
+            listOf("SRF 1", "RTL CH HD", "AAA FAST", "Tele 5"),
+            JoynLiveChannelOrder.sortCountry(JoynCountry.CH, source).map { it.title },
+        )
+    }
+
+    @Test
+    fun `country row places event streams after linear channels`() {
+        val source = listOf(
+            channel("Event A", type = "EVENT"),
+            channel("Zulu TV"),
+            channel("Alpha TV"),
+        )
+
+        assertEquals(
+            listOf("Alpha TV", "Zulu TV", "Event A"),
+            JoynLiveChannelOrder.sortCountry(JoynCountry.DE, source).map { it.title },
+        )
+    }
+
+    @Test
     fun `thematic variants do not accidentally match a popular base channel`() {
         val source = listOf(
             JoynCountry.DE to channel("Kabel Eins"),
@@ -110,10 +168,14 @@ class JoynLiveChannelOrderTest {
         )
     }
 
-    private fun channel(title: String, quality: String? = null) = JoynLiveChannel(
+    private fun channel(
+        title: String,
+        quality: String? = null,
+        type: String = "LINEAR",
+    ) = JoynLiveChannel(
         id = listOfNotNull(title, quality).joinToString("-"),
         title = title,
-        type = "LINEAR",
+        type = type,
         quality = quality,
     )
 }

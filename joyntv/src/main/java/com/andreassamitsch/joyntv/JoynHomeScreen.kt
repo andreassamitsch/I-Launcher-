@@ -57,6 +57,12 @@ private enum class HomeSection(val label: String, val path: String?) {
     LIVE("Live TV", null),
 }
 
+private val LIVE_COUNTRY_SECTIONS = listOf(
+    JoynCountry.AT to "Österreich",
+    JoynCountry.DE to "Deutschland",
+    JoynCountry.CH to "Schweiz",
+)
+
 @Composable
 internal fun JoynHomeScreen(
     repository: JoynRepository,
@@ -71,6 +77,7 @@ internal fun JoynHomeScreen(
     var catalogueLoading by remember { mutableStateOf(true) }
     var catalogueError by remember { mutableStateOf<String?>(null) }
     var liveChannels by remember { mutableStateOf<List<JoynLiveChannel>>(emptyList()) }
+    var countryLiveChannels by remember { mutableStateOf<Map<JoynCountry, List<JoynLiveChannel>>>(emptyMap()) }
     var liveError by remember { mutableStateOf<String?>(null) }
     var selectedMedia by remember { mutableStateOf<JoynMediaItem?>(null) }
     var selectedLive by remember { mutableStateOf<JoynLiveChannel?>(null) }
@@ -82,10 +89,12 @@ internal fun JoynHomeScreen(
     LaunchedEffect(Unit) {
         updateManager.checkForUpdates()
         runCatching {
-            withContext(Dispatchers.IO) { repository.loadLiveChannelsAndPublish() }
-        }.onSuccess {
-            liveChannels = it
-            if (selectedLive == null) selectedLive = it.firstOrNull()
+            withContext(Dispatchers.IO) { repository.loadLiveTvRowsAndPublish() }
+        }.onSuccess { rows ->
+            liveChannels = rows.combined
+            countryLiveChannels = rows.byCountry
+            if (selectedLive == null) selectedLive = rows.combined.firstOrNull()
+                ?: rows.byCountry.values.firstNotNullOfOrNull { it.firstOrNull() }
         }.onFailure { liveError = it.message ?: it.javaClass.simpleName }
         runCatching {
             withContext(Dispatchers.IO) { repository.accountState(refreshRemote = true) }
@@ -190,6 +199,23 @@ internal fun JoynHomeScreen(
                             },
                             onPlay = onPlayLive,
                         )
+                    }
+                }
+                LIVE_COUNTRY_SECTIONS.forEach { (country, label) ->
+                    val channels = countryLiveChannels[country].orEmpty()
+                    if (channels.isNotEmpty()) {
+                        item(key = "live-country-${country.name}") {
+                            SectionTitle(label, compact)
+                            LiveRow(
+                                channels = channels,
+                                compact = compact,
+                                onFocused = {
+                                    selectedLive = it
+                                    prewarmLive = it
+                                },
+                                onPlay = onPlayLive,
+                            )
+                        }
                     }
                 }
             } else {
