@@ -279,13 +279,14 @@ internal class JoynRepository(context: Context) {
                     val desired = requireNotNull(proxyProfile).copy(
                         enabled = true,
                         automatic = true,
-                        allTraffic = true,
                     )
+                    val current = proxySettings.current()
                     if (
                         ACTIVE_MYSTERIUM_PROXY_COUNTRY == country &&
-                        proxySettings.current().isUsable &&
-                        proxySettings.current().host == desired.host &&
-                        proxySettings.current().port == desired.port
+                        current.isUsable &&
+                        current.host == desired.host &&
+                        current.port == desired.port &&
+                        current.allTraffic == desired.allTraffic
                     ) {
                         return@withLock
                     }
@@ -302,7 +303,8 @@ internal class JoynRepository(context: Context) {
                     multiCountryLiveApi.onRouteChanged()
                     Log.i(
                         TAG,
-                        "Mysterium proxy switch ->${country.name} in ${SystemClock.elapsedRealtime() - startedAt}ms",
+                        "Mysterium proxy switch ->${country.name} mode=${if (desired.allTraffic) "FULL" else "CONTROL_ONLY"} " +
+                            "in ${SystemClock.elapsedRealtime() - startedAt}ms",
                     )
                     return@withLock
                 }
@@ -430,7 +432,7 @@ internal class JoynRepository(context: Context) {
         allTraffic: Boolean,
         onProgress: (JoynProxyDiscoveryProgress) -> Unit = {},
     ): JoynProxyDiscoveryResult {
-        saveMysteriumSettings(country, maxAttempts, allTraffic = true)
+        saveMysteriumSettings(country, maxAttempts, allTraffic = allTraffic)
         val progressRelay = progressRelay(onProgress)
 
         proxySettings.disable()
@@ -452,13 +454,13 @@ internal class JoynRepository(context: Context) {
                 country = country,
                 apiKey = protocolPrefs.getString("api_key_${country.name}", null),
                 maxAttempts = maxAttempts,
-                allTraffic = true,
+                allTraffic = allTraffic,
                 onProgress = progressRelay,
             )
         }
 
         result.config?.let { config ->
-            val active = config.copy(enabled = true, automatic = true, allTraffic = true)
+            val active = config.copy(enabled = true, automatic = true, allTraffic = allTraffic)
             mysteriumSettings.saveLastSuccessful(country, active, result.expiresAt)
             if (JoynMysteriumWireGuard.isConnected(appContext)) {
                 JoynMysteriumWireGuard.disconnect(appContext)
@@ -551,5 +553,5 @@ internal class JoynPinRequiredException : Exception(
 )
 
 internal class JoynPinInvalidException : Exception(
-    "Der eingegebene Jugendschutz-PIN ist nicht korrekt.",
+    "Der Jugendschutz-PIN wurde von Joyn abgelehnt. Bitte PIN prüfen und erneut versuchen.",
 )
