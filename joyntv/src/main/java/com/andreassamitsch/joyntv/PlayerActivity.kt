@@ -590,6 +590,7 @@ private fun Media3Player(
                 useController = true
                 controllerAutoShow = true
                 controllerHideOnTouch = false
+                installJoynQualitySelector(player)
                 requestFocus()
             }
         },
