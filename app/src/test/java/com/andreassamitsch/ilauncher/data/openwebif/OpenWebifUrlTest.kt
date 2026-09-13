@@ -23,4 +23,21 @@ class OpenWebifUrlTest {
             OpenWebifUrl.resolve("http://192.168.1.20/", "/picon/test.png"),
         )
     }
+
+    @Test fun `keeps picon URL unchanged without cache generation`() {
+        assertEquals(
+            "http://192.168.1.20/picon/test.png",
+            OpenWebifUrl.withCacheGeneration("http://192.168.1.20/picon/test.png", 0L),
+        )
+    }
+
+    @Test fun `adds picon cache generation while preserving query and fragment`() {
+        assertEquals(
+            "http://192.168.1.20/picon/test.png?size=220&il_picon=42#logo",
+            OpenWebifUrl.withCacheGeneration(
+                "http://192.168.1.20/picon/test.png?size=220#logo",
+                42L,
+            ),
+        )
+    }
 }
