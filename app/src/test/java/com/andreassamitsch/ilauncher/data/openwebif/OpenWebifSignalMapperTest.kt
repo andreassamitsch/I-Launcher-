@@ -65,4 +65,43 @@ class OpenWebifSignalMapperTest {
         assertNull(status.ber)
         assertFalse(status.hasMeasurements)
     }
+
+    @Test
+    fun parsesLegacySignalXmlIncludingHistoricalAcgTag() {
+        val status = OpenWebifLegacySignalParser.fromXml(
+            """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <e2frontendstatus>
+                <e2snrdb>13.42 dB</e2snrdb>
+                <e2snr>78 %</e2snr>
+                <e2ber>0</e2ber>
+                <e2acg>64 %</e2acg>
+            </e2frontendstatus>
+            """.trimIndent(),
+        )
+
+        assertEquals(78, status.snrPercent)
+        assertEquals(13.42, status.snrDb!!, 0.001)
+        assertEquals(64, status.agcPercent)
+        assertEquals("0", status.ber)
+        assertTrue(status.hasMeasurements)
+    }
+
+    @Test
+    fun ignoresLegacyIntegerSnrDbPercentageMirror() {
+        val status = OpenWebifLegacySignalParser.fromXml(
+            """
+            <e2frontendstatus>
+                <e2snrdb>71 dB</e2snrdb>
+                <e2snr>71 %</e2snr>
+                <e2ber>0</e2ber>
+                <e2agc>55 %</e2agc>
+            </e2frontendstatus>
+            """.trimIndent(),
+        )
+
+        assertEquals(71, status.snrPercent)
+        assertNull(status.snrDb)
+        assertEquals(55, status.agcPercent)
+    }
 }
