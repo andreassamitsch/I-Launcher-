@@ -25,25 +25,26 @@ internal class OpenWebifSignalReader(context: Context) {
             val modern = runCatching {
                 OpenWebifSignalMapper.fromDto(api.getSignal())
             }
-            modern.getOrNull()?.takeIf(OpenWebifSignalStatus::hasMeasurements)?.let {
+            modern.getOrNull()?.takeIf { it.hasMeasurements }?.let {
                 return@runCatching it
             }
 
             val legacy = runCatching {
                 OpenWebifLegacySignalParser.fromXml(api.getLegacySignal().string())
             }
-            legacy.getOrNull()?.takeIf(OpenWebifSignalStatus::hasMeasurements)?.let {
+            legacy.getOrNull()?.takeIf { it.hasMeasurements }?.let {
                 return@runCatching it
             }
 
             // At least one endpoint answered successfully but Enigma2 exposed no active frontend.
             // Keep that distinct from a transport/API failure so the overlay can say there are no
             // tuner values instead of reporting a network error.
-            modern.getOrNull()
-                ?: legacy.getOrNull()
-                ?: throw modern.exceptionOrNull()
-                ?: throw legacy.exceptionOrNull()
-                ?: error("OpenWebif signal endpoints unavailable")
+            modern.getOrNull()?.let { return@runCatching it }
+            legacy.getOrNull()?.let { return@runCatching it }
+
+            val failure = modern.exceptionOrNull() ?: legacy.exceptionOrNull()
+            if (failure != null) throw failure
+            error("OpenWebif signal endpoints unavailable")
         }
     }
 
