@@ -46,5 +46,16 @@ object OpenWebifUrl {
         return runCatching { URI(baseUrl).resolve(value).toASCIIString() }.getOrNull()
     }
 
+    fun withCacheGeneration(url: String?, generation: Long): String? {
+        val value = url?.takeIf { it.isNotBlank() } ?: return url
+        if (generation <= 0L) return value
+
+        val fragmentIndex = value.indexOf('#')
+        val base = if (fragmentIndex >= 0) value.substring(0, fragmentIndex) else value
+        val fragment = if (fragmentIndex >= 0) value.substring(fragmentIndex) else ""
+        val separator = if ('?' in base) '&' else '?'
+        return "$base${separator}il_picon=$generation$fragment"
+    }
+
     private val SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://")
 }
