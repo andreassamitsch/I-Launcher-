@@ -7,10 +7,9 @@ import kotlinx.coroutines.withContext
 /**
  * Lightweight live tuner diagnostics for the active Enigma2 frontend.
  *
- * The target Gigablue currently uses one tuner, so OpenWebif's current frontend measurements map to
- * the stream watched in I Launcher. Keep this separate from the five-minute channel/EPG refresh:
- * the signal endpoint is designed for frequent polling and OpenWebif's own sat-finder uses it once
- * per second.
+ * OpenWebif installations in the wild differ: newer versions expose JSON at /api/signal while
+ * older/vendor images can only provide the legacy XML /web/signal endpoint. Try both so the
+ * diagnostics are useful on the actual Gigablue instead of depending on one OpenWebif generation.
  */
 internal class OpenWebifSignalReader(context: Context) {
     private val store = OpenWebifStore(context.applicationContext)
@@ -21,7 +20,30 @@ internal class OpenWebifSignalReader(context: Context) {
         runCatching {
             val config = store.loadConfig()
                 ?: error("No OpenWebif receiver configured")
-            OpenWebifSignalMapper.fromDto(apiFor(config).getSignal())
+            val api = apiFor(config)
+
+            val modern = runCatching {
+                OpenWebifSignalMapper.fromDto(api.getSignal())
+            }
+            modern.getOrNull()?.takeIf(OpenWebifSignalStatus::hasMeasurements)?.let {
+                return@runCatching it
+            }
+
+            val legacy = runCatching {
+                OpenWebifLegacySignalParser.fromXml(api.getLegacySignal().string())
+            }
+            legacy.getOrNull()?.takeIf(OpenWebifSignalStatus::hasMeasurements)?.let {
+                return@runCatching it
+            }
+
+            // At least one endpoint answered successfully but Enigma2 exposed no active frontend.
+            // Keep that distinct from a transport/API failure so the overlay can say there are no
+            // tuner values instead of reporting a network error.
+            modern.getOrNull()
+                ?: legacy.getOrNull()
+                ?: throw modern.exceptionOrNull()
+                ?: throw legacy.exceptionOrNull()
+                ?: error("OpenWebif signal endpoints unavailable")
         }
     }
 
@@ -76,4 +98,48 @@ internal object OpenWebifSignalMapper {
         this?.trim()?.takeIf { it.isNotEmpty() && !it.equals("N/A", ignoreCase = true) }
 
     private fun String?.cleanNumber(): String? = cleanText()
+}
+
+/** Parser for OpenWebif's long-standing /web/signal XML response. */
+internal object OpenWebifLegacySignalParser {
+    private val NUMBER = Regex("[-+]?\\d+(?:[.,]\\d+)?")
+
+    fun fromXml(xml: String): OpenWebifSignalStatus {
+        val snrText = tag(xml, "e2snr")
+        val snr = number(snrText)?.toDoubleOrNull()?.toInt()?.coerceIn(0, 100)
+
+        val snrDbText = tag(xml, "e2snrdb")
+        val rawSnrDb = number(snrDbText)
+        val snrDb = rawSnrDb
+            ?.takeIf { value ->
+                // Same compatibility rule as the JSON mapper: integer snr_db values are commonly
+                // just the percentage copied into the dB field by OpenWebif.
+                (value.contains('.') || value.contains(',')) || value.toDoubleOrNull()?.toInt() != snr
+            }
+            ?.replace(',', '.')
+            ?.toDoubleOrNull()
+
+        // The official legacy template historically spells the tag e2acg, not e2agc. Accept both.
+        val agc = number(tag(xml, "e2acg") ?: tag(xml, "e2agc"))
+            ?.toDoubleOrNull()
+            ?.toInt()
+            ?.coerceIn(0, 100)
+        val ber = tag(xml, "e2ber")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() && !it.equals("N/A", ignoreCase = true) }
+
+        return OpenWebifSignalStatus(
+            snrPercent = snr,
+            snrDb = snrDb,
+            agcPercent = agc,
+            ber = ber,
+        )
+    }
+
+    private fun tag(xml: String, name: String): String? = Regex(
+        "<$name(?:\\s[^>]*)?>(.*?)</$name>",
+        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+    ).find(xml)?.groupValues?.getOrNull(1)?.trim()
+
+    private fun number(value: String?): String? = value?.let { NUMBER.find(it)?.value }
 }
