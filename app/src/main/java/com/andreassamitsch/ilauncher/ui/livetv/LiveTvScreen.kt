@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -20,6 +21,7 @@ import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.epg.EpgChannelMatcher
 import com.andreassamitsch.ilauncher.data.epg.EpgSourceChannel
 import com.andreassamitsch.ilauncher.data.epg.EpgState
+import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifPiconCache
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifState
 import com.andreassamitsch.ilauncher.ui.components.TouchButton
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
@@ -39,6 +41,7 @@ fun LiveTvScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val piconCache = remember(context) { OpenWebifPiconCache(context.applicationContext) }
     val scrollState = rememberScrollState()
     val mappingByServiceReference = epgState.mappings.associateBy { it.serviceReference }
 
@@ -83,6 +86,20 @@ fun LiveTvScreen(
             TouchButton(onClick = onRefresh, enabled = !state.isRefreshing) {
                 Text(if (state.isRefreshing) "Aktualisiere …" else "Gigablue aktualisieren")
             }
+            TouchButton(
+                onClick = {
+                    piconCache.invalidate()
+                    onRefresh()
+                },
+                enabled = !state.isRefreshing,
+            ) {
+                Text(if (state.isRefreshing) "Aktualisiere …" else "Picons neu laden")
+            }
+            Text(
+                "Lädt Senderlogos mit einem neuen Cache-Stand von OpenWebif. Sinnvoll nach neu hinzugefügten oder geänderten Picons.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         state.errorMessage?.let { error ->
