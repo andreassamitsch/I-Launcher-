@@ -12,6 +12,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -21,6 +25,9 @@ import com.andreassamitsch.ilauncher.data.epg.EpgChannelMatcher
 import com.andreassamitsch.ilauncher.data.epg.EpgSourceChannel
 import com.andreassamitsch.ilauncher.data.epg.EpgState
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifState
+import com.andreassamitsch.ilauncher.data.oscam.DEFAULT_OSCAM_WEBIF_PORT
+import com.andreassamitsch.ilauncher.data.oscam.OscamConfig
+import com.andreassamitsch.ilauncher.data.oscam.OscamStore
 import com.andreassamitsch.ilauncher.ui.components.TouchButton
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import java.text.DateFormat
@@ -41,6 +48,8 @@ fun LiveTvScreen(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     val mappingByServiceReference = epgState.mappings.associateBy { it.serviceReference }
+    val oscamStore = remember(context) { OscamStore(context) }
+    var oscamConfig by remember { mutableStateOf(oscamStore.load()) }
 
     Column(
         modifier = modifier
@@ -99,6 +108,36 @@ fun LiveTvScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+
+        Text("OSCam / Entschlüsselung", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            buildString {
+                append("WebIf auf demselben Receiver · Port ${oscamConfig.port}")
+                if (oscamConfig.username.isNotBlank()) append(" · Benutzer gesetzt")
+                if (oscamConfig.password.isNotBlank()) append(" · Passwort gesetzt")
+            },
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            "I Launcher liest im Live-TV nur den OSCam-Status (SID, CAID, PROVID, Reader, ECM-Zeit und Fehler). Standard-Port ist $DEFAULT_OSCAM_WEBIF_PORT.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TouchButton(
+            onClick = {
+                showOscamDialog(
+                    context = context,
+                    initial = oscamConfig,
+                    onSave = { port, username, password ->
+                        oscamStore.save(port, username, password)
+                        oscamConfig = oscamStore.load()
+                    },
+                )
+            },
+            enabled = state.configured,
+        ) {
+            Text("OSCam WebIf bearbeiten")
         }
 
         if (state.bouquets.isNotEmpty()) {
@@ -244,7 +283,7 @@ fun LiveTvScreen(
         }
 
         Text(
-            "Sicherheit: Receiver-Zugangsdaten bleiben lokal und werden nie in Diagnose/Logs ausgegeben. Externe EPG-Quellen erhalten keine Gigablue-Zugangsdaten.",
+            "Sicherheit: Receiver- und OSCam-Zugangsdaten bleiben lokal und werden nie in Diagnose/Logs ausgegeben. Externe EPG-Quellen erhalten keine Gigablue-Zugangsdaten.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -298,6 +337,62 @@ private fun showConnectionDialog(
         .setMessage("Ohne Schema wird http:// verwendet. Port kann angegeben werden, z. B. 192.168.1.20:80.")
         .setPositiveButton("Speichern") { _, _ ->
             onSave(address.text.toString(), username.text.toString(), password.text.toString())
+        }
+        .setNegativeButton("Abbrechen", null)
+        .show()
+}
+
+private fun showOscamDialog(
+    context: Context,
+    initial: OscamConfig,
+    onSave: (Int, String, String) -> Unit,
+) {
+    val padding = (20 * context.resources.displayMetrics.density).toInt()
+    val container = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(padding, padding / 2, padding, 0)
+        layoutParams = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        )
+    }
+    val port = EditText(context).apply {
+        hint = "WebIf-Port"
+        setText(initial.port.toString())
+        inputType = InputType.TYPE_CLASS_NUMBER
+        isSingleLine = true
+    }
+    val username = EditText(context).apply {
+        hint = "OSCam WebIf-Benutzer (optional)"
+        setText(initial.username)
+        inputType = InputType.TYPE_CLASS_TEXT
+        isSingleLine = true
+    }
+    val password = EditText(context).apply {
+        hint = if (initial.password.isNotEmpty()) {
+            "Passwort neu eingeben (leer = entfernen)"
+        } else {
+            "OSCam WebIf-Passwort (optional)"
+        }
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        isSingleLine = true
+    }
+    container.addView(port)
+    container.addView(username)
+    container.addView(password)
+
+    AlertDialog.Builder(context)
+        .setTitle("OSCam WebIf")
+        .setView(container)
+        .setMessage(
+            "Host wird automatisch von der Gigablue/OpenWebif-Verbindung übernommen. " +
+                "OSCam verwendet im Beispiel-Setup Port $DEFAULT_OSCAM_WEBIF_PORT. " +
+                "Benutzer/Passwort nur eintragen, wenn das OSCam WebIf geschützt ist.",
+        )
+        .setPositiveButton("Speichern") { _, _ ->
+            val parsedPort = port.text.toString().toIntOrNull()?.takeIf { it in 1..65535 }
+                ?: DEFAULT_OSCAM_WEBIF_PORT
+            onSave(parsedPort, username.text.toString(), password.text.toString())
         }
         .setNegativeButton("Abbrechen", null)
         .show()
