@@ -47,11 +47,33 @@ class OpenWebifRepository(context: Context) {
         withContext(Dispatchers.IO) {
             val config = store.loadConfig()
                 ?: throw OpenWebifStreamException("No OpenWebif receiver configured")
-            streamResolver.resolve(
+            val stream = streamResolver.resolve(
                 config = config,
                 serviceReference = channel.serviceReference,
                 channelName = channel.name,
             )
+
+            /*
+             * OpenWebif's stream.m3u endpoint intentionally does not create a foreground service
+             * while Enigma2 is in standby. /api/signal reads session.nav.getCurrentService(), so in
+             * exactly that common streaming case it returns empty tuner values although port 8001
+             * is receiving satellite data. A normal zap to the SAME service after stream.m3u has
+             * been resolved gives OpenWebif a current frontend to inspect. OpenWebif's standby zap
+             * implementation calls session.nav.playService() without leaving standby, so HDMI/CEC
+             * is not woken. When the box is already awake stream.m3u has already zapped to the same
+             * service, making this effectively idempotent.
+             *
+             * Diagnostics must never make playback fail, therefore old/vendor OpenWebif images that
+             * do not support the JSON zap endpoint simply continue with the already resolved stream.
+             */
+            runCatching {
+                OpenWebifNetworkClient.create(config).zap(
+                    serviceReference = channel.serviceReference,
+                    title = channel.name,
+                )
+            }
+
+            stream
         }
 
     suspend fun refresh() = withContext(Dispatchers.IO) {
