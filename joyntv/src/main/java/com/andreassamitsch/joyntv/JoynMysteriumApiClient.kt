@@ -10,6 +10,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -255,14 +256,18 @@ internal class JoynMysteriumApiClient(context: Context) {
     }
 
     private fun exchangeAuthorizationCode(code: String, verifier: String) {
-        val payload = JSONObject()
-            .put("grant_type", "authorization_code")
-            .put("client_id", "app")
-            .put("device", deviceJson())
-            .put("code_verifier", verifier)
-            .put("code", code)
-        val response = executeJsonPost("/oauth/token", payload, authorized = false)
-            ?: error("Keine Antwort vom Mysterium-Token-Endpunkt")
+        val response = executeTokenPost(
+            mapOf(
+                "grant_type" to "authorization_code",
+                "device_id" to deviceId(),
+                "client_id" to "app",
+                "code_verifier" to verifier,
+                "code" to code,
+                "device[os_type]" to "android",
+                "device[id]" to deviceId(),
+                "device[title]" to "Joyn TV",
+            ),
+        )
         if (response.first !in 200..299) {
             error("Mysterium Login HTTP ${response.first}: ${extractError(response.second).ifBlank { compact(response.second) }}")
         }
@@ -273,12 +278,19 @@ internal class JoynMysteriumApiClient(context: Context) {
     private fun refreshAccessToken(): Boolean {
         val refresh = refreshToken()
         if (refresh.isBlank()) return false
-        val payload = JSONObject()
-            .put("grant_type", "refresh_token")
-            .put("client_id", "app")
-            .put("device", deviceJson())
-            .put("refresh_token", refresh)
-        val response = executeJsonPost("/oauth/token", payload, authorized = false) ?: return false
+        val response = runCatching {
+            executeTokenPost(
+                mapOf(
+                    "grant_type" to "refresh_token",
+                    "device_id" to deviceId(),
+                    "client_id" to "app",
+                    "refresh_token" to refresh,
+                    "device[os_type]" to "android",
+                    "device[id]" to deviceId(),
+                    "device[title]" to "Joyn TV",
+                ),
+            )
+        }.getOrNull() ?: return false
         if (response.first !in 200..299) return false
         return runCatching { saveTokenResponse(response.second); true }.getOrDefault(false)
     }
@@ -332,6 +344,38 @@ internal class JoynMysteriumApiClient(context: Context) {
         if (authorized) accessToken().takeIf(String::isNotBlank)?.let { builder.header("Authorization", "Bearer $it") }
         directClient.newCall(builder.build()).execute().use { response -> response.code to response.body.string() }
     }.getOrNull()
+
+    private fun executeTokenPost(fields: Map<String, String>): Pair<Int, String> {
+        val formBody = FormBody.Builder().apply {
+            fields.forEach { (name, value) -> add(name, value) }
+        }.build()
+        val request = Request.Builder()
+            .url("$PRODUCTION_BASE_URL/oauth/token")
+            .header("Accept", "application/json")
+            .header("User-Agent", USER_AGENT)
+            .header("x-client-version", CLIENT_VERSION)
+            .header("x-client-platform", "android")
+            .post(formBody)
+            .build()
+        return try {
+            directClient.newCall(request).execute().use { response ->
+                response.code to response.body.string()
+            }
+        } catch (error: Exception) {
+            val detail = error.message.orEmpty()
+                .replace('\n', ' ')
+                .replace('\r', ' ')
+                .take(180)
+            throw IllegalStateException(
+                buildString {
+                    append("Mysterium-Token-Endpunkt: ")
+                    append(error.javaClass.simpleName)
+                    if (detail.isNotBlank()) append(" · $detail")
+                },
+                error,
+            )
+        }
+    }
 
     private fun parseAuthenticated(body: String): Boolean? = runCatching {
         val json = JSONObject(body)
@@ -397,11 +441,6 @@ internal class JoynMysteriumApiClient(context: Context) {
         prefs.edit().putString(KEY_DEVICE_ID, created).apply()
         return created
     }
-
-    private fun deviceJson(): JSONObject = JSONObject()
-        .put("os_type", "android")
-        .put("id", deviceId())
-        .put("title", "Joyn TV")
 
     private fun generatePkceVerifier(): String {
         val bytes = ByteArray(48)
