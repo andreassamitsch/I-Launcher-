@@ -15,6 +15,7 @@ import javax.net.ssl.SSLException
 
 class OpenWebifRepository(context: Context) {
     private val store = OpenWebifStore(context.applicationContext)
+    private val piconCache = OpenWebifPiconCache(context.applicationContext)
     private val streamResolver = OpenWebifStreamResolver()
     private val _state = MutableStateFlow(initialState())
     val state: StateFlow<OpenWebifState> = _state.asStateFlow()
@@ -111,12 +112,17 @@ class OpenWebifRepository(context: Context) {
             if (!epgResponse.result) error("OpenWebif rejected EPG request")
 
             val now = System.currentTimeMillis()
+            val piconGeneration = piconCache.currentGeneration()
             val channels = OpenWebifMapper.channels(
                 baseUrl = config.baseUrl,
                 services = servicesResponse.services,
                 events = epgResponse.events,
                 nowUtcMillis = now,
-            )
+            ).map { channel ->
+                channel.copy(
+                    piconUri = OpenWebifUrl.withCacheGeneration(channel.piconUri, piconGeneration),
+                )
+            }
             val snapshot = OpenWebifCachedSnapshot(
                 baseUrl = config.baseUrl,
                 bouquets = bouquets,
