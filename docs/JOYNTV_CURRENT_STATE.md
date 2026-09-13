@@ -169,3 +169,33 @@ Joyn Live OK
 **`0.1.0-dev.563`** ist der erste explizit vom Benutzer bestätigte Android-TV-Build, bei dem die Mysterium-Residential-Proxy-Verbindung nach dem TLS-/Trust-Anchor-Fix funktioniert hat.
 
 Spätere Builds dürfen natürlich eine höhere Versionsnummer haben. Die Nummer `.563` ist hier deshalb als **historischer Verifikationspunkt**, nicht als dauerhaft aktuelle Version, dokumentiert.
+
+## 9. I Launcher: SAT-Diagnose als Grundlage für Joyn-Fallback
+
+Ziel für I Launcher ist langfristig **ein gemeinsamer Live-TV-Sender mit mehreren Empfangsquellen**: Gigablue/Enigma2 über Satellit als Primärquelle und Joyn als nahtloser Fallback, statt zwei getrennte Live-TV-Oberflächen.
+
+Als erster Schritt wurde am 13.09.2026 die Live-SAT-Diagnose in den bestehenden I-Launcher-Player eingebaut:
+
+- OpenWebif-Endpunkt `api/signal` wird während Live-TV einmal pro Sekunde abgefragt;
+- angezeigt werden, soweit der Gigablue-Treiber sie liefert: Tuner, Tuner-Typ, SNR %, echte SNR dB, AGC % und BER;
+- OpenWebifs `snr_db`-Fallback auf die bloße SNR-Prozentzahl wird erkannt und nicht fälschlich als dB beschriftet;
+- der Netzwerkclient wird zwischen Polls wiederverwendet;
+- die Diagnose erscheint im bestehenden Sender-Overlay und verändert das Playback nicht.
+
+Relevante Dateien:
+
+- `app/src/main/java/com/andreassamitsch/ilauncher/data/openwebif/OpenWebifApi.kt`
+- `app/src/main/java/com/andreassamitsch/ilauncher/data/openwebif/OpenWebifSignalReader.kt`
+- `app/src/main/java/com/andreassamitsch/ilauncher/ui/livetv/LiveTvSignalDiagnostics.kt`
+- `app/src/main/java/com/andreassamitsch/ilauncher/ui/livetv/LiveTvPlayerScreen.kt`
+
+### Verschlüsselte SAT-Sender
+
+**SNR, AGC und BER sagen nichts darüber aus, ob ein verschlüsselter Sender erfolgreich entschlüsselt wurde.** Sie beschreiben den Empfang bzw. die Tuner-/Transportqualität. Ein verschlüsselter Sender kann daher perfekte SNR-/BER-Werte haben und trotzdem wegen CI/CAM/Softcam/Entschlüsselung kein nutzbares Bild liefern.
+
+Für den späteren automatischen SAT -> Joyn-Fallback müssen daher zwei Fehlerklassen getrennt bewertet werden:
+
+1. **RF-/Empfangsfehler:** SNR/BER/Tunerstatus plus Media3-Buffering/Parserfehler.
+2. **Entschlüsselungs-/Playbackfehler:** bei gutem RF-Signal trotzdem kein renderbares Video bzw. kein erster Videoframe/Decoderfortschritt. OpenWebif kann zusätzlich kennzeichnen, dass ein Service verschlüsselt ist (`sIsCrypted`/`crypt`), aber das allein beweist noch keine erfolgreiche Entschlüsselung.
+
+Auf dem aktuellen Ziel-Gigablue ist laut Benutzer nur **ein Tuner** im Einsatz. Damit ist `api/signal` für die laufenden Tests wesentlich eindeutiger als in einer Mehrtuner-Konfiguration.
