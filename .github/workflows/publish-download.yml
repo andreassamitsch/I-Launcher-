@@ -4,6 +4,7 @@ name: Publish TV Downloader APK
 on:
   push:
     branches:
+      - feature/joyn-tv-client
       - agent/ui-player-polish
       - agent/cloudstream-direct-play
       - agent/series-seasons-resume
@@ -38,7 +39,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v3
         with:
           distribution: temurin
           java-version: "17"
