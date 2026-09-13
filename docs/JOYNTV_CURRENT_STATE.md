@@ -199,3 +199,45 @@ Für den späteren automatischen SAT -> Joyn-Fallback müssen daher zwei Fehlerk
 2. **Entschlüsselungs-/Playbackfehler:** bei gutem RF-Signal trotzdem kein renderbares Video bzw. kein erster Videoframe/Decoderfortschritt. OpenWebif kann zusätzlich kennzeichnen, dass ein Service verschlüsselt ist (`sIsCrypted`/`crypt`), aber das allein beweist noch keine erfolgreiche Entschlüsselung.
 
 Auf dem aktuellen Ziel-Gigablue ist laut Benutzer nur **ein Tuner** im Einsatz. Damit ist `api/signal` für die laufenden Tests wesentlich eindeutiger als in einer Mehrtuner-Konfiguration.
+
+## 10. I Launcher: OSCam-Live-Diagnose
+
+Am 13.09.2026 wurde als nächster Schritt eine OSCam-Diagnose direkt in das bestehende I-Launcher-Live-TV-Overlay integriert. **Dieser Teil ist implementiert und gebaut, aber noch nicht auf der realen Gigablue bestätigt.**
+
+Ziel ist zunächst reine Diagnose; noch **kein** automatischer Joyn-Fallback auf Basis der OSCam-Werte.
+
+Implementierung:
+
+- OSCam-WebIf-Host wird automatisch vom konfigurierten Gigablue/OpenWebif-Receiver übernommen;
+- Standard-Port ist **8888**, entsprechend dem offiziellen OSCam-Beispiel-Setup; der Port ist in `Live TV / Gigablue` änderbar;
+- optional können eigener OSCam-WebIf-Benutzer und Passwort lokal gespeichert werden;
+- ungeschütztes WebIf sowie HTTP Basic und OSCam-typisches HTTP Digest werden unterstützt;
+- Status wird über `oscamapi.json?part=status` gelesen;
+- aktueller Enigma2-Service wird über die SID aus der Service-Reference mit OSCams `srvid` korreliert;
+- bei passender ECM werden CAID, PROVID, Reader/Antwort, ECM-Zeit und ggf. Idle angezeigt;
+- bekannte OSCam-Fehler wie `not found`, `timeout`, `no card`, `expdate`, `disabled`, `stopped`, `invalid` oder `corrupt` werden explizit als Fehler dargestellt;
+- gibt es keine passende ECM, wird das bewusst neutral als `FTA oder noch keine Anfrage` dargestellt, bis zusätzlich OpenWebifs `crypt`-Kennzeichen einbezogen wird;
+- OSCam-Abfrage läuft einmal pro Sekunde und wird außerhalb des UI-Threads ausgeführt;
+- Zugangsdaten werden nicht geloggt oder in Diagnosezeilen ausgegeben.
+
+Beispiel für eine erfolgreiche Zeile:
+
+```text
+OSCam ✓ · CAID 0D95 · PROVID 000004 · Reader localcard · ECM 287 ms
+```
+
+Beispiel für einen Entschlüsselungsfehler:
+
+```text
+OSCam ✕ · CAID 0D95 · timeout · ECM 2000 ms
+```
+
+Relevante Dateien:
+
+- `app/src/main/java/com/andreassamitsch/ilauncher/data/oscam/OscamStore.kt`
+- `app/src/main/java/com/andreassamitsch/ilauncher/data/oscam/OscamStatusReader.kt`
+- `app/src/main/java/com/andreassamitsch/ilauncher/ui/livetv/LiveTvSignalDiagnostics.kt`
+- `app/src/main/java/com/andreassamitsch/ilauncher/ui/livetv/LiveTvScreen.kt`
+- `app/src/test/java/com/andreassamitsch/ilauncher/data/oscam/OscamStatusReaderTest.kt`
+
+Build-/Updater-Meilenstein für diese erste OSCam-Diagnose: **I Launcher `0.1.0-dev.502`**. Build, Unit-Tests und Veröffentlichung im I-Launcher-Updater waren erfolgreich.
