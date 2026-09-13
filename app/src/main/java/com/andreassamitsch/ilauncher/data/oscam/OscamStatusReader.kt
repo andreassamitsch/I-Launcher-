@@ -11,6 +11,8 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.Credentials
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
@@ -41,7 +43,11 @@ internal class OscamStatusReader(context: Context) {
         return "$host:${oscamStore.load().port}"
     }
 
-    fun read(serviceReference: String): OscamReadResult {
+    suspend fun read(serviceReference: String): OscamReadResult = withContext(Dispatchers.IO) {
+        readBlocking(serviceReference)
+    }
+
+    private fun readBlocking(serviceReference: String): OscamReadResult {
         val serviceId = serviceIdFromReference(serviceReference)
             ?: return OscamReadResult.Error(OscamError.INVALID_SERVICE, "Service-ID fehlt")
         val receiver = openWebifStore.loadConfig()
