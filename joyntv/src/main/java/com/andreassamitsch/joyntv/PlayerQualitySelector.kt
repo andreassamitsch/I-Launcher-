@@ -99,6 +99,7 @@ private fun PlayerView.showQualityDialog(player: ExoPlayer) {
     dialog.show()
 }
 
+@OptIn(UnstableApi::class)
 private fun availableVideoQualities(player: ExoPlayer): List<VideoQualityOption> {
     val videoGroups = player.currentTracks.groups.filter { group ->
         group.type == C.TRACK_TYPE_VIDEO && group.isSupported
@@ -145,6 +146,7 @@ private fun qualityLabel(option: VideoQualityOption): String = buildString {
     }
 }
 
+@OptIn(UnstableApi::class)
 private fun currentVideoInfo(format: Format?): String {
     if (format == null) return "wird ermittelt"
     val parts = buildList {
