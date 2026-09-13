@@ -1,6 +1,7 @@
 package com.andreassamitsch.ilauncher.data.openwebif
 
 import com.google.gson.annotations.SerializedName
+import okhttp3.ResponseBody
 import retrofit2.http.GET
 import retrofit2.http.Query
 
@@ -17,14 +18,31 @@ internal interface OpenWebifApi {
     ): OpenWebifEpgResponseDto
 
     /**
-     * Current Enigma2 frontend/tuner measurements.
-     *
-     * OpenWebif's own sat-finder polls this endpoint once per second. Values can be numbers while a
-     * tuner is active and empty strings while no frontend is available, therefore the DTO keeps the
-     * wire representation as strings and normalises it separately.
+     * Current Enigma2 frontend/tuner measurements using OpenWebif's JSON API.
      */
     @GET("api/signal")
     suspend fun getSignal(): OpenWebifSignalResponseDto
+
+    /**
+     * Legacy XML signal endpoint. Older/vendor OpenWebif builds can expose this even when
+     * /api/signal is missing or behaves differently.
+     */
+    @GET("web/signal")
+    suspend fun getLegacySignal(): ResponseBody
+
+    /**
+     * Keep Enigma2's foreground service aligned with the network stream.
+     *
+     * OpenWebif deliberately does not create a foreground service for stream.m3u while the box is
+     * in standby. Its signal endpoint, however, reads session.nav.getCurrentService(). Calling the
+     * normal zap endpoint for the same service after resolving the stream gives the signal endpoint
+     * a frontend to inspect. OpenWebif keeps the receiver in standby; this does not wake HDMI/CEC.
+     */
+    @GET("api/zap")
+    suspend fun zap(
+        @Query("sRef") serviceReference: String,
+        @Query("title") title: String = "",
+    ): OpenWebifActionResponseDto
 }
 
 internal data class OpenWebifServicesResponseDto(
@@ -64,4 +82,9 @@ internal data class OpenWebifSignalResponseDto(
     @SerializedName("snr_db") val snrDb: String? = null,
     val agc: String? = null,
     val ber: String? = null,
+)
+
+internal data class OpenWebifActionResponseDto(
+    val result: Boolean = true,
+    val message: String? = null,
 )
