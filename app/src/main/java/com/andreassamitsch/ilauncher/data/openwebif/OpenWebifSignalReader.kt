@@ -48,6 +48,30 @@ internal class OpenWebifSignalReader(context: Context) {
         }
     }
 
+    /**
+     * Re-align Enigma2's foreground service with the network stream after the stream has connected.
+     *
+     * On the target Gigablue the OpenWebif stream can briefly expose frontend values while the
+     * stream is being prepared, then session.nav.getCurrentService() becomes empty once port 8001
+     * owns the streaming service. Both /api/signal and /web/signal read exactly that foreground
+     * service, so their values disappear even though the SAT stream keeps playing. A normal zap to
+     * the same service restores the inspectable frontend without leaving standby. This operation is
+     * diagnostic only: callers must never make playback depend on its success.
+     */
+    suspend fun alignCurrentService(
+        serviceReference: String,
+        title: String,
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        runCatching {
+            val config = store.loadConfig()
+                ?: error("No OpenWebif receiver configured")
+            apiFor(config).zap(
+                serviceReference = serviceReference,
+                title = title,
+            ).result
+        }
+    }
+
     private fun apiFor(config: OpenWebifConfig): OpenWebifApi {
         val current = cachedApi
         if (current != null && cachedConfig == config) return current
