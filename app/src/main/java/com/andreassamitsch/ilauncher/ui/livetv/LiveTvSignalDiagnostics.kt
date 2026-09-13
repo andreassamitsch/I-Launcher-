@@ -11,33 +11,35 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifSignalReader
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifSignalStatus
+import com.andreassamitsch.ilauncher.data.oscam.OscamClientStatus
+import com.andreassamitsch.ilauncher.data.oscam.OscamReadResult
+import com.andreassamitsch.ilauncher.data.oscam.OscamStatusReader
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
+import java.util.Locale
 import kotlinx.coroutines.delay
 
 private const val SIGNAL_POLL_INTERVAL_MILLIS = 1_000L
 private const val SIGNAL_REALIGN_RECHECK_MILLIS = 250L
 private const val SIGNAL_REALIGN_COOLDOWN_MILLIS = 2_500L
 private const val SIGNAL_EMPTY_GRACE_POLLS = 3
+private const val OSCAM_POLL_INTERVAL_MILLIS = 1_000L
 
 /**
- * Small diagnostic line for the currently active Enigma2 tuner.
+ * Live diagnostics for the current SAT path and OSCam DVBAPI decryption.
  *
- * This intentionally reports raw reception measurements only. SNR/AGC/BER can tell us whether the
- * satellite RF path is degrading, but they cannot prove that a scrambled service is successfully
- * decrypted. Decryption health will be a separate input for the later SAT -> Joyn fallback policy.
- *
- * OpenWebif derives /api/signal from session.nav.getCurrentService(). On the target Gigablue the
- * foreground service can disappear exactly when the port-8001 stream becomes active, even though
- * the stream keeps using the SAT tuner. If that happens, re-align the foreground service with the
- * same channel and re-read the signal endpoint. A few empty polls are also tolerated so a transient
- * Enigma2 hand-over does not make the overlay flicker between valid values and "keine Tunerwerte".
+ * RF reception and decryption intentionally remain separate lines. Good SNR/BER proves only that
+ * the transponder is received cleanly; OSCam status tells us whether the current SID gets a fresh
+ * ECM/control-word response and which reader answered it. This separation is the basis for a later
+ * SAT -> Joyn fallback decision without mistaking a CAM/reader problem for bad satellite reception.
  */
 @Composable
 internal fun LiveTvSignalDiagnostics(channel: LiveTvChannel) {
     val context = LocalContext.current
     val reader = remember(context) { OpenWebifSignalReader(context) }
+    val oscamReader = remember(context) { OscamStatusReader(context) }
     var status by remember(channel.serviceReference) { mutableStateOf<OpenWebifSignalStatus?>(null) }
     var unavailable by remember(channel.serviceReference) { mutableStateOf(false) }
+    var oscamResult by remember(channel.serviceReference) { mutableStateOf<OscamReadResult?>(null) }
 
     LaunchedEffect(reader, channel.serviceReference) {
         var emptyPolls = 0
@@ -85,13 +87,33 @@ internal fun LiveTvSignalDiagnostics(channel: LiveTvChannel) {
         }
     }
 
-    val line = status?.takeIf { it.hasMeasurements }?.let(::formatSignalDiagnostics)
+    LaunchedEffect(oscamReader, channel.serviceReference) {
+        while (true) {
+            oscamResult = oscamReader.read(channel.serviceReference)
+            delay(OSCAM_POLL_INTERVAL_MILLIS)
+        }
+    }
+
+    val signalLine = status?.takeIf { it.hasMeasurements }?.let(::formatSignalDiagnostics)
         ?: if (unavailable) "SAT-Signal · keine Tunerwerte" else "SAT-Signal · wird gelesen …"
 
     Text(
-        line,
+        signalLine,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Text(
+        oscamResult?.let(::formatOscamDiagnostics) ?: "OSCam · wird gelesen …",
+        style = MaterialTheme.typography.bodySmall,
+        color = when (val result = oscamResult) {
+            is OscamReadResult.Match -> if (result.status.failed) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            is OscamReadResult.Error -> MaterialTheme.colorScheme.error
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
     )
 }
 
@@ -107,3 +129,41 @@ internal fun formatSignalDiagnostics(status: OpenWebifSignalStatus): String = bu
     status.agcPercent?.let { add("AGC $it%") }
     status.ber?.takeIf(String::isNotBlank)?.let { add("BER $it") }
 }.joinToString(" · ")
+
+internal fun formatOscamDiagnostics(result: OscamReadResult): String = when (result) {
+    is OscamReadResult.NoMatchingEcm ->
+        "OSCam · keine passende ECM · SID ${result.serviceId.asSidHex()} (FTA oder noch keine Anfrage)"
+
+    is OscamReadResult.Error -> "OSCam ✕ · ${result.message}"
+
+    is OscamReadResult.Match -> formatOscamMatch(result.status)
+}
+
+private fun formatOscamMatch(status: OscamClientStatus): String {
+    if (!status.fresh) {
+        return buildList {
+            add("OSCam · ECM veraltet")
+            add("SID ${status.serviceId.asSidHex()}")
+            status.idleSeconds?.let { add("idle ${it}s") }
+        }.joinToString(" · ")
+    }
+
+    return buildList {
+        when {
+            status.failed -> add("OSCam ✕")
+            !status.answered.isNullOrBlank() -> add("OSCam ✓")
+            else -> add("OSCam · ECM wartet")
+        }
+        status.caid?.let { add("CAID $it") }
+        status.providerId?.let { add("PROVID $it") }
+        if (status.failed) {
+            status.answered?.let { add(it) }
+        } else {
+            status.answered?.let { add("Reader $it") }
+        }
+        status.ecmTimeMs?.let { add("ECM $it ms") }
+        status.idleSeconds?.takeIf { it > 2 }?.let { add("idle ${it}s") }
+    }.joinToString(" · ")
+}
+
+private fun Int.asSidHex(): String = "%04X".format(Locale.US, this)
