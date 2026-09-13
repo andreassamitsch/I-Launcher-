@@ -1,0 +1,11 @@
+country,attempt,api_proxy_port,proxy_host,proxy_port,exit_ip,ipify_ip,exit_country,latency_ms,token,graphql,entitlement,vpn_detected,joyn_classification,stable_ip
+DE,1,8080,supervpn-dc-eu-02.mysterium.network,443,217.154.118.12,139.162.178.25,DE,938,OK,OK,HTTP_400,UNKNOWN,GEO_BLOCKED,False
+DE,2,8080,supervpn-dc-eu-02.mysterium.network,443,159.195.37.213,85.214.180.146,DE,219,OK,OK,OK,NO,ACCEPTED,False
+DE,3,8080,supervpn-dc-eu-02.mysterium.network,443,77.90.50.123,77.90.50.138,DE,203,OK,OK,HTTP_400,YES,VPN_DETECTED,False
+DE,4,8080,supervpn-dc-eu-01.mysterium.network,443,45.84.196.4,82.27.2.38,DE,266,OK,OK,OK,NO,ACCEPTED,False
+DE,5,8080,supervpn-dc-eu-01.mysterium.network,443,87.106.247.144,85.215.139.153,DE,188,OK,OK,OK,NO,ACCEPTED,False
+CH,1,8080,supervpn-dc-eu-01.mysterium.network,443,83.228.241.94,83.228.195.93,CH,203,OK,OK,HTTP_400,YES,VPN_DETECTED,False
+CH,2,8080,supervpn-dc-eu-01.mysterium.network,443,83.228.195.93,83.228.241.94,CH,203,OK,OK,OK,NO,ACCEPTED,False
+CH,3,8080,supervpn-dc-eu-01.mysterium.network,443,83.228.241.94,83.228.195.93,CH,234,OK,OK,HTTP_400,YES,VPN_DETECTED,False
+CH,4,8080,supervpn-dc-eu-01.mysterium.network,443,83.228.241.94,83.228.195.93,CH,234,OK,OK,HTTP_400,YES,VPN_DETECTED,False
+CH,5,8080,supervpn-dc-eu-01.mysterium.network,443,83.228.195.93,83.228.241.94,CH,219,OK,OK,OK,NO,ACCEPTED,False

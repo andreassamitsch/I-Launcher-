@@ -1,0 +1,806 @@
+{
+  "utc": "2026-09-12T05:47:08.584542+00:00",
+  "preflight": false,
+  "rows": [
+    {
+      "country": "DE",
+      "attempt": 1,
+      "lease_http_status": 200,
+      "vpn_detected": "UNKNOWN",
+      "classification": "EXIT_CHANGED",
+      "lease_metadata": {
+        "expires": "2026-09-13T05:43:45.048540059Z",
+        "remaining_seconds_computed": 86399,
+        "api_fields": {
+          "proxy_config.expires_at": "2026-09-13T05:43:45.048540059Z"
+        }
+      },
+      "proxy_host": "supervpn-dc-eu-02.mysterium.network",
+      "proxy_port": 443,
+      "expires": "2026-09-13T05:43:45.048540059Z",
+      "connect_variants": [
+        {
+          "transport": "http",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2406
+        },
+        {
+          "transport": "https",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2500
+        }
+      ],
+      "api_proxy_port": 8080,
+      "fallback_tls_probe": {
+        "transport": "https",
+        "target": "api.joyn.de",
+        "peer": [
+          "178.105.196.215",
+          443
+        ],
+        "tcp_ms": 78,
+        "tls_version": "TLSv1.3",
+        "status": 200,
+        "ok": true,
+        "elapsed_ms": 938
+      },
+      "transport": "https",
+      "latency_ms": 938,
+      "exit_ip": "217.154.118.12",
+      "exit_country": "DE",
+      "ipify_ip": "139.162.178.25",
+      "token": "OK",
+      "graphql": "OK",
+      "entitlement": "HTTP_400",
+      "channel": "daserste-de-hd",
+      "signals": {
+        "vpn": [],
+        "geo": [],
+        "login_premium": [],
+        "denied": [],
+        "entitlement_codes": [
+          "ENT_AssetNotAvailableInCountry"
+        ]
+      },
+      "config": "OK",
+      "graphql_requests_ok": 3,
+      "joyn_classification": "GEO_BLOCKED",
+      "exit_after": {
+        "ip": "82.165.20.111",
+        "country": "DE"
+      },
+      "stable_ip": false,
+      "reused_lease": true,
+      "lease_usable_at_end": true,
+      "duplicate_exit": false,
+      "analysis_note": "Observed literal code classified as geo error after this run; original temp evidence retained."
+    },
+    {
+      "country": "DE",
+      "attempt": 2,
+      "lease_http_status": 200,
+      "vpn_detected": "NO",
+      "classification": "EXIT_CHANGED",
+      "lease_metadata": {
+        "expires": "2026-09-13T05:44:12.95316813Z",
+        "remaining_seconds_computed": 86399,
+        "api_fields": {
+          "proxy_config.expires_at": "2026-09-13T05:44:12.95316813Z"
+        }
+      },
+      "proxy_host": "supervpn-dc-eu-02.mysterium.network",
+      "proxy_port": 443,
+      "expires": "2026-09-13T05:44:12.95316813Z",
+      "connect_variants": [
+        {
+          "transport": "http",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2375
+        },
+        {
+          "transport": "https",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2218
+        }
+      ],
+      "api_proxy_port": 8080,
+      "fallback_tls_probe": {
+        "transport": "https",
+        "target": "api.joyn.de",
+        "peer": [
+          "178.105.196.215",
+          443
+        ],
+        "tcp_ms": 63,
+        "tls_version": "TLSv1.3",
+        "status": 200,
+        "ok": true,
+        "elapsed_ms": 219
+      },
+      "transport": "https",
+      "latency_ms": 219,
+      "exit_ip": "159.195.37.213",
+      "exit_country": "DE",
+      "ipify_ip": "85.214.180.146",
+      "token": "OK",
+      "graphql": "OK",
+      "entitlement": "OK",
+      "channel": "daserste-de-hd",
+      "signals": {
+        "vpn": [],
+        "geo": [],
+        "login_premium": [],
+        "denied": [],
+        "entitlement_codes": []
+      },
+      "config": "OK",
+      "graphql_requests_ok": 3,
+      "joyn_classification": "ACCEPTED",
+      "exit_after": {
+        "ip": "217.154.253.185",
+        "country": "DE"
+      },
+      "stable_ip": false,
+      "reused_lease": true,
+      "lease_usable_at_end": true,
+      "duplicate_exit": false
+    },
+    {
+      "country": "DE",
+      "attempt": 3,
+      "lease_http_status": 200,
+      "vpn_detected": "YES",
+      "classification": "EXIT_CHANGED",
+      "lease_metadata": {
+        "expires": "2026-09-13T05:44:32.062407452Z",
+        "remaining_seconds_computed": 86399,
+        "api_fields": {
+          "proxy_config.expires_at": "2026-09-13T05:44:32.062407452Z"
+        }
+      },
+      "proxy_host": "supervpn-dc-eu-02.mysterium.network",
+      "proxy_port": 443,
+      "expires": "2026-09-13T05:44:32.062407452Z",
+      "connect_variants": [
+        {
+          "transport": "http",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2234
+        },
+        {
+          "transport": "https",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2235
+        }
+      ],
+      "api_proxy_port": 8080,
+      "fallback_tls_probe": {
+        "transport": "https",
+        "target": "api.joyn.de",
+        "peer": [
+          "178.105.196.215",
+          443
+        ],
+        "tcp_ms": 31,
+        "tls_version": "TLSv1.3",
+        "status": 200,
+        "ok": true,
+        "elapsed_ms": 203
+      },
+      "transport": "https",
+      "latency_ms": 203,
+      "exit_ip": "77.90.50.123",
+      "exit_country": "DE",
+      "ipify_ip": "77.90.50.138",
+      "token": "OK",
+      "graphql": "OK",
+      "entitlement": "HTTP_400",
+      "channel": "daserste-de-hd",
+      "signals": {
+        "vpn": [
+          "ENT_USER_VPN_DETECTED"
+        ],
+        "geo": [],
+        "login_premium": [],
+        "denied": [],
+        "entitlement_codes": [
+          "ENT_USER_VPN_DETECTED"
+        ]
+      },
+      "config": "OK",
+      "graphql_requests_ok": 3,
+      "joyn_classification": "VPN_DETECTED",
+      "exit_after": {
+        "ip": "164.90.238.153",
+        "country": "DE"
+      },
+      "stable_ip": false,
+      "reused_lease": true,
+      "lease_usable_at_end": true,
+      "duplicate_exit": false
+    },
+    {
+      "country": "DE",
+      "attempt": 4,
+      "lease_http_status": 200,
+      "vpn_detected": "NO",
+      "classification": "EXIT_CHANGED",
+      "lease_metadata": {
+        "expires": "2026-09-13T05:44:50.923530794Z",
+        "remaining_seconds_computed": 86399,
+        "api_fields": {
+          "proxy_config.expires_at": "2026-09-13T05:44:50.923530794Z"
+        }
+      },
+      "proxy_host": "supervpn-dc-eu-01.mysterium.network",
+      "proxy_port": 443,
+      "expires": "2026-09-13T05:44:50.923530794Z",
+      "connect_variants": [
+        {
+          "transport": "http",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2204
+        },
+        {
+          "transport": "https",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2343
+        }
+      ],
+      "api_proxy_port": 8080,
+      "fallback_tls_probe": {
+        "transport": "https",
+        "target": "api.joyn.de",
+        "peer": [
+          "91.98.228.210",
+          443
+        ],
+        "tcp_ms": 63,
+        "tls_version": "TLSv1.3",
+        "status": 200,
+        "ok": true,
+        "elapsed_ms": 266
+      },
+      "transport": "https",
+      "latency_ms": 266,
+      "exit_ip": "45.84.196.4",
+      "exit_country": "DE",
+      "ipify_ip": "82.27.2.38",
+      "token": "OK",
+      "graphql": "OK",
+      "entitlement": "OK",
+      "channel": "daserste-de-hd",
+      "signals": {
+        "vpn": [],
+        "geo": [],
+        "login_premium": [],
+        "denied": [],
+        "entitlement_codes": []
+      },
+      "config": "OK",
+      "graphql_requests_ok": 3,
+      "joyn_classification": "ACCEPTED",
+      "exit_after": {
+        "ip": "64.188.124.78",
+        "country": "DE"
+      },
+      "stable_ip": false,
+      "reused_lease": true,
+      "lease_usable_at_end": true,
+      "duplicate_exit": false
+    },
+    {
+      "country": "DE",
+      "attempt": 5,
+      "lease_http_status": 200,
+      "vpn_detected": "NO",
+      "classification": "EXIT_CHANGED",
+      "lease_metadata": {
+        "expires": "2026-09-13T05:45:09.083342803Z",
+        "remaining_seconds_computed": 86399,
+        "api_fields": {
+          "proxy_config.expires_at": "2026-09-13T05:45:09.083342803Z"
+        }
+      },
+      "proxy_host": "supervpn-dc-eu-01.mysterium.network",
+      "proxy_port": 443,
+      "expires": "2026-09-13T05:45:09.083342803Z",
+      "connect_variants": [
+        {
+          "transport": "http",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2235
+        },
+        {
+          "transport": "https",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2265
+        }
+      ],
+      "api_proxy_port": 8080,
+      "fallback_tls_probe": {
+        "transport": "https",
+        "target": "api.joyn.de",
+        "peer": [
+          "91.98.228.210",
+          443
+        ],
+        "tcp_ms": 47,
+        "tls_version": "TLSv1.3",
+        "status": 200,
+        "ok": true,
+        "elapsed_ms": 188
+      },
+      "transport": "https",
+      "latency_ms": 188,
+      "exit_ip": "87.106.247.144",
+      "exit_country": "DE",
+      "ipify_ip": "85.215.139.153",
+      "token": "OK",
+      "graphql": "OK",
+      "entitlement": "OK",
+      "channel": "daserste-de-hd",
+      "signals": {
+        "vpn": [],
+        "geo": [],
+        "login_premium": [],
+        "denied": [],
+        "entitlement_codes": []
+      },
+      "config": "OK",
+      "graphql_requests_ok": 3,
+      "joyn_classification": "ACCEPTED",
+      "exit_after": {
+        "ip": "100.42.185.76",
+        "country": "DE"
+      },
+      "stable_ip": false,
+      "reused_lease": true,
+      "lease_usable_at_end": true,
+      "duplicate_exit": false
+    },
+    {
+      "country": "CH",
+      "attempt": 1,
+      "lease_http_status": 200,
+      "vpn_detected": "YES",
+      "classification": "EXIT_CHANGED",
+      "lease_metadata": {
+        "expires": "2026-09-13T05:45:28.113581057Z",
+        "remaining_seconds_computed": 86399,
+        "api_fields": {
+          "proxy_config.expires_at": "2026-09-13T05:45:28.113581057Z"
+        }
+      },
+      "proxy_host": "supervpn-dc-eu-01.mysterium.network",
+      "proxy_port": 443,
+      "expires": "2026-09-13T05:45:28.113581057Z",
+      "connect_variants": [
+        {
+          "transport": "http",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2250
+        },
+        {
+          "transport": "https",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2250
+        }
+      ],
+      "api_proxy_port": 8080,
+      "fallback_tls_probe": {
+        "transport": "https",
+        "target": "api.joyn.de",
+        "peer": [
+          "91.98.228.210",
+          443
+        ],
+        "tcp_ms": 31,
+        "tls_version": "TLSv1.3",
+        "status": 200,
+        "ok": true,
+        "elapsed_ms": 203
+      },
+      "transport": "https",
+      "latency_ms": 203,
+      "exit_ip": "83.228.241.94",
+      "exit_country": "CH",
+      "ipify_ip": "83.228.195.93",
+      "token": "OK",
+      "graphql": "OK",
+      "entitlement": "HTTP_400",
+      "channel": "srf1-ch-hd",
+      "signals": {
+        "vpn": [
+          "ENT_USER_VPN_DETECTED"
+        ],
+        "geo": [],
+        "login_premium": [],
+        "denied": [],
+        "entitlement_codes": [
+          "ENT_USER_VPN_DETECTED"
+        ]
+      },
+      "config": "OK",
+      "graphql_requests_ok": 3,
+      "joyn_classification": "VPN_DETECTED",
+      "exit_after": {
+        "ip": "83.228.195.93",
+        "country": "CH"
+      },
+      "stable_ip": false,
+      "reused_lease": true,
+      "lease_usable_at_end": true,
+      "duplicate_exit": false
+    },
+    {
+      "country": "CH",
+      "attempt": 2,
+      "lease_http_status": 200,
+      "vpn_detected": "NO",
+      "classification": "EXIT_CHANGED",
+      "lease_metadata": {
+        "expires": "2026-09-13T05:45:46.832849134Z",
+        "remaining_seconds_computed": 86399,
+        "api_fields": {
+          "proxy_config.expires_at": "2026-09-13T05:45:46.832849134Z"
+        }
+      },
+      "proxy_host": "supervpn-dc-eu-01.mysterium.network",
+      "proxy_port": 443,
+      "expires": "2026-09-13T05:45:46.832849134Z",
+      "connect_variants": [
+        {
+          "transport": "http",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2218
+        },
+        {
+          "transport": "https",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2204
+        }
+      ],
+      "api_proxy_port": 8080,
+      "fallback_tls_probe": {
+        "transport": "https",
+        "target": "api.joyn.de",
+        "peer": [
+          "91.98.228.210",
+          443
+        ],
+        "tcp_ms": 31,
+        "tls_version": "TLSv1.3",
+        "status": 200,
+        "ok": true,
+        "elapsed_ms": 203
+      },
+      "transport": "https",
+      "latency_ms": 203,
+      "exit_ip": "83.228.195.93",
+      "exit_country": "CH",
+      "ipify_ip": "83.228.241.94",
+      "token": "OK",
+      "graphql": "OK",
+      "entitlement": "OK",
+      "channel": "srf1-ch-hd",
+      "signals": {
+        "vpn": [],
+        "geo": [],
+        "login_premium": [],
+        "denied": [],
+        "entitlement_codes": []
+      },
+      "config": "OK",
+      "graphql_requests_ok": 3,
+      "joyn_classification": "ACCEPTED",
+      "exit_after": {
+        "ip": "83.228.241.94",
+        "country": "CH"
+      },
+      "stable_ip": false,
+      "reused_lease": true,
+      "lease_usable_at_end": true,
+      "duplicate_exit": false
+    },
+    {
+      "country": "CH",
+      "attempt": 3,
+      "lease_http_status": 200,
+      "vpn_detected": "YES",
+      "classification": "EXIT_CHANGED",
+      "lease_metadata": {
+        "expires": "2026-09-13T05:46:05.296246036Z",
+        "remaining_seconds_computed": 86399,
+        "api_fields": {
+          "proxy_config.expires_at": "2026-09-13T05:46:05.296246036Z"
+        }
+      },
+      "proxy_host": "supervpn-dc-eu-01.mysterium.network",
+      "proxy_port": 443,
+      "expires": "2026-09-13T05:46:05.296246036Z",
+      "connect_variants": [
+        {
+          "transport": "http",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2204
+        },
+        {
+          "transport": "https",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2281
+        }
+      ],
+      "api_proxy_port": 8080,
+      "fallback_tls_probe": {
+        "transport": "https",
+        "target": "api.joyn.de",
+        "peer": [
+          "91.98.228.210",
+          443
+        ],
+        "tcp_ms": 62,
+        "tls_version": "TLSv1.3",
+        "status": 200,
+        "ok": true,
+        "elapsed_ms": 234
+      },
+      "transport": "https",
+      "latency_ms": 234,
+      "exit_ip": "83.228.241.94",
+      "exit_country": "CH",
+      "ipify_ip": "83.228.195.93",
+      "token": "OK",
+      "graphql": "OK",
+      "entitlement": "HTTP_400",
+      "channel": "srf1-ch-hd",
+      "signals": {
+        "vpn": [
+          "ENT_USER_VPN_DETECTED"
+        ],
+        "geo": [],
+        "login_premium": [],
+        "denied": [],
+        "entitlement_codes": [
+          "ENT_USER_VPN_DETECTED"
+        ]
+      },
+      "config": "OK",
+      "graphql_requests_ok": 3,
+      "joyn_classification": "VPN_DETECTED",
+      "exit_after": {
+        "ip": "83.228.195.93",
+        "country": "CH"
+      },
+      "stable_ip": false,
+      "reused_lease": true,
+      "lease_usable_at_end": true,
+      "duplicate_exit": true
+    },
+    {
+      "country": "CH",
+      "attempt": 4,
+      "lease_http_status": 200,
+      "vpn_detected": "YES",
+      "classification": "EXIT_CHANGED",
+      "lease_metadata": {
+        "expires": "2026-09-13T05:46:26.696871915Z",
+        "remaining_seconds_computed": 86399,
+        "api_fields": {
+          "proxy_config.expires_at": "2026-09-13T05:46:26.696871915Z"
+        }
+      },
+      "proxy_host": "supervpn-dc-eu-01.mysterium.network",
+      "proxy_port": 443,
+      "expires": "2026-09-13T05:46:26.696871915Z",
+      "connect_variants": [
+        {
+          "transport": "http",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2234
+        },
+        {
+          "transport": "https",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2266
+        }
+      ],
+      "api_proxy_port": 8080,
+      "fallback_tls_probe": {
+        "transport": "https",
+        "target": "api.joyn.de",
+        "peer": [
+          "91.98.228.210",
+          443
+        ],
+        "tcp_ms": 63,
+        "tls_version": "TLSv1.3",
+        "status": 200,
+        "ok": true,
+        "elapsed_ms": 234
+      },
+      "transport": "https",
+      "latency_ms": 234,
+      "exit_ip": "83.228.241.94",
+      "exit_country": "CH",
+      "ipify_ip": "83.228.195.93",
+      "token": "OK",
+      "graphql": "OK",
+      "entitlement": "HTTP_400",
+      "channel": "srf1-ch-hd",
+      "signals": {
+        "vpn": [
+          "ENT_USER_VPN_DETECTED"
+        ],
+        "geo": [],
+        "login_premium": [],
+        "denied": [],
+        "entitlement_codes": [
+          "ENT_USER_VPN_DETECTED"
+        ]
+      },
+      "config": "OK",
+      "graphql_requests_ok": 3,
+      "joyn_classification": "VPN_DETECTED",
+      "exit_after": {
+        "ip": "83.228.195.93",
+        "country": "CH"
+      },
+      "stable_ip": false,
+      "reused_lease": true,
+      "lease_usable_at_end": true,
+      "duplicate_exit": true
+    },
+    {
+      "country": "CH",
+      "attempt": 5,
+      "lease_http_status": 200,
+      "vpn_detected": "NO",
+      "classification": "EXIT_CHANGED",
+      "lease_metadata": {
+        "expires": "2026-09-13T05:46:46.104727431Z",
+        "remaining_seconds_computed": 86399,
+        "api_fields": {
+          "proxy_config.expires_at": "2026-09-13T05:46:46.104727431Z"
+        }
+      },
+      "proxy_host": "supervpn-dc-eu-01.mysterium.network",
+      "proxy_port": 443,
+      "expires": "2026-09-13T05:46:46.104727431Z",
+      "connect_variants": [
+        {
+          "transport": "http",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2234
+        },
+        {
+          "transport": "https",
+          "target": "api.joyn.de",
+          "ok": false,
+          "error": "ConnectionRefusedError",
+          "stage": "proxy_dns_tcp",
+          "errno": 10061,
+          "elapsed_ms": 2219
+        }
+      ],
+      "api_proxy_port": 8080,
+      "fallback_tls_probe": {
+        "transport": "https",
+        "target": "api.joyn.de",
+        "peer": [
+          "91.98.228.210",
+          443
+        ],
+        "tcp_ms": 63,
+        "tls_version": "TLSv1.3",
+        "status": 200,
+        "ok": true,
+        "elapsed_ms": 219
+      },
+      "transport": "https",
+      "latency_ms": 219,
+      "exit_ip": "83.228.195.93",
+      "exit_country": "CH",
+      "ipify_ip": "83.228.241.94",
+      "token": "OK",
+      "graphql": "OK",
+      "entitlement": "OK",
+      "channel": "srf1-ch-hd",
+      "signals": {
+        "vpn": [],
+        "geo": [],
+        "login_premium": [],
+        "denied": [],
+        "entitlement_codes": []
+      },
+      "config": "OK",
+      "graphql_requests_ok": 3,
+      "joyn_classification": "ACCEPTED",
+      "exit_after": {
+        "ip": "83.228.241.94",
+        "country": "CH"
+      },
+      "stable_ip": false,
+      "reused_lease": true,
+      "lease_usable_at_end": true,
+      "duplicate_exit": true
+    }
+  ],
+  "measurement_note": "Entitlement outcomes belong to lease workflows, NOT to the first measured IP; all 10 workflows changed IP. Exact API port 8080 failed, explicit TLS 443 succeeded."
+}

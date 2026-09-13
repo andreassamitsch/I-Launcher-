@@ -486,6 +486,7 @@ internal fun LiveTvPlayerScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        LiveTvSignalDiagnostics(channel)
                         errorMessage?.let {
                             Text(
                                 it,

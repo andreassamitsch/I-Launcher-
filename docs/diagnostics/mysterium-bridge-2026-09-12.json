@@ -1,0 +1,96 @@
+[
+  {
+    "token": "OK",
+    "graphql": "OK",
+    "entitlement": "OK",
+    "channel": "daserste-de-hd",
+    "vpn_detected": "NO",
+    "classification": "ACCEPTED",
+    "signals": {
+      "vpn": [],
+      "geo": [],
+      "login_premium": [],
+      "denied": [],
+      "entitlement_codes": []
+    },
+    "config": "OK",
+    "graphql_requests_ok": 3,
+    "country": "DE",
+    "api_host": "supervpn-dc-eu-01.mysterium.network",
+    "api_port": 8080,
+    "before": {
+      "ip": "185.213.240.127",
+      "country": "DE"
+    },
+    "after": {
+      "ip": "51.89.116.189",
+      "country": "DE"
+    },
+    "first_trace_ms": 953,
+    "stable_ip": false,
+    "reused_lease": true,
+    "keep_alive_traces": [
+      {
+        "ip": "217.160.51.237",
+        "country": "DE"
+      },
+      {
+        "ip": "217.160.51.237",
+        "country": "DE"
+      },
+      {
+        "ip": "217.160.51.237",
+        "country": "DE"
+      }
+    ]
+  },
+  {
+    "token": "OK",
+    "graphql": "OK",
+    "entitlement": "HTTP_400",
+    "channel": "srf1-ch-hd",
+    "vpn_detected": "YES",
+    "classification": "VPN_DETECTED",
+    "signals": {
+      "vpn": [
+        "ENT_USER_VPN_DETECTED"
+      ],
+      "geo": [],
+      "login_premium": [],
+      "denied": [],
+      "entitlement_codes": [
+        "ENT_USER_VPN_DETECTED"
+      ]
+    },
+    "config": "OK",
+    "graphql_requests_ok": 3,
+    "country": "CH",
+    "api_host": "supervpn-dc-eu-01.mysterium.network",
+    "api_port": 8080,
+    "before": {
+      "ip": "83.228.195.93",
+      "country": "CH"
+    },
+    "after": {
+      "ip": "83.228.195.93",
+      "country": "CH"
+    },
+    "first_trace_ms": 625,
+    "stable_ip": true,
+    "reused_lease": true,
+    "keep_alive_traces": [
+      {
+        "ip": "83.228.241.94",
+        "country": "CH"
+      },
+      {
+        "ip": "83.228.241.94",
+        "country": "CH"
+      },
+      {
+        "ip": "83.228.241.94",
+        "country": "CH"
+      }
+    ]
+  }
+]

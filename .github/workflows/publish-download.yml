@@ -4,6 +4,7 @@ name: Publish TV Downloader APK
 on:
   push:
     branches:
+      - feature/joyn-tv-client
       - agent/ui-player-polish
       - agent/cloudstream-direct-play
       - agent/series-seasons-resume

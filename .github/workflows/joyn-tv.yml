@@ -1,0 +1,170 @@
+name: Joyn TV
+
+on:
+  pull_request:
+    paths:
+      - "joyntv/**"
+      - "settings.gradle.kts"
+      - ".github/workflows/joyn-tv.yml"
+  push:
+    branches:
+      - main
+      - feature/joyn-tv-client
+    paths:
+      - "joyntv/**"
+      - "settings.gradle.kts"
+      - ".github/workflows/joyn-tv.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: joyn-tv-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_USERNAME: ${{ github.actor }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Define Joyn TV version
+        run: |
+          VERSION_CODE=$((10000000 + GITHUB_RUN_NUMBER))
+          VERSION_NAME="0.1.0-dev.${GITHUB_RUN_NUMBER}"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+
+      # The long-running Joyn development branch is an internal same-repository branch. Publish it
+      # with the permanent key as well, so TV devices can update without uninstalling the app.
+      - name: Configure permanent signing key
+        if: github.event_name != 'pull_request' || github.head_ref == 'feature/joyn-tv-client'
+        env:
+          DEV_KEYSTORE_BASE64: ${{ secrets.IL_DEV_KEYSTORE_BASE64 }}
+          DEV_STORE_PASSWORD: ${{ secrets.IL_DEV_STORE_PASSWORD }}
+          DEV_KEY_ALIAS: ${{ secrets.IL_DEV_KEY_ALIAS }}
+          DEV_KEY_PASSWORD: ${{ secrets.IL_DEV_KEY_PASSWORD }}
+        run: |
+          if [ -z "$DEV_KEYSTORE_BASE64" ] || \
+             [ -z "$DEV_STORE_PASSWORD" ] || \
+             [ -z "$DEV_KEY_ALIAS" ] || \
+             [ -z "$DEV_KEY_PASSWORD" ]; then
+            echo "::error::Permanent signing secrets are required. Refusing to publish an APK signed with a temporary debug key."
+            exit 1
+          fi
+
+          echo "$DEV_KEYSTORE_BASE64" | base64 --decode > /tmp/joyn-tv-signing.jks
+          echo "IL_SIGNING_STORE_FILE=/tmp/joyn-tv-signing.jks" >> "$GITHUB_ENV"
+          echo "IL_SIGNING_STORE_PASSWORD=$DEV_STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "IL_SIGNING_KEY_ALIAS=$DEV_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "IL_SIGNING_KEY_PASSWORD=$DEV_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Unit tests and PR debug APK
+        if: github.event_name == 'pull_request' && github.head_ref != 'feature/joyn-tv-client'
+        run: |
+          gradle :joyntv:testDebugUnitTest :joyntv:assembleDebug \
+            -PjoynVersionCode="$VERSION_CODE" \
+            -PjoynVersionName="$VERSION_NAME" \
+            --stacktrace
+
+      - name: Unit tests and signed release APK
+        if: github.event_name != 'pull_request' || github.head_ref == 'feature/joyn-tv-client'
+        run: |
+          gradle :joyntv:testDebugUnitTest :joyntv:assembleRelease \
+            -PjoynVersionCode="$VERSION_CODE" \
+            -PjoynVersionName="$VERSION_NAME" \
+            --stacktrace
+
+      - name: Verify signed release
+        if: github.event_name != 'pull_request' || github.head_ref == 'feature/joyn-tv-client'
+        run: |
+          cp joyntv/build/outputs/apk/release/joyntv-release.apk /tmp/Joyn-TV.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs /tmp/Joyn-TV.apk | tee /tmp/apksigner.txt
+
+          if ! grep -q "Verifies" /tmp/apksigner.txt; then
+            echo "::error::apksigner did not verify the Joyn TV APK."
+            exit 1
+          fi
+
+          APK_VERSION_CODE=$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging /tmp/Joyn-TV.apk | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -n 1)
+          APK_VERSION_NAME=$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging /tmp/Joyn-TV.apk | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -n 1)
+          if [ "$APK_VERSION_CODE" != "$VERSION_CODE" ] || [ "$APK_VERSION_NAME" != "$VERSION_NAME" ]; then
+            echo "::error::Built APK version metadata does not match the publication metadata."
+            exit 1
+          fi
+
+          SHA256=$(sha256sum /tmp/Joyn-TV.apk | awk '{print $1}')
+          SIGNER_SHA256=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/apksigner.txt | head -n 1 | tr -d ':')
+          if [ -z "$SIGNER_SHA256" ]; then
+            echo "::error::Could not determine APK signing certificate digest."
+            exit 1
+          fi
+
+          echo "APK_SHA256=$SHA256" >> "$GITHUB_ENV"
+          echo "SIGNER_SHA256=$SIGNER_SHA256" >> "$GITHUB_ENV"
+
+      - name: Prepare update manifest
+        if: github.event_name != 'pull_request' || github.head_ref == 'feature/joyn-tv-client'
+        run: |
+          cat > /tmp/joyn-update.json <<EOF
+          {
+            "versionCode": $VERSION_CODE,
+            "versionName": "$VERSION_NAME",
+            "apkUrl": "https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/joyn-downloads/Joyn-TV.apk",
+            "sha256": "$APK_SHA256",
+            "signerSha256": "$SIGNER_SHA256",
+            "sourceSha": "$GITHUB_SHA"
+          }
+          EOF
+
+      - name: Upload signed APK artifact
+        if: github.event_name != 'pull_request' || github.head_ref == 'feature/joyn-tv-client'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Joyn-TV-${{ env.VERSION_NAME }}
+          path: /tmp/Joyn-TV.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish stable Joyn TV download branch
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan joyn-tv-publish
+          git rm -rf .
+          cp /tmp/Joyn-TV.apk Joyn-TV.apk
+          cp /tmp/joyn-update.json joyn-update.json
+          printf '%s\n' \
+            '# Joyn TV for I Launcher' \
+            '' \
+            "Aktuelle Version: $VERSION_NAME ($VERSION_CODE)" \
+            '' \
+            'Direktdownload: https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/joyn-downloads/Joyn-TV.apk' \
+            'Update-Manifest: https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/joyn-downloads/joyn-update.json' \
+            '' \
+            'Die APK wird ausschließlich mit dem dauerhaft hinterlegten Repository-Keystore veröffentlicht.' \
+            > README.md
+          touch .nojekyll
+          git add Joyn-TV.apk joyn-update.json README.md .nojekyll
+          git commit -m "chore: publish Joyn TV $VERSION_NAME"
+          git push origin HEAD:joyn-downloads --force
