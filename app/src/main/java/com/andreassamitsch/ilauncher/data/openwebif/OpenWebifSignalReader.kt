@@ -14,14 +14,23 @@ import kotlinx.coroutines.withContext
  */
 internal class OpenWebifSignalReader(context: Context) {
     private val store = OpenWebifStore(context.applicationContext)
+    private var cachedConfig: OpenWebifConfig? = null
+    private var cachedApi: OpenWebifApi? = null
 
     suspend fun read(): Result<OpenWebifSignalStatus> = withContext(Dispatchers.IO) {
         runCatching {
             val config = store.loadConfig()
                 ?: error("No OpenWebif receiver configured")
-            OpenWebifSignalMapper.fromDto(
-                OpenWebifNetworkClient.create(config).getSignal(),
-            )
+            OpenWebifSignalMapper.fromDto(apiFor(config).getSignal())
+        }
+    }
+
+    private fun apiFor(config: OpenWebifConfig): OpenWebifApi {
+        val current = cachedApi
+        if (current != null && cachedConfig == config) return current
+        return OpenWebifNetworkClient.create(config).also {
+            cachedConfig = config
+            cachedApi = it
         }
     }
 }
