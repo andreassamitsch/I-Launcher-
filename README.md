@@ -23,6 +23,14 @@ Die TMDB-Suche verwendet jetzt ein kombiniertes Ranking aus Titelrelevanz und ge
 
 Die aus der Google-TV-Launcher-Analyse abgeleiteten Home-/Keyline-/Navigation-/Glow-Prinzipien sind dauerhaft in [`docs/reference/GOOGLE_TV_HOME_CONCEPT.md`](docs/reference/GOOGLE_TV_HOME_CONCEPT.md) dokumentiert.
 
+## Joyn TV – bei neuen Sessions zuerst lesen
+
+Die eigenständige Android-TV-App unter `joyntv/` wird auf `feature/joyn-tv-client` weiterentwickelt. Der auf realer TCL-Hardware bestätigte Stand zu **Mysterium-Login, app-lokalem Residential-HTTP-CONNECT-Proxy, TLS:443-/Trust-Anchor-Fallback, Lease-Strategie und dynamischer DASH-Qualitätsauswahl** ist in [`docs/JOYNTV_CURRENT_STATE.md`](docs/JOYNTV_CURRENT_STATE.md) festgehalten.
+
+Wichtigster bestätigter Meilenstein: Ab Build **`0.1.0-dev.563`** funktioniert der Mysterium-Residential-Proxy auf dem Android TV nach dem eng begrenzten TLS-/Zertifikats-Fix. Außerdem wurde für die ProSiebenSat.1-Gruppe Schweiz in Joyn **1080p** als angebotene DASH-Qualität bestätigt.
+
+Bei jeder neuen Joyn-TV-Entwicklungs- oder Debug-Session diese Datei vor älteren Chat-Annahmen heranziehen.
+
 Ausführliche Regeln und Architektur: [`AGENTS.md`](AGENTS.md), [`ROADMAP.md`](ROADMAP.md), [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Stack
