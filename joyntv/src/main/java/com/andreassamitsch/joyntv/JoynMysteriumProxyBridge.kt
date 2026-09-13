@@ -7,19 +7,30 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.security.SecureRandom
+import java.security.cert.CertPathValidatorException
+import java.security.cert.CertificateException
+import java.security.cert.X509Certificate
 import java.util.Base64
 import java.util.concurrent.Executors
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
+import javax.net.ssl.X509TrustManager
 
 /**
  * Local unauthenticated CONNECT bridge for Mysterium's short-lived authenticated proxies.
  *
  * Mysterium's consumer connect-proxy endpoint currently returns superproxy hosts on port 8080.
- * PC measurements on 2026-09-12 found that the returned EU superproxy port 8080 refuses TCP,
- * while the same hosts accept authenticated CONNECT over verified TLS on port 443. Prefer that
- * measured endpoint for this specific legacy API response, retaining the original port as fallback.
- * Other proxy hosts/ports retain their original transport selection.
+ * Measurements on 2026-09-12/13 found that the returned EU superproxy port 8080 refuses TCP,
+ * while the same hosts accept authenticated CONNECT over TLS on port 443. Android does not trust
+ * the private certificate chain currently served there. We therefore try normal platform TLS first
+ * and only for the exact Mysterium EU-superproxy host pattern fall back to a narrowly scoped TLS
+ * context that accepts the private chain while still checking certificate validity and hostname.
+ * Target HTTPS traffic remains end-to-end encrypted inside CONNECT and keeps normal Android trust.
+ * Other proxy hosts/ports retain their original transport selection and normal certificate trust.
  *
  * Joyn clients in the app can therefore keep using Android's process ProxySelector without each
  * networking stack knowing Mysterium credentials. The bridge listens only on loopback, injects the
@@ -121,11 +132,10 @@ internal class JoynMysteriumProxyBridge(
     /**
      * Opens the upstream proxy and performs CONNECT + Basic authentication.
      *
-     * The known EU superproxy API response uses TLS:443 first (see PC test report). Other TLS
-     * proxy ports are tried TLS-first. If the first transport is reset before an
-     * HTTP response is received, a fresh connection is opened with the other transport. A real HTTP
-     * rejection such as 407 is not retried using another transport because the protocol was already
-     * identified correctly.
+     * The known EU superproxy API response uses TLS:443 first. Other TLS proxy ports are tried
+     * TLS-first. If the first transport is reset before an HTTP response is received, a fresh
+     * connection is opened with the other transport. A real HTTP rejection such as 407 is not
+     * retried using another transport because the protocol was already identified correctly.
      */
     private fun connectUpstreamProxy(requestHeader: String): ProxyConnection {
         val endpoints = upstreamEndpoints(remoteHost, remotePort)
@@ -179,21 +189,55 @@ internal class JoynMysteriumProxyBridge(
     }
 
     private fun connectTlsProxy(port: Int): SSLSocket {
+        return try {
+            openTlsProxy(
+                port = port,
+                factory = SSLSocketFactory.getDefault() as SSLSocketFactory,
+                manualHostnameVerification = false,
+            )
+        } catch (error: SSLHandshakeException) {
+            if (!privateCaFallbackAllowed(remoteHost, port) || !isTrustAnchorFailure(error)) {
+                throw error
+            }
+            openTlsProxy(
+                port = port,
+                factory = privateCaSocketFactory(),
+                manualHostnameVerification = true,
+            )
+        }
+    }
+
+    private fun openTlsProxy(
+        port: Int,
+        factory: SSLSocketFactory,
+        manualHostnameVerification: Boolean,
+    ): SSLSocket {
         val raw = Socket()
         try {
             raw.tcpNoDelay = true
             raw.connect(InetSocketAddress(remoteHost, port), HEADER_TIMEOUT_MS)
             raw.soTimeout = HEADER_TIMEOUT_MS
 
-            val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
             val tls = factory.createSocket(raw, remoteHost, port, true) as SSLSocket
             tls.useClientMode = true
             tls.tcpNoDelay = true
             tls.soTimeout = HEADER_TIMEOUT_MS
-            tls.sslParameters = tls.sslParameters.apply {
-                endpointIdentificationAlgorithm = "HTTPS"
+            if (!manualHostnameVerification) {
+                tls.sslParameters = tls.sslParameters.apply {
+                    endpointIdentificationAlgorithm = "HTTPS"
+                }
             }
             tls.startHandshake()
+
+            if (manualHostnameVerification) {
+                val hostnameValid = HttpsURLConnection.getDefaultHostnameVerifier()
+                    .verify(remoteHost, tls.session)
+                if (!hostnameValid) {
+                    throw SSLHandshakeException(
+                        "Mysterium proxy certificate does not match $remoteHost",
+                    )
+                }
+            }
             return tls
         } catch (error: Throwable) {
             runCatching { raw.close() }
@@ -271,7 +315,10 @@ internal class JoynMysteriumProxyBridge(
         private const val HEADER_TIMEOUT_MS = 8_000
         private const val MAX_HEADER_BYTES = 32 * 1024
         private val TLS_FIRST_PORTS = setOf(443, 8443)
-        private val LEGACY_EU_SUPERPROXY = Regex("supervpn-dc-eu-[0-9]+\\.mysterium\\.network", RegexOption.IGNORE_CASE)
+        private val LEGACY_EU_SUPERPROXY = Regex(
+            "supervpn-dc-eu-[0-9]+\\.mysterium\\.network",
+            RegexOption.IGNORE_CASE,
+        )
 
         internal fun upstreamEndpoints(host: String, port: Int): List<UpstreamEndpoint> = buildList {
             if (port == 8080 && LEGACY_EU_SUPERPROXY.matches(host.trim())) {
@@ -284,6 +331,51 @@ internal class JoynMysteriumProxyBridge(
             }
             transports.forEach { add(UpstreamEndpoint(port, it)) }
         }
+
+        internal fun privateCaFallbackAllowed(host: String, port: Int): Boolean =
+            port == 443 && LEGACY_EU_SUPERPROXY.matches(host.trim())
+
+        private fun isTrustAnchorFailure(error: Throwable): Boolean {
+            var current: Throwable? = error
+            while (current != null) {
+                if (current is CertPathValidatorException ||
+                    current.message?.contains("trust anchor", ignoreCase = true) == true
+                ) {
+                    return true
+                }
+                current = current.cause
+            }
+            return false
+        }
+
+        private fun privateCaSocketFactory(): SSLSocketFactory {
+            val context = SSLContext.getInstance("TLS")
+            context.init(null, arrayOf(PRIVATE_CA_TRUST_MANAGER), SecureRandom())
+            return context.socketFactory
+        }
+
+        private val PRIVATE_CA_TRUST_MANAGER = object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {
+                throw CertificateException("Client certificates are not supported")
+            }
+
+            override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
+                if (chain.isNullOrEmpty()) {
+                    throw CertificateException("Mysterium proxy returned no certificate chain")
+                }
+                chain.forEach { certificate -> certificate.checkValidity() }
+                for (index in 0 until chain.lastIndex) {
+                    try {
+                        chain[index].verify(chain[index + 1].publicKey)
+                    } catch (error: Throwable) {
+                        throw CertificateException("Invalid Mysterium proxy certificate chain", error)
+                    }
+                }
+            }
+
+            override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+        }
+
         private val sharedLock = Any()
         private var sharedKey: String? = null
         private var sharedBridge: JoynMysteriumProxyBridge? = null
