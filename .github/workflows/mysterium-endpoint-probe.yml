@@ -1,0 +1,30 @@
+name: Mysterium Endpoint Probe
+
+on:
+  push:
+    branches:
+      - feature/joyn-tv-client
+    paths:
+      - '.github/workflows/mysterium-endpoint-probe.yml'
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Probe public Mysterium production API
+        run: |
+          set -euo pipefail
+          BASE='https://api.mysteriumvpn.com/api/v1'
+          for path in '/auth/config' '/auth/check' '/connection/config/locations?ip_type=residential' '/subscription'; do
+            echo "=== $path ==="
+            code=$(curl -sS -o /tmp/body -w '%{http_code}' \
+              -H 'Accept: application/json' \
+              -H 'x-client-platform: windows' \
+              -H 'x-client-version: 2.4.9' \
+              "$BASE$path" || true)
+            echo "HTTP $code"
+            head -c 3000 /tmp/body || true
+            echo
+          done

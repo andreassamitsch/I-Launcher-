@@ -7,4 +7,7 @@
 /captures/
 .externalNativeBuild/
 .cxx/
+__pycache__/
+*.pyc
+/tools/mysterium.local.json
 app/build/
