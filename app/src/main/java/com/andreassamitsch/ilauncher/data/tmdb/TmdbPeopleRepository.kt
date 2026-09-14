@@ -144,8 +144,9 @@ class TmdbPeopleRepository(
     private val appContext = context.applicationContext
     private val network = TmdbNetworkClient(readAccessToken)
     private val imageConfigurationStore = TmdbImageConfigurationStore(appContext)
+    private val discoveryPreferences = TmdbDiscoveryPreferences(appContext)
     private val creditsCache = LinkedHashMap<String, CachedCredits>()
-    private val personCache = LinkedHashMap<Int, CachedPerson>()
+    private val personCache = LinkedHashMap<PersonCacheKey, CachedPerson>()
     private var profileImages: ProfileImageConfiguration? = null
 
     suspend fun loadCredits(item: MediaItem): MediaCredits = withContext(Dispatchers.IO) {
@@ -184,8 +185,10 @@ class TmdbPeopleRepository(
 
     suspend fun loadPerson(personId: Int): PersonDetails? = withContext(Dispatchers.IO) {
         if (!network.isConfigured || personId <= 0) return@withContext null
+        val filterSettings = discoveryPreferences.filterSettings()
+        val cacheKey = PersonCacheKey(personId, filterSettings)
         val now = System.currentTimeMillis()
-        personCache[personId]
+        personCache[cacheKey]
             ?.takeIf { now - it.updatedAtUtcMillis <= PERSON_CACHE_MILLIS }
             ?.let { return@withContext it.person }
 
@@ -199,7 +202,17 @@ class TmdbPeopleRepository(
                 val combinedCredits = creditsDeferred.await()
                 val images = imagesDeferred.await()
                 val displayName = details.name?.takeIf(String::isNotBlank) ?: return@coroutineScope null
-                val works = combinedCredits
+                val filteredCredits = TmdbCombinedCreditsDto(
+                    cast = TmdbDiscoveryContentPolicy.preparePersonCredits(
+                        combinedCredits.cast,
+                        filterSettings,
+                    ),
+                    crew = TmdbDiscoveryContentPolicy.preparePersonCredits(
+                        combinedCredits.crew,
+                        filterSettings,
+                    ),
+                )
+                val works = filteredCredits
                     .rankedRelevantPersonCredits(details.knownForDepartment)
                     .mapNotNull { it.toMediaItem(images.content) }
                     .take(PERSON_WORK_LIMIT)
@@ -220,7 +233,7 @@ class TmdbPeopleRepository(
             Log.w(PEOPLE_TAG, "TMDB person failed (${throwable.javaClass.simpleName})")
         }.getOrNull() ?: return@withContext null
 
-        personCache[personId] = CachedPerson(person, now)
+        personCache[cacheKey] = CachedPerson(person, now)
         trimCache(personCache, MAX_PERSON_CACHE_ENTRIES)
         person
     }
@@ -360,6 +373,11 @@ class TmdbPeopleRepository(
     private data class CachedCredits(
         val credits: MediaCredits,
         val updatedAtUtcMillis: Long,
+    )
+
+    private data class PersonCacheKey(
+        val personId: Int,
+        val filterSettings: TmdbDiscoveryFilterSettings,
     )
 
     private data class CachedPerson(

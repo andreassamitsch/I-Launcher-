@@ -34,6 +34,11 @@ internal interface TmdbApi {
         @Query("page") page: Int = 1,
     ): TmdbSearchResponseDto
 
+    @GET("3/movie/{movieId}/translations")
+    suspend fun movieTranslations(
+        @Path("movieId") movieId: Int,
+    ): TmdbMovieTranslationsDto
+
     @GET("3/trending/movie/{timeWindow}")
     suspend fun trendingMovies(
         @Path("timeWindow") timeWindow: String = "week",
@@ -49,12 +54,14 @@ internal interface TmdbApi {
     @GET("3/movie/now_playing")
     suspend fun nowPlayingMovies(
         @Query("language") language: String,
+        @Query("region") region: String = "DE",
         @Query("page") page: Int = 1,
     ): TmdbSearchResponseDto
 
     @GET("3/movie/upcoming")
     suspend fun upcomingMovies(
         @Query("language") language: String,
+        @Query("region") region: String = "DE",
         @Query("page") page: Int = 1,
     ): TmdbSearchResponseDto
 
@@ -77,7 +84,14 @@ internal interface TmdbApi {
         @Query("include_video") includeVideo: Boolean = false,
         @Query("sort_by") sortBy: String = "vote_average.desc",
         @Query("with_genres") withGenres: String? = null,
+        @Query("without_keywords") withoutKeywords: String? = null,
         @Query("vote_count.gte") voteCountGte: Int = 300,
+        @Query("vote_average.gte") voteAverageGte: Double? = null,
+        @Query("primary_release_date.gte") primaryReleaseDateGte: String? = null,
+        @Query("primary_release_date.lte") primaryReleaseDateLte: String? = null,
+        @Query("region") region: String? = null,
+        @Query("certification_country") certificationCountry: String? = null,
+        @Query("certification.lte") certificationLte: String? = null,
         @Query("page") page: Int = 1,
     ): TmdbSearchResponseDto
 
@@ -87,7 +101,11 @@ internal interface TmdbApi {
         @Query("include_adult") includeAdult: Boolean = false,
         @Query("sort_by") sortBy: String = "vote_average.desc",
         @Query("with_genres") withGenres: String? = null,
+        @Query("without_keywords") withoutKeywords: String? = null,
         @Query("vote_count.gte") voteCountGte: Int = 200,
+        @Query("vote_average.gte") voteAverageGte: Double? = null,
+        @Query("first_air_date.gte") firstAirDateGte: String? = null,
+        @Query("first_air_date.lte") firstAirDateLte: String? = null,
         @Query("page") page: Int = 1,
     ): TmdbSearchResponseDto
 
