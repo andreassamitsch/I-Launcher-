@@ -5,7 +5,6 @@ import com.andreassamitsch.ilauncher.model.MediaSource
 import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.model.WatchNextItem
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 
 class SeriesResumeRepositoryTest {
@@ -21,7 +20,7 @@ class SeriesResumeRepositoryTest {
     )
 
     @Test
-    fun `series defaults to season one episode one without CloudStream Watch Next`() {
+    fun `series defaults to season one episode one without Watch Next resume`() {
         val target = seriesPlaybackTarget(series, resume = null)
 
         assertEquals(MediaType.Episode, target.type)
@@ -32,8 +31,8 @@ class SeriesResumeRepositoryTest {
     }
 
     @Test
-    fun `matching CloudStream Watch Next becomes direct resume episode`() {
-        val resume = resolveCloudStreamSeriesResume(
+    fun `matching Watch Next row becomes direct resume episode`() {
+        val resume = resolveSeriesResume(
             series,
             listOf(
                 watchNext(
@@ -56,23 +55,24 @@ class SeriesResumeRepositoryTest {
     }
 
     @Test
-    fun `non CloudStream Watch Next does not change CloudStream series start`() {
-        val resume = resolveCloudStreamSeriesResume(
+    fun `non CloudStream Watch Next also resumes series`() {
+        val resume = resolveSeriesResume(
             series,
             listOf(watchNext(packageName = "com.netflix.ninja", title = "Fallout", season = "2", episode = "4")),
         )
 
-        assertNull(resume)
+        assertEquals(2, resume?.seasonNumber)
+        assertEquals(4, resume?.episodeNumber)
     }
 
     @Test
-    fun `unrelated newer CloudStream row is skipped without reordering matching rows`() {
-        val resume = resolveCloudStreamSeriesResume(
+    fun `unrelated newer row is skipped without reordering matching rows`() {
+        val resume = resolveSeriesResume(
             series,
             listOf(
-                watchNext(packageName = "com.lagradost.cloudstream3", title = "Shogun", season = "1", episode = "8"),
+                watchNext(packageName = "com.netflix.ninja", title = "Shogun", season = "1", episode = "8"),
                 watchNext(packageName = "com.lagradost.cloudstream3", title = "Fallout", season = "1", episode = "6"),
-                watchNext(packageName = "com.lagradost.cloudstream3", title = "Fallout", season = "1", episode = "2"),
+                watchNext(packageName = "com.netflix.ninja", title = "Fallout", season = "1", episode = "2"),
             ),
         )
 

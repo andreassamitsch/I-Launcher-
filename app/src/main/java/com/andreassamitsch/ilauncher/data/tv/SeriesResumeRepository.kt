@@ -1,7 +1,6 @@
 package com.andreassamitsch.ilauncher.data.tv
 
 import android.content.Context
-import com.andreassamitsch.ilauncher.data.cloudstream.isCloudStreamPackageName
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.MediaType
 import com.andreassamitsch.ilauncher.model.WatchNextItem
@@ -28,11 +27,15 @@ class SeriesResumeRepository(context: Context) {
 
     fun observe(series: MediaItem): Flow<SeriesResumePosition?> =
         watchNextRepository.observe().map { result ->
-            resolveCloudStreamSeriesResume(series, result.items)
+            resolveSeriesResume(series, result.items)
         }
 }
 
-internal fun resolveCloudStreamSeriesResume(
+/**
+ * Resolves the current episode from Android Watch Next without depending on a specific source app.
+ * The TvProvider/source order is kept intact; the first matching series row wins.
+ */
+internal fun resolveSeriesResume(
     series: MediaItem,
     items: List<WatchNextItem>,
 ): SeriesResumePosition? {
@@ -44,7 +47,6 @@ internal fun resolveCloudStreamSeriesResume(
     if (acceptedTitles.isEmpty()) return null
 
     return items.asSequence()
-        .filter { isCloudStreamPackageName(it.packageName) }
         .mapNotNull { item ->
             val season = item.seasonDisplayNumber?.toIntOrNull() ?: return@mapNotNull null
             val episode = item.episodeDisplayNumber?.toIntOrNull() ?: return@mapNotNull null
