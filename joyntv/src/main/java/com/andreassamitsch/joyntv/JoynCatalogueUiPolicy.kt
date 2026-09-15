@@ -107,12 +107,18 @@ private data class JoynAlphabetBucket(
     val accepts: (String) -> Boolean,
 )
 
+private fun firstLetterIn(range: CharRange): (String) -> Boolean = { key ->
+    key.firstOrNull()?.let { it in range } == true
+}
+
 private val CHANNEL_BUCKETS = listOf(
-    JoynAlphabetBucket("a-f", "Sendungen A–F") { key -> key.firstOrNull() in 'A'..'F' },
-    JoynAlphabetBucket("g-l", "Sendungen G–L") { key -> key.firstOrNull() in 'G'..'L' },
-    JoynAlphabetBucket("m-r", "Sendungen M–R") { key -> key.firstOrNull() in 'M'..'R' },
-    JoynAlphabetBucket("s-z", "Sendungen S–Z") { key -> key.firstOrNull() in 'S'..'Z' },
-    JoynAlphabetBucket("other", "Weitere Sendungen") { key -> key.firstOrNull() !in 'A'..'Z' },
+    JoynAlphabetBucket("a-f", "Sendungen A–F", firstLetterIn('A'..'F')),
+    JoynAlphabetBucket("g-l", "Sendungen G–L", firstLetterIn('G'..'L')),
+    JoynAlphabetBucket("m-r", "Sendungen M–R", firstLetterIn('M'..'R')),
+    JoynAlphabetBucket("s-z", "Sendungen S–Z", firstLetterIn('S'..'Z')),
+    JoynAlphabetBucket("other", "Weitere Sendungen") { key ->
+        key.firstOrNull()?.let { it !in 'A'..'Z' } ?: true
+    },
 )
 
 private const val CHANNEL_HIGHLIGHT_COUNT = 10
