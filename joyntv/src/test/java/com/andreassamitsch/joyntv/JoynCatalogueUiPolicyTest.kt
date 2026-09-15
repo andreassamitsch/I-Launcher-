@@ -86,6 +86,49 @@ class JoynCatalogueUiPolicyTest {
     }
 
     @Test
+    fun `large sender library becomes highlights plus alphabetical shelves`() {
+        val titles = listOf(
+            "The Voice", "ZIB", "Barbara Karlich", "Universum", "Am Schauplatz",
+            "Dancing Stars", "Guten Morgen Österreich", "Report", "Eco", "Mayrs Magazin",
+            "Nachtjournal", "Was gibt es Neues", "Kulturmontag",
+        )
+        val items = titles.mapIndexed { index, title ->
+            JoynMediaItem(id = "show-$index", title = title, type = JoynMediaType.SERIES)
+        }
+
+        val visible = JoynCataloguePage(
+            title = "ORF1",
+            lanes = listOf(JoynLane("channel:/orf1", "Sendungen", items)),
+        ).forJoynUi()
+
+        assertEquals("Highlights", visible.lanes.first().title)
+        assertEquals(items.take(10).map { it.id }, visible.lanes.first().items.map { it.id })
+        assertTrue(visible.lanes.any { it.title == "Sendungen A–F" })
+        assertTrue(visible.lanes.any { it.title == "Sendungen G–L" })
+        assertTrue(visible.lanes.any { it.title == "Sendungen M–R" })
+        assertTrue(visible.lanes.any { it.title == "Sendungen S–Z" })
+        assertEquals(
+            items.map { it.id }.sorted(),
+            visible.lanes.drop(1).flatMap { it.items }.map { it.id }.sorted(),
+        )
+    }
+
+    @Test
+    fun `small sender library is one alphabetical shelf without duplicate highlights`() {
+        val items = listOf("Zebra", "Ärger", "Bergwelten").mapIndexed { index, title ->
+            JoynMediaItem(id = "show-$index", title = title, type = JoynMediaType.SERIES)
+        }
+        val visible = JoynCataloguePage(
+            title = "ServusTV",
+            lanes = listOf(JoynLane("channel:/servustv", "Sendungen", items)),
+        ).forJoynUi()
+
+        assertEquals(1, visible.lanes.size)
+        assertEquals("Alle Sendungen A–Z", visible.lanes.single().title)
+        assertEquals(listOf("Ärger", "Bergwelten", "Zebra"), visible.lanes.single().items.map { it.title })
+    }
+
+    @Test
     fun `literal null and blank headings are not displayed`() {
         assertNull("null".joynDisplayTitleOrNull())
         assertNull(" NULL ".joynDisplayTitleOrNull())
