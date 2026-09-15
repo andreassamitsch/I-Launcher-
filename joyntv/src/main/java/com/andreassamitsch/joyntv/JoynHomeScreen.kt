@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -81,8 +82,11 @@ internal fun JoynHomeScreen(
     var selectedMedia by remember { mutableStateOf<JoynMediaItem?>(null) }
     var selectedLive by remember { mutableStateOf<JoynLiveChannel?>(null) }
     var prewarmLive by remember { mutableStateOf<JoynLiveChannel?>(null) }
+    var artworkEnrichedSection by remember { mutableStateOf<HomeSection?>(null) }
     val updateState by updateManager.state.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val artworkDetailClient = remember(context) { JoynArtworkDetailClient(context.applicationContext) }
 
     LaunchedEffect(Unit) {
         updateManager.checkForUpdates()
@@ -115,6 +119,7 @@ internal fun JoynHomeScreen(
     }
 
     LaunchedEffect(section) {
+        artworkEnrichedSection = null
         if (section == HomeSection.LIVE) return@LaunchedEffect
         catalogueLoading = true
         catalogueError = null
@@ -130,6 +135,27 @@ internal fun JoynHomeScreen(
             catalogueError = it.message ?: it.javaClass.simpleName
         }
         catalogueLoading = false
+    }
+
+    // Render the landing data immediately, then enrich only logo-only cards in the background.
+    // This avoids slowing down the home screen while still resolving hero art from Series/Movie/
+    // Collection detail pages for cards such as "Villa der Versuchung".
+    LaunchedEffect(catalogueLoading, section, catalogue?.title) {
+        if (catalogueLoading || section == HomeSection.LIVE || artworkEnrichedSection == section) {
+            return@LaunchedEffect
+        }
+        val initial = catalogue ?: return@LaunchedEffect
+        val requestedSection = section
+        artworkEnrichedSection = requestedSection
+        val selectedId = selectedMedia?.id
+        val enriched = runCatching {
+            withContext(Dispatchers.IO) { artworkDetailClient.enrichPage(initial) }
+        }.getOrNull() ?: return@LaunchedEffect
+        if (section != requestedSection) return@LaunchedEffect
+        catalogue = enriched
+        selectedMedia = selectedId?.let { id ->
+            enriched.lanes.asSequence().flatMap { it.items.asSequence() }.firstOrNull { it.id == id }
+        } ?: enriched.lanes.firstOrNull()?.items?.firstOrNull()
     }
 
     BoxWithConstraints(
