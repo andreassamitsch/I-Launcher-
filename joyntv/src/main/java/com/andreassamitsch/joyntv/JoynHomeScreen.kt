@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -82,7 +81,6 @@ internal fun JoynHomeScreen(
     var selectedMedia by remember { mutableStateOf<JoynMediaItem?>(null) }
     var selectedLive by remember { mutableStateOf<JoynLiveChannel?>(null) }
     var prewarmLive by remember { mutableStateOf<JoynLiveChannel?>(null) }
-    var account by remember { mutableStateOf(JoynAccountState(loggedIn = false)) }
     val updateState by updateManager.state.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -96,9 +94,6 @@ internal fun JoynHomeScreen(
             if (selectedLive == null) selectedLive = rows.combined.firstOrNull()
                 ?: rows.byCountry.values.firstNotNullOfOrNull { it.firstOrNull() }
         }.onFailure { liveError = it.message ?: it.javaClass.simpleName }
-        runCatching {
-            withContext(Dispatchers.IO) { repository.accountState(refreshRemote = true) }
-        }.onSuccess { account = it }
     }
 
     LaunchedEffect(updateState) {
@@ -139,7 +134,8 @@ internal fun JoynHomeScreen(
     BoxWithConstraints(
         Modifier.fillMaxSize().background(Color(0xFF080A0E)),
     ) {
-        val compact = maxHeight < 520.dp
+        // A phone is compact in both portrait and landscape. TVs stay in the spacious layout.
+        val compact = maxWidth < 720.dp || maxHeight < 520.dp
         val heroMedia = if (section == HomeSection.LIVE) null else selectedMedia
         val heroLive = if (section == HomeSection.LIVE) selectedLive else null
         val heroImage = heroMedia?.backdropUrl ?: heroMedia?.imageUrl
@@ -170,7 +166,6 @@ internal fun JoynHomeScreen(
                 HeaderNavigation(
                     compact = compact,
                     selected = section,
-                    account = account,
                     onSection = { section = it },
                     onSearch = onSearch,
                     onAccount = onAccount,
@@ -285,42 +280,21 @@ private fun JoynCataloguePage?.orEmptyLanes(): List<JoynLane> = this?.lanes.orEm
 private fun HeaderNavigation(
     compact: Boolean,
     selected: HomeSection,
-    account: JoynAccountState,
     onSection: (HomeSection) -> Unit,
     onSearch: () -> Unit,
     onAccount: () -> Unit,
 ) {
     val padding = if (compact) 22.dp else 54.dp
-    Column(Modifier.fillMaxWidth().padding(top = if (compact) 18.dp else 28.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = padding),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                "JOYN  ·  I LAUNCHER",
-                color = Color(0xFFD7DBE3),
-                fontSize = if (compact) 10.sp else 12.sp,
-                letterSpacing = 2.sp,
-                fontWeight = FontWeight.Medium,
-            )
-            Spacer(Modifier.weight(1f))
-            Text(
-                if (account.loggedIn) "Konto ✓" else "Gast",
-                color = Color(0xFF9EA6B2),
-                fontSize = 11.sp,
-            )
+    LazyRow(
+        modifier = Modifier.fillMaxWidth().padding(top = if (compact) 14.dp else 24.dp),
+        contentPadding = PaddingValues(horizontal = padding),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(HomeSection.entries, key = { it.name }) { item ->
+            NavChip(item.label, selected == item) { onSection(item) }
         }
-        Spacer(Modifier.height(if (compact) 12.dp else 16.dp))
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = padding),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(HomeSection.entries, key = { it.name }) { item ->
-                NavChip(item.label, selected == item) { onSection(item) }
-            }
-            item { NavChip("Suche", false, onSearch) }
-            item { NavChip("Konto", false, onAccount) }
-        }
+        item { NavChip("Suche", false, onSearch) }
+        item { NavChip("Konto", false, onAccount) }
     }
 }
 
@@ -458,10 +432,16 @@ private fun MediaCard(
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(if (focused) 1.04f else 1f, label = "mediaFocus")
     val shape = RoundedCornerShape(12.dp)
+    val artwork = item.backdropUrl ?: item.imageUrl
+    var artworkAspect by remember(artwork) { mutableStateOf<Float?>(null) }
+    val cardHeight = if (compact) 124.dp else 152.dp
+    val fallbackWidth = if (compact) 220.dp else 270.dp
+    val cardWidth = joynAdaptiveCardWidth(cardHeight, artworkAspect, fallbackWidth)
+
     Box(
         Modifier
-            .width(if (compact) 220.dp else 270.dp)
-            .height(if (compact) 124.dp else 152.dp)
+            .width(cardWidth)
+            .height(cardHeight)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(shape)
             .background(Color(0xFF161A21))
@@ -476,13 +456,15 @@ private fun MediaCard(
             }
             .focusable(),
     ) {
-        AsyncImage(
-            model = item.backdropUrl ?: item.imageUrl,
-            contentDescription = item.title,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-            alpha = 0.84f,
-        )
+        if (artwork != null) {
+            JoynAdaptiveArtwork(
+                model = artwork,
+                contentDescription = item.title,
+                modifier = Modifier.fillMaxSize(),
+                alpha = 0.84f,
+                onAspectRatio = { artworkAspect = it },
+            )
+        }
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(listOf(Color.Transparent, Color(0xF5080A0E))),
@@ -544,10 +526,16 @@ private fun LiveCard(
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
+    val artwork = channel.currentProgram?.imageUrl ?: channel.logoUrl
+    var artworkAspect by remember(artwork) { mutableStateOf<Float?>(null) }
+    val cardHeight = if (compact) 124.dp else 152.dp
+    val fallbackWidth = if (compact) 220.dp else 270.dp
+    val cardWidth = joynAdaptiveCardWidth(cardHeight, artworkAspect, fallbackWidth)
+
     Box(
         Modifier
-            .width(if (compact) 220.dp else 270.dp)
-            .height(if (compact) 124.dp else 152.dp)
+            .width(cardWidth)
+            .height(cardHeight)
             .clip(shape)
             .background(Color(0xFF161A21))
             .border(if (focused) 2.dp else 1.dp, if (focused) Color.White else Color(0xFF46505D), shape)
@@ -561,13 +549,15 @@ private fun LiveCard(
             }
             .focusable(),
     ) {
-        AsyncImage(
-            model = channel.currentProgram?.imageUrl ?: channel.logoUrl,
-            contentDescription = channel.title,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-            alpha = if (channel.currentProgram?.imageUrl != null) 0.84f else 0.32f,
-        )
+        if (artwork != null) {
+            JoynAdaptiveArtwork(
+                model = artwork,
+                contentDescription = channel.title,
+                modifier = Modifier.fillMaxSize(),
+                alpha = if (channel.currentProgram?.imageUrl != null) 0.84f else 0.32f,
+                onAspectRatio = { artworkAspect = it },
+            )
+        }
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(listOf(Color.Transparent, Color(0xF5080A0E))),
