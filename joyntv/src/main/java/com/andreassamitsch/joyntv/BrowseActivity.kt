@@ -139,7 +139,7 @@ private fun JoynBrowseScreen(
     }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF080A0E))) {
-        val compact = maxHeight < 520.dp
+        val compact = maxWidth < 720.dp || maxHeight < 520.dp
         val heroImage = selected?.backdropUrl ?: selected?.imageUrl
 
         AsyncImage(
@@ -214,13 +214,6 @@ private fun BrowseHeader(title: String, compact: Boolean, onBack: () -> Unit) {
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.weight(1f))
-        Text(
-            "JOYN  ·  I LAUNCHER",
-            color = Color(0xFF929BA7),
-            fontSize = if (compact) 9.sp else 11.sp,
-            letterSpacing = 1.6.sp,
         )
     }
 }
@@ -363,11 +356,15 @@ private fun BrowseMediaCard(
     val scale by animateFloatAsState(if (focused) 1.04f else 1f, label = "browseFocus")
     val shape = RoundedCornerShape(12.dp)
     val artwork = item.backdropUrl ?: item.imageUrl
+    var artworkAspect by remember(artwork) { mutableStateOf<Float?>(null) }
+    val cardHeight = if (compact) 124.dp else 152.dp
+    val fallbackWidth = if (compact) 220.dp else 270.dp
+    val cardWidth = joynAdaptiveCardWidth(cardHeight, artworkAspect, fallbackWidth)
 
     Box(
         Modifier
-            .width(if (compact) 220.dp else 270.dp)
-            .height(if (compact) 124.dp else 152.dp)
+            .width(cardWidth)
+            .height(cardHeight)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(shape)
             .background(Color(0xFF161A21))
@@ -383,12 +380,12 @@ private fun BrowseMediaCard(
             .focusable(),
     ) {
         if (artwork != null) {
-            AsyncImage(
+            JoynAdaptiveArtwork(
                 model = artwork,
                 contentDescription = item.title,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
                 alpha = if (item.type == JoynMediaType.CHANNEL) 0.68f else 0.86f,
+                onAspectRatio = { artworkAspect = it },
             )
         }
         Box(
