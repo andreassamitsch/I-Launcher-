@@ -121,9 +121,10 @@ internal fun JoynHomeScreen(
         selectedMedia = null
         runCatching {
             withContext(Dispatchers.IO) { repository.loadCatalogue(section.path ?: "/neu-beliebt") }
-        }.onSuccess {
-            catalogue = it
-            selectedMedia = it.lanes.firstOrNull()?.items?.firstOrNull()
+        }.onSuccess { loaded ->
+            val visible = loaded.forJoynUi()
+            catalogue = visible
+            selectedMedia = visible.lanes.firstOrNull()?.items?.firstOrNull()
         }.onFailure {
             catalogue = null
             catalogueError = it.message ?: it.javaClass.simpleName
@@ -237,7 +238,7 @@ internal fun JoynHomeScreen(
                     else -> {
                         catalogue.orEmptyLanes().forEach { lane ->
                             item(key = lane.id) {
-                                SectionTitle(lane.title, compact)
+                                lane.title.joynDisplayTitleOrNull()?.let { SectionTitle(it, compact) }
                                 MediaRow(
                                     items = lane.items,
                                     compact = compact,
@@ -429,74 +430,14 @@ private fun MediaCard(
     onFocused: (JoynMediaItem) -> Unit,
     onClick: () -> Unit,
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) 1.04f else 1f, label = "mediaFocus")
-    val shape = RoundedCornerShape(12.dp)
-    val artwork = item.backdropUrl ?: item.imageUrl
-    var artworkAspect by remember(artwork) { mutableStateOf<Float?>(null) }
-    val cardHeight = if (compact) 124.dp else 152.dp
-    val fallbackWidth = if (compact) 220.dp else 270.dp
-    val cardWidth = joynAdaptiveCardWidth(cardHeight, artworkAspect, fallbackWidth)
-
-    Box(
-        Modifier
-            .width(cardWidth)
-            .height(cardHeight)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(shape)
-            .background(Color(0xFF161A21))
-            .border(if (focused) 2.dp else 1.dp, if (focused) Color.White else Color(0xFF46505D), shape)
-            .onFocusChanged {
-                focused = it.isFocused
-                if (it.isFocused) onFocused(item)
-            }
-            .clickable {
-                onFocused(item)
-                onClick()
-            }
-            .focusable(),
-    ) {
-        if (artwork != null) {
-            JoynAdaptiveArtwork(
-                model = artwork,
-                contentDescription = item.title,
-                modifier = Modifier.fillMaxSize(),
-                alpha = 0.84f,
-                onAspectRatio = { artworkAspect = it },
-            )
-        }
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(Color.Transparent, Color(0xF5080A0E))),
-            ),
-        )
-        item.logoUrl?.let {
-            AsyncImage(
-                model = it,
-                contentDescription = null,
-                modifier = Modifier.align(Alignment.TopStart).padding(10.dp).size(
-                    width = if (compact) 84.dp else 100.dp,
-                    height = if (compact) 34.dp else 40.dp,
-                ),
-                contentScale = ContentScale.Fit,
-            )
-        }
-        Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
-            Text(
-                item.title,
-                color = Color.White,
-                fontSize = if (compact) 14.sp else 15.sp,
-                lineHeight = if (compact) 17.sp else 19.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if ("SVOD" in item.licenseTypes || "PLUS" in item.markings || "PREMIUM" in item.markings) {
-                Spacer(Modifier.height(2.dp))
-                Text("PLUS+", color = Color(0xFFD7DBE3), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
+    JoynMediaTile(
+        item = item,
+        compact = compact,
+        cardHeight = if (compact) 124.dp else 152.dp,
+        fallbackWidth = if (compact) 220.dp else 270.dp,
+        onFocused = onFocused,
+        onClick = onClick,
+    )
 }
 
 @Composable
@@ -526,7 +467,7 @@ private fun LiveCard(
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
-    val artwork = channel.currentProgram?.imageUrl ?: channel.logoUrl
+    val artwork = channel.currentProgram?.imageUrl
     var artworkAspect by remember(artwork) { mutableStateOf<Float?>(null) }
     val cardHeight = if (compact) 124.dp else 152.dp
     val fallbackWidth = if (compact) 220.dp else 270.dp
@@ -537,7 +478,9 @@ private fun LiveCard(
             .width(cardWidth)
             .height(cardHeight)
             .clip(shape)
-            .background(Color(0xFF161A21))
+            .background(
+                Brush.verticalGradient(listOf(Color(0xFF1A2029), Color(0xFF0E1117))),
+            )
             .border(if (focused) 2.dp else 1.dp, if (focused) Color.White else Color(0xFF46505D), shape)
             .onFocusChanged {
                 focused = it.isFocused
@@ -554,37 +497,56 @@ private fun LiveCard(
                 model = artwork,
                 contentDescription = channel.title,
                 modifier = Modifier.fillMaxSize(),
-                alpha = if (channel.currentProgram?.imageUrl != null) 0.84f else 0.32f,
+                alpha = 0.9f,
                 onAspectRatio = { artworkAspect = it },
             )
         }
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(Color.Transparent, Color(0xF5080A0E))),
-            ),
-        )
+        val hasProgramArtwork = artwork != null
         channel.logoUrl?.let {
             AsyncImage(
                 model = it,
                 contentDescription = null,
-                modifier = Modifier.align(Alignment.TopStart).padding(10.dp).size(
-                    width = if (compact) 76.dp else 88.dp,
-                    height = if (compact) 32.dp else 36.dp,
-                ),
+                modifier = if (hasProgramArtwork) {
+                    Modifier.align(Alignment.TopStart).padding(10.dp).size(
+                        width = if (compact) 76.dp else 88.dp,
+                        height = if (compact) 32.dp else 36.dp,
+                    )
+                } else {
+                    Modifier.align(Alignment.Center).padding(start = 28.dp, end = 28.dp, bottom = 36.dp)
+                        .fillMaxWidth().height(if (compact) 48.dp else 58.dp)
+                },
                 contentScale = ContentScale.Fit,
             )
         }
-        Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(64.dp)
+                .background(
+                    Brush.verticalGradient(listOf(Color.Transparent, Color(0xD9080A0E), Color(0xFF080A0E))),
+                ),
+        )
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
             Text(
                 channel.currentProgram?.title ?: channel.title,
                 color = Color.White,
-                fontSize = if (compact) 14.sp else 15.sp,
+                fontSize = if (compact) 13.sp else 14.sp,
+                lineHeight = if (compact) 16.sp else 17.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(2.dp))
-            Text(channel.title, color = Color(0xFFD7DBE3), fontSize = 11.sp)
+            if (channel.currentProgram != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    channel.title,
+                    color = Color(0xFFD7DBE3),
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
