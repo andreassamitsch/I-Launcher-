@@ -43,6 +43,7 @@ internal fun JoynMediaTile(
     compact: Boolean,
     cardHeight: Dp,
     fallbackWidth: Dp,
+    fixedWidth: Dp? = null,
     displayTitle: String = item.title,
     subtitle: String? = null,
     imageAlpha: Float = 1f,
@@ -59,7 +60,7 @@ internal fun JoynMediaTile(
     val primaryArtwork = artwork.primary
     val fallbackArtwork = artwork.fallback
     var artworkAspect by remember(primaryArtwork, fallbackArtwork) { mutableStateOf<Float?>(null) }
-    val cardWidth = joynAdaptiveCardWidth(cardHeight, artworkAspect, fallbackWidth)
+    val cardWidth = fixedWidth ?: joynAdaptiveCardWidth(cardHeight, artworkAspect, fallbackWidth)
     val narrowArtwork = artworkAspect?.let { it < 0.92f } == true
     val longestWord = remember(displayTitle) { displayTitle.longestJoynTitleWordLength() }
 
