@@ -86,6 +86,23 @@ internal class JoynArtworkDetailClient(context: Context) {
             if (detail.backdropUrl != null) break
         }
 
+        // The public Joyn detail page is the final source of truth for visual profiles. Some
+        // landing/detail GraphQL variants expose only artLogoImage for a show although joyn.de
+        // renders a separate nextgen-webphone-primary or nextgen-web-herolandscape asset. Query the
+        // public page only for those unresolved logo-only cards, then keep the GraphQL metadata.
+        if (best?.backdropUrl.isNullOrBlank()) {
+            val publicArtwork = runCatching { loadPublicPageArtwork(path) }.getOrNull()
+            if (publicArtwork != null) {
+                val current = best
+                best = JoynArtworkDetail(
+                    imageUrl = publicArtwork.imageUrl ?: current?.imageUrl,
+                    backdropUrl = publicArtwork.backdropUrl ?: current?.backdropUrl,
+                    logoUrl = current?.logoUrl ?: publicArtwork.logoUrl,
+                    description = current?.description ?: publicArtwork.description,
+                )
+            }
+        }
+
         val resolved = best ?: JoynArtworkDetail()
         DETAIL_CACHE[cacheKey] = resolved
         return item.mergeArtwork(resolved)
@@ -196,6 +213,31 @@ internal class JoynArtworkDetailClient(context: Context) {
             backdropUrl = backdrop,
             logoUrl = logo,
             description = description,
+        )
+    }
+
+    private fun loadPublicPageArtwork(path: String): JoynArtworkDetail {
+        val url = when {
+            path.startsWith("https://", ignoreCase = true) || path.startsWith("http://", ignoreCase = true) -> path
+            else -> "https://www.joyn.de/${path.trimStart('/')}"
+        }
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "text/html,application/xhtml+xml")
+            .header("Accept-Language", "de-DE,de;q=0.9,en;q=0.7")
+            .get()
+            .build()
+        val html = client.newCall(request).execute().use { response ->
+            val body = response.body.string()
+            if (!response.isSuccessful) throw ArtworkHttpException(response.code, body)
+            body
+        }
+        val artwork = selectJoynPublicPageArtwork(html)
+            ?: error("Joyn Seite '$path' enthält kein nutzbares Primary-/Landscape-Bild")
+        return JoynArtworkDetail(
+            imageUrl = artwork,
+            backdropUrl = artwork,
         )
     }
 
