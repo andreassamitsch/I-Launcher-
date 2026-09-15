@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -38,14 +37,12 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
-import coil3.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -87,7 +84,7 @@ private fun SearchScreen(repository: JoynRepository, onOpen: (JoynMediaItem) -> 
     }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF080A0E))) {
-        val compact = maxHeight < 520.dp
+        val compact = maxWidth < 720.dp || maxHeight < 520.dp
         val horizontalPadding = if (compact) 28.dp else 64.dp
         Column(
             Modifier.fillMaxSize().padding(top = if (compact) 28.dp else 54.dp),
@@ -211,10 +208,16 @@ private fun ActionButton(label: String, enabled: Boolean = true, onClick: () -> 
 private fun SearchCard(item: JoynMediaItem, compact: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
+    val artwork = item.backdropUrl ?: item.imageUrl
+    var artworkAspect by remember(artwork) { mutableStateOf<Float?>(null) }
+    val cardHeight = if (compact) 130.dp else 150.dp
+    val fallbackWidth = if (compact) 210.dp else 250.dp
+    val cardWidth = joynAdaptiveCardWidth(cardHeight, artworkAspect, fallbackWidth)
+
     Box(
         modifier = Modifier
-            .width(if (compact) 210.dp else 250.dp)
-            .height(if (compact) 130.dp else 150.dp)
+            .width(cardWidth)
+            .height(cardHeight)
             .clip(shape)
             .background(Color(0xFF161A21))
             .border(if (focused) 2.dp else 1.dp, if (focused) Color.White else Color(0xFF4D5663), shape)
@@ -222,13 +225,15 @@ private fun SearchCard(item: JoynMediaItem, compact: Boolean, onClick: () -> Uni
             .clickable(onClick = onClick)
             .focusable(),
     ) {
-        AsyncImage(
-            model = item.backdropUrl ?: item.imageUrl,
-            contentDescription = item.title,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-            alpha = 0.82f,
-        )
+        if (artwork != null) {
+            JoynAdaptiveArtwork(
+                model = artwork,
+                contentDescription = item.title,
+                modifier = Modifier.fillMaxSize(),
+                alpha = 0.82f,
+                onAspectRatio = { artworkAspect = it },
+            )
+        }
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(listOf(Color.Transparent, Color(0xF0080A0E))),
