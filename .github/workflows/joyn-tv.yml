@@ -39,6 +39,10 @@ jobs:
           java-version: "17"
 
       - uses: android-actions/setup-android@v3
+        with:
+          # The old SDK package named "tools" disappeared from the current repository. We only
+          # need platform-tools here; platform 36 and build-tools are installed explicitly below.
+          packages: platform-tools
 
       - name: Install Android SDK 36
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
