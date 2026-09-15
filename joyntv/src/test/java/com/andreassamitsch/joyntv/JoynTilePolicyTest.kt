@@ -8,13 +8,14 @@ import org.junit.Test
 
 class JoynTilePolicyTest {
     @Test
-    fun `channel with generic image only uses centered logo`() {
+    fun `channel logo profile only uses centered logo`() {
+        val logoAsset = "https://images.example/asset.png?profile=nextgen-web-artlogo-400x160"
         val item = JoynMediaItem(
             id = "orf1",
             title = "ORF1",
             type = JoynMediaType.CHANNEL,
-            imageUrl = "https://images.example/primary.jpg",
-            backdropUrl = "https://images.example/primary.jpg",
+            imageUrl = logoAsset,
+            backdropUrl = logoAsset,
             logoUrl = "https://images.example/logo-orf1.png",
         )
 
@@ -23,6 +24,25 @@ class JoynTilePolicyTest {
         assertNull(artwork.primary)
         assertTrue(artwork.centerLogo)
         assertFalse(artwork.overlayLogo)
+    }
+
+    @Test
+    fun `channel keeps real key art even when primary and backdrop are identical`() {
+        val keyArt = "https://images.example/villa-der-versuchung-landscape.jpg"
+        val item = JoynMediaItem(
+            id = "villa",
+            title = "Villa der Versuchung",
+            type = JoynMediaType.CHANNEL,
+            imageUrl = keyArt,
+            backdropUrl = keyArt,
+            logoUrl = "https://images.example/villa-logo.png",
+        )
+
+        val artwork = item.resolveJoynTileArtwork()
+
+        assertEquals(keyArt, artwork.primary)
+        assertFalse(artwork.centerLogo)
+        assertTrue(artwork.overlayLogo)
     }
 
     @Test
