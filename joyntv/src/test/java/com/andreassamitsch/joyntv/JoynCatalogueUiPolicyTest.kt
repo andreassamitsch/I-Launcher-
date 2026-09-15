@@ -86,7 +86,7 @@ class JoynCatalogueUiPolicyTest {
     }
 
     @Test
-    fun `large sender library becomes highlights plus alphabetical shelves`() {
+    fun `large sender library becomes popular plus alphabetical shelves`() {
         val titles = listOf(
             "The Voice", "ZIB", "Barbara Karlich", "Universum", "Am Schauplatz",
             "Dancing Stars", "Guten Morgen Österreich", "Report", "Eco", "Mayrs Magazin",
@@ -101,7 +101,7 @@ class JoynCatalogueUiPolicyTest {
             lanes = listOf(JoynLane("channel:/orf1", "Sendungen", items)),
         ).forJoynUi()
 
-        assertEquals("Highlights", visible.lanes.first().title)
+        assertEquals("Beliebte Sendungen", visible.lanes.first().title)
         assertEquals(items.take(10).map { it.id }, visible.lanes.first().items.map { it.id })
         assertTrue(visible.lanes.any { it.title == "Sendungen A–F" })
         assertTrue(visible.lanes.any { it.title == "Sendungen G–L" })
