@@ -56,6 +56,36 @@ class JoynCatalogueUiPolicyTest {
     }
 
     @Test
+    fun `redundant live tv zappn catalogue lane is removed`() {
+        val teaser = JoynMediaItem(id = "live", title = "Kommissar Rex")
+        val content = JoynMediaItem(id = "movie", title = "Film", type = JoynMediaType.MOVIE)
+        val visible = JoynCataloguePage(
+            title = "Start",
+            lanes = listOf(
+                JoynLane("live-teasers", "Live-TV zappn", listOf(teaser)),
+                JoynLane("content", "Highlights", listOf(content)),
+            ),
+        ).forJoynUi()
+
+        assertEquals(listOf("content"), visible.lanes.map { it.id })
+    }
+
+    @Test
+    fun `pure channel shelves move behind content shelves`() {
+        val channel = JoynMediaItem(id = "orf", title = "ORF1", type = JoynMediaType.CHANNEL)
+        val movie = JoynMediaItem(id = "movie", title = "Film", type = JoynMediaType.MOVIE)
+        val visible = JoynCataloguePage(
+            title = "Start",
+            lanes = listOf(
+                JoynLane("mediatheken", "Mediatheken", listOf(channel)),
+                JoynLane("content", "Top 10", listOf(movie)),
+            ),
+        ).forJoynUi()
+
+        assertEquals(listOf("content", "mediatheken"), visible.lanes.map { it.id })
+    }
+
+    @Test
     fun `literal null and blank headings are not displayed`() {
         assertNull("null".joynDisplayTitleOrNull())
         assertNull(" NULL ".joynDisplayTitleOrNull())
