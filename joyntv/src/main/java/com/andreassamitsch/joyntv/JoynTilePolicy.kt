@@ -5,9 +5,9 @@ package com.andreassamitsch.joyntv
  * interchangeable images.
  *
  * Joyn sometimes returns an art-logo through a generic image slot. Rendering that as a full-card
- * background produces the duplicated/mostly empty cards seen on phone layouts. Channel/library
- * cards therefore only use a distinct landscape backdrop; otherwise the real logo becomes the
- * centered fallback. VOD cards prefer their content image and fall back to landscape art.
+ * background produces the duplicated/mostly empty cards seen on phone layouts. Real brand/content
+ * artwork should still be used even when Joyn exposes the same URL in both primary and backdrop
+ * fields; logos only become the centered fallback when no usable content art exists.
  */
 internal data class JoynTileArtwork(
     val primary: String?,
@@ -26,14 +26,21 @@ internal fun JoynMediaItem.resolveJoynTileArtwork(): JoynTileArtwork {
     }
 
     if (type == JoynMediaType.CHANNEL) {
-        // A channel's generic primary image is very often just another logo treatment. Only use a
-        // dedicated/different landscape image as background; otherwise a centered logo is cleaner.
-        val landscape = usableContentArt(backdrop)?.takeUnless { joynSameImageAsset(it, image) }
+        // Brand/channel objects frequently expose one proper key-art URL in both image fields. That
+        // is still valid artwork and must not be discarded merely because both URLs are identical.
+        // Broadcaster logo variants are filtered by URL/profile tokens and by comparison with logoUrl.
+        val primary = usableContentArt(backdrop) ?: usableContentArt(image)
+        val fallback = when {
+            primary == null -> null
+            joynSameImageAsset(primary, backdrop) -> usableContentArt(image)
+                ?.takeUnless { joynSameImageAsset(it, primary) }
+            else -> usableContentArt(backdrop)?.takeUnless { joynSameImageAsset(it, primary) }
+        }
         return JoynTileArtwork(
-            primary = landscape,
-            fallback = null,
-            centerLogo = landscape == null && logo != null,
-            overlayLogo = landscape != null && logo != null,
+            primary = primary,
+            fallback = fallback,
+            centerLogo = primary == null && logo != null,
+            overlayLogo = primary != null && logo != null,
         )
     }
 
@@ -65,15 +72,20 @@ private fun String?.cleanJoynImageUrl(): String? =
     this?.trim()?.takeIf(String::isNotEmpty)
 
 private fun String.looksLikeJoynLogoAsset(): Boolean {
-    val normalized = substringBefore('?').substringBefore('#').lowercase()
-    return normalized.contains("artlogo") ||
-        normalized.contains("brand-logo") ||
-        normalized.contains("brand_logo") ||
-        normalized.contains("livestream-logo") ||
-        normalized.contains("livestream_logo") ||
-        normalized.contains("/logo/") ||
-        normalized.substringAfterLast('/').startsWith("logo-") ||
-        normalized.substringAfterLast('/').startsWith("logo_")
+    // Do not strip the query before checking: Joyn CDN URLs often carry the decisive profile name
+    // (for example nextgen-web-artlogo-...) in query/transform parameters rather than the path.
+    val full = lowercase()
+    val path = substringBefore('?').substringBefore('#').lowercase()
+    val fileName = path.substringAfterLast('/')
+    return full.contains("artlogo") ||
+        full.contains("brand-logo") ||
+        full.contains("brand_logo") ||
+        full.contains("livestream-logo") ||
+        full.contains("livestream_logo") ||
+        full.contains("profile=logo") ||
+        path.contains("/logo/") ||
+        fileName.startsWith("logo-") ||
+        fileName.startsWith("logo_")
 }
 
 private fun joynSameImageAsset(first: String?, second: String?): Boolean {
