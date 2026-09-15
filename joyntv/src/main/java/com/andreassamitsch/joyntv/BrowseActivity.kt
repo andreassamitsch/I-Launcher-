@@ -5,7 +5,6 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,7 +37,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -130,8 +128,9 @@ private fun JoynBrowseScreen(
                 }
             }
         }.onSuccess { loaded ->
-            page = loaded
-            selected = loaded.lanes.firstOrNull()?.items?.firstOrNull()
+            val visible = loaded.forJoynUi()
+            page = visible
+            selected = visible.lanes.firstOrNull()?.items?.firstOrNull()
         }.onFailure { throwable ->
             error = throwable.message ?: throwable.javaClass.simpleName
         }
@@ -180,7 +179,7 @@ private fun JoynBrowseScreen(
                 }
                 else -> page?.lanes.orEmpty().forEach { lane ->
                     item(key = lane.id) {
-                        BrowseSectionTitle(lane.title, compact)
+                        lane.title.joynDisplayTitleOrNull()?.let { BrowseSectionTitle(it, compact) }
                         BrowseMediaRow(
                             lane = lane,
                             compact = compact,
@@ -352,66 +351,16 @@ private fun BrowseMediaCard(
     onFocused: (JoynMediaItem) -> Unit,
     onClick: () -> Unit,
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) 1.04f else 1f, label = "browseFocus")
-    val shape = RoundedCornerShape(12.dp)
-    val artwork = item.backdropUrl ?: item.imageUrl
-    var artworkAspect by remember(artwork) { mutableStateOf<Float?>(null) }
-    val cardHeight = if (compact) 124.dp else 152.dp
-    val fallbackWidth = if (compact) 220.dp else 270.dp
-    val cardWidth = joynAdaptiveCardWidth(cardHeight, artworkAspect, fallbackWidth)
-
-    Box(
-        Modifier
-            .width(cardWidth)
-            .height(cardHeight)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(shape)
-            .background(Color(0xFF161A21))
-            .border(if (focused) 2.dp else 1.dp, if (focused) Color.White else Color(0xFF46505D), shape)
-            .onFocusChanged {
-                focused = it.isFocused
-                if (it.isFocused) onFocused(item)
-            }
-            .clickable {
-                onFocused(item)
-                onClick()
-            }
-            .focusable(),
-    ) {
-        if (artwork != null) {
-            JoynAdaptiveArtwork(
-                model = artwork,
-                contentDescription = item.title,
-                modifier = Modifier.fillMaxSize(),
-                alpha = if (item.type == JoynMediaType.CHANNEL) 0.68f else 0.86f,
-                onAspectRatio = { artworkAspect = it },
-            )
-        }
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(Color.Transparent, Color(0xEE080A0E))),
-            ),
-        )
-        val cardLogo = item.logoUrl?.takeIf(String::isNotBlank)
-        if (cardLogo != null && item.type == JoynMediaType.CHANNEL) {
-            AsyncImage(
-                model = cardLogo,
-                contentDescription = item.title,
-                modifier = Modifier.align(Alignment.Center).padding(32.dp).fillMaxSize(),
-                contentScale = ContentScale.Fit,
-            )
-        }
-        Text(
-            item.title,
-            color = Color.White,
-            fontSize = if (compact) 13.sp else 15.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
-        )
-    }
+    JoynMediaTile(
+        item = item,
+        compact = compact,
+        cardHeight = if (compact) 124.dp else 152.dp,
+        fallbackWidth = if (compact) 220.dp else 270.dp,
+        imageAlpha = if (item.type == JoynMediaType.CHANNEL) 0.78f else 0.9f,
+        centeredLogo = item.type == JoynMediaType.CHANNEL,
+        onFocused = onFocused,
+        onClick = onClick,
+    )
 }
 
 @Composable
