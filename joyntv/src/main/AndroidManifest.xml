@@ -13,7 +13,6 @@
         android:required="false" />
 
     <application
-        android:name=".JoynTvApplication"
         android:allowBackup="true"
         android:banner="@drawable/tv_banner"
         android:icon="@drawable/ic_joyn_tv"
