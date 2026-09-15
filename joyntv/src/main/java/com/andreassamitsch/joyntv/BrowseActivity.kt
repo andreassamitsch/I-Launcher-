@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.ExperimentalLayoutApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -176,6 +179,13 @@ private fun JoynBrowseScreen(
                 error != null -> item { BrowseStatus(error.orEmpty(), compact, true) }
                 page?.lanes.isNullOrEmpty() -> item {
                     BrowseStatus("Für diesen Bereich sind keine Inhalte verfügbar.", compact, false)
+                }
+                mode == BrowseActivity.MODE_CHANNEL && compact -> item(key = "compact-channel-wall") {
+                    CompactChannelMediathek(
+                        lanes = page?.lanes.orEmpty(),
+                        onFocused = { selected = it },
+                        onOpen = onOpen,
+                    )
                 }
                 else -> page?.lanes.orEmpty().forEach { lane ->
                     item(key = lane.id) {
@@ -342,6 +352,68 @@ private fun BrowseMediaRow(
         }
     }
     Spacer(Modifier.height(if (compact) 20.dp else 30.dp))
+}
+
+@Composable
+private fun CompactChannelMediathek(
+    lanes: List<JoynLane>,
+    onFocused: (JoynMediaItem) -> Unit,
+    onOpen: (JoynMediaItem) -> Unit,
+) {
+    val popular = lanes.firstOrNull { it.id.endsWith(":highlights") }
+    val alphabetical = lanes
+        .filter { it.id.contains(":az") }
+        .flatMap { it.items }
+        .distinctBy { it.id }
+
+    popular?.takeIf { it.items.isNotEmpty() }?.let { lane ->
+        BrowseSectionTitle("Beliebte Sendungen", compact = true)
+        BrowseMediaRow(
+            lane = lane,
+            compact = true,
+            onFocused = onFocused,
+            onOpen = onOpen,
+        )
+    }
+
+    val wallItems = alphabetical.ifEmpty {
+        lanes.filterNot { it.id.endsWith(":highlights") }.flatMap { it.items }.distinctBy { it.id }
+    }
+    if (wallItems.isNotEmpty()) {
+        BrowseSectionTitle("Alle Sendungen A–Z", compact = true)
+        BrowseMediaWall(wallItems, onFocused, onOpen)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BrowseMediaWall(
+    items: List<JoynMediaItem>,
+    onFocused: (JoynMediaItem) -> Unit,
+    onOpen: (JoynMediaItem) -> Unit,
+) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        items.forEach { item ->
+            key(item.id) {
+                JoynMediaTile(
+                    item = item,
+                    compact = true,
+                    cardHeight = 190.dp,
+                    fallbackWidth = 142.dp,
+                    fixedWidth = 142.dp,
+                    imageAlpha = 0.92f,
+                    centeredLogo = item.type == JoynMediaType.CHANNEL,
+                    onFocused = onFocused,
+                    onClick = { onOpen(item) },
+                )
+            }
+        }
+    }
+    Spacer(Modifier.height(24.dp))
 }
 
 @Composable
