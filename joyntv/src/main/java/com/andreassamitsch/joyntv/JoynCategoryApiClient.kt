@@ -13,10 +13,11 @@ import org.json.JSONObject
 /**
  * Category resolver aligned with the current Kodi Joyn reference flow.
  *
- * Kodi does not try to recursively infer category contents from LandingPageClient. It keeps
- * the original lane id and, when a category is opened, requests exactly that id through
- * LandingBlocks. For authenticated accounts it additionally sends Joyn-User-State from
- * GetMeState. That header is important for account-aware persisted GraphQL queries.
+ * Kodi normally opens the original lane id through LandingBlocks. In practice Joyn can return the
+ * same block without assets a moment after LandingPageClient already delivered it successfully.
+ * Therefore this resolver keeps LandingBlocks as the primary path, but recovers the exact block
+ * from the root LandingPageClient response if the follow-up block is missing or empty.
+ * Authenticated accounts additionally forward Joyn-User-State from GetMeState.
  */
 internal class JoynCategoryApiClient(context: Context) {
     private val appContext = context.applicationContext
@@ -35,19 +36,49 @@ internal class JoynCategoryApiClient(context: Context) {
     suspend fun loadCategory(blockId: String, fallbackTitle: String): JoynCataloguePage {
         val session = ensureSession()
         val account = loadAccountContext(session)
-        val response = persistedGraphQl(
-            session = session,
-            operationName = "LandingBlocks",
-            hash = HASH_LANDING_BLOCKS,
-            variables = JSONObject().put("ids", JSONArray().put(blockId)),
-            userState = account.userState,
-        )
 
-        val block = response.optJSONArray("blocks").findObjectById(blockId)
-            ?: throw IOException(
-                "Joyn Kategorie '$fallbackTitle' wurde von LandingBlocks nicht zurückgegeben " +
-                    "(Block $blockId, angemeldet=${account.loggedIn}, User-State=${account.userState ?: "-"}).",
+        val landingBlocksResult = runCatching {
+            persistedGraphQl(
+                session = session,
+                operationName = "LandingBlocks",
+                hash = HASH_LANDING_BLOCKS,
+                variables = JSONObject().put("ids", JSONArray().put(blockId)),
+                userState = account.userState,
             )
+        }
+        var source = "LandingBlocks"
+        var block = landingBlocksResult.getOrNull()
+            ?.optJSONArray("blocks")
+            .findObjectById(blockId)
+
+        // Joyn occasionally returns an empty LandingBlocks result although the preceding landing
+        // page already contained the assets. Re-read the landing page instead of declaring the
+        // visible category broken. This also covers lazyBlocks.
+        if (block == null || (block.optJSONArray("assets")?.length() ?: 0) == 0) {
+            val landing = runCatching {
+                persistedGraphQl(
+                    session = session,
+                    operationName = "LandingPageClient",
+                    hash = HASH_LANDING_PAGE,
+                    variables = JSONObject().put("path", "/"),
+                    userState = account.userState,
+                )
+            }.getOrNull()
+            val recovered = landing?.findLandingBlockById(blockId)
+            if (recovered != null && (recovered.optJSONArray("assets")?.length() ?: 0) > 0) {
+                block = recovered
+                source = "LandingPageClient"
+            }
+        }
+
+        if (block == null) {
+            val primaryError = landingBlocksResult.exceptionOrNull()?.message
+            throw IOException(
+                "Joyn Kategorie '$fallbackTitle' wurde nicht zurückgegeben " +
+                    "(Block $blockId, angemeldet=${account.loggedIn}, User-State=${account.userState ?: "-"}" +
+                    primaryError?.let { ", LandingBlocks=${it.take(180)}" }.orEmpty() + ").",
+            )
+        }
 
         val assets = block.optJSONArray("assets") ?: JSONArray()
         val mapped = assets.toMediaItems()
@@ -66,7 +97,7 @@ internal class JoynCategoryApiClient(context: Context) {
             val fields = block.keys().asSequence().toList().sorted()
             throw IOException(
                 "Joyn Kategorie '$fallbackTitle' ist leer " +
-                    "(Block $blockId, assets=${assets.length()}, gemappt=${mapped.size}, " +
+                    "(Quelle=$source, Block $blockId, assets=${assets.length()}, gemappt=${mapped.size}, " +
                     "Typen=${types.joinToString().ifBlank { "keine" }}, " +
                     "angemeldet=${account.loggedIn}, PLUS=${account.hasPlus}, " +
                     "User-State=${account.userState ?: "-"}, " +
@@ -106,8 +137,6 @@ internal class JoynCategoryApiClient(context: Context) {
                 hasPlus = subscriptions?.optBoolean("hasActivePlus", false) ?: false,
             )
         }.getOrElse {
-            // Keep browsing possible if account metadata is temporarily unavailable. The detailed
-            // category error below will expose that no user state could be obtained.
             AccountContext(loggedIn = true)
         }
     }
@@ -198,6 +227,12 @@ internal class JoynCategoryApiClient(context: Context) {
                 hasAccount = json.optBoolean("hasAccount", false),
             )
         }.getOrNull()
+    }
+
+    private fun JSONObject.findLandingBlockById(id: String): JSONObject? {
+        val page = optJSONObject("page") ?: return null
+        return page.optJSONArray("blocks").findObjectById(id)
+            ?: page.optJSONArray("lazyBlocks").findObjectById(id)
     }
 
     private fun JSONArray?.findObjectById(id: String): JSONObject? {
@@ -314,6 +349,7 @@ internal class JoynCategoryApiClient(context: Context) {
     companion object {
         private const val PREFS_NAME = "joyn_protocol"
         private const val API_KEY_TTL_MS = 5L * 24L * 60L * 60L * 1000L
+        private const val HASH_LANDING_PAGE = "b71b3871aebfe266b63a4bf7daaa35645e17be2469b850265ba75146fa60affc"
         private const val HASH_LANDING_BLOCKS = "1655591f83b0dc1508ad4d52c5f37f72d410f48ad08c3e5f2de8622f86a21c68"
         private const val HASH_ACCOUNT = "55ebb3812b45628017ee6c7f36f0b88a94e9778b9f11ad8a6fc05849182c07ec"
         private const val USER_AGENT =
