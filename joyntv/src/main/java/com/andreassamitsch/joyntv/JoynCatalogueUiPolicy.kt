@@ -17,9 +17,9 @@ import java.util.Locale
  * it is deliberately suppressed.
  *
  * Sender-/Mediatheken-Seiten are transformed from Joyn's one very long "Sendungen" shelf into a
- * TV-friendly structure: a short highlight shelf in Joyn's original order, followed by all shows
- * alphabetically grouped into compact letter ranges. This keeps remote navigation manageable while
- * preserving every item returned by Joyn.
+ * TV-friendly structure: a short popular/highlight shelf in Joyn's original order, followed by all
+ * shows alphabetically grouped into compact letter ranges. Phone portrait can render those A-Z
+ * groups as one wrapped wall while TV keeps the remote-friendly horizontal shelves.
  */
 internal fun JoynCataloguePage.forJoynUi(): JoynCataloguePage {
     val visibleLanes = lanes.mapNotNull { lane ->
@@ -67,7 +67,7 @@ private fun JoynLane.toStructuredChannelLanes(): List<JoynLane> {
             .thenBy { it.title.lowercase(Locale.GERMAN) },
     )
 
-    // Small libraries do not need duplicated highlight + alphabet shelves.
+    // Small libraries do not need duplicated popular + alphabet shelves.
     if (unique.size < CHANNEL_HIGHLIGHT_THRESHOLD) {
         return listOf(copy(id = "$id:az", title = "Alle Sendungen A–Z", items = alphabetical))
     }
@@ -75,7 +75,7 @@ private fun JoynLane.toStructuredChannelLanes(): List<JoynLane> {
     val result = mutableListOf<JoynLane>()
     result += copy(
         id = "$id:highlights",
-        title = "Highlights",
+        title = "Beliebte Sendungen",
         items = unique.take(CHANNEL_HIGHLIGHT_COUNT),
     )
 
