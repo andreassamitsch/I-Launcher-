@@ -45,31 +45,45 @@ internal fun JoynMediaTile(
     fallbackWidth: Dp,
     displayTitle: String = item.title,
     subtitle: String? = null,
-    imageAlpha: Float = 0.9f,
-    centeredLogo: Boolean = item.type == JoynMediaType.CHANNEL,
+    imageAlpha: Float = 1f,
+    centeredLogo: Boolean = false,
     onFocused: (JoynMediaItem) -> Unit = {},
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(if (focused) 1.04f else 1f, label = "joynTileFocus")
     val shape = RoundedCornerShape(12.dp)
-
-    // primaryImage/thumbnailImage is normally the correct catalogue artwork. The previous UI
-    // preferred heroLandscape unconditionally, which caused a number of logo-like/empty cards.
-    val primaryArtwork = item.imageUrl ?: item.backdropUrl
-    val fallbackArtwork = when {
-        item.imageUrl != null && item.backdropUrl != null && item.backdropUrl != item.imageUrl -> item.backdropUrl
-        item.imageUrl == null -> item.backdropUrl
-        else -> null
+    val artwork = remember(item.imageUrl, item.backdropUrl, item.logoUrl, item.type) {
+        item.resolveJoynTileArtwork()
     }
+    val primaryArtwork = artwork.primary
+    val fallbackArtwork = artwork.fallback
     var artworkAspect by remember(primaryArtwork, fallbackArtwork) { mutableStateOf<Float?>(null) }
     val cardWidth = joynAdaptiveCardWidth(cardHeight, artworkAspect, fallbackWidth)
     val narrowArtwork = artworkAspect?.let { it < 0.92f } == true
+    val longestWord = remember(displayTitle) { displayTitle.longestJoynTitleWordLength() }
+
+    val titleFontSize = when {
+        narrowArtwork && compact && longestWord >= 10 -> 9.sp
+        narrowArtwork && compact -> 10.sp
+        narrowArtwork && longestWord >= 10 -> 10.sp
+        narrowArtwork -> 11.sp
+        compact -> 13.sp
+        else -> 14.sp
+    }
+    val titleLineHeight = when {
+        narrowArtwork && compact && longestWord >= 10 -> 11.sp
+        narrowArtwork && compact -> 12.sp
+        narrowArtwork -> 13.sp
+        compact -> 16.sp
+        else -> 17.sp
+    }
     val footerHeight = when {
-        narrowArtwork -> 74.dp
+        narrowArtwork -> 66.dp
         subtitle != null -> 64.dp
         else -> 58.dp
     }
+    val horizontalTextPadding = if (narrowArtwork) 8.dp else 12.dp
 
     Box(
         Modifier
@@ -79,7 +93,7 @@ internal fun JoynMediaTile(
             .clip(shape)
             .background(
                 Brush.verticalGradient(
-                    listOf(Color(0xFF1A2029), Color(0xFF0E1117)),
+                    listOf(Color(0xFF1B222C), Color(0xFF0D1016)),
                 ),
             )
             .border(if (focused) 2.dp else 1.dp, if (focused) Color.White else Color(0xFF46505D), shape)
@@ -102,30 +116,43 @@ internal fun JoynMediaTile(
                 alpha = imageAlpha,
                 onAspectRatio = { artworkAspect = it },
             )
+        } else {
+            // Deliberate neutral fallback. A card with no valid content art should look intentional,
+            // not like a failed image request.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(Color(0xFF242D3A), Color.Transparent),
+                            radius = 360f,
+                        ),
+                    ),
+            )
         }
 
         val logo = item.logoUrl?.takeIf(String::isNotBlank)
-        if (logo != null && (centeredLogo || primaryArtwork == null && fallbackArtwork == null)) {
+        val showCenteredLogo = logo != null && (centeredLogo || artwork.centerLogo)
+        val showOverlayLogo = logo != null && artwork.overlayLogo && !showCenteredLogo
+
+        if (showCenteredLogo) {
             AsyncImage(
                 model = logo,
                 contentDescription = null,
-                modifier = if (centeredLogo) {
-                    Modifier.align(Alignment.Center).padding(30.dp).fillMaxSize()
-                } else {
-                    Modifier.align(Alignment.TopStart).padding(10.dp).size(
-                        width = if (compact) 82.dp else 98.dp,
-                        height = if (compact) 34.dp else 40.dp,
-                    )
-                },
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(start = 22.dp, end = 22.dp, bottom = footerHeight / 2)
+                    .fillMaxWidth()
+                    .height(if (compact) 50.dp else 62.dp),
                 contentScale = ContentScale.Fit,
             )
-        } else if (logo != null) {
+        } else if (showOverlayLogo) {
             AsyncImage(
                 model = logo,
                 contentDescription = null,
                 modifier = Modifier.align(Alignment.TopStart).padding(10.dp).size(
-                    width = if (compact) 82.dp else 98.dp,
-                    height = if (compact) 34.dp else 40.dp,
+                    width = if (compact) 76.dp else 88.dp,
+                    height = if (compact) 30.dp else 34.dp,
                 ),
                 contentScale = ContentScale.Fit,
             )
@@ -147,24 +174,16 @@ internal fun JoynMediaTile(
             Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = horizontalTextPadding, vertical = if (narrowArtwork) 8.dp else 10.dp),
         ) {
             Text(
                 displayTitle,
                 color = Color.White,
-                fontSize = when {
-                    narrowArtwork && compact -> 12.sp
-                    compact -> 13.sp
-                    narrowArtwork -> 13.sp
-                    else -> 14.sp
-                },
-                lineHeight = when {
-                    narrowArtwork && compact -> 14.sp
-                    compact -> 16.sp
-                    else -> 17.sp
-                },
+                fontSize = titleFontSize,
+                lineHeight = titleLineHeight,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = if (narrowArtwork) 3 else 2,
+                softWrap = true,
                 overflow = TextOverflow.Ellipsis,
             )
             subtitle?.takeIf(String::isNotBlank)?.let {
