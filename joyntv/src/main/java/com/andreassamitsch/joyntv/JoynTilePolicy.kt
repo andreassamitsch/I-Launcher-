@@ -61,6 +61,24 @@ internal fun JoynMediaItem.resolveJoynTileArtwork(): JoynTileArtwork {
     )
 }
 
+/**
+ * LandingPageClient can omit the real hero art for Brand/Teaser cards while still providing their
+ * detail path. Only those logo-only cards need the additional detail-page lookup.
+ */
+internal fun JoynMediaItem.needsJoynArtworkEnrichment(): Boolean {
+    if (path.isNullOrBlank()) return false
+    if (
+        type !in setOf(
+            JoynMediaType.SERIES,
+            JoynMediaType.MOVIE,
+            JoynMediaType.CHANNEL,
+            JoynMediaType.COLLECTION,
+            JoynMediaType.UNKNOWN,
+        )
+    ) return false
+    return resolveJoynTileArtwork().primary == null
+}
+
 internal fun String.longestJoynTitleWordLength(): Int =
     split(Regex("\\s+"))
         .asSequence()
