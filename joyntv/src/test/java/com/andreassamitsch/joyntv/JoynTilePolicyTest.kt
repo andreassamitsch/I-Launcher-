@@ -27,6 +27,44 @@ class JoynTilePolicyTest {
     }
 
     @Test
+    fun `logo-only show card with path requests detail enrichment`() {
+        val logoAsset = "https://images.example/villa.png?profile=nextgen-web-artlogo-400x160"
+        val item = JoynMediaItem(
+            id = "villa",
+            title = "Villa der Versuchung",
+            path = "/serien/villa-der-versuchung",
+            type = JoynMediaType.CHANNEL,
+            imageUrl = logoAsset,
+            backdropUrl = logoAsset,
+            logoUrl = logoAsset,
+        )
+
+        assertTrue(item.needsJoynArtworkEnrichment())
+    }
+
+    @Test
+    fun `real artwork or missing detail path does not request enrichment`() {
+        val withArt = JoynMediaItem(
+            id = "villa",
+            title = "Villa der Versuchung",
+            path = "/serien/villa-der-versuchung",
+            type = JoynMediaType.CHANNEL,
+            imageUrl = "https://images.example/villa-landscape.jpg",
+            backdropUrl = "https://images.example/villa-landscape.jpg",
+            logoUrl = "https://images.example/villa-logo.png",
+        )
+        val noPath = JoynMediaItem(
+            id = "logo",
+            title = "Logo only",
+            type = JoynMediaType.CHANNEL,
+            logoUrl = "https://images.example/logo.png",
+        )
+
+        assertFalse(withArt.needsJoynArtworkEnrichment())
+        assertFalse(noPath.needsJoynArtworkEnrichment())
+    }
+
+    @Test
     fun `channel keeps real key art even when primary and backdrop are identical`() {
         val keyArt = "https://images.example/villa-der-versuchung-landscape.jpg"
         val item = JoynMediaItem(
