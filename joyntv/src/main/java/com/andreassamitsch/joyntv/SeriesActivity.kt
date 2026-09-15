@@ -31,7 +31,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
@@ -293,51 +292,16 @@ private fun SeasonChip(season: JoynSeason, selected: Boolean, onClick: () -> Uni
 
 @Composable
 private fun EpisodeCard(item: JoynMediaItem, compact: Boolean, onClick: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(12.dp)
-    val artwork = item.imageUrl ?: item.backdropUrl
-    var artworkAspect by remember(artwork) { mutableStateOf<Float?>(null) }
-    val cardHeight = if (compact) 130.dp else 168.dp
-    val fallbackWidth = if (compact) 230.dp else 300.dp
-    val cardWidth = joynAdaptiveCardWidth(cardHeight, artworkAspect, fallbackWidth)
-
-    Box(
-        modifier = Modifier
-            .width(cardWidth)
-            .height(cardHeight)
-            .clip(shape)
-            .background(Color(0xFF161A21))
-            .border(if (focused) 2.dp else 1.dp, if (focused) Color.White else Color(0xFF4C5562), shape)
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .focusable(),
-    ) {
-        if (artwork != null) {
-            JoynAdaptiveArtwork(
-                model = artwork,
-                contentDescription = item.title,
-                modifier = Modifier.fillMaxSize(),
-                alpha = 0.82f,
-                onAspectRatio = { artworkAspect = it },
-            )
-        }
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(Color.Transparent, Color(0xEE080A0E))),
-            ),
-        )
-        Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
-            Text(
-                text = listOfNotNull(
-                    item.episodeNumber?.let { "F$it" },
-                    item.title,
-                ).joinToString(" · "),
-                color = Color.White,
-                fontSize = if (compact) 14.sp else 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
+    val displayTitle = listOfNotNull(
+        item.episodeNumber?.let { "F$it" },
+        item.title,
+    ).joinToString(" · ")
+    JoynMediaTile(
+        item = item,
+        compact = compact,
+        cardHeight = if (compact) 130.dp else 168.dp,
+        fallbackWidth = if (compact) 230.dp else 300.dp,
+        displayTitle = displayTitle,
+        onClick = onClick,
+    )
 }
