@@ -133,7 +133,7 @@ private fun SeriesScreen(
 
     val series = details?.series ?: initialItem
     BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF080A0E))) {
-        val compact = maxHeight < 520.dp
+        val compact = maxWidth < 720.dp || maxHeight < 520.dp
         AsyncImage(
             model = series.backdropUrl ?: series.imageUrl,
             contentDescription = null,
@@ -295,10 +295,16 @@ private fun SeasonChip(season: JoynSeason, selected: Boolean, onClick: () -> Uni
 private fun EpisodeCard(item: JoynMediaItem, compact: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
+    val artwork = item.imageUrl ?: item.backdropUrl
+    var artworkAspect by remember(artwork) { mutableStateOf<Float?>(null) }
+    val cardHeight = if (compact) 130.dp else 168.dp
+    val fallbackWidth = if (compact) 230.dp else 300.dp
+    val cardWidth = joynAdaptiveCardWidth(cardHeight, artworkAspect, fallbackWidth)
+
     Box(
         modifier = Modifier
-            .width(if (compact) 230.dp else 300.dp)
-            .height(if (compact) 130.dp else 168.dp)
+            .width(cardWidth)
+            .height(cardHeight)
             .clip(shape)
             .background(Color(0xFF161A21))
             .border(if (focused) 2.dp else 1.dp, if (focused) Color.White else Color(0xFF4C5562), shape)
@@ -306,13 +312,15 @@ private fun EpisodeCard(item: JoynMediaItem, compact: Boolean, onClick: () -> Un
             .clickable(onClick = onClick)
             .focusable(),
     ) {
-        AsyncImage(
-            model = item.imageUrl ?: item.backdropUrl,
-            contentDescription = item.title,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-            alpha = 0.82f,
-        )
+        if (artwork != null) {
+            JoynAdaptiveArtwork(
+                model = artwork,
+                contentDescription = item.title,
+                modifier = Modifier.fillMaxSize(),
+                alpha = 0.82f,
+                onAspectRatio = { artworkAspect = it },
+            )
+        }
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(listOf(Color.Transparent, Color(0xEE080A0E))),
