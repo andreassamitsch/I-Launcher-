@@ -5,7 +5,6 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.ExperimentalLayoutApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -385,7 +384,6 @@ private fun CompactChannelMediathek(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BrowseMediaWall(
     items: List<JoynMediaItem>,
