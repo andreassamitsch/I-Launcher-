@@ -8,7 +8,7 @@ import org.junit.Test
 
 class JoynLiveChannelMatcherTest {
     @Test
-    fun `austrian bouquet suffix prefers austrian Joyn variant`() {
+    fun `quality preferred ProSieben uses swiss Joyn even for Austria bouquet suffix`() {
         val sat = channel("1:0:19:1111:0:0:0:0:0:0:", "ProSieben Austria HD")
         val result = JoynLiveChannelMatcher.mapBouquet(
             bouquet = listOf(sat),
@@ -19,7 +19,21 @@ class JoynLiveChannelMatcherTest {
             ),
         )
 
-        assertEquals("multi:AT:pro7", result[sat.serviceReference]?.id)
+        assertEquals("multi:CH:pro7", result[sat.serviceReference]?.id)
+    }
+
+    @Test
+    fun `quality preferred TLC uses swiss Joyn when available`() {
+        val sat = channel("1:0:19:1222:0:0:0:0:0:0:", "TLC HD")
+        val result = JoynLiveChannelMatcher.mapBouquet(
+            bouquet = listOf(sat),
+            joynChannels = listOf(
+                joyn("multi:AT:tlc", "TLC", "AT"),
+                joyn("multi:CH:tlc", "TLC", "CH"),
+            ),
+        )
+
+        assertEquals("multi:CH:tlc", result[sat.serviceReference]?.id)
     }
 
     @Test
@@ -34,6 +48,20 @@ class JoynLiveChannelMatcherTest {
         )
 
         assertEquals("multi:CH:pro7", result[sat.serviceReference]?.id)
+    }
+
+    @Test
+    fun `non quality preferred Austria station remains Austria`() {
+        val puls4 = channel("1:0:19:3333:0:0:0:0:0:0:", "PULS 4 HD Austria")
+        val result = JoynLiveChannelMatcher.mapBouquet(
+            bouquet = listOf(puls4),
+            joynChannels = listOf(
+                joyn("multi:AT:puls4", "PULS 4", "AT"),
+                joyn("multi:CH:puls4", "PULS 4", "CH"),
+            ),
+        )
+
+        assertEquals("multi:AT:puls4", result[puls4.serviceReference]?.id)
     }
 
     @Test
