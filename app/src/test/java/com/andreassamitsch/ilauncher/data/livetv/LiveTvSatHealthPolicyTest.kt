@@ -17,67 +17,71 @@ class LiveTvSatHealthPolicyTest {
     }
 
     @Test
-    fun `low SNR requires three consecutive samples`() {
-        val policy = LiveTvSatHealthPolicy(sessionStartedAtEpochMillis = 0L)
-        val weak = snapshot(snrDb = 6.1)
+    fun `weak SNR alone never flips away from SAT`() {
+        val policy = LiveTvSatHealthPolicy()
 
-        assertNull(policy.update(weak))
-        assertNull(policy.update(weak))
-        assertEquals(LiveTvSatFailureReason.LOW_SNR, policy.update(weak))
+        repeat(10) { index ->
+            assertNull(policy.update(snapshot(snrDb = 5.5, sampledAtEpochMillis = index * 1_000L)))
+        }
     }
 
     @Test
-    fun `healthy SNR resets low signal debounce`() {
-        val policy = LiveTvSatHealthPolicy(sessionStartedAtEpochMillis = 0L)
+    fun `isolated BER alone never flips away from SAT`() {
+        val policy = LiveTvSatHealthPolicy()
 
-        assertNull(policy.update(snapshot(snrDb = 6.0)))
-        assertNull(policy.update(snapshot(snrDb = 6.0)))
-        assertNull(policy.update(snapshot(snrDb = 9.8)))
-        assertNull(policy.update(snapshot(snrDb = 6.0)))
-        assertNull(policy.update(snapshot(snrDb = 6.0)))
-        assertEquals(LiveTvSatFailureReason.LOW_SNR, policy.update(snapshot(snrDb = 6.0)))
+        repeat(10) { index ->
+            assertNull(policy.update(snapshot(snrDb = 9.8, ber = "12", sampledAtEpochMillis = index * 1_000L)))
+        }
     }
 
     @Test
-    fun `BER greater than zero needs two consecutive samples`() {
-        val policy = LiveTvSatHealthPolicy(sessionStartedAtEpochMillis = 0L)
+    fun `very weak SNR plus BER must persist for five samples`() {
+        val policy = LiveTvSatHealthPolicy()
 
-        assertNull(policy.update(snapshot(ber = "12")))
-        assertEquals(LiveTvSatFailureReason.BIT_ERRORS, policy.update(snapshot(ber = "4")))
-    }
-
-    @Test
-    fun `fresh OSCam failure is ignored during first five seconds`() {
-        val startedAt = 10_000L
-        val policy = LiveTvSatHealthPolicy(sessionStartedAtEpochMillis = startedAt)
-        val failure = OscamReadResult.Match(
-            OscamClientStatus(
-                serviceId = 0x132F,
-                answered = "timeout",
-                idleSeconds = 0,
-            ),
+        repeat(4) { index ->
+            assertNull(policy.update(snapshot(snrDb = 5.5, ber = "12", sampledAtEpochMillis = index * 1_000L)))
+        }
+        assertEquals(
+            LiveTvSatFailureReason.BIT_ERRORS,
+            policy.update(snapshot(snrDb = 5.5, ber = "4", sampledAtEpochMillis = 4_000L)),
         )
+    }
 
-        assertNull(policy.update(snapshot(oscam = failure, sampledAtEpochMillis = startedAt + 500L)))
-        assertNull(policy.update(snapshot(oscam = failure, sampledAtEpochMillis = startedAt + 1_500L)))
-        assertNull(policy.update(snapshot(oscam = failure, sampledAtEpochMillis = startedAt + 4_999L)))
+    @Test
+    fun `healthy RF sample resets severe signal window`() {
+        val policy = LiveTvSatHealthPolicy()
+
+        repeat(4) { index ->
+            assertNull(policy.update(snapshot(snrDb = 5.5, ber = "12", sampledAtEpochMillis = index * 1_000L)))
+        }
+        assertNull(policy.update(snapshot(snrDb = 9.8, ber = "0", sampledAtEpochMillis = 4_000L)))
+        repeat(4) { index ->
+            assertNull(policy.update(snapshot(snrDb = 5.5, ber = "12", sampledAtEpochMillis = 5_000L + index * 1_000L)))
+        }
+        assertEquals(
+            LiveTvSatFailureReason.BIT_ERRORS,
+            policy.update(snapshot(snrDb = 5.5, ber = "12", sampledAtEpochMillis = 9_000L)),
+        )
+    }
+
+    @Test
+    fun `fresh OSCam failure must remain continuous for five seconds`() {
+        val policy = LiveTvSatHealthPolicy()
+        val failure = oscamFailure()
+
+        assertNull(policy.update(snapshot(oscam = failure, sampledAtEpochMillis = 10_000L)))
+        assertNull(policy.update(snapshot(oscam = failure, sampledAtEpochMillis = 12_000L)))
+        assertNull(policy.update(snapshot(oscam = failure, sampledAtEpochMillis = 14_999L)))
         assertEquals(
             LiveTvSatFailureReason.OSCAM,
-            policy.update(snapshot(oscam = failure, sampledAtEpochMillis = startedAt + 5_000L)),
+            policy.update(snapshot(oscam = failure, sampledAtEpochMillis = 15_000L)),
         )
     }
 
     @Test
-    fun `successful OSCam sample resets failures collected during grace`() {
-        val startedAt = 20_000L
-        val policy = LiveTvSatHealthPolicy(sessionStartedAtEpochMillis = startedAt)
-        val failure = OscamReadResult.Match(
-            OscamClientStatus(
-                serviceId = 0x132F,
-                answered = "timeout",
-                idleSeconds = 0,
-            ),
-        )
+    fun `successful OSCam sample restarts five second failure window`() {
+        val policy = LiveTvSatHealthPolicy()
+        val failure = oscamFailure()
         val success = OscamReadResult.Match(
             OscamClientStatus(
                 serviceId = 0x132F,
@@ -86,27 +90,29 @@ class LiveTvSatHealthPolicyTest {
             ),
         )
 
-        assertNull(policy.update(snapshot(oscam = failure, sampledAtEpochMillis = startedAt + 1_000L)))
-        assertNull(policy.update(snapshot(oscam = failure, sampledAtEpochMillis = startedAt + 2_000L)))
-        assertNull(policy.update(snapshot(oscam = success, sampledAtEpochMillis = startedAt + 3_000L)))
-        assertNull(policy.update(snapshot(oscam = failure, sampledAtEpochMillis = startedAt + 5_000L)))
-        assertNull(policy.update(snapshot(oscam = failure, sampledAtEpochMillis = startedAt + 6_000L)))
+        assertNull(policy.update(snapshot(oscam = failure, sampledAtEpochMillis = 20_000L)))
+        assertNull(policy.update(snapshot(oscam = failure, sampledAtEpochMillis = 23_000L)))
+        assertNull(policy.update(snapshot(oscam = success, sampledAtEpochMillis = 24_000L)))
+        assertNull(policy.update(snapshot(oscam = failure, sampledAtEpochMillis = 25_000L)))
+        assertNull(policy.update(snapshot(oscam = failure, sampledAtEpochMillis = 29_999L)))
         assertEquals(
             LiveTvSatFailureReason.OSCAM,
-            policy.update(snapshot(oscam = failure, sampledAtEpochMillis = startedAt + 7_000L)),
+            policy.update(snapshot(oscam = failure, sampledAtEpochMillis = 30_000L)),
         )
     }
 
     @Test
     fun `no matching ECM is not treated as decryption failure`() {
-        val policy = LiveTvSatHealthPolicy(sessionStartedAtEpochMillis = 0L)
-        val ftaOrWaiting = snapshot(oscam = OscamReadResult.NoMatchingEcm(0x132F))
+        val policy = LiveTvSatHealthPolicy()
+        val ftaOrWaiting = OscamReadResult.NoMatchingEcm(0x132F)
 
-        repeat(5) { assertNull(policy.update(ftaOrWaiting)) }
+        repeat(10) { index ->
+            assertNull(policy.update(snapshot(oscam = ftaOrWaiting, sampledAtEpochMillis = index * 1_000L)))
+        }
     }
 
     @Test
-    fun `circuit breaker opens after three SAT failures and expires`() {
+    fun `circuit breaker helper still expires although player no longer bypasses SAT`() {
         val start = 1_000_000L
 
         LiveTvSatCircuitBreaker.recordFailure(start)
@@ -116,6 +122,14 @@ class LiveTvSatHealthPolicyTest {
         assertTrue(LiveTvSatCircuitBreaker.isDegraded(start + 21_000L))
         assertFalse(LiveTvSatCircuitBreaker.isDegraded(start + 3 * 60_000L + 21_000L))
     }
+
+    private fun oscamFailure() = OscamReadResult.Match(
+        OscamClientStatus(
+            serviceId = 0x132F,
+            answered = "timeout",
+            idleSeconds = 0,
+        ),
+    )
 
     private fun snapshot(
         snrDb: Double = 9.8,
