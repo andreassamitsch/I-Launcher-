@@ -96,8 +96,8 @@ internal enum class LiveTvSatFailureReason(val overlayText: String) {
  *
  * SAT is the preferred source. RF telemetry alone must therefore not cause a source switch for one
  * weak SNR value or a few isolated BER ticks. Automatic RF fallback is only requested when both a
- * very weak real SNR and bit errors persist together for several seconds. Actual Media3 buffering
- * and fatal playback failures are handled separately by the player.
+ * very weak real SNR and bit errors persist together for about five full seconds. Actual Media3
+ * buffering and fatal playback failures are handled separately by the player.
  *
  * OSCam failures use a continuous five-second window from the first fresh failed ECM. This gives
  * slow encrypted services enough time to obtain a valid control word. One healthy/non-failed ECM
@@ -140,7 +140,7 @@ internal class LiveTvSatHealthPolicy {
         /** Intentionally below the normal rain-fade warning range; SAT remains preferred. */
         internal const val MIN_SEVERE_SNR_DB = 6.0
         internal const val OSCAM_CONTINUOUS_FAILURE_MILLIS = 5_000L
-        internal const val SEVERE_RF_CONSECUTIVE_SAMPLES = 5
+        internal const val SEVERE_RF_CONSECUTIVE_SAMPLES = 6
     }
 }
 
