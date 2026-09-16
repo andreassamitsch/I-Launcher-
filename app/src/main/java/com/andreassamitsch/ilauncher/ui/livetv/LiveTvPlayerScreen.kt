@@ -46,14 +46,22 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.dash.DashMediaSource
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
+import androidx.media3.exoplayer.drm.FrameworkMediaDrm
+import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
 import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -62,6 +70,14 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.data.epg.EpgState
+import com.andreassamitsch.ilauncher.data.joyn.JoynBridgeChannel
+import com.andreassamitsch.ilauncher.data.joyn.JoynFallbackPlayback
+import com.andreassamitsch.ilauncher.data.joyn.JoynLiveTvFallbackRepository
+import com.andreassamitsch.ilauncher.data.livetv.LiveTvReceptionMonitor
+import com.andreassamitsch.ilauncher.data.livetv.LiveTvReceptionSnapshot
+import com.andreassamitsch.ilauncher.data.livetv.LiveTvSatCircuitBreaker
+import com.andreassamitsch.ilauncher.data.livetv.LiveTvSatFailureReason
+import com.andreassamitsch.ilauncher.data.livetv.LiveTvSatHealthPolicy
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifResolvedStream
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifStreamHttpException
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
@@ -71,18 +87,29 @@ import com.andreassamitsch.ilauncher.ui.components.TouchCard
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import com.andreassamitsch.ilauncher.ui.epg.EpgScreen
 import java.net.ConnectException
+import java.net.InetSocketAddress
+import java.net.Proxy
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import okhttp3.OkHttpClient
 
 private const val PLAYER_OVERLAY_TIMEOUT_MILLIS = 3_000L
 private const val LONG_OK_THRESHOLD_MILLIS = 650L
+private const val SAT_BUFFERING_FALLBACK_MILLIS = 5_000L
+private const val RECEPTION_POLL_INTERVAL_MILLIS = 1_000L
 private const val LIVE_TV_PLAYER_TAG = "LIVE_TV_PLAYER"
 private val LIVE_TV_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm")
+
+private enum class LiveTvPlaybackSource {
+    SATELLITE,
+    JOYN,
+}
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -108,6 +135,7 @@ internal fun LiveTvPlayerScreen(
             hostView.keepScreenOn = previousKeepScreenOn
         }
     }
+
     val initialIndex = LiveTvZapping.indexForServiceReference(
         serviceReferences = channels.map(LiveTvChannel::serviceReference),
         currentServiceReference = initialServiceReference,
@@ -124,11 +152,53 @@ internal fun LiveTvPlayerScreen(
     var preparedServiceReference by remember { mutableStateOf<String?>(null) }
     var autoRetryAttempt by remember(currentServiceReference) { mutableStateOf(0) }
     var retryingPlayback by remember(currentServiceReference) { mutableStateOf(false) }
+    var playbackSource by remember(currentServiceReference) { mutableStateOf(LiveTvPlaybackSource.SATELLITE) }
+    var fallbackReason by remember(currentServiceReference) { mutableStateOf<LiveTvSatFailureReason?>(null) }
+    var satFailureDetail by remember(currentServiceReference) { mutableStateOf<String?>(null) }
+    var fallbackWasCircuitBypass by remember(currentServiceReference) { mutableStateOf(false) }
+    var fallbackFailureRecorded by remember(currentServiceReference) { mutableStateOf(false) }
+    var activeJoynCountry by remember(currentServiceReference) { mutableStateOf<String?>(null) }
+    var activeJoynTitle by remember(currentServiceReference) { mutableStateOf<String?>(null) }
+    var receptionSnapshot by remember(currentServiceReference) { mutableStateOf<LiveTvReceptionSnapshot?>(null) }
+    var isBuffering by remember(currentServiceReference) { mutableStateOf(false) }
     var showEpg by remember(initialShowEpg, initialServiceReference) { mutableStateOf(initialShowEpg) }
     var selectedEpgServiceReference by remember(initialServiceReference) { mutableStateOf(initialServiceReference) }
     var selectedEpgProgramStartUtcMillis by remember(initialServiceReference, initialEpgProgramStartUtcMillis) {
         mutableStateOf(initialEpgProgramStartUtcMillis)
     }
+
+    val joynFallbackRepository = remember(context.applicationContext) {
+        JoynLiveTvFallbackRepository(context.applicationContext)
+    }
+    val receptionMonitor = remember(context.applicationContext) {
+        LiveTvReceptionMonitor(context.applicationContext)
+    }
+    var joynMappings by remember { mutableStateOf<Map<String, JoynBridgeChannel>>(emptyMap()) }
+    var joynBridgeError by remember { mutableStateOf<String?>(null) }
+
+    val bouquetMappingKey = remember(channels) {
+        channels.joinToString("|") { "${it.serviceReference}\u0000${it.name}" }
+    }
+    LaunchedEffect(bouquetMappingKey, joynFallbackRepository) {
+        runCatching { joynFallbackRepository.primeBouquet(channels) }
+            .onSuccess { snapshot ->
+                joynMappings = snapshot.mappedByServiceReference
+                joynBridgeError = null
+                Log.i(
+                    LIVE_TV_PLAYER_TAG,
+                    "Joyn fallback mapped ${snapshot.mappedCount}/${snapshot.bouquetSize} bouquet channels",
+                )
+            }
+            .onFailure { error ->
+                joynBridgeError = error.message ?: error.javaClass.simpleName
+                Log.w(LIVE_TV_PLAYER_TAG, "Joyn fallback inventory unavailable", error)
+            }
+    }
+
+    DisposableEffect(joynFallbackRepository) {
+        onDispose { joynFallbackRepository.close() }
+    }
+
     val epgChannelListState = rememberLazyListState()
     val epgProgramListState = rememberLazyListState()
     val zapListState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
@@ -147,27 +217,46 @@ internal fun LiveTvPlayerScreen(
         epgState.guide(selectedEpgServiceReference).firstOrNull { it.startUtcMillis == start }
     }
 
-    fun zap(delta: Int) {
-        if (channels.isEmpty()) return
-        val nextIndex = LiveTvZapping.nextIndex(currentIndex, channels.size, delta)
+    fun resetForChannelChange() {
+        joynFallbackRepository.releasePlayback()
         channelOverviewPinned = false
         overlayVisible = true
         showExitConfirmation = false
         autoRetryAttempt = 0
         retryingPlayback = false
         errorMessage = null
+    }
+
+    fun zap(delta: Int) {
+        if (channels.isEmpty()) return
+        val nextIndex = LiveTvZapping.nextIndex(currentIndex, channels.size, delta)
+        resetForChannelChange()
         currentServiceReference = channels[nextIndex].serviceReference
     }
 
     fun selectChannel(index: Int) {
         if (index !in channels.indices) return
-        channelOverviewPinned = false
-        overlayVisible = true
-        showExitConfirmation = false
+        resetForChannelChange()
+        currentServiceReference = channels[index].serviceReference
+    }
+
+    fun requestJoynFallback(reason: LiveTvSatFailureReason, detail: String? = null) {
+        if (playbackSource != LiveTvPlaybackSource.SATELLITE) return
+        fallbackReason = reason
+        satFailureDetail = detail
+        fallbackWasCircuitBypass = false
         autoRetryAttempt = 0
         retryingPlayback = false
+        loading = true
+        isBuffering = false
         errorMessage = null
-        currentServiceReference = channels[index].serviceReference
+        overlayVisible = true
+        playbackSource = LiveTvPlaybackSource.JOYN
+        Log.w(
+            LIVE_TV_PLAYER_TAG,
+            "SAT -> Joyn fallback for $currentServiceReference: ${reason.name}" +
+                detail?.let { " · $it" }.orEmpty(),
+        )
     }
 
     fun openChannelOverview() {
@@ -210,19 +299,71 @@ internal fun LiveTvPlayerScreen(
 
     LaunchedEffect(channels, currentServiceReference) {
         if (channels.isNotEmpty() && channels.none { it.serviceReference == currentServiceReference }) {
+            joynFallbackRepository.releasePlayback()
             currentServiceReference = channels.first().serviceReference
         }
     }
 
-    DisposableEffect(player) {
+    // Keep reception and OSCam health alive even after the transient overlay disappears.
+    LaunchedEffect(currentChannel?.serviceReference, playbackSource, receptionMonitor) {
+        val channel = currentChannel ?: return@LaunchedEffect
+        receptionSnapshot = null
+        if (playbackSource != LiveTvPlaybackSource.SATELLITE) return@LaunchedEffect
+
+        val healthPolicy = LiveTvSatHealthPolicy()
+        while (true) {
+            val snapshot = runCatching { receptionMonitor.sample(channel) }.getOrNull()
+            if (snapshot != null) {
+                receptionSnapshot = snapshot
+                val failure = healthPolicy.update(snapshot)
+                if (failure != null) {
+                    requestJoynFallback(failure)
+                    break
+                }
+            }
+            delay(RECEPTION_POLL_INTERVAL_MILLIS)
+        }
+    }
+
+    // A SAT stream that remains in BUFFERING for several seconds is treated as degraded even when
+    // Media3 has not emitted a fatal exception yet.
+    LaunchedEffect(
+        isBuffering,
+        playbackSource,
+        currentServiceReference,
+        preparedServiceReference,
+        retryingPlayback,
+    ) {
+        if (
+            !isBuffering ||
+            playbackSource != LiveTvPlaybackSource.SATELLITE ||
+            preparedServiceReference != currentServiceReference ||
+            retryingPlayback
+        ) {
+            return@LaunchedEffect
+        }
+        delay(SAT_BUFFERING_FALLBACK_MILLIS)
+        if (
+            isBuffering &&
+            playbackSource == LiveTvPlaybackSource.SATELLITE &&
+            preparedServiceReference == currentServiceReference &&
+            !retryingPlayback
+        ) {
+            requestJoynFallback(LiveTvSatFailureReason.BUFFERING)
+        }
+    }
+
+    DisposableEffect(player, playbackSource, currentServiceReference) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
+                isBuffering = playbackState == Player.STATE_BUFFERING
                 loading = playbackState == Player.STATE_BUFFERING ||
                     (playbackState == Player.STATE_IDLE && errorMessage == null)
                 if (playbackState == Player.STATE_READY) {
                     errorMessage = null
                     retryingPlayback = false
                     autoRetryAttempt = 0
+                    isBuffering = false
                 }
             }
 
@@ -236,71 +377,98 @@ internal fun LiveTvPlayerScreen(
                     return
                 }
 
-                if (LiveTvPlaybackRecovery.shouldRetry(error.errorCode, autoRetryAttempt)) {
-                    val nextAttempt = autoRetryAttempt + 1
-                    autoRetryAttempt = nextAttempt
-                    retryingPlayback = true
-                    loading = true
-                    overlayVisible = true
-                    errorMessage = null
-                    playbackRestartToken += 1
-                    Log.w(
-                        LIVE_TV_PLAYER_TAG,
-                        "Retrying transient Live-TV parser error ${error.errorCodeName} " +
-                            "($nextAttempt/${LiveTvPlaybackRecovery.MAX_AUTO_RETRIES})",
+                if (playbackSource == LiveTvPlaybackSource.SATELLITE) {
+                    if (LiveTvPlaybackRecovery.shouldRetry(error.errorCode, autoRetryAttempt)) {
+                        val nextAttempt = autoRetryAttempt + 1
+                        autoRetryAttempt = nextAttempt
+                        retryingPlayback = true
+                        loading = true
+                        overlayVisible = true
+                        errorMessage = null
+                        playbackRestartToken += 1
+                        Log.w(
+                            LIVE_TV_PLAYER_TAG,
+                            "Retrying transient Live-TV parser error ${error.errorCodeName} " +
+                                "($nextAttempt/${LiveTvPlaybackRecovery.MAX_AUTO_RETRIES})",
+                        )
+                        return
+                    }
+
+                    requestJoynFallback(
+                        reason = LiveTvSatFailureReason.PLAYBACK,
+                        detail = error.errorCodeName,
                     )
                     return
                 }
 
                 retryingPlayback = false
                 loading = false
+                isBuffering = false
                 overlayVisible = true
-                errorMessage = "Live-TV-Wiedergabe fehlgeschlagen (${error.errorCodeName})."
+                errorMessage = "Joyn-Fallback fehlgeschlagen (${joynPlaybackErrorMessage(error)})."
             }
         }
         player.addListener(listener)
-        onDispose {
-            player.removeListener(listener)
-            player.release()
-        }
+        onDispose { player.removeListener(listener) }
     }
 
-    LaunchedEffect(currentChannel?.serviceReference, playbackRestartToken) {
+    DisposableEffect(player) {
+        onDispose { player.release() }
+    }
+
+    LaunchedEffect(currentChannel?.serviceReference, playbackRestartToken, playbackSource) {
         val channel = currentChannel ?: return@LaunchedEffect
+        val sourceForStart = playbackSource
         val retryAttemptForStart = autoRetryAttempt
         if (!showEpg) {
             selectedEpgServiceReference = channel.serviceReference
             selectedEpgProgramStartUtcMillis = null
         }
         loading = true
-        retryingPlayback = retryAttemptForStart > 0
+        retryingPlayback = sourceForStart == LiveTvPlaybackSource.SATELLITE && retryAttemptForStart > 0
         errorMessage = null
         preparedServiceReference = null
+        isBuffering = false
         player.stop()
         player.clearMediaItems()
 
-        if (retryAttemptForStart > 0) {
+        if (
+            sourceForStart == LiveTvPlaybackSource.SATELLITE &&
+            retryAttemptForStart == 0 &&
+            joynMappings.containsKey(channel.serviceReference) &&
+            LiveTvSatCircuitBreaker.isDegraded()
+        ) {
+            fallbackReason = LiveTvSatFailureReason.PLAYBACK
+            satFailureDetail = "SAT vorübergehend als gestört markiert"
+            fallbackWasCircuitBypass = true
+            playbackSource = LiveTvPlaybackSource.JOYN
+            return@LaunchedEffect
+        }
+
+        if (sourceForStart == LiveTvPlaybackSource.SATELLITE && retryAttemptForStart > 0) {
             delay(LiveTvPlaybackRecovery.retryDelayMillis(retryAttemptForStart))
         }
 
         try {
-            val stream = onResolveStream(channel)
-            val dataSourceFactory = DefaultHttpDataSource.Factory()
-                .setConnectTimeoutMs(6_000)
-                .setReadTimeoutMs(15_000)
-                .setAllowCrossProtocolRedirects(true)
-                .setDefaultRequestProperties(stream.requestHeaders)
-            val mediaItem = MediaItem.Builder()
-                .setUri(stream.url)
-                .setMediaId(channel.serviceReference)
-                .setMediaMetadata(androidx.media3.common.MediaMetadata.Builder().setTitle(channel.name).build())
-                .setMimeType(if (stream.isHls) MimeTypes.APPLICATION_M3U8 else MimeTypes.VIDEO_MP2T)
-                .build()
-            val mediaSource = if (stream.isHls) {
-                HlsMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
-            } else {
-                ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
+            val mediaSource = when (sourceForStart) {
+                LiveTvPlaybackSource.SATELLITE -> {
+                    val stream = onResolveStream(channel)
+                    buildSatMediaSource(stream, channel)
+                }
+
+                LiveTvPlaybackSource.JOYN -> {
+                    val fallback = joynFallbackRepository.resolve(channel)
+                        ?: error("Für ${channel.name} ist im gewählten Bouquet kein passender Joyn-Sender verfügbar.")
+                    activeJoynCountry = fallback.country
+                    activeJoynTitle = fallback.channelTitle
+                    if (!fallbackWasCircuitBypass && !fallbackFailureRecorded) {
+                        LiveTvSatCircuitBreaker.recordFailure()
+                        fallbackFailureRecorded = true
+                    }
+                    buildJoynMediaSource(fallback, channel)
+                }
             }
+
             preparedServiceReference = channel.serviceReference
             player.setMediaSource(mediaSource)
             player.prepare()
@@ -309,10 +477,32 @@ internal fun LiveTvPlayerScreen(
             throw cancellation
         } catch (throwable: Throwable) {
             preparedServiceReference = null
-            loading = false
+            isBuffering = false
             retryingPlayback = false
             overlayVisible = true
-            errorMessage = playbackErrorMessage(throwable)
+
+            if (sourceForStart == LiveTvPlaybackSource.SATELLITE) {
+                val reason = when (throwable) {
+                    is UnknownHostException,
+                    is ConnectException,
+                    is SocketTimeoutException,
+                    -> LiveTvSatFailureReason.RECEIVER
+                    else -> LiveTvSatFailureReason.PLAYBACK
+                }
+                requestJoynFallback(reason, playbackErrorMessage(throwable))
+            } else {
+                loading = false
+                val bridgeDetail = throwable.message ?: throwable.javaClass.simpleName
+                errorMessage = buildString {
+                    append(satFailureDetail ?: fallbackReason?.overlayText ?: "SAT-Fallback")
+                    append(" · Joyn konnte nicht übernehmen: ")
+                    append(bridgeDetail.take(300))
+                    joynBridgeError?.takeIf { it.isNotBlank() && it != bridgeDetail }?.let {
+                        append(" · Bridge: ")
+                        append(it.take(180))
+                    }
+                }
+            }
         }
     }
 
@@ -486,7 +676,52 @@ internal fun LiveTvPlayerScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        LiveTvSignalDiagnostics(channel)
+
+                        when (playbackSource) {
+                            LiveTvPlaybackSource.SATELLITE -> {
+                                Text(
+                                    buildString {
+                                        append("Quelle · SAT")
+                                        if (joynMappings.containsKey(channel.serviceReference)) {
+                                            append(" · Joyn-Fallback bereit")
+                                        }
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                LiveTvSignalDiagnostics(receptionSnapshot)
+                            }
+
+                            LiveTvPlaybackSource.JOYN -> {
+                                Text(
+                                    buildString {
+                                        append("Quelle · Joyn")
+                                        activeJoynCountry?.takeIf(String::isNotBlank)?.let { append(" $it") }
+                                        append(" · Fallback")
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                val reason = fallbackReason?.overlayText ?: satFailureDetail
+                                if (!reason.isNullOrBlank()) {
+                                    Text(
+                                        "Satellit gestört · $reason",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                activeJoynTitle
+                                    ?.takeIf { it.isNotBlank() && !it.equals(channel.name, ignoreCase = true) }
+                                    ?.let {
+                                        Text(
+                                            "Joyn-Sender · $it",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                            }
+                        }
+
                         errorMessage?.let {
                             Text(
                                 it,
@@ -496,7 +731,11 @@ internal fun LiveTvPlayerScreen(
                         }
                         if (loading && errorMessage == null) {
                             Text(
-                                if (retryingPlayback) "Stream wird erneut gestartet …" else "Live TV wird geladen …",
+                                when {
+                                    playbackSource == LiveTvPlaybackSource.JOYN -> "Joyn-Fallback wird gestartet …"
+                                    retryingPlayback -> "SAT-Stream wird erneut gestartet …"
+                                    else -> "Live TV wird geladen …"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -645,6 +884,71 @@ internal fun LiveTvPlayerScreen(
     }
 }
 
+@OptIn(UnstableApi::class)
+private fun buildSatMediaSource(
+    stream: OpenWebifResolvedStream,
+    channel: LiveTvChannel,
+): MediaSource {
+    val dataSourceFactory = DefaultHttpDataSource.Factory()
+        .setConnectTimeoutMs(6_000)
+        .setReadTimeoutMs(15_000)
+        .setAllowCrossProtocolRedirects(true)
+        .setDefaultRequestProperties(stream.requestHeaders)
+    val mediaItem = MediaItem.Builder()
+        .setUri(stream.url)
+        .setMediaId(channel.serviceReference)
+        .setMediaMetadata(androidx.media3.common.MediaMetadata.Builder().setTitle(channel.name).build())
+        .setMimeType(if (stream.isHls) MimeTypes.APPLICATION_M3U8 else MimeTypes.VIDEO_MP2T)
+        .build()
+    return if (stream.isHls) {
+        HlsMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
+    } else {
+        ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
+    }
+}
+
+@OptIn(UnstableApi::class)
+private fun buildJoynMediaSource(
+    playback: JoynFallbackPlayback,
+    channel: LiveTvChannel,
+): MediaSource {
+    val proxy = Proxy(
+        Proxy.Type.HTTP,
+        InetSocketAddress(playback.proxyHost, playback.proxyPort),
+    )
+    val client = OkHttpClient.Builder()
+        .proxy(proxy)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(30, TimeUnit.SECONDS)
+        .build()
+    val dataSourceFactory = OkHttpDataSource.Factory(client)
+        .setUserAgent(JOYN_USER_AGENT)
+
+    val drmSessionManager = playback.licenseUrl?.let { licenseUrl ->
+        val callback = HttpMediaDrmCallback(licenseUrl, dataSourceFactory).apply {
+            setKeyRequestProperty("User-Agent", JOYN_USER_AGENT)
+            setKeyRequestProperty("Content-Type", "application/octet-stream")
+        }
+        DefaultDrmSessionManager.Builder()
+            .setUuidAndExoMediaDrmProvider(C.WIDEVINE_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER)
+            .build(callback)
+    }
+
+    val mediaItem = MediaItem.Builder()
+        .setUri(playback.manifestUrl)
+        .setMediaId(channel.serviceReference)
+        .setMediaMetadata(androidx.media3.common.MediaMetadata.Builder().setTitle(channel.name).build())
+        .setMimeType(MimeTypes.APPLICATION_MPD)
+        .build()
+
+    val factory = DashMediaSource.Factory(dataSourceFactory)
+    if (drmSessionManager != null) {
+        factory.setDrmSessionManagerProvider { drmSessionManager }
+    }
+    return factory.createMediaSource(mediaItem)
+}
+
 @Composable
 private fun CompactLiveTvCard(
     channel: LiveTvChannel,
@@ -756,3 +1060,17 @@ private fun playbackErrorMessage(throwable: Throwable): String = when (throwable
     is SocketTimeoutException -> "Live-TV-Stream: Zeitüberschreitung beim Verbinden."
     else -> "Live-TV-Stream konnte nicht gestartet werden (${throwable.javaClass.simpleName})."
 }
+
+private fun joynPlaybackErrorMessage(error: PlaybackException): String {
+    var current: Throwable? = error
+    while (current != null) {
+        if (current is HttpDataSource.InvalidResponseCodeException) {
+            return "${error.errorCodeName}: HTTP ${current.responseCode}"
+        }
+        current = current.cause
+    }
+    return error.errorCodeName
+}
+
+private const val JOYN_USER_AGENT =
+    "Mozilla/5.0 (Linux; Android 14; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
