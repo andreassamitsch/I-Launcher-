@@ -67,18 +67,18 @@ internal class JoynDirectProxyBridge : Closeable {
                 return
             }
 
-            target = Socket().apply {
+            val targetSocket = Socket().apply {
                 tcpNoDelay = true
                 connect(InetSocketAddress(connectTarget.host, connectTarget.port), CONNECT_TIMEOUT_MS)
                 soTimeout = 0
             }
+            target = targetSocket
 
             client.outputStream.write(CONNECT_OK.toByteArray(Charsets.ISO_8859_1))
             client.outputStream.flush()
             tunnelEstablished = true
             client.soTimeout = 0
 
-            val targetSocket = target
             val upstream = workers.submit {
                 try {
                     client.getInputStream().copyTo(targetSocket.getOutputStream(), BUFFER_SIZE)
