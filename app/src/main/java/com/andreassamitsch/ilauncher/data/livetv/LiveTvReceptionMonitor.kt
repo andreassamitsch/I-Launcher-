@@ -91,8 +91,16 @@ internal enum class LiveTvSatFailureReason(val overlayText: String) {
     RECEIVER("Gigablue nicht erreichbar"),
 }
 
-/** Conservative debouncing so one transient tuner/ECM sample never flips the source. */
-internal class LiveTvSatHealthPolicy {
+/**
+ * Conservative debouncing so one transient tuner/ECM sample never flips the source.
+ *
+ * OSCam gets an additional startup grace period. Some encrypted channels legitimately need a few
+ * seconds until the first successful ECM arrives, so a fresh timeout/not-found result must not move
+ * playback to Joyn before that grace period has elapsed.
+ */
+internal class LiveTvSatHealthPolicy(
+    private val sessionStartedAtEpochMillis: Long = System.currentTimeMillis(),
+) {
     private var lowSnrSamples = 0
     private var berSamples = 0
     private var oscamFailureSamples = 0
@@ -106,10 +114,13 @@ internal class LiveTvSatHealthPolicy {
         berSamples = if (snapshot.hasBitErrors) berSamples + 1 else 0
         oscamFailureSamples = if (snapshot.hasFreshOscamFailure) oscamFailureSamples + 1 else 0
 
+        val oscamGraceExpired =
+            snapshot.sampledAtEpochMillis - sessionStartedAtEpochMillis >= OSCAM_STARTUP_GRACE_MILLIS
+
         return when {
             lowSnrSamples >= LOW_SNR_CONSECUTIVE_SAMPLES -> LiveTvSatFailureReason.LOW_SNR
             berSamples >= BER_CONSECUTIVE_SAMPLES -> LiveTvSatFailureReason.BIT_ERRORS
-            oscamFailureSamples >= OSCAM_CONSECUTIVE_SAMPLES -> LiveTvSatFailureReason.OSCAM
+            oscamGraceExpired && oscamFailureSamples >= OSCAM_CONSECUTIVE_SAMPLES -> LiveTvSatFailureReason.OSCAM
             else -> null
         }
     }
@@ -123,6 +134,7 @@ internal class LiveTvSatHealthPolicy {
     companion object {
         /** Below this the tested DVB-S2 path is already in the practical rain-fade danger zone. */
         internal const val MIN_STABLE_SNR_DB = 6.5
+        internal const val OSCAM_STARTUP_GRACE_MILLIS = 5_000L
         private const val LOW_SNR_CONSECUTIVE_SAMPLES = 3
         private const val BER_CONSECUTIVE_SAMPLES = 2
         private const val OSCAM_CONSECUTIVE_SAMPLES = 3
