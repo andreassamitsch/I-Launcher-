@@ -1,243 +1,269 @@
 # Joyn TV – aktueller technischer Stand
 
-> **Für neue Chats / neue Entwicklungssitzungen:** Diese Datei zuerst lesen, wenn es um die eigenständige `joyntv`-App, Mysterium, Geo-Routing, Live-TV oder Player-Qualität geht. Sie hält die auf realer Android-TV-Hardware bestätigten Erkenntnisse fest und soll ältere Chat-Annahmen überstimmen.
+> **Für neue Chats / neue Entwicklungssitzungen:** Diese Datei zuerst lesen, wenn es um `joyntv`, Mysterium, Geo-Routing, Joyn-Live-TV oder die Joyn-Integration in I Launcher geht. Das Repo ist die maßgebliche Quelle; ältere Chat-Annahmen dürfen diesen Stand nicht überschreiben.
 
-Stand: **2026-09-13**  
+Stand: **2026-09-16**  
 Entwicklungs-Branch: **`feature/joyn-tv-client`**  
 PR: **#46 – `feat: add standalone Joyn Android TV client`**
 
-## 1. Bestätigter Zielaufbau
+## 1. Auf realer Android-TV-Hardware bestätigter Joyn-Aufbau
 
-Die Joyn-TV-App verwendet Mysterium als **app-lokalen Residential-HTTP-CONNECT-Proxy**. Es wird **kein systemweiter Android-VPN-Tunnel** benötigt.
+Die eigenständige Joyn-TV-App funktioniert auf dem realen TCL Android TV mit Mysterium als **app-lokalem Residential-HTTP-CONNECT-Proxy**. Ein systemweiter Android-VPN-Tunnel ist für den bestätigten Standardpfad nicht nötig.
 
 Damit gilt:
 
-- nur Netzwerkverkehr der Joyn-TV-App wird über den gewählten Mysterium-Proxy geroutet;
+- nur der dafür konfigurierte Joyn-Verkehr wird über Mysterium geroutet;
 - Android TV und andere Apps bleiben direkt verbunden;
-- Proxy-Routing ist der bevorzugte Weg gegenüber einem vollständigen VPN-Tunnel, weil weniger Overhead entsteht;
-- `JoynMysteriumProxyBridge` stellt lokal auf Loopback einen unauthentifizierten CONNECT-Proxy bereit und injiziert die kurzlebigen Mysterium-Credentials in Richtung Upstream.
+- `JoynMysteriumProxyBridge` stellt lokal einen Loopback-CONNECT-Proxy bereit und injiziert die kurzlebigen Mysterium-Credentials zum Upstream;
+- Joyn-HTTPS, DASH, DRM und CDN-Verkehr bleiben innerhalb des CONNECT-Tunnels Ende-zu-Ende verschlüsselt.
 
-Dieser Aufbau wurde am **realen TCL Android TV** erfolgreich getestet.
+Historischer Hardware-Meilenstein: **Joyn TV `0.1.0-dev.563`** war der erste vom Benutzer explizit mit **„funktioniert jetzt“** bestätigte Build nach dem entscheidenden Proxy/TLS-Fix. Spätere Versionen ersetzen `.563`; die Nummer ist nur der Verifikationspunkt.
 
-## 2. Mysterium-Anmeldung – wichtiger Fix
+## 2. Mysterium-Login
 
-Der Magic-Link selbst war nicht das Problem. Der anschließende OAuth-Token-Austausch musste an das Verhalten der offiziellen Mysterium-App angepasst werden.
+Der OAuth-Token-Austausch muss wie in der offiziellen Mysterium-App erfolgen:
 
-Bestätigte Implementierung:
-
-- `/oauth/token` mit **`application/x-www-form-urlencoded`** statt JSON;
-- `grant_type`, `client_id`, `code_verifier`, `code` und Gerätekennung werden passend übertragen;
-- Refresh-Token ebenfalls form-urlencoded;
-- `device_id` / Android-TV-Geräteinformationen werden mitgesendet;
-- Netzwerk-, TLS-, DNS- und Timeout-Fehler dürfen nicht verschluckt werden, sondern werden in der TV-Oberfläche diagnostisch ausgegeben.
+- `/oauth/token` mit **`application/x-www-form-urlencoded`**, nicht JSON;
+- u. a. `grant_type`, `client_id`, Gerätekennung, `code_verifier`/`code` bzw. Refresh-Token;
+- Geräteinformationen werden mitgesendet;
+- Netzwerk-, TLS-, DNS- und Timeoutfehler dürfen nicht verschluckt werden.
 
 Relevante Datei:
 
 - `joyntv/src/main/java/com/andreassamitsch/joyntv/JoynMysteriumApiClient.kt`
 
-## 3. Entscheidende Erkenntnis zum Mysterium-Residential-Proxy auf Android TV
+Dieser Login-/Tokenweg ist auf dem realen TV bestätigt.
 
-Die Mysterium-Connect-Proxy-API lieferte beim realen TV-Test u. a.:
+## 3. Mysterium Residential: entscheidender TLS-443-Sonderfall
+
+Die Mysterium-Connect-Proxy-API lieferte beim realen TV-Test unter anderem:
 
 ```text
 supervpn-dc-eu-01.mysterium.network:8080
 ```
 
-Das Verhalten auf dem TCL-TV war reproduzierbar:
+Auf dem TCL war reproduzierbar:
 
 ```text
-Port 8080 -> ECONNREFUSED / Connection refused
-Port 443  -> TCP/TLS erreichbar, aber Android meldet:
-             CertPathValidatorException: Trust anchor for certification path not found
+:8080 -> ECONNREFUSED
+:443  -> TCP/TLS erreichbar, Android meldete zunächst:
+         CertPathValidatorException: Trust anchor for certification path not found
 ```
 
-Der Fehler lag damit **nicht bei Joyn und nicht bei der Mysterium-Anmeldung**, sondern zwischen der App und dem von Mysterium gelieferten EU-Superproxy.
+Die funktionierende Implementierung in `JoynMysteriumProxyBridge`:
 
-### Funktionierende Lösung
-
-Für bekannte Mysterium-EU-Superproxy-Hosts (`supervpn-dc-eu-XX.mysterium.network`) wird bei einem von der API als `:8080` gelieferten Lease zuerst **TLS auf Port 443** probiert.
-
-Android vertraut der dort aktuell gelieferten privaten Zertifikatskette nicht automatisch. Deshalb besitzt `JoynMysteriumProxyBridge` einen **eng begrenzten Fallback**:
-
-1. zuerst normale Android-/JVM-TLS-Zertifikatsprüfung;
-2. nur wenn der Fehler tatsächlich ein **Trust-Anchor-/CertPath-Fehler** ist;
-3. nur für das exakte Hostmuster `supervpn-dc-eu-[0-9]+.mysterium.network`;
-4. nur auf **Port 443**;
-5. Zertifikatsgültigkeit und Zertifikatskette werden weiterhin geprüft;
-6. der Hostname wird weiterhin gegen das Zertifikat geprüft;
-7. die Zertifikatsprüfung für Joyn, Manifest, DRM und Stream-CDNs wird **nicht global deaktiviert**.
-
-Der eigentliche Joyn-HTTPS-Verkehr bleibt innerhalb des CONNECT-Tunnels Ende-zu-Ende verschlüsselt und verwendet weiterhin die normale Android-Zertifikatsprüfung.
-
-Relevante Datei:
-
-- `joyntv/src/main/java/com/andreassamitsch/joyntv/JoynMysteriumProxyBridge.kt`
-
-Regressionstest:
-
-- `joyntv/src/test/java/com/andreassamitsch/joyntv/JoynMysteriumProxyBridgeTest.kt`
-
-**Bestätigung:** Der Benutzer hat nach Installation des Builds **`0.1.0-dev.563`** am TCL-TV bestätigt: **„funktioniert jetzt“**. Damit ist dieser Proxy-/TLS-Weg auf realer Android-TV-Hardware verifiziert.
-
-## 4. Residential-Lease-Strategie
-
-Ein von Mysterium gelieferter Residential-Proxy-Lease ist nicht zwingend eine dauerhaft feste öffentliche Exit-IP. Mehrere CONNECT-Verbindungen können über denselben Lease unterschiedliche öffentliche Exits verwenden.
-
-Deshalb:
-
-- denselben Lease für mehrere CONNECT-Versuche wiederverwenden;
-- eine öffentliche Trace-IP dient nur der Diagnose;
-- die tatsächliche **Joyn-Live-Freigabe** entscheidet, ob der Kandidat akzeptiert wird;
-- nicht für jeden fehlgeschlagenen Joyn-/Geo-Test sofort neue Credentials anfordern;
-- neuen Lease erst nach wiederholten echten Transport-/Route-Fehlern anfordern;
-- API-Spam und unnötige Lease-Rotation vermeiden.
+1. bei den bekannten EU-Superproxy-Hosts zuerst TLS auf 443 probieren;
+2. zunächst normale Android/JVM-Zertifikatsprüfung;
+3. nur bei echtem Trust-Anchor-/CertPath-Fehler;
+4. nur für `supervpn-dc-eu-[0-9]+.mysterium.network`;
+5. nur auf Port 443;
+6. Zertifikatsgültigkeit, Kettenkonsistenz und Hostname weiterhin prüfen;
+7. **keine globale Abschaltung** der TLS-Prüfung.
 
 Relevante Dateien:
+
+- `joyntv/src/main/java/com/andreassamitsch/joyntv/JoynMysteriumProxyBridge.kt`
+- `joyntv/src/test/java/com/andreassamitsch/joyntv/JoynMysteriumProxyBridgeTest.kt`
+
+Diesen Fallback niemals auf beliebige Hosts ausweiten.
+
+## 4. Residential-Lease- und Routing-Regeln
+
+- Einen Lease über mehrere CONNECTs wiederverwenden.
+- Cloudflare-/Trace-IP ist nur Diagnose; die tatsächliche Joyn-Freigabe ist autoritativ.
+- Nicht für jeden fehlgeschlagenen Versuch sofort neue Credentials anfordern.
+- Lease erst nach wiederholten echten Route-/Transportproblemen rotieren.
+- Player-/Country-Route während eines laufenden Playbacks stabil halten.
+
+Verwandte Dateien/Dokumente:
 
 - `JoynMysteriumProxyScanner.kt`
 - `JoynMysteriumProxyBridge.kt`
 - `JoynMysteriumSettings.kt`
 - `JoynPlaybackRouteGuard.kt`
-
-Vorherige PC-Messungen und Testdetails stehen außerdem in:
-
 - `docs/MYSTERIUM_PC_RESULTS_2026-09-12.md`
 - `docs/MYSTERIUM_PC_TEST.md`
 
 ## 5. Player-Qualität – bestätigt
 
-Der Player besitzt eine dynamische Qualitätsanzeige/-auswahl. Die verfügbaren Stufen werden **aus den tatsächlichen DASH-Tracks des jeweiligen Streams** gelesen und nicht fest codiert.
+Die Joyn-TV-App liest verfügbare Qualitätsstufen dynamisch aus den tatsächlichen Media3/DASH-Tracks. Nichts ist auf 576p o. ä. fest verdrahtet.
 
-Bei `Auto` kann zusätzlich die aktuell verwendete Repräsentation angezeigt werden, inklusive z. B.:
+`Auto` kann die aktuelle Repräsentation mit Auflösung, Pixelmaßen, Bitrate und Framerate anzeigen. Eine manuelle Auswahl pinnt die gewünschte Repräsentation; `Auto` aktiviert adaptive Auswahl wieder.
 
-- Auflösung / Höhe (`1080p` etc.)
-- Pixelabmessungen
-- Bitrate
-- Framerate, sofern vorhanden
-
-Eine manuelle Auswahl setzt die gewünschte Videoqualität fest; `Auto` aktiviert wieder adaptive Auswahl.
+Am **13.09.2026** wurde bei Sendern der ProSiebenSat.1-Gruppe Schweiz in unserer Joyn-App **1080p** als tatsächlich angeboten bestätigt.
 
 Relevante Dateien:
 
-- `PlayerActivity.kt`
-- `PlayerQualitySelector.kt`
+- `joyntv/src/main/java/com/andreassamitsch/joyntv/PlayerActivity.kt`
+- `joyntv/src/main/java/com/andreassamitsch/joyntv/PlayerQualitySelector.kt`
 
-### Reales Vergleichsergebnis Schweiz
+## 6. I Launcher SAT-Diagnose – real bestätigt
 
-Am **13.09.2026** wurde bei Sendern der **ProSiebenSat.1-Gruppe Schweiz** in unserer Joyn-App **1080p** als angebotene Streamqualität bestätigt.
+I Launcher zeigt für den aktuell laufenden Gigablue-SAT-Sender live:
 
-Zum Vergleich zeigte blue TV Air Free auf demselben TV für VOX / ProSieben / Sat.1 manuell nur bis **576p** an. Das ist lediglich ein Vergleichswert; für unsere App maßgeblich sind die von Joyn tatsächlich gelieferten DASH-Repräsentationen.
+- Tuner/Tunertyp;
+- SNR %;
+- echte SNR dB, sofern der Treiber sie liefert;
+- AGC %;
+- BER.
 
-## 6. Was bei zukünftigen Änderungen nicht wieder zurückgebaut werden soll
+OpenWebifs Fake-`snr_db`, bei dem nur die Prozentzahl gespiegelt wird, wird nicht als echte dB-Zahl angezeigt. Bei der Ziel-Gigablue ist laut Benutzer nur **ein Tuner** aktiv.
 
-- Nicht wieder auf einen systemweiten VPN-Tunnel wechseln, solange der app-lokale Proxy stabil funktioniert.
-- Den Mysterium-TLS-Fallback **nicht global** auf beliebige Hosts oder Zertifikate ausweiten.
-- `8080` bei den bekannten EU-Superproxy-Antworten nicht als einzig möglichen Socket-Endpunkt behandeln.
-- Trace-IP nicht als alleinige Entscheidung für Geo-/Joyn-Tauglichkeit verwenden.
-- Bei jedem CONNECT-Fehler nicht blind neue Residential-Credentials erzeugen.
-- Player-Qualitätsstufen nicht hart codieren; weiterhin dynamisch aus Media3/DASH lesen.
-
-## 7. Schnelle Diagnose bei erneutem Proxy-Problem
-
-Wenn ein neuer TV-Test fehlschlägt, zuerst den unteren Diagnosebereich fotografieren/loggen und unterscheiden:
-
-```text
-AUTH / TOKEN_FEHLER
-  -> Mysterium OAuth / Token-Austausch prüfen
-
-LEASE_FEHLER
-  -> Mysterium Control-API / Account / Limits prüfen
-
-ECONNREFUSED :8080
-  -> bei EU-Superproxy erwartbarer Legacy-Endpunkt; TLS:443-Fallback prüfen
-
-Trust anchor for certification path not found auf :443
-  -> prüfen, ob der eng begrenzte Mysterium-private-CA-Fallback erreicht wird
-
-TRACE_FEHLER / ROUTE_FEHLER
-  -> Transport/Lease prüfen; Trace allein ist nicht autoritativ
-
-VPN_ERKANNT / Joyn-Entitlement abgelehnt
-  -> nächster CONNECT mit demselben Lease; erst bei echten Route-Fehlern Lease wechseln
-
-Joyn Live OK
-  -> Proxy aktivieren und gewählten Routing-Modus speichern
-```
-
-## 8. Letzter bestätigter Meilenstein
-
-**`0.1.0-dev.563`** ist der erste explizit vom Benutzer bestätigte Android-TV-Build, bei dem die Mysterium-Residential-Proxy-Verbindung nach dem TLS-/Trust-Anchor-Fix funktioniert hat.
-
-Spätere Builds dürfen natürlich eine höhere Versionsnummer haben. Die Nummer `.563` ist hier deshalb als **historischer Verifikationspunkt**, nicht als dauerhaft aktuelle Version, dokumentiert.
-
-## 9. I Launcher: SAT-Diagnose als Grundlage für Joyn-Fallback
-
-Ziel für I Launcher ist langfristig **ein gemeinsamer Live-TV-Sender mit mehreren Empfangsquellen**: Gigablue/Enigma2 über Satellit als Primärquelle und Joyn als nahtloser Fallback, statt zwei getrennte Live-TV-Oberflächen.
-
-Als erster Schritt wurde am 13.09.2026 die Live-SAT-Diagnose in den bestehenden I-Launcher-Player eingebaut:
-
-- OpenWebif-Endpunkt `api/signal` wird während Live-TV einmal pro Sekunde abgefragt;
-- angezeigt werden, soweit der Gigablue-Treiber sie liefert: Tuner, Tuner-Typ, SNR %, echte SNR dB, AGC % und BER;
-- OpenWebifs `snr_db`-Fallback auf die bloße SNR-Prozentzahl wird erkannt und nicht fälschlich als dB beschriftet;
-- der Netzwerkclient wird zwischen Polls wiederverwendet;
-- die Diagnose erscheint im bestehenden Sender-Overlay und verändert das Playback nicht.
+Wichtig: SNR/AGC/BER beschreiben den RF-/Transportpfad, **nicht** den Erfolg der Entschlüsselung.
 
 Relevante Dateien:
 
-- `app/src/main/java/com/andreassamitsch/ilauncher/data/openwebif/OpenWebifApi.kt`
 - `app/src/main/java/com/andreassamitsch/ilauncher/data/openwebif/OpenWebifSignalReader.kt`
 - `app/src/main/java/com/andreassamitsch/ilauncher/ui/livetv/LiveTvSignalDiagnostics.kt`
-- `app/src/main/java/com/andreassamitsch/ilauncher/ui/livetv/LiveTvPlayerScreen.kt`
 
-### Verschlüsselte SAT-Sender
+## 7. I Launcher OSCam-Diagnose – real bestätigt
 
-**SNR, AGC und BER sagen nichts darüber aus, ob ein verschlüsselter Sender erfolgreich entschlüsselt wurde.** Sie beschreiben den Empfang bzw. die Tuner-/Transportqualität. Ein verschlüsselter Sender kann daher perfekte SNR-/BER-Werte haben und trotzdem wegen CI/CAM/Softcam/Entschlüsselung kein nutzbares Bild liefern.
-
-Für den späteren automatischen SAT -> Joyn-Fallback müssen daher zwei Fehlerklassen getrennt bewertet werden:
-
-1. **RF-/Empfangsfehler:** SNR/BER/Tunerstatus plus Media3-Buffering/Parserfehler.
-2. **Entschlüsselungs-/Playbackfehler:** bei gutem RF-Signal trotzdem kein renderbares Video bzw. kein erster Videoframe/Decoderfortschritt. OpenWebif kann zusätzlich kennzeichnen, dass ein Service verschlüsselt ist (`sIsCrypted`/`crypt`), aber das allein beweist noch keine erfolgreiche Entschlüsselung.
-
-Auf dem aktuellen Ziel-Gigablue ist laut Benutzer nur **ein Tuner** im Einsatz. Damit ist `api/signal` für die laufenden Tests wesentlich eindeutiger als in einer Mehrtuner-Konfiguration.
-
-## 10. I Launcher: OSCam-Live-Diagnose
-
-Am 13.09.2026 wurde als nächster Schritt eine OSCam-Diagnose direkt in das bestehende I-Launcher-Live-TV-Overlay integriert. **Dieser Teil ist implementiert und gebaut, aber noch nicht auf der realen Gigablue bestätigt.**
-
-Ziel ist zunächst reine Diagnose; noch **kein** automatischer Joyn-Fallback auf Basis der OSCam-Werte.
+OSCam läuft auf der Gigablue und wird von I Launcher über das OSCam-WebIf ausgewertet.
 
 Implementierung:
 
-- OSCam-WebIf-Host wird automatisch vom konfigurierten Gigablue/OpenWebif-Receiver übernommen;
-- Standard-Port ist **8888**, entsprechend dem offiziellen OSCam-Beispiel-Setup; der Port ist in `Live TV / Gigablue` änderbar;
-- optional können eigener OSCam-WebIf-Benutzer und Passwort lokal gespeichert werden;
-- ungeschütztes WebIf sowie HTTP Basic und OSCam-typisches HTTP Digest werden unterstützt;
-- Status wird über `oscamapi.json?part=status` gelesen;
-- aktueller Enigma2-Service wird über die SID aus der Service-Reference mit OSCams `srvid` korreliert;
-- bei passender ECM werden CAID, PROVID, Reader/Antwort, ECM-Zeit und ggf. Idle angezeigt;
-- bekannte OSCam-Fehler wie `not found`, `timeout`, `no card`, `expdate`, `disabled`, `stopped`, `invalid` oder `corrupt` werden explizit als Fehler dargestellt;
-- gibt es keine passende ECM, wird das bewusst neutral als `FTA oder noch keine Anfrage` dargestellt, bis zusätzlich OpenWebifs `crypt`-Kennzeichen einbezogen wird;
-- OSCam-Abfrage läuft einmal pro Sekunde und wird außerhalb des UI-Threads ausgeführt;
-- Zugangsdaten werden nicht geloggt oder in Diagnosezeilen ausgegeben.
+- Host wird von der Gigablue/OpenWebif-Konfiguration übernommen;
+- Standard-Port **8888**, in den Live-TV-Einstellungen änderbar;
+- optional OSCam-WebIf-Benutzer/Passwort;
+- ungeschütztes WebIf, HTTP Basic und HTTP Digest;
+- `oscamapi.json?part=status`;
+- Zuordnung über SID aus Enigma2-ServiceReference ↔ OSCam `srvid`;
+- Anzeige von CAID, PROVID, Reader/Antwort, ECM-Zeit und Fehlern;
+- bekannte Fehler wie `timeout`, `not found`, `no card`, `disabled`, `stopped`, `invalid`, `corrupt` werden explizit erkannt;
+- keine passende ECM wird neutral als FTA/noch keine Anfrage behandelt.
 
-Beispiel für eine erfolgreiche Zeile:
+Beispiel:
 
 ```text
 OSCam ✓ · CAID 0D95 · PROVID 000004 · Reader localcard · ECM 287 ms
 ```
 
-Beispiel für einen Entschlüsselungsfehler:
-
-```text
-OSCam ✕ · CAID 0D95 · timeout · ECM 2000 ms
-```
+Der Benutzer hat am **16.09.2026** bestätigt: **„oscsm zeile funktioniert.“** Damit sind OSCam-WebIf-Zugriff, SID-Korrelation und Live-Anzeige auf der realen Anlage bestätigt.
 
 Relevante Dateien:
 
 - `app/src/main/java/com/andreassamitsch/ilauncher/data/oscam/OscamStore.kt`
 - `app/src/main/java/com/andreassamitsch/ilauncher/data/oscam/OscamStatusReader.kt`
 - `app/src/main/java/com/andreassamitsch/ilauncher/ui/livetv/LiveTvSignalDiagnostics.kt`
-- `app/src/main/java/com/andreassamitsch/ilauncher/ui/livetv/LiveTvScreen.kt`
-- `app/src/test/java/com/andreassamitsch/ilauncher/data/oscam/OscamStatusReaderTest.kt`
 
-Build-/Updater-Meilenstein für diese erste OSCam-Diagnose: **I Launcher `0.1.0-dev.502`**. Build, Unit-Tests und Veröffentlichung im I-Launcher-Updater waren erfolgreich.
+## 8. I Launcher: Bouquet-spezifischer SAT → Joyn-Fallback
+
+Am **16.09.2026** wurde die erste nahtlose Verdrahtung umgesetzt.
+
+Grundregel:
+
+> **Die gewählte Gigablue-Bouquetliste bleibt die alleinige sichtbare Senderliste.** Joyn fügt keine eigenen Sender hinzu. Nur vorhandene Bouquet-Sender können intern eine zweite Joyn-Wiedergabequelle erhalten.
+
+Senderliste, Reihenfolge, Sendernummer und EPG bleiben Gigablue-/Enigma2-basiert.
+
+### Sender-Mapping
+
+- nur Sender des aktuell gewählten Bouquets werden betrachtet;
+- Namen werden konservativ normalisiert (`HD`, `UHD`, Länderzusätze usw.);
+- bekannte Schreibvarianten wie Pro7/ProSieben oder Kabel 1/Kabel Eins werden vereinheitlicht;
+- **kein unscharfes Runtime-Matching** auf nur ähnliche Sender;
+- explizite Länderkennung gewinnt;
+- bei neutralem Namen für die aktuelle österreichische Installation: AT → CH → DE;
+- Playback verwendet danach die stabile Joyn-Channel-ID.
+
+Relevante Datei:
+
+- `app/src/main/java/com/andreassamitsch/ilauncher/data/joyn/JoynLiveTvFallbackRepository.kt`
+
+### Sichere Cross-App-Architektur
+
+Die bewährte Joyn-/Mysterium-Implementierung und ihre Credentials bleiben in der eigenständigen Joyn-TV-App. I Launcher kopiert keine Mysterium-Secrets.
+
+Joyn TV stellt dafür einen **signature-geschützten Bound Service** bereit:
+
+- `JoynPlaybackBridgeService`;
+- Permission `com.andreassamitsch.joyntv.permission.PLAYBACK_BRIDGE` mit `protectionLevel="signature"`;
+- beide APKs werden mit dem permanenten Repository-Key veröffentlicht;
+- Service liefert Joyn-Live-Inventar sowie aufgelöstes DASH/Widevine-Playback;
+- für den Media-Pfad hält Joyn TV einen eigenen lokalen `JoynMysteriumProxyBridge` offen;
+- I Launcher bekommt nur Manifest-/Lizenzdaten und dessen Loopback-Adresse, **keine Mysterium-Credentials**.
+
+Damit bleibt Routing in I Launcher strikt getrennt:
+
+```text
+Gigablue/OpenWebif -> direkt LAN
+TMDB/Updater       -> direkt
+Joyn DASH + DRM    -> Media3 + eigener OkHttp-Proxy -> Joyn-Bridge -> Mysterium
+```
+
+**Kein globaler ProxySelector in I Launcher.**
+
+Relevante Dateien:
+
+- `joyntv/src/main/java/com/andreassamitsch/joyntv/JoynPlaybackBridgeService.kt`
+- `app/src/main/java/com/andreassamitsch/ilauncher/data/joyn/JoynPlaybackBridgeClient.kt`
+
+Die erste veröffentlichte Joyn-Version mit dieser Bridge ist **`0.1.0-dev.637`** (`sourceSha d5f8bf3904a1d229a4a284b1a1d1d6f9a90e53a4`). Der Joyn-CI-Build ist erfolgreich.
+
+### Fallback-Auslöser
+
+SAT bleibt primär. Für gemappte Sender wird auf Joyn gewechselt bei:
+
+- Receiver/OpenWebif nicht erreichbar bzw. Streamauflösung schlägt fehl;
+- fatalem Media3-Playbackfehler;
+- bestehenden Parserfehlern erst **nach** den begrenzten SAT-Reconnects;
+- ca. 5 Sekunden anhaltendem Buffering;
+- echter SNR-dB unter **6,5 dB** über mehrere aufeinanderfolgende Messungen;
+- wiederholt `BER > 0`;
+- wiederholtem **frischem OSCam-ECM-Fehler** für die aktuelle SID.
+
+Ein fehlender OSCam-Eintrag allein ist kein Fehler, weil der Sender FTA sein kann.
+
+Die Empfangs-/OSCam-Messung läuft jetzt im Player-Hintergrund weiter und hängt nicht davon ab, ob das Overlay sichtbar ist.
+
+### Verhalten nach Fallback
+
+Nach SAT → Joyn **nicht mitten in der laufenden Sendung automatisch zurück zu SAT wechseln**. So vermeiden wir Ping-Pong und Zeitsprünge durch unterschiedliche Live-Latenzen.
+
+Beim nächsten Senderwechsel wird SAT wieder bevorzugt.
+
+### Circuit Breaker
+
+Drei SAT-Fallbacks innerhalb von etwa 90 Sekunden markieren SAT für rund drei Minuten als `degraded`. Währenddessen können bereits Joyn-gemappte Bouquet-Sender direkt über Joyn starten. Sender ohne Joyn-Zuordnung bleiben SAT-basiert.
+
+### Player
+
+Joyn-DASH und Widevine laufen im **bestehenden I-Launcher-Media3-Player**. Die Oberfläche bleibt damit nahtlos. Im Overlay ist die aktive Quelle sichtbar, beispielsweise:
+
+```text
+Quelle · SAT · Joyn-Fallback bereit
+```
+
+bzw.
+
+```text
+Quelle · Joyn AT · Fallback
+Satellit gestört · <Grund>
+```
+
+Detaillierte Architektur:
+
+- `docs/IL_LIVETV_JOYN_FALLBACK.md`
+
+### Bestätigungsstatus
+
+- SAT-Signaldiagnose: **real bestätigt**
+- OSCam-Diagnose: **real bestätigt**
+- eigenständiger Joyn-Live-Pfad/Mysterium: **real bestätigt**
+- neue Cross-App-Bouquet-Fallback-Verkettung: **implementiert; realer TV-Test noch ausständig**
+
+Für den ersten Test die **Joyn-TV-App zuerst** auf mindestens `.637` aktualisieren, danach die passende neue I-Launcher-Version. Erst nach diesem Gerätetest die Fallback-Verkettung als real-hardware-bestätigt markieren.
+
+## 9. Regeln für zukünftige Änderungen
+
+- Nicht auf systemweiten VPN-Tunnel zurückbauen, solange der app-lokale Proxy stabil funktioniert.
+- Mysterium-TLS-Fallback niemals globalisieren.
+- Port 8080 bei bekannten EU-Superproxys nicht als einzig möglichen Transport behandeln.
+- Trace-IP nicht als alleinige Geo-/Entitlement-Entscheidung verwenden.
+- Nicht bei jedem CONNECT-Fehler blind Lease rotieren.
+- Player-Qualitäten weiterhin dynamisch aus DASH/Media3 lesen.
+- I Launcher darf durch Joyn-Fallback **nicht global geproxyt** werden.
+- Gigablue-Bouquet bleibt Quelle für sichtbare Senderliste, Reihenfolge und EPG.
+- Keine Joyn-only-Sender automatisch in I Launcher einschleusen.
+- Kein automatischer Joyn → SAT-Rücksprung während derselben laufenden Senderauswahl.
+- Netzwerk-/Fallback-Änderungen immer auf realer TV-Hardware validieren.
