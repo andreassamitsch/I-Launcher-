@@ -148,43 +148,38 @@ Relevante Dateien:
 
 ## 8. I Launcher: Bouquet-spezifischer SAT → Joyn-Fallback
 
-Am **16.09.2026** wurde die erste nahtlose Verdrahtung umgesetzt.
-
 Grundregel:
 
-> **Die gewählte Gigablue-Bouquetliste bleibt die alleinige sichtbare Senderliste.** Joyn fügt keine eigenen Sender hinzu. Nur vorhandene Bouquet-Sender können intern eine zweite Joyn-Wiedergabequelle erhalten.
+> **SAT/Gigablue ist immer die bevorzugte Quelle. Joyn ist Ersatzquelle und darf SAT nicht dauerhaft verdrängen.**
 
-Senderliste, Reihenfolge, Sendernummer und EPG bleiben Gigablue-/Enigma2-basiert.
+Die gewählte Gigablue-Bouquetliste bleibt die alleinige sichtbare Senderliste. Joyn fügt keine eigenen Sender hinzu. Senderliste, Reihenfolge, Sendernummer und EPG bleiben Gigablue-/Enigma2-basiert.
 
-### Sender-Mapping
+### Sender-Mapping und Länderpräferenz
 
-- nur Sender des aktuell gewählten Bouquets werden betrachtet;
-- Namen werden konservativ normalisiert (`HD`, `UHD`, Länderzusätze usw.);
-- bekannte Schreibvarianten wie Pro7/ProSieben oder Kabel 1/Kabel Eins werden vereinheitlicht;
-- **kein unscharfes Runtime-Matching** auf nur ähnliche Sender;
-- explizite Länderkennung gewinnt;
-- bei neutralem Namen für die aktuelle österreichische Installation: AT → CH → DE;
-- Playback verwendet danach die stabile Joyn-Channel-ID.
+Das Matching bleibt konservativ und basiert auf exakten normalisierten Senderfamilien. Keine unscharfen Laufzeit-Treffer.
+
+Für Sender mit bestätigtem Qualitätsvorteil der Schweizer Joyn-Feeds gilt jetzt bewusst **CH → AT → DE**, sofern ein exakter CH-Treffer existiert. Dazu gehören aktuell:
+
+- ProSieben;
+- SAT.1;
+- Kabel Eins;
+- ProSieben MAXX;
+- sixx;
+- SAT.1 Gold;
+- Kabel Eins Doku;
+- TLC.
+
+Grund: Auf realer Hardware wurde für die ProSiebenSat.1-Gruppe Schweiz bis **1080p** als angebotene DASH-Qualität bestätigt. Andere Sender behalten die normale regionale Präferenz; z. B. bleibt **PULS 4 Austria → Joyn AT**.
 
 Relevante Datei:
 
 - `app/src/main/java/com/andreassamitsch/ilauncher/data/joyn/JoynLiveTvFallbackRepository.kt`
 
-### Sichere Cross-App-Architektur
+### Sichere Cross-App-Architektur und Markt-Routing
 
-Die bewährte Joyn-/Mysterium-Implementierung und ihre Credentials bleiben in der eigenständigen Joyn-TV-App. I Launcher kopiert keine Mysterium-Secrets.
+Die Joyn-/Mysterium-Credentials bleiben ausschließlich in der eigenständigen Joyn-TV-App. `JoynPlaybackBridgeService` ist signaturgeschützt und liefert I Launcher nur Senderinventar, Manifest-/Lizenzdaten sowie eine Loopback-Adresse.
 
-Joyn TV stellt dafür einen **signature-geschützten Bound Service** bereit:
-
-- `JoynPlaybackBridgeService`;
-- Permission `com.andreassamitsch.joyntv.permission.PLAYBACK_BRIDGE` mit `protectionLevel="signature"`;
-- beide APKs werden mit dem permanenten Repository-Key veröffentlicht;
-- Service liefert Joyn-Live-Inventar sowie aufgelöstes DASH/Widevine-Playback;
-- I Launcher bekommt nur Manifest-/Lizenzdaten und eine Loopback-Adresse, keine Mysterium-Credentials.
-
-### Markt-Routing für den I-Launcher-Fallback
-
-Für die aktuelle österreichische Installation gilt:
+Für die österreichische Zielinstallation gilt:
 
 ```text
 Joyn AT -> DIREKT, kein Mysterium-Gateway
@@ -192,22 +187,7 @@ Joyn CH -> Mysterium Residential
 Joyn DE -> Mysterium Residential
 ```
 
-**AT darf nicht von einem vorhandenen gespeicherten Mysterium-Lease abhängig gemacht werden.**
-
-Für AT löst `JoynPlaybackBridgeService` das Joyn-Entitlement und die Playlist explizit über die direkte Internetverbindung auf. Ein eventuell aktiver app-spezifischer Mysterium-WireGuard-Tunnel wird zuvor beendet. Der Media-Pfad verwendet `JoynDirectProxyBridge`: einen ausschließlich auf Loopback gebundenen CONNECT-Relay, der direkt zum Joyn-/CDN-Ziel verbindet und den Ziel-TLS-Verkehr nicht terminiert.
-
-Der Grund für den lokalen Relay statt eines zweiten I-Launcher-Playbackvertrags ist die Kompatibilität: I Launcher bekommt bei AT und CH/DE weiterhin dieselbe Struktur aus Manifest/Lizenz plus Loopback-Host/-Port. Bei AT liegt hinter diesem Port nur ein direkter Relay; bei CH/DE `JoynMysteriumProxyBridge`.
-
-Damit bleibt Routing in I Launcher strikt getrennt:
-
-```text
-Gigablue/OpenWebif -> direkt LAN
-TMDB/Updater       -> direkt
-Joyn AT DASH+DRM   -> Media3 -> Loopback Direct Relay -> Internet direkt
-Joyn CH/DE DASH+DRM-> Media3 -> Loopback Mysterium Bridge -> Residential Exit
-```
-
-**Kein globaler ProxySelector in I Launcher.**
+AT darf nicht von einem gespeicherten Mysterium-Lease abhängig gemacht werden. CH/DE verwenden den bewährten Mysterium-Residential-Pfad. I Launcher installiert dabei **keinen globalen ProxySelector**.
 
 Relevante Dateien:
 
@@ -215,80 +195,71 @@ Relevante Dateien:
 - `joyntv/src/main/java/com/andreassamitsch/joyntv/JoynDirectProxyBridge.kt`
 - `app/src/main/java/com/andreassamitsch/ilauncher/data/joyn/JoynPlaybackBridgeClient.kt`
 
-Die erste veröffentlichte Joyn-Version mit der Cross-App-Bridge war **`0.1.0-dev.637`**. Die erste veröffentlichte Version mit **direktem AT-Fallback ohne Mysterium-Zwang** ist **`0.1.0-dev.641`**, Source-SHA `2d5bc798d4ce8d971514592dd8155e264f1d3f09`. Unit-Tests, Release-Build, Signaturprüfung und Veröffentlichung waren erfolgreich.
+Die erste Joyn-TV-Version mit direktem AT-Fallback ohne Mysterium-Zwang ist **`0.1.0-dev.641`**.
 
-### Fallback-Auslöser
+### Bedienung im Live-TV-Player
 
-SAT bleibt primär. Für gemappte Sender wird auf Joyn gewechselt bei:
+Normales OK öffnet weiterhin die angeheftete Live-TV-Übersicht. Dort gibt es jetzt zusätzlich:
 
-- Receiver/OpenWebif nicht erreichbar bzw. Streamauflösung schlägt fehl;
-- fatalem Media3-Playbackfehler;
-- bestehenden Parserfehlern erst **nach** den begrenzten SAT-Reconnects;
-- ca. 5 Sekunden anhaltendem Buffering;
-- echter SNR-dB unter **6,5 dB** über mehrere aufeinanderfolgende Messungen;
-- wiederholt `BER > 0`;
-- wiederholtem **frischem OSCam-ECM-Fehler** für die aktuelle SID.
+- **`Auto-Fallback: EIN/AUS`** – persistent gespeichert;
+- **`Zu Joyn <Land>`** – manuelle Umschaltung, wenn der Bouquet-Sender gemappt ist;
+- **`Zu SAT`** – jederzeit manuell zurück zum Gigablue-Stream.
 
-Ein fehlender OSCam-Eintrag allein ist kein Fehler, weil der Sender FTA sein kann.
+Wird manuell **SAT** gewählt, bleibt dieser Sender für die aktuelle Senderauswahl auf SAT; die Automatik darf ihn nicht sofort wieder auf Joyn schieben. Beim nächsten Zappen beginnt der neue Sender wieder mit SAT als Primärquelle.
 
-Die Empfangs-/OSCam-Messung läuft im Player-Hintergrund weiter und hängt nicht davon ab, ob das Overlay sichtbar ist.
+### Konservative Automatik
 
-### Verhalten nach Fallback
+Die frühere aggressive Logik wurde zurückgenommen. Insbesondere wird SAT nicht mehr wegen eines einzelnen schwachen SNR-Werts, einzelner BER-Ticks oder eines globalen Circuit-Breakers übersprungen.
 
-Nach SAT → Joyn **nicht mitten in der laufenden Sendung automatisch zurück zu SAT wechseln**. So vermeiden wir Ping-Pong und Zeitsprünge durch unterschiedliche Live-Latenzen.
+Aktuell gilt:
 
-Beim nächsten Senderwechsel wird SAT wieder bevorzugt.
+- Automatik kann im Player vollständig ausgeschaltet werden;
+- manueller SAT-Modus unterdrückt Automatik für die aktuelle Senderauswahl;
+- OSCam muss **5 Sekunden durchgehend** einen frischen echten ECM-Fehler melden; ein erfolgreicher/gesunder Zwischenwert setzt das Fenster zurück;
+- RF-basiert wird nur umgeschaltet, wenn **echte SNR < 6,0 dB UND BER > 0 gleichzeitig** ungefähr fünf volle Sekunden anhalten;
+- bloß niedrige SNR ohne Bitfehler löst keinen Wechsel aus;
+- bloße BER-Ticks bei gutem SNR lösen keinen Wechsel aus;
+- Media3-Buffering muss ungefähr **8 Sekunden** anhalten;
+- Parserfehler erhalten die bestehenden SAT-Reconnects; innerhalb der ersten fünf Sekunden wird SAT zusätzlich bevorzugt und nicht vorschnell aufgegeben;
+- harte Receiver-/Stream-/Playbackfehler können weiterhin Joyn auslösen, aber nur wenn Auto-Fallback aktiv und kein manueller SAT-Override gesetzt ist.
 
-### Circuit Breaker
+Der alte Circuit Breaker wird vom Player nicht mehr verwendet, um neue Sender direkt auf Joyn zu starten. **Jeder frische Senderwechsel beginnt wieder mit SAT.**
 
-Drei SAT-Fallbacks innerhalb von etwa 90 Sekunden markieren SAT für rund drei Minuten als `degraded`. Währenddessen können bereits Joyn-gemappte Bouquet-Sender direkt über Joyn starten. Sender ohne Joyn-Zuordnung bleiben SAT-basiert.
+### Schneller erster Joyn-Wechsel
 
-### Player
+Sobald das Joyn-Mapping für den aktuell laufenden Bouquet-Sender bekannt ist, bereitet I Launcher dessen Joyn-Playback **im Hintergrund vor, während SAT weiterläuft**. Dabei werden die konkrete Joyn-Channel-ID, Entitlement/Manifest/DRM-Daten und der zugehörige Loopback-Bridge-Pfad für diese Sender-Session gehalten.
 
-Joyn-DASH und Widevine laufen im **bestehenden I-Launcher-Media3-Player**. Die Oberfläche bleibt damit nahtlos. Im Overlay ist die aktive Quelle sichtbar, beispielsweise:
+Dadurch muss beim tatsächlichen manuellen oder automatischen Umschalten nicht erst der komplette Joyn-/Mysterium-Pfad aufgebaut werden. Beim Zappen wird die Vorbereitung der alten Sender-Session verworfen und der neue SAT-Sender erhält seine eigene Vorbereitung.
 
-```text
-Quelle · SAT · Joyn-Fallback bereit
-```
+Relevante Dateien:
 
-bzw.
+- `app/src/main/java/com/andreassamitsch/ilauncher/data/joyn/JoynLiveTvFallbackRepository.kt`
+- `app/src/main/java/com/andreassamitsch/ilauncher/data/livetv/LiveTvJoynFallbackStore.kt`
+- `app/src/main/java/com/andreassamitsch/ilauncher/data/livetv/LiveTvReceptionMonitor.kt`
+- `app/src/main/java/com/andreassamitsch/ilauncher/ui/livetv/LiveTvPlayerScreen.kt`
 
-```text
-Quelle · Joyn AT · Fallback
-Satellit gestört · <Grund>
-```
+### Build- und Teststand
+
+Die neue SAT-first-/Manual-/Prewarm-Logik ist ab Source-SHA **`7cc2b958fb4ce1e276e78f8a81dc23fa5f223a31`** enthalten. Der erste erfolgreich gebaute und im I-Launcher-Updater veröffentlichte Build dieses Stands ist **`0.1.0-dev.524`**. Unit-Tests und APK-Build waren erfolgreich.
+
+Auf realer Hardware waren zuvor bereits Bouquet-Mapping, SAT-/OSCam-Diagnose, OSCam→Fallback-Auslösung und der Cross-App-Handoff bis zur Joyn-Bridge bestätigt. Die neue konservative Automatik, manuelle Rückkehr zu SAT, CH-Qualitätspräferenz und Prewarm-Beschleunigung müssen noch auf dem TCL verifiziert werden.
 
 Detaillierte Architektur:
 
 - `docs/IL_LIVETV_JOYN_FALLBACK.md`
 
-### Realer TV-Test vom 16.09.2026
-
-Mit **PULS 4 HD Austria** wurde auf dem TCL real bestätigt:
-
-1. der Bouquet-Sender wird einem Joyn-AT-Sender zugeordnet;
-2. ein wiederholter echter OSCam-Entschlüsselungsfehler löst den SAT → Joyn-Fallback aus;
-3. I Launcher bleibt im selben Player und zeigt Joyn als Fallback-Quelle;
-4. der Cross-App-Bridge-Aufruf wird erreicht.
-
-Die damalige Bridge `.637` brach danach mit der Meldung ab, dass für AT ein Mysterium-Residential-Proxy nötig sei. Das war eine **falsche technische Voraussetzung** und wurde in `.641` entfernt.
-
-Damit gelten Bouquet-Mapping, OSCam→Fallback-Entscheidung und Cross-App-Handoff auf realer Hardware als bestätigt. Die tatsächliche **AT-Direktwiedergabe mit `.641`** muss noch auf dem TCL bestätigt werden.
-
-Für diesen Fix ist kein neuer I-Launcher-Build nötig: I Launcher `.513` kann bleiben, weil der Bridge-Vertrag kompatibel geblieben ist. Nur Joyn TV auf mindestens `.641` aktualisieren und PULS 4 Austria erneut testen.
-
 ## 9. Regeln für zukünftige Änderungen
 
-- Nicht auf systemweiten VPN-Tunnel zurückbauen, solange der app-lokale Proxy stabil funktioniert.
+- SAT/Gigablue bleibt die bevorzugte Quelle; Joyn bleibt Fallback.
+- Jeder neue Senderwechsel beginnt mit SAT.
+- Benutzer muss Auto-Fallback jederzeit im Player deaktivieren sowie manuell zwischen SAT und Joyn wechseln können.
+- Manueller SAT-Override darf nicht sofort von der Automatik überschrieben werden.
 - Mysterium-TLS-Fallback niemals globalisieren.
-- Port 8080 bei bekannten EU-Superproxys nicht als einzig möglichen Transport behandeln.
-- Trace-IP nicht als alleinige Geo-/Entitlement-Entscheidung verwenden.
-- Nicht bei jedem CONNECT-Fehler blind Lease rotieren.
-- Player-Qualitäten weiterhin dynamisch aus DASH/Media3 lesen.
-- I Launcher darf durch Joyn-Fallback **nicht global geproxyt** werden.
-- Für die österreichische Zielinstallation **Joyn AT direkt abspielen; kein Mysterium-Gateway erzwingen**.
+- Nicht auf systemweiten VPN-Tunnel zurückbauen, solange der app-lokale Proxy stabil funktioniert.
+- Für die österreichische Zielinstallation Joyn AT direkt abspielen; kein Mysterium-Gateway erzwingen.
 - CH/DE-Geo-Routing weiter über den bewährten Mysterium-Residential-Pfad führen, solange dies dort erforderlich ist.
+- Für die bestätigten Qualitäts-Sendergruppen CH bevorzugen, solange dort die bessere Joyn-Qualität angeboten wird.
 - Gigablue-Bouquet bleibt Quelle für sichtbare Senderliste, Reihenfolge und EPG.
 - Keine Joyn-only-Sender automatisch in I Launcher einschleusen.
-- Kein automatischer Joyn → SAT-Rücksprung während derselben laufenden Senderauswahl.
+- I Launcher darf durch Joyn-Fallback nicht global geproxyt werden.
 - Netzwerk-/Fallback-Änderungen immer auf realer TV-Hardware validieren.
