@@ -84,7 +84,7 @@ internal data class LiveTvReceptionSnapshot(
 
 internal enum class LiveTvSatFailureReason(val overlayText: String) {
     LOW_SNR("SAT-Signal zu schwach"),
-    BIT_ERRORS("SAT-Bitfehler"),
+    BIT_ERRORS("SAT-Signal stark gestört"),
     OSCAM("OSCam-Entschlüsselung fehlgeschlagen"),
     BUFFERING("SAT-Stream puffert zu lange"),
     PLAYBACK("SAT-Wiedergabe fehlgeschlagen"),
@@ -92,59 +92,61 @@ internal enum class LiveTvSatFailureReason(val overlayText: String) {
 }
 
 /**
- * Conservative debouncing so one transient tuner/ECM sample never flips the source.
+ * Conservative health policy for an optional SAT -> Joyn fallback.
  *
- * OSCam gets an additional startup grace period. Some encrypted channels legitimately need a few
- * seconds until the first successful ECM arrives, so a fresh timeout/not-found result must not move
- * playback to Joyn before that grace period has elapsed.
+ * SAT is the preferred source. RF telemetry alone must therefore not cause a source switch for one
+ * weak SNR value or a few isolated BER ticks. Automatic RF fallback is only requested when both a
+ * very weak real SNR and bit errors persist together for several seconds. Actual Media3 buffering
+ * and fatal playback failures are handled separately by the player.
+ *
+ * OSCam failures use a continuous five-second window from the first fresh failed ECM. This gives
+ * slow encrypted services enough time to obtain a valid control word. One healthy/non-failed ECM
+ * resets the window completely.
  */
-internal class LiveTvSatHealthPolicy(
-    private val sessionStartedAtEpochMillis: Long = System.currentTimeMillis(),
-) {
-    private var lowSnrSamples = 0
-    private var berSamples = 0
-    private var oscamFailureSamples = 0
+internal class LiveTvSatHealthPolicy {
+    private var severeRfSamples = 0
+    private var oscamFailureSinceEpochMillis: Long? = null
 
     fun update(snapshot: LiveTvReceptionSnapshot): LiveTvSatFailureReason? {
-        lowSnrSamples = if (snapshot.signal?.snrDb?.let { it < MIN_STABLE_SNR_DB } == true) {
-            lowSnrSamples + 1
-        } else {
-            0
-        }
-        berSamples = if (snapshot.hasBitErrors) berSamples + 1 else 0
-        oscamFailureSamples = if (snapshot.hasFreshOscamFailure) oscamFailureSamples + 1 else 0
+        val severeRfFailure =
+            snapshot.signal?.snrDb?.let { it < MIN_SEVERE_SNR_DB } == true && snapshot.hasBitErrors
+        severeRfSamples = if (severeRfFailure) severeRfSamples + 1 else 0
 
-        val oscamGraceExpired =
-            snapshot.sampledAtEpochMillis - sessionStartedAtEpochMillis >= OSCAM_STARTUP_GRACE_MILLIS
+        if (snapshot.hasFreshOscamFailure) {
+            if (oscamFailureSinceEpochMillis == null) {
+                oscamFailureSinceEpochMillis = snapshot.sampledAtEpochMillis
+            }
+        } else {
+            oscamFailureSinceEpochMillis = null
+        }
+
+        val oscamFailureLongEnough = oscamFailureSinceEpochMillis?.let { firstFailure ->
+            snapshot.sampledAtEpochMillis - firstFailure >= OSCAM_CONTINUOUS_FAILURE_MILLIS
+        } == true
 
         return when {
-            lowSnrSamples >= LOW_SNR_CONSECUTIVE_SAMPLES -> LiveTvSatFailureReason.LOW_SNR
-            berSamples >= BER_CONSECUTIVE_SAMPLES -> LiveTvSatFailureReason.BIT_ERRORS
-            oscamGraceExpired && oscamFailureSamples >= OSCAM_CONSECUTIVE_SAMPLES -> LiveTvSatFailureReason.OSCAM
+            severeRfSamples >= SEVERE_RF_CONSECUTIVE_SAMPLES -> LiveTvSatFailureReason.BIT_ERRORS
+            oscamFailureLongEnough -> LiveTvSatFailureReason.OSCAM
             else -> null
         }
     }
 
     fun reset() {
-        lowSnrSamples = 0
-        berSamples = 0
-        oscamFailureSamples = 0
+        severeRfSamples = 0
+        oscamFailureSinceEpochMillis = null
     }
 
     companion object {
-        /** Below this the tested DVB-S2 path is already in the practical rain-fade danger zone. */
-        internal const val MIN_STABLE_SNR_DB = 6.5
-        internal const val OSCAM_STARTUP_GRACE_MILLIS = 5_000L
-        private const val LOW_SNR_CONSECUTIVE_SAMPLES = 3
-        private const val BER_CONSECUTIVE_SAMPLES = 2
-        private const val OSCAM_CONSECUTIVE_SAMPLES = 3
+        /** Intentionally below the normal rain-fade warning range; SAT remains preferred. */
+        internal const val MIN_SEVERE_SNR_DB = 6.0
+        internal const val OSCAM_CONTINUOUS_FAILURE_MILLIS = 5_000L
+        internal const val SEVERE_RF_CONSECUTIVE_SAMPLES = 5
     }
 }
 
 /**
- * Short circuit breaker for a receiver/weather outage. After several SAT fallbacks while zapping,
- * channels that have a Joyn mapping start directly on Joyn for a few minutes. It never affects
- * bouquet channels without Joyn coverage.
+ * Historical SAT health helper retained for compatibility/tests. The player no longer bypasses SAT
+ * because SAT is always the preferred source on a fresh channel selection.
  */
 internal object LiveTvSatCircuitBreaker {
     private val lock = Any()
