@@ -912,9 +912,11 @@ private fun buildJoynMediaSource(
     playback: JoynFallbackPlayback,
     channel: LiveTvChannel,
 ): MediaSource {
+    // Do not resolve even the loopback bridge host while Compose's LaunchedEffect is on the main
+    // thread. OkHttp resolves this unresolved proxy address later on its own worker thread.
     val proxy = Proxy(
         Proxy.Type.HTTP,
-        InetSocketAddress(playback.proxyHost, playback.proxyPort),
+        InetSocketAddress.createUnresolved(playback.proxyHost, playback.proxyPort),
     )
     val client = OkHttpClient.Builder()
         .proxy(proxy)
