@@ -5,6 +5,7 @@ import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import java.io.Closeable
 import java.text.Normalizer
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -12,18 +13,27 @@ import kotlinx.coroutines.sync.withLock
  * Maps only the channels of I Launcher's currently selected Gigablue bouquet to Joyn.
  *
  * The map is intentionally exact after conservative normalization. Runtime fuzzy matching is not
- * used: a wrong regional channel is worse than having no fallback. Country variants are ranked
- * deterministically, with an explicit Austria/Switzerland/Germany suffix on the Gigablue name
- * winning first and AT being the default for an otherwise neutral Austrian receiver bouquet.
+ * used: a wrong regional channel is worse than having no fallback. For selected stations whose
+ * Swiss Joyn feed is known to offer the better TV quality, CH is preferred when that exact station
+ * is available there. Other stations keep the normal regional priority.
+ *
+ * Playback resolution can be prewarmed while SAT is still running. The resolved manifest, DRM URL
+ * and loopback bridge stay cached for the current channel session so a later manual or automatic
+ * SAT -> Joyn switch does not have to perform country routing and entitlement from scratch.
  */
 internal class JoynLiveTvFallbackRepository(context: Context) : Closeable {
     private val bridge = JoynPlaybackBridgeClient(context.applicationContext)
     private val mutex = Mutex()
+    private val playbackMutex = Mutex()
+    private val playbackGeneration = AtomicLong(0L)
 
     private var inventory: List<JoynBridgeChannel>? = null
     private var bouquetKey: String? = null
     private var bouquetChannels: List<LiveTvChannel> = emptyList()
     private var mappings: Map<String, JoynBridgeChannel> = emptyMap()
+
+    @Volatile
+    private var preparedPlayback: PreparedPlayback? = null
 
     suspend fun primeBouquet(channels: List<LiveTvChannel>): JoynFallbackMappingSnapshot = mutex.withLock {
         val currentKey = channels.joinToString("|") { "${it.serviceReference}\u0000${it.name}" }
@@ -38,32 +48,80 @@ internal class JoynLiveTvFallbackRepository(context: Context) : Closeable {
         snapshot(channels.size)
     }
 
+    /** Resolve and hold the current channel's Joyn route before SAT actually needs it. */
+    suspend fun prewarm(channel: LiveTvChannel): JoynFallbackPlayback? = resolve(channel)
+
     suspend fun resolve(channel: LiveTvChannel): JoynFallbackPlayback? {
-        val mapped = mutex.withLock {
-            mappings[channel.serviceReference] ?: run {
-                // The initial background inventory request may still have been unavailable when the
-                // player started. Retry lazily on a real SAT failure before giving up on Joyn.
-                val available = inventory ?: bridge.listChannels().also { inventory = it }
-                val source = if (bouquetChannels.isEmpty()) listOf(channel) else bouquetChannels
-                mappings = JoynLiveChannelMatcher.mapBouquet(source, available)
-                bouquetKey = source.joinToString("|") { "${it.serviceReference}\u0000${it.name}" }
-                mappings[channel.serviceReference]
+        val mapped = mappedFor(channel) ?: return null
+        val generationAtStart = playbackGeneration.get()
+
+        return playbackMutex.withLock {
+            if (generationAtStart != playbackGeneration.get()) return@withLock null
+
+            preparedPlayback
+                ?.takeIf {
+                    it.serviceReference == channel.serviceReference &&
+                        it.channelId == mapped.id &&
+                        it.generation == generationAtStart
+                }
+                ?.playback
+                ?.let { return@withLock it }
+
+            val resolved = bridge.resolvePlayback(mapped)
+            if (generationAtStart != playbackGeneration.get()) {
+                // The user zapped while the remote preparation was still running. Close that stale
+                // bridge before the next channel is allowed to prepare its own route.
+                bridge.releasePlayback()
+                return@withLock null
             }
-        } ?: return null
-        return bridge.resolvePlayback(mapped)
+
+            preparedPlayback = PreparedPlayback(
+                serviceReference = channel.serviceReference,
+                channelId = mapped.id,
+                generation = generationAtStart,
+                playback = resolved,
+            )
+            resolved
+        }
+    }
+
+    private suspend fun mappedFor(channel: LiveTvChannel): JoynBridgeChannel? = mutex.withLock {
+        mappings[channel.serviceReference] ?: run {
+            // The initial background inventory request may still have been unavailable when the
+            // player started. Retry lazily on a real SAT failure/manual source switch.
+            val available = inventory ?: bridge.listChannels().also { inventory = it }
+            val source = if (bouquetChannels.isEmpty()) listOf(channel) else bouquetChannels
+            mappings = JoynLiveChannelMatcher.mapBouquet(source, available)
+            bouquetKey = source.joinToString("|") { "${it.serviceReference}\u0000${it.name}" }
+            mappings[channel.serviceReference]
+        }
     }
 
     fun mappedChannel(serviceReference: String): JoynBridgeChannel? = mappings[serviceReference]
 
-    fun releasePlayback() = bridge.releasePlayback()
+    fun releasePlayback() {
+        playbackGeneration.incrementAndGet()
+        preparedPlayback = null
+        bridge.releasePlayback()
+    }
 
-    override fun close() = bridge.close()
+    override fun close() {
+        releasePlayback()
+        bridge.close()
+    }
 
     private fun snapshot(bouquetSize: Int): JoynFallbackMappingSnapshot =
         JoynFallbackMappingSnapshot(
             bouquetSize = bouquetSize,
             mappedByServiceReference = mappings.toMap(),
         )
+
+    private data class PreparedPlayback(
+        val serviceReference: String,
+        val channelId: String,
+        val generation: Long,
+        val playback: JoynFallbackPlayback,
+    )
 }
 
 internal data class JoynFallbackMappingSnapshot(
@@ -92,6 +150,22 @@ internal object JoynLiveChannelMatcher {
         "arddaserste" to "daserste",
     )
 
+    /**
+     * These exact station families prefer Joyn CH because real-device testing has shown the Swiss
+     * feeds can expose materially better DASH quality (1080p for the ProSiebenSat.1 group). The
+     * fallback remains exact-name based; this list only changes the country order for a matched core.
+     */
+    private val swissQualityPreferredCores = setOf(
+        "prosieben",
+        "sat1",
+        "kabeleins",
+        "prosiebenmaxx",
+        "sixx",
+        "sat1gold",
+        "kabeleinsdoku",
+        "tlc",
+    )
+
     fun mapBouquet(
         bouquet: List<LiveTvChannel>,
         joynChannels: List<JoynBridgeChannel>,
@@ -103,7 +177,7 @@ internal object JoynLiveChannelMatcher {
                 if (core.isBlank()) return@forEach
                 val candidates = byCore[core].orEmpty()
                 if (candidates.isEmpty()) return@forEach
-                val countryOrder = countryPriority(satChannel.name)
+                val countryOrder = countryPriority(satChannel.name, core)
                 val selected = candidates.minWithOrNull(
                     compareBy<JoynBridgeChannel> { candidate ->
                         val index = countryOrder.indexOf(candidate.country.uppercase(Locale.US))
@@ -130,7 +204,9 @@ internal object JoynLiveChannelMatcher {
         return aliases[compact] ?: compact
     }
 
-    internal fun countryPriority(value: String): List<String> {
+    internal fun countryPriority(value: String, core: String = canonicalCore(value)): List<String> {
+        if (core in swissQualityPreferredCores) return listOf("CH", "AT", "DE")
+
         val normalized = Normalizer.normalize(value, Normalizer.Form.NFD)
             .replace(Regex("\\p{Mn}+"), "")
             .lowercase(Locale.GERMAN)
