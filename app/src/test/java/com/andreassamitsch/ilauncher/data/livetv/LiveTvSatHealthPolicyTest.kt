@@ -35,15 +35,15 @@ class LiveTvSatHealthPolicyTest {
     }
 
     @Test
-    fun `very weak SNR plus BER must persist for five samples`() {
+    fun `very weak SNR plus BER must persist for five full seconds`() {
         val policy = LiveTvSatHealthPolicy()
 
-        repeat(4) { index ->
+        repeat(5) { index ->
             assertNull(policy.update(snapshot(snrDb = 5.5, ber = "12", sampledAtEpochMillis = index * 1_000L)))
         }
         assertEquals(
             LiveTvSatFailureReason.BIT_ERRORS,
-            policy.update(snapshot(snrDb = 5.5, ber = "4", sampledAtEpochMillis = 4_000L)),
+            policy.update(snapshot(snrDb = 5.5, ber = "4", sampledAtEpochMillis = 5_000L)),
         )
     }
 
@@ -51,16 +51,16 @@ class LiveTvSatHealthPolicyTest {
     fun `healthy RF sample resets severe signal window`() {
         val policy = LiveTvSatHealthPolicy()
 
-        repeat(4) { index ->
+        repeat(5) { index ->
             assertNull(policy.update(snapshot(snrDb = 5.5, ber = "12", sampledAtEpochMillis = index * 1_000L)))
         }
-        assertNull(policy.update(snapshot(snrDb = 9.8, ber = "0", sampledAtEpochMillis = 4_000L)))
-        repeat(4) { index ->
-            assertNull(policy.update(snapshot(snrDb = 5.5, ber = "12", sampledAtEpochMillis = 5_000L + index * 1_000L)))
+        assertNull(policy.update(snapshot(snrDb = 9.8, ber = "0", sampledAtEpochMillis = 5_000L)))
+        repeat(5) { index ->
+            assertNull(policy.update(snapshot(snrDb = 5.5, ber = "12", sampledAtEpochMillis = 6_000L + index * 1_000L)))
         }
         assertEquals(
             LiveTvSatFailureReason.BIT_ERRORS,
-            policy.update(snapshot(snrDb = 5.5, ber = "12", sampledAtEpochMillis = 9_000L)),
+            policy.update(snapshot(snrDb = 5.5, ber = "12", sampledAtEpochMillis = 11_000L)),
         )
     }
 
