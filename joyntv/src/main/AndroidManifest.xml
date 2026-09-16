@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <permission
+        android:name="com.andreassamitsch.joyntv.permission.PLAYBACK_BRIDGE"
+        android:protectionLevel="signature" />
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -24,6 +28,11 @@
         <receiver
             android:name=".JoynUpdateInstallStatusReceiver"
             android:exported="false" />
+
+        <service
+            android:name=".JoynPlaybackBridgeService"
+            android:exported="true"
+            android:permission="com.andreassamitsch.joyntv.permission.PLAYBACK_BRIDGE" />
 
         <activity
             android:name=".PinSettingsActivity"
