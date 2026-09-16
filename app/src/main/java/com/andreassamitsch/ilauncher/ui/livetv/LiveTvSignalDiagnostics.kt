@@ -1,101 +1,29 @@
 package com.andreassamitsch.ilauncher.ui.livetv
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifSignalReader
+import com.andreassamitsch.ilauncher.data.livetv.LiveTvReceptionSnapshot
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifSignalStatus
 import com.andreassamitsch.ilauncher.data.oscam.OscamClientStatus
 import com.andreassamitsch.ilauncher.data.oscam.OscamReadResult
-import com.andreassamitsch.ilauncher.data.oscam.OscamStatusReader
-import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import java.util.Locale
-import kotlinx.coroutines.delay
-
-private const val SIGNAL_POLL_INTERVAL_MILLIS = 1_000L
-private const val SIGNAL_REALIGN_RECHECK_MILLIS = 250L
-private const val SIGNAL_REALIGN_COOLDOWN_MILLIS = 2_500L
-private const val SIGNAL_EMPTY_GRACE_POLLS = 3
-private const val OSCAM_POLL_INTERVAL_MILLIS = 1_000L
 
 /**
- * Live diagnostics for the current SAT path and OSCam DVBAPI decryption.
+ * Renders the background reception snapshot owned by the player.
  *
- * RF reception and decryption intentionally remain separate lines. Good SNR/BER proves only that
- * the transponder is received cleanly; OSCam status tells us whether the current SID gets a fresh
- * ECM/control-word response and which reader answered it. This separation is the basis for a later
- * SAT -> Joyn fallback decision without mistaking a CAM/reader problem for bad satellite reception.
+ * Sampling no longer depends on whether the transient overlay is visible. This both removes
+ * duplicate OpenWebif/OSCam requests and lets the same measurements drive the automatic Joyn
+ * fallback after the overlay has disappeared.
  */
 @Composable
-internal fun LiveTvSignalDiagnostics(channel: LiveTvChannel) {
-    val context = LocalContext.current
-    val reader = remember(context) { OpenWebifSignalReader(context) }
-    val oscamReader = remember(context) { OscamStatusReader(context) }
-    var status by remember(channel.serviceReference) { mutableStateOf<OpenWebifSignalStatus?>(null) }
-    var unavailable by remember(channel.serviceReference) { mutableStateOf(false) }
-    var oscamResult by remember(channel.serviceReference) { mutableStateOf<OscamReadResult?>(null) }
-
-    LaunchedEffect(reader, channel.serviceReference) {
-        var emptyPolls = 0
-        var lastRealignAtMillis = 0L
-
-        while (true) {
-            var result = reader.read()
-            var sample = result.getOrNull()
-
-            if (sample != null && !sample.hasMeasurements) {
-                val now = System.currentTimeMillis()
-                val realignAllowed = lastRealignAtMillis == 0L ||
-                    now - lastRealignAtMillis >= SIGNAL_REALIGN_COOLDOWN_MILLIS
-                if (realignAllowed) {
-                    lastRealignAtMillis = now
-                    val realigned = reader.alignCurrentService(
-                        serviceReference = channel.serviceReference,
-                        title = channel.name,
-                    ).getOrDefault(false)
-                    if (realigned) {
-                        delay(SIGNAL_REALIGN_RECHECK_MILLIS)
-                        result = reader.read()
-                        sample = result.getOrNull()
-                    }
-                }
-            }
-
-            when {
-                sample?.hasMeasurements == true -> {
-                    status = sample
-                    emptyPolls = 0
-                    unavailable = false
-                }
-
-                else -> {
-                    emptyPolls += 1
-                    if (emptyPolls >= SIGNAL_EMPTY_GRACE_POLLS) {
-                        status = null
-                        unavailable = true
-                    }
-                }
-            }
-
-            delay(SIGNAL_POLL_INTERVAL_MILLIS)
-        }
+internal fun LiveTvSignalDiagnostics(snapshot: LiveTvReceptionSnapshot?) {
+    val signalLine = when {
+        snapshot == null -> "SAT-Signal · wird gelesen …"
+        snapshot.signal?.hasMeasurements == true -> formatSignalDiagnostics(snapshot.signal)
+        snapshot.signalUnavailable -> "SAT-Signal · keine Tunerwerte"
+        else -> "SAT-Signal · wird gelesen …"
     }
-
-    LaunchedEffect(oscamReader, channel.serviceReference) {
-        while (true) {
-            oscamResult = oscamReader.read(channel.serviceReference)
-            delay(OSCAM_POLL_INTERVAL_MILLIS)
-        }
-    }
-
-    val signalLine = status?.takeIf { it.hasMeasurements }?.let(::formatSignalDiagnostics)
-        ?: if (unavailable) "SAT-Signal · keine Tunerwerte" else "SAT-Signal · wird gelesen …"
 
     Text(
         signalLine,
@@ -103,9 +31,9 @@ internal fun LiveTvSignalDiagnostics(channel: LiveTvChannel) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Text(
-        oscamResult?.let(::formatOscamDiagnostics) ?: "OSCam · wird gelesen …",
+        snapshot?.oscam?.let(::formatOscamDiagnostics) ?: "OSCam · wird gelesen …",
         style = MaterialTheme.typography.bodySmall,
-        color = when (val result = oscamResult) {
+        color = when (val result = snapshot?.oscam) {
             is OscamReadResult.Match -> if (result.status.failed) {
                 MaterialTheme.colorScheme.error
             } else {
