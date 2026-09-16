@@ -118,8 +118,16 @@ Quelle · Joyn AT · Fallback
 Satellit gestört · <Grund>
 ```
 
+## Build- und Bestätigungsstatus
+
+Die erste Bridge-Version der Joyn-TV-App ist **`0.1.0-dev.637`** (`sourceSha d5f8bf3904a1d229a4a284b1a1d1d6f9a90e53a4`). Der Joyn-CI-Build inklusive Signierung und Veröffentlichung war erfolgreich.
+
+Die erste veröffentlichte I-Launcher-Version mit Bouquet-Mapping, SAT-/OSCam-Health-Policy, Circuit Breaker und nahtlosem Media3-DASH/Widevine-Fallback ist **`0.1.0-dev.513`** (`sourceSha 06e692050d1cb909ddd0acfbd7bd491ef2ee5bce`). Unit-Tests, APK-Build und Veröffentlichung im I-Launcher-Updater waren erfolgreich.
+
+Die Tests decken insbesondere konservatives Bouquet-Matching, Länderpräferenz, SNR-Debouncing, BER, OSCam-Fehler und den Circuit Breaker ab.
+
 ## Installations-/Testreihenfolge
 
-Die erste Bridge-Version der Joyn-TV-App ist `0.1.0-dev.637`. Da die Bridge und die Signature-Permission in der Joyn-App definiert werden, für den ersten Gerätetest **Joyn TV zuerst aktualisieren**, danach I Launcher.
+Da die Bridge und die Signature-Permission in der Joyn-App definiert werden, für den ersten Gerätetest **Joyn TV zuerst auf mindestens `.637` aktualisieren**, danach **I Launcher auf mindestens `.513`**.
 
-Der SAT-/OSCam-Teil ist auf realer Hardware bestätigt. Die neue automatische SAT → Joyn-Verkettung ist zum Zeitpunkt dieser Notiz implementiert und durch CI/Unit-Tests abzusichern; sie gilt erst nach dem folgenden TV-Test als real-hardware-bestätigt.
+Der eigenständige Joyn-Pfad sowie SAT-/OSCam-Diagnose sind auf realer Hardware bestätigt. Die neue automatische Cross-App-SAT→Joyn-Verkettung hat CI und Unit-Tests bestanden, gilt aber erst nach dem nächsten TV-Test als **real-hardware-bestätigt**.
