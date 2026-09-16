@@ -44,14 +44,29 @@ Joyn TV stellt dafür `JoynPlaybackBridgeService` bereit:
 - liefert die Joyn-Live-Senderliste und für einen konkreten Fallback das aufgelöste DASH-/Widevine-Playback;
 - Mysterium-Benutzername/Passwort des Residential-Leases verlassen die Joyn-App nicht.
 
-Für den eigentlichen Media-Pfad erzeugt Joyn TV einen dedizierten lokalen `JoynMysteriumProxyBridge`. I Launcher erhält nur dessen Loopback-Adresse sowie Manifest-/Lizenz-URL.
+### Routing nach Joyn-Markt
+
+Für die aktuelle österreichische Installation gilt ausdrücklich:
+
+```text
+Joyn AT -> direkt, kein Mysterium-Gateway nötig
+Joyn CH -> Mysterium Residential
+Joyn DE -> Mysterium Residential
+```
+
+Der erste reale Fallback-Test mit **PULS 4 HD Austria** hat gezeigt, dass das Bouquet-Mapping und der automatische OSCam-Fehler-Fallback bereits bis zur Joyn-Bridge funktionieren. Die erste Bridge-Version verlangte danach fälschlich auch für AT einen aktiven Mysterium-Residential-Proxy. Diese Annahme ist korrigiert.
+
+Für AT löst `JoynPlaybackBridgeService` Entitlement/Playlist jetzt explizit über die direkte österreichische Internetverbindung auf. Ein eventuell noch aktiver app-spezifischer Mysterium-WireGuard-Tunnel wird vorher beendet. Für den Media-Pfad bleibt das bestehende sichere Cross-App-Protokoll unverändert: I Launcher erhält einen zufälligen Loopback-Port. Dahinter liegt bei AT nun `JoynDirectProxyBridge`, ein lokaler CONNECT-Relay, der direkt zum Joyn/CDN-Ziel verbindet. Es gibt **keinen externen Proxy/Gateway** und keine Mysterium-Credentials im AT-Pfad.
+
+Für CH/DE bleibt `JoynMysteriumProxyBridge` unverändert zuständig und verwendet den jeweils vorbereiteten Residential-Lease.
 
 Damit gilt in I Launcher:
 
 ```text
 OpenWebif / Gigablue -> direkt im LAN
 TMDB / Updates       -> direkt
-Joyn DASH + DRM      -> eigener Media3/OkHttp-Pfad -> lokaler Joyn-Bridge -> Mysterium Residential
+Joyn AT DASH + DRM   -> Media3 -> lokaler Direct-Relay -> Internet direkt
+Joyn CH/DE DASH+DRM  -> Media3 -> lokaler Joyn-Bridge -> Mysterium Residential
 ```
 
 Es wird **kein globaler ProxySelector für I Launcher** installiert.
@@ -59,6 +74,7 @@ Es wird **kein globaler ProxySelector für I Launcher** installiert.
 Relevante Dateien:
 
 - `joyntv/src/main/java/com/andreassamitsch/joyntv/JoynPlaybackBridgeService.kt`
+- `joyntv/src/main/java/com/andreassamitsch/joyntv/JoynDirectProxyBridge.kt`
 - `app/src/main/java/com/andreassamitsch/ilauncher/data/joyn/JoynPlaybackBridgeClient.kt`
 
 ## Automatischer Fallback
@@ -102,7 +118,9 @@ Joyn wird im bestehenden I-Launcher-Media3-Player wiedergegeben:
 
 - DASH über `media3-exoplayer-dash`;
 - Widevine über Media3 DRM;
-- Manifest, Lizenz und Segmente benutzen denselben app-spezifischen OkHttp-Proxy;
+- Manifest, Lizenz und Segmente benutzen denselben app-spezifischen OkHttp-Pfad;
+- bei AT endet dieser Pfad nach dem lokalen Loopback-Relay direkt im Internet;
+- bei CH/DE geht er über den Mysterium-Residential-Bridge;
 - Senderliste und EPG bleiben unverändert Gigablue-basiert.
 
 Im Overlay wird die aktive Quelle sichtbar:
@@ -120,14 +138,28 @@ Satellit gestört · <Grund>
 
 ## Build- und Bestätigungsstatus
 
-Die erste Bridge-Version der Joyn-TV-App ist **`0.1.0-dev.637`** (`sourceSha d5f8bf3904a1d229a4a284b1a1d1d6f9a90e53a4`). Der Joyn-CI-Build inklusive Signierung und Veröffentlichung war erfolgreich.
+Die erste Bridge-Version der Joyn-TV-App ist **`0.1.0-dev.637`** (`sourceSha d5f8bf3904a1d229a4a284b1a1d1d6f9a90e53a4`). Sie hat den Cross-App-Vertrag eingeführt, verlangte beim ersten realen AT-Test aber noch fälschlich Mysterium für AT.
+
+Der AT-Direktfix liegt auf `feature/joyn-tv-client` ab Source-Commit **`2d5bc798d4ce8d971514592dd8155e264f1d3f09`**. Der dazugehörige Joyn-TV-CI-Lauf ist Run **641**; nach erfolgreicher Veröffentlichung ist die Zielversion **`0.1.0-dev.641`**.
 
 Die erste veröffentlichte I-Launcher-Version mit Bouquet-Mapping, SAT-/OSCam-Health-Policy, Circuit Breaker und nahtlosem Media3-DASH/Widevine-Fallback ist **`0.1.0-dev.513`** (`sourceSha 06e692050d1cb909ddd0acfbd7bd491ef2ee5bce`). Unit-Tests, APK-Build und Veröffentlichung im I-Launcher-Updater waren erfolgreich.
 
-Die Tests decken insbesondere konservatives Bouquet-Matching, Länderpräferenz, SNR-Debouncing, BER, OSCam-Fehler und den Circuit Breaker ab.
+Die Tests decken insbesondere konservatives Bouquet-Matching, Länderpräferenz, SNR-Debouncing, BER, OSCam-Fehler, Circuit Breaker und die CONNECT-Zielauswertung des neuen AT-Direkt-Relays ab.
+
+## Realer TV-Teststand
+
+Am 16.09.2026 wurde auf dem TCL mit **PULS 4 HD Austria** real bestätigt:
+
+1. Bouquet-Sender wird korrekt einem Joyn-AT-Sender zugeordnet;
+2. ein wiederholter echter OSCam-Entschlüsselungsfehler löst den SAT → Joyn-Wechsel aus;
+3. I Launcher bleibt im selben Player und zeigt `Quelle · Joyn · Fallback`;
+4. die Bridge wurde erreicht;
+5. die Wiedergabe scheiterte dort ausschließlich an der falschen damaligen Voraussetzung „AT benötigt Mysterium Residential“.
+
+Damit sind Mapping und Fallback-Auslösung real bestätigt. Die tatsächliche **AT-Direktwiedergabe nach dem Fix** wartet noch auf den nächsten Gerätetest.
 
 ## Installations-/Testreihenfolge
 
-Da die Bridge und die Signature-Permission in der Joyn-App definiert werden, für den ersten Gerätetest **Joyn TV zuerst auf mindestens `.637` aktualisieren**, danach **I Launcher auf mindestens `.513`**.
+Für den nächsten AT-Test muss nur **Joyn TV auf den Build mit AT-Direktfix** aktualisiert werden. I Launcher `.513` kann unverändert bleiben, weil der Bridge-Vertrag (Manifest/Lizenz + Loopback-Proxyadresse) absichtlich kompatibel geblieben ist.
 
-Der eigenständige Joyn-Pfad sowie SAT-/OSCam-Diagnose sind auf realer Hardware bestätigt. Die neue automatische Cross-App-SAT→Joyn-Verkettung hat CI und Unit-Tests bestanden, gilt aber erst nach dem nächsten TV-Test als **real-hardware-bestätigt**.
+Danach PULS 4 HD Austria erneut starten und den SAT-/OSCam-Fehler provozieren. Erwartung: derselbe I-Launcher-Player übernimmt Joyn AT jetzt ohne Mysterium-Gateway.
