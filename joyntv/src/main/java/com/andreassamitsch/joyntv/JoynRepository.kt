@@ -8,6 +8,8 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -38,35 +40,50 @@ internal class JoynRepository(context: Context) {
     private val categoryApi = JoynCategoryApiClient(appContext)
     private val collectionApi = JoynCollectionApiClient(appContext)
     private val previewPublisher = JoynPreviewChannelPublisher(appContext)
+    private val homeCache = JoynHomeCache(appContext)
     private val networkOperationMutex = Mutex()
 
-    suspend fun loadLiveTvRowsAndPublish(): JoynLiveTvRows = networkOperationMutex.withLock {
+    fun cachedLiveTvRows(): JoynLiveTvRows? = homeCache.readLiveRows()
+
+    fun cachedCatalogue(path: String = "/neu-beliebt"): JoynCataloguePage? =
+        homeCache.readCatalogue(path)
+
+    /**
+     * Loads the three country inventories sequentially because the standalone app still owns one
+     * process-wide Joyn route. The locally selected country goes first so the UI can become useful
+     * after the first response instead of waiting for two foreign route switches. [onPartial] is
+     * called after every successful country and is used by the home screen for progressive paint.
+     */
+    suspend fun loadLiveTvRowsAndPublish(
+        onPartial: (suspend (JoynLiveTvRows) -> Unit)? = null,
+    ): JoynLiveTvRows = networkOperationMutex.withLock {
         val selected = currentCountry()
-        val loadOrder = LIVE_COUNTRIES.filter { it != selected } + selected
+        val loadOrder = listOf(selected) + LIVE_COUNTRIES.filter { it != selected }
         val byCountry = mutableMapOf<JoynCountry, List<JoynLiveChannel>>()
         val failures = mutableListOf<String>()
 
         loadOrder.forEach { country ->
-            runCatching {
+            try {
                 ensureJoynCountryRouting(country)
-                multiCountryLiveApi.loadLiveChannels(country)
-            }.onSuccess { channels ->
-                byCountry[country] = channels
-            }.onFailure { error ->
+                byCountry[country] = multiCountryLiveApi.loadLiveChannels(country)
+                onPartial?.invoke(buildLiveTvRows(byCountry))
+            } catch (error: Throwable) {
                 failures += "${country.name}: ${error.message ?: error.javaClass.simpleName}"
             }
         }
 
-        val combined = JoynLiveChannelOrder.sort(
-            LIVE_COUNTRIES.flatMap { country ->
-                byCountry[country].orEmpty().map { channel -> country to channel }
-            },
-        ).map { (country, channel) -> decorateLiveChannel(country, channel) }
-        val countryRows = LIVE_COUNTRIES.associateWith { country ->
-            JoynLiveChannelOrder.sortCountry(country, byCountry[country].orEmpty())
-                .map { channel -> decorateLiveChannel(country, channel, includeCountrySuffix = false) }
+        // The old implementation loaded the selected country last solely to leave the global route
+        // in the expected state. Keep that invariant, but only after partial results are already on
+        // screen so it no longer delays first paint.
+        if (loadOrder.lastOrNull() != selected) {
+            runCatching { ensureJoynCountryRouting(selected) }
+                .onFailure { error ->
+                    Log.w(TAG, "Joyn route could not be restored to ${selected.name} after Live-TV refresh", error)
+                }
         }
-        if (combined.isEmpty() && countryRows.values.all { it.isEmpty() }) {
+
+        val rows = buildLiveTvRows(byCountry)
+        if (rows.combined.isEmpty() && rows.byCountry.values.all { it.isEmpty() }) {
             error(
                 "Live TV konnte für AT, DE und CH nicht geladen werden" +
                     failures.takeIf { it.isNotEmpty() }?.joinToString(prefix = ": ", separator = " · ").orEmpty(),
@@ -76,23 +93,40 @@ internal class JoynRepository(context: Context) {
             Log.w(TAG, "Einzelne Live-TV-Länder konnten nicht geladen werden: ${failures.joinToString(" · ")}")
         }
 
-        previewPublisher.publishLive(combined)
-        JoynLiveTvRows(combined = combined, byCountry = countryRows)
+        homeCache.writeLiveRows(rows)
+        previewPublisher.publishLive(rows.combined)
+        rows
     }
 
     suspend fun loadLiveChannelsAndPublish(): List<JoynLiveChannel> =
         loadLiveTvRowsAndPublish().combined
 
+    /**
+     * Start page used to perform three independent Joyn requests one after another. They all use the
+     * same country route, so they can safely run in parallel while this repository keeps the route
+     * stable with [networkOperationMutex]. The result is cached and rendered stale-while-refreshing
+     * on later launches.
+     */
     suspend fun loadCatalogue(path: String = "/neu-beliebt"): JoynCataloguePage =
         networkOperationMutex.withLock {
             ensureJoynCountryRouting()
-            val page = api.loadCatalogue(path)
-            if (path != "/neu-beliebt") return@withLock page
-            val browseLanes = buildList {
-                runCatching { browseApi.loadMediaLibraries() }.getOrNull()?.lanes?.let(::addAll)
-                runCatching { browseApi.loadCategories("/") }.getOrNull()?.lanes?.let(::addAll)
+            val result = if (path != "/neu-beliebt") {
+                api.loadCatalogue(path)
+            } else {
+                coroutineScope {
+                    val page = async { api.loadCatalogue(path) }
+                    val libraries = async { runCatching { browseApi.loadMediaLibraries() }.getOrNull() }
+                    val categories = async { runCatching { browseApi.loadCategories("/") }.getOrNull() }
+                    val base = page.await()
+                    val browseLanes = buildList {
+                        libraries.await()?.lanes?.let(::addAll)
+                        categories.await()?.lanes?.let(::addAll)
+                    }
+                    base.copy(lanes = browseLanes + base.lanes)
+                }
             }
-            page.copy(lanes = browseLanes + page.lanes)
+            homeCache.writeCatalogue(path, result)
+            result
         }
 
     suspend fun loadCategory(blockId: String, title: String): JoynCataloguePage {
@@ -510,6 +544,21 @@ internal class JoynRepository(context: Context) {
                 error,
             )
         }
+    }
+
+    private fun buildLiveTvRows(
+        rawByCountry: Map<JoynCountry, List<JoynLiveChannel>>,
+    ): JoynLiveTvRows {
+        val combined = JoynLiveChannelOrder.sort(
+            LIVE_COUNTRIES.flatMap { country ->
+                rawByCountry[country].orEmpty().map { channel -> country to channel }
+            },
+        ).map { (country, channel) -> decorateLiveChannel(country, channel) }
+        val countryRows = LIVE_COUNTRIES.associateWith { country ->
+            JoynLiveChannelOrder.sortCountry(country, rawByCountry[country].orEmpty())
+                .map { channel -> decorateLiveChannel(country, channel, includeCountrySuffix = false) }
+        }
+        return JoynLiveTvRows(combined = combined, byCountry = countryRows)
     }
 
     private fun decorateLiveChannel(
