@@ -45,8 +45,9 @@ internal class JoynLiveFavoritesStore(context: Context) {
     fun toggle(channelId: String): Set<String> = synchronized(this) {
         val updated = ids().toMutableSet()
         if (!updated.add(channelId)) updated.remove(channelId)
-        prefs.edit().putStringSet(KEY_IDS, updated).apply()
-        updated.toSet()
+        val snapshot = updated.toSet()
+        prefs.edit().putStringSet(KEY_IDS, snapshot).apply()
+        snapshot
     }
 
     companion object {
@@ -204,8 +205,11 @@ internal object JoynHomeCacheCodec {
         }
     }
 
-    private fun <T> Iterable<T>.toJsonArray(mapper: (T) -> Any?): JSONArray =
-        JSONArray().apply { forEach { put(mapper(it)) } }
+    private fun <T> Iterable<T>.toJsonArray(mapper: (T) -> Any?): JSONArray {
+        val array = JSONArray()
+        this.forEach { item -> array.put(mapper(item)) }
+        return array
+    }
 
     private fun JSONObject.putNullable(key: String, value: Any?): JSONObject =
         put(key, value ?: JSONObject.NULL)
