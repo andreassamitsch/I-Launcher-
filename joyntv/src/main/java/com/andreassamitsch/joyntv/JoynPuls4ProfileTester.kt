@@ -30,7 +30,6 @@ import org.xmlpull.v1.XmlPullParser
 internal class JoynPuls4ProfileTester(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    private val regionSettings = JoynRegionSettings(appContext)
 
     suspend fun run(): JoynPuls4ProfileReport = withContext(Dispatchers.IO) {
         val client = directClient()
@@ -208,7 +207,9 @@ internal class JoynPuls4ProfileTester(context: Context) {
 
     /** Returns null when no account is stored. Any refresh stays in memory and is never persisted. */
     private fun storedAccountAuthorization(client: OkHttpClient): String? {
-        val raw = regionSettings.sessionJson(JoynCountry.AT) ?: return null
+        // Read the market-specific slot directly. JoynRegionSettings intentionally repairs the
+        // process-wide active token on construction, which would be an unwanted side effect here.
+        val raw = prefs.getString(KEY_AT_ACCOUNT_SESSION, null) ?: return null
         val json = JSONObject(raw)
         if (!json.optBoolean("hasAccount", false)) return null
 
@@ -454,6 +455,7 @@ internal class JoynPuls4ProfileTester(context: Context) {
 
     companion object {
         private const val PREFS_NAME = "joyn_protocol"
+        private const val KEY_AT_ACCOUNT_SESSION = "auth_token_AT"
         private const val ACCOUNT_TOKEN_MARGIN_SECONDS = 120L
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private const val USER_AGENT =
