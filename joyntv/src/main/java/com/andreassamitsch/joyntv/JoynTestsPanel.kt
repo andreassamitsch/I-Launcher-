@@ -36,12 +36,17 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun JoynTestsPanel(compact: Boolean) {
     val context = LocalContext.current
-    val tester = remember(context) { JoynPuls4HybridTester(context.applicationContext) }
+    val hybridTester = remember(context) { JoynPuls4HybridTester(context.applicationContext) }
+    val profileTester = remember(context) { JoynPuls4ProfileTester(context.applicationContext) }
     val scope = rememberCoroutineScope()
 
-    var running by remember { mutableStateOf(false) }
-    var report by remember { mutableStateOf<JoynPuls4HybridReport?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var hybridRunning by remember { mutableStateOf(false) }
+    var hybridReport by remember { mutableStateOf<JoynPuls4HybridReport?>(null) }
+    var hybridError by remember { mutableStateOf<String?>(null) }
+
+    var profileRunning by remember { mutableStateOf(false) }
+    var profileReport by remember { mutableStateOf<JoynPuls4ProfileReport?>(null) }
+    var profileError by remember { mutableStateOf<String?>(null) }
 
     val horizontal = if (compact) 28.dp else 64.dp
     Column(
@@ -55,13 +60,9 @@ internal fun JoynTestsPanel(compact: Boolean) {
             fontSize = if (compact) 26.sp else 34.sp,
             fontWeight = FontWeight.SemiBold,
         )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "PULS 4 Hybrid-Qualitätstest",
-            color = Color(0xFFE2E5EA),
-            fontSize = if (compact) 17.sp else 20.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
+
+        Spacer(Modifier.height(12.dp))
+        TestSectionHeading("PULS 4 Hybrid-Qualitätstest", compact)
         Spacer(Modifier.height(6.dp))
         Text(
             "Vergleicht vier Kombinationen aus österreichischer Joyn-Identität und direktem bzw. Schweizer Residential-Netz. " +
@@ -79,26 +80,26 @@ internal fun JoynTestsPanel(compact: Boolean) {
         Spacer(Modifier.height(if (compact) 14.dp else 18.dp))
 
         TestActionChip(
-            label = if (running) "Test läuft …" else "PULS 4 Hybrid-Test starten",
-            enabled = !running,
+            label = if (hybridRunning) "Hybrid-Test läuft …" else "PULS 4 Hybrid-Test starten",
+            enabled = !hybridRunning && !profileRunning,
         ) {
-            running = true
-            report = null
-            error = null
+            hybridRunning = true
+            hybridReport = null
+            hybridError = null
             scope.launch {
                 runCatching {
-                    withContext(Dispatchers.IO) { tester.run() }
+                    withContext(Dispatchers.IO) { hybridTester.run() }
                 }.onSuccess {
-                    report = it
+                    hybridReport = it
                 }.onFailure {
-                    error = (it.message ?: it.javaClass.simpleName).replace('\n', ' ').take(700)
+                    hybridError = (it.message ?: it.javaClass.simpleName).replace('\n', ' ').take(700)
                 }
-                running = false
+                hybridRunning = false
             }
         }
 
         when {
-            running -> {
+            hybridRunning -> {
                 Spacer(Modifier.height(18.dp))
                 Text(
                     "Sender-ID, Entitlement, Playlist und DASH-Qualitäten werden geprüft …",
@@ -107,53 +108,161 @@ internal fun JoynTestsPanel(compact: Boolean) {
                 )
             }
 
-            error != null -> {
+            hybridError != null -> {
                 Spacer(Modifier.height(18.dp))
                 TestMessageCard(
-                    title = "Test konnte nicht gestartet werden",
-                    body = error.orEmpty(),
+                    title = "Hybrid-Test konnte nicht gestartet werden",
+                    body = hybridError.orEmpty(),
                     error = true,
                     compact = compact,
                 )
             }
 
-            report != null -> {
-                val current = report ?: return@Column
-                Spacer(Modifier.height(18.dp))
-                Text(
-                    "${current.channelTitle} · ${current.channelId}",
-                    color = Color.White,
-                    fontSize = if (compact) 14.sp else 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    buildString {
-                        append(current.chLeaseSource)
-                        current.chLeaseExpiresAt?.let { append(" · gültig bis $it") }
-                    },
-                    color = Color(0xFF9FA8B5),
-                    fontSize = if (compact) 10.sp else 12.sp,
-                )
-                Spacer(Modifier.height(10.dp))
-
-                current.results.forEach { result ->
-                    TestResultCard(result, compact)
-                    Spacer(Modifier.height(8.dp))
-                }
-
-                if (current.bridgeFailures.isNotEmpty()) {
-                    TestMessageCard(
-                        title = "CH-Proxy-Hinweise",
-                        body = current.bridgeFailures.joinToString(" · "),
-                        error = true,
+            hybridReport != null -> {
+                val current = hybridReport
+                if (current != null) {
+                    Spacer(Modifier.height(18.dp))
+                    TestReportHeader(
+                        channelTitle = current.channelTitle,
+                        channelId = current.channelId,
+                        detail = buildString {
+                            append(current.chLeaseSource)
+                            current.chLeaseExpiresAt?.let { append(" · gültig bis $it") }
+                        },
                         compact = compact,
                     )
+                    current.results.forEach { result ->
+                        TestResultCard(result, compact)
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    if (current.bridgeFailures.isNotEmpty()) {
+                        TestMessageCard(
+                            title = "CH-Proxy-Hinweise",
+                            body = current.bridgeFailures.joinToString(" · "),
+                            error = true,
+                            compact = compact,
+                        )
+                    }
                 }
             }
         }
+
+        Spacer(Modifier.height(if (compact) 26.dp else 36.dp))
+        TestSectionHeading("PULS 4 Account- & Playerprofil-Test", compact)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Prüft PULS 4 ausschließlich über die direkte österreichische Verbindung. Verglichen werden anonymer und gespeicherter AT-Account sowie Browser- und Android-TV-Playlistprofile. " +
+                "Zusätzlich wird getestet, ob eine reine Erhöhung von maxResolution auf 2160 die angebotene DASH-Leiter verändert.",
+            color = Color(0xFFBFC6D0),
+            fontSize = if (compact) 12.sp else 14.sp,
+            lineHeight = if (compact) 17.sp else 20.sp,
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Der Test verändert keine gespeicherte Joyn-Anmeldung. Ein abgelaufener Account-Token wird für den Test nur temporär im Arbeitsspeicher erneuert.",
+            color = Color(0xFF9FA8B5),
+            fontSize = if (compact) 11.sp else 13.sp,
+        )
+        Spacer(Modifier.height(if (compact) 14.dp else 18.dp))
+
+        TestActionChip(
+            label = if (profileRunning) "Profil-Test läuft …" else "PULS 4 Account-/Profil-Test starten",
+            enabled = !hybridRunning && !profileRunning,
+        ) {
+            profileRunning = true
+            profileReport = null
+            profileError = null
+            scope.launch {
+                runCatching {
+                    withContext(Dispatchers.IO) { profileTester.run() }
+                }.onSuccess {
+                    profileReport = it
+                }.onFailure {
+                    profileError = (it.message ?: it.javaClass.simpleName).replace('\n', ' ').take(700)
+                }
+                profileRunning = false
+            }
+        }
+
+        when {
+            profileRunning -> {
+                Spacer(Modifier.height(18.dp))
+                Text(
+                    "AT-Account, Player-Payloads und DASH-Repräsentationen werden verglichen …",
+                    color = Color(0xFFD7DBE3),
+                    fontSize = if (compact) 13.sp else 15.sp,
+                )
+            }
+
+            profileError != null -> {
+                Spacer(Modifier.height(18.dp))
+                TestMessageCard(
+                    title = "Account-/Profil-Test konnte nicht gestartet werden",
+                    body = profileError.orEmpty(),
+                    error = true,
+                    compact = compact,
+                )
+            }
+
+            profileReport != null -> {
+                val current = profileReport
+                if (current != null) {
+                    Spacer(Modifier.height(18.dp))
+                    TestReportHeader(
+                        channelTitle = current.channelTitle,
+                        channelId = current.channelId,
+                        detail = "Direkter AT-Pfad · kein Proxy/VPN",
+                        compact = compact,
+                    )
+                    TestMessageCard(
+                        title = "AT-Account",
+                        body = current.accountStatus,
+                        error = false,
+                        compact = compact,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    current.results.forEach { result ->
+                        TestResultCard(result, compact)
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+            }
+        }
+
         Spacer(Modifier.height(if (compact) 28.dp else 40.dp))
     }
+}
+
+@Composable
+private fun TestSectionHeading(title: String, compact: Boolean) {
+    Text(
+        title,
+        color = Color(0xFFE2E5EA),
+        fontSize = if (compact) 17.sp else 20.sp,
+        fontWeight = FontWeight.SemiBold,
+    )
+}
+
+@Composable
+private fun TestReportHeader(
+    channelTitle: String,
+    channelId: String,
+    detail: String,
+    compact: Boolean,
+) {
+    Text(
+        "$channelTitle · $channelId",
+        color = Color.White,
+        fontSize = if (compact) 14.sp else 16.sp,
+        fontWeight = FontWeight.SemiBold,
+    )
+    Spacer(Modifier.height(3.dp))
+    Text(
+        detail,
+        color = Color(0xFF9FA8B5),
+        fontSize = if (compact) 10.sp else 12.sp,
+    )
+    Spacer(Modifier.height(10.dp))
 }
 
 @Composable
