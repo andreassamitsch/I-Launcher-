@@ -38,7 +38,6 @@ internal fun JoynTestsPanel(compact: Boolean) {
     val context = LocalContext.current
     val hybridTester = remember(context) { JoynPuls4HybridTester(context.applicationContext) }
     val profileTester = remember(context) { JoynPuls4ProfileTester(context.applicationContext) }
-    val bauerTester = remember(context) { JoynBauerSuchtFrauProfileTester(context.applicationContext) }
     val scope = rememberCoroutineScope()
 
     var hybridRunning by remember { mutableStateOf(false) }
@@ -49,11 +48,7 @@ internal fun JoynTestsPanel(compact: Boolean) {
     var profileReport by remember { mutableStateOf<JoynPuls4ProfileReport?>(null) }
     var profileError by remember { mutableStateOf<String?>(null) }
 
-    var bauerRunning by remember { mutableStateOf(false) }
-    var bauerReport by remember { mutableStateOf<JoynBauerSuchtFrauProfileReport?>(null) }
-    var bauerError by remember { mutableStateOf<String?>(null) }
-
-    val anyRunning = hybridRunning || profileRunning || bauerRunning
+    val anyRunning = hybridRunning || profileRunning
     val horizontal = if (compact) 28.dp else 64.dp
     Column(
         Modifier
@@ -218,94 +213,6 @@ internal fun JoynTestsPanel(compact: Boolean) {
                         channelTitle = current.channelTitle,
                         channelId = current.channelId,
                         detail = "Direkter AT-Pfad · kein Proxy/VPN",
-                        compact = compact,
-                    )
-                    TestMessageCard(
-                        title = "AT-Account",
-                        body = current.accountStatus,
-                        error = false,
-                        compact = compact,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    current.results.forEach { result ->
-                        TestResultCard(result, compact)
-                        Spacer(Modifier.height(8.dp))
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(if (compact) 26.dp else 36.dp))
-        TestSectionHeading("Bauer sucht Frau · VOD Account- & Playerprofil-Test", compact)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "Sucht bei jedem Testlauf automatisch die aktuellste auf Joyn AT verfügbare und abspielbare Folge von „Bauer sucht Frau“ und führt darauf denselben Profilvergleich wie beim PULS-4-Livetest aus. " +
-                "Damit sehen wir, ob die 576p-Grenze nur den Live-Feed betrifft oder auch das VOD-Angebot.",
-            color = Color(0xFFBFC6D0),
-            fontSize = if (compact) 12.sp else 14.sp,
-            lineHeight = if (compact) 17.sp else 20.sp,
-        )
-        Spacer(Modifier.height(10.dp))
-        Text(
-            "Auswahl: höchste verfügbare Staffel → höchste Folge mit Video-ID. Direkter AT-Pfad, kein Proxy/VPN; der Test lädt nur Katalog, Entitlement, Playlist und DASH-Manifest.",
-            color = Color(0xFF9FA8B5),
-            fontSize = if (compact) 11.sp else 13.sp,
-        )
-        Spacer(Modifier.height(if (compact) 14.dp else 18.dp))
-
-        TestActionChip(
-            label = if (bauerRunning) "VOD-Profil-Test läuft …" else "Bauer sucht Frau VOD-Test starten",
-            enabled = !anyRunning,
-        ) {
-            bauerRunning = true
-            bauerReport = null
-            bauerError = null
-            scope.launch {
-                runCatching {
-                    withContext(Dispatchers.IO) { bauerTester.run() }
-                }.onSuccess {
-                    bauerReport = it
-                }.onFailure {
-                    bauerError = (it.message ?: it.javaClass.simpleName).replace('\n', ' ').take(900)
-                }
-                bauerRunning = false
-            }
-        }
-
-        when {
-            bauerRunning -> {
-                Spacer(Modifier.height(18.dp))
-                Text(
-                    "Aktuellste Folge wird gesucht; danach werden VOD-Entitlement, Player-Payloads und DASH-Repräsentationen geprüft …",
-                    color = Color(0xFFD7DBE3),
-                    fontSize = if (compact) 13.sp else 15.sp,
-                )
-            }
-
-            bauerError != null -> {
-                Spacer(Modifier.height(18.dp))
-                TestMessageCard(
-                    title = "Bauer-sucht-Frau-VOD-Test konnte nicht gestartet werden",
-                    body = bauerError.orEmpty(),
-                    error = true,
-                    compact = compact,
-                )
-            }
-
-            bauerReport != null -> {
-                val current = bauerReport
-                if (current != null) {
-                    Spacer(Modifier.height(18.dp))
-                    val seasonEpisode = buildString {
-                        current.seasonNumber?.let { append("Staffel $it") }
-                        if (isNotEmpty() && current.episodeNumber != null) append(" · ")
-                        current.episodeNumber?.let { append("Folge $it") }
-                        if (isEmpty()) append("Staffel/Folge nicht nummeriert")
-                    }
-                    TestReportHeader(
-                        channelTitle = "${current.seriesTitle} · $seasonEpisode · ${current.episodeTitle}",
-                        channelId = current.videoId,
-                        detail = "Direkter AT-VOD-Pfad · ${current.seriesPath}",
                         compact = compact,
                     )
                     TestMessageCard(
