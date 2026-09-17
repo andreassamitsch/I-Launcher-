@@ -81,8 +81,12 @@ internal object JoynProtocol {
         }
     """.trimIndent()
 
-    fun playbackSignature(entitlementToken: String): String {
-        val input = "$playerPayload,$entitlementToken$signatureSuffix"
+    fun playbackSignature(entitlementToken: String): String =
+        playbackSignature(playerPayload, entitlementToken)
+
+    /** Diagnostic overload: the signature always has to match the exact playlist request body. */
+    fun playbackSignature(payload: String, entitlementToken: String): String {
+        val input = "$payload,$entitlementToken$signatureSuffix"
         return MessageDigest.getInstance("SHA-1")
             .digest(input.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
