@@ -55,8 +55,18 @@ internal class JoynMediaFavoritesStore(context: Context) {
                         .putNullable("seasonId", item.seasonId)
                         .putNullable("seasonNumber", item.seasonNumber)
                         .putNullable("episodeNumber", item.episodeNumber)
-                        .put("licenseTypes", JSONArray().apply { item.licenseTypes.forEach(::put) })
-                        .put("markings", JSONArray().apply { item.markings.forEach(::put) }),
+                        .put(
+                            "licenseTypes",
+                            JSONArray().apply {
+                                item.licenseTypes.forEach { value -> put(value) }
+                            },
+                        )
+                        .put(
+                            "markings",
+                            JSONArray().apply {
+                                item.markings.forEach { value -> put(value) }
+                            },
+                        ),
                 )
             }
         }.toString()
