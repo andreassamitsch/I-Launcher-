@@ -1,10 +1,14 @@
 package com.andreassamitsch.joyntv
 
 import android.app.AlertDialog
+import android.view.GestureDetector
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.Format
+import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
@@ -23,20 +27,160 @@ private data class VideoQualityOption(
 )
 
 /**
- * Reuses Media3's settings button for a TV-friendly video quality chooser.
+ * Configures the Media3 PlayerView for Joyn's combined Android-TV / touch use case and reuses
+ * Media3's settings button for the video quality chooser.
  *
- * The list is built from the video representations that are actually exposed by the current
- * DASH manifest and supported by the device. "Auto" keeps Media3's adaptive selection; choosing
- * a resolution pins exactly that representation until the player instance is recreated.
+ * TV:
+ * - hidden controller: DPAD left/right seeks 10 seconds, OK toggles play/pause;
+ * - DPAD up/down opens the normal Media3 controller;
+ * - while the controller is visible its normal focus/navigation remains untouched, including the
+ *   quality settings button.
+ *
+ * Touch:
+ * - single tap toggles the normal Media3 controller;
+ * - double tap left/right seeks 10 seconds;
+ * - double tap in the centre toggles play/pause.
+ *
+ * The PlayerView keeps the display awake for the complete player session. The quality list is
+ * still built from the representations actually exposed by the current DASH manifest and
+ * supported by the device. "Auto" keeps Media3's adaptive selection; choosing a resolution pins
+ * exactly that representation until the player instance is recreated.
  */
 @OptIn(UnstableApi::class)
 internal fun PlayerView.installJoynQualitySelector(player: ExoPlayer) {
-    val settingsButton = findViewById<View>(androidx.media3.ui.R.id.exo_settings) ?: return
-    settingsButton.visibility = View.VISIBLE
-    settingsButton.contentDescription = "Streaming-Qualität"
-    settingsButton.setOnClickListener {
-        showQualityDialog(player)
+    keepScreenOn = true
+    useController = true
+    controllerAutoShow = false
+    controllerHideOnTouch = true
+    controllerShowTimeoutMs = CONTROLLER_SHOW_TIMEOUT_MS
+
+    installJoynTvKeyControls(player)
+    installJoynTouchControls(player)
+
+    val settingsButton = findViewById<View>(androidx.media3.ui.R.id.exo_settings)
+    settingsButton?.apply {
+        visibility = View.VISIBLE
+        contentDescription = "Streaming-Qualität"
+        setOnClickListener {
+            showQualityDialog(player)
+        }
     }
+}
+
+@OptIn(UnstableApi::class)
+private fun PlayerView.installJoynTvKeyControls(player: ExoPlayer) {
+    setOnKeyListener { _, keyCode, event ->
+        val controllerVisible = isControllerFullyVisible()
+        when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT -> {
+                if (controllerVisible) {
+                    false
+                } else {
+                    if (event.action == KeyEvent.ACTION_UP) player.seekJoynBy(-SEEK_STEP_MS)
+                    true
+                }
+            }
+
+            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                if (controllerVisible) {
+                    false
+                } else {
+                    if (event.action == KeyEvent.ACTION_UP) player.seekJoynBy(SEEK_STEP_MS)
+                    true
+                }
+            }
+
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                if (controllerVisible) {
+                    false
+                } else {
+                    if (event.action == KeyEvent.ACTION_UP) {
+                        player.toggleJoynPlayback()
+                        showController()
+                    }
+                    true
+                }
+            }
+
+            KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (controllerVisible) {
+                    false
+                } else {
+                    if (event.action == KeyEvent.ACTION_UP) showController()
+                    true
+                }
+            }
+
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                if (event.action == KeyEvent.ACTION_UP) {
+                    player.toggleJoynPlayback()
+                    showController()
+                }
+                true
+            }
+
+            KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                if (event.action == KeyEvent.ACTION_UP) {
+                    player.play()
+                    showController()
+                }
+                true
+            }
+
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                if (event.action == KeyEvent.ACTION_UP) {
+                    player.pause()
+                    showController()
+                }
+                true
+            }
+
+            else -> false
+        }
+    }
+}
+
+@OptIn(UnstableApi::class)
+private fun PlayerView.installJoynTouchControls(player: ExoPlayer) {
+    val gestureDetector = GestureDetector(
+        context,
+        object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                if (isControllerFullyVisible()) hideController() else showController()
+                return true
+            }
+
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                val viewWidth = width.takeIf { it > 0 } ?: return true
+                when {
+                    e.x < viewWidth * DOUBLE_TAP_EDGE_FRACTION -> player.seekJoynBy(-SEEK_STEP_MS)
+                    e.x > viewWidth * (1f - DOUBLE_TAP_EDGE_FRACTION) -> player.seekJoynBy(SEEK_STEP_MS)
+                    else -> player.toggleJoynPlayback()
+                }
+                showController()
+                return true
+            }
+        },
+    )
+
+    setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event) }
+}
+
+private fun ExoPlayer.seekJoynBy(deltaMs: Long) {
+    if (!isCurrentMediaItemSeekable) return
+    val upperBound = duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: Long.MAX_VALUE
+    val target = (currentPosition + deltaMs).coerceIn(0L, upperBound)
+    seekTo(target)
+}
+
+private fun ExoPlayer.toggleJoynPlayback() {
+    if (playbackState == Player.STATE_ENDED) seekTo(0L)
+    if (playWhenReady) pause() else play()
 }
 
 @OptIn(UnstableApi::class)
@@ -166,3 +310,7 @@ private fun formatBitrate(bitsPerSecond: Int): String {
         "${bitsPerSecond / 1_000} kbit/s"
     }
 }
+
+private const val SEEK_STEP_MS = 10_000L
+private const val CONTROLLER_SHOW_TIMEOUT_MS = 4_500
+private const val DOUBLE_TAP_EDGE_FRACTION = 0.4f
