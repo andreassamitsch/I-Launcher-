@@ -20,12 +20,13 @@ import org.json.JSONObject
 import org.xmlpull.v1.XmlPullParser
 
 /**
- * Direct-AT-only VOD diagnostics for the newest available "Bauer sucht Frau" episode.
+ * Direct-AT-only VOD diagnostics for "Bauer sucht Frau", Staffel 23, Folge 3.
  *
- * The probe discovers the series and episode dynamically through Joyn's current GraphQL catalogue,
- * requests a normal VOD entitlement and then compares the same browser/Android-TV player profiles
- * used by the PULS 4 live diagnostic. No player is started, no DRM license or media segment is
- * requested, and no account/session/routing setting is modified. The probe stops at the DASH MPD.
+ * The probe discovers the series dynamically through Joyn's current GraphQL catalogue,
+ * selects the exact FREE catalogue entry for season 23 / episode 3, requests a normal VOD
+ * entitlement and then compares the same browser/Android-TV player profiles used by the PULS 4
+ * live diagnostic. No player is started, no DRM license or media segment is requested, and no
+ * account/session/routing setting is modified. The probe stops at the DASH MPD.
  */
 internal class JoynBauerSuchtFrauProfileTester(context: Context) {
     private val appContext = context.applicationContext
@@ -38,7 +39,7 @@ internal class JoynBauerSuchtFrauProfileTester(context: Context) {
             val anonymousAuthorization = anonymousAuthorization(client)
             val accountAuthorization = runCatching { storedAccountAuthorization(client) }
             val discoveryAuthorization = accountAuthorization.getOrNull() ?: anonymousAuthorization
-            val episode = findLatestEpisode(client, apiKey, discoveryAuthorization)
+            val episode = findTargetEpisode(client, apiKey, discoveryAuthorization)
 
             val web1080 = JoynProtocol.playerPayload
             val web2160 = JSONObject(JoynProtocol.playerPayload)
@@ -146,7 +147,7 @@ internal class JoynBauerSuchtFrauProfileTester(context: Context) {
         } ?: error("API_GW_API_KEY wurde im Joyn-AT-Webbundle nicht gefunden.")
     }
 
-    private fun findLatestEpisode(
+    private fun findTargetEpisode(
         client: OkHttpClient,
         apiKey: String,
         authorization: String,
@@ -188,14 +189,14 @@ internal class JoynBauerSuchtFrauProfileTester(context: Context) {
             persistedHash = SERIES_HASH,
             variables = JSONObject()
                 .put("path", series.path)
-                .put("licenseFilter", "ALL"),
+                .put("licenseFilter", LICENSE_FILTER),
         )
         val allSeasons = seriesData.optJSONObject("page")
             ?.optJSONObject("series")
             ?.optJSONArray("allSeasons")
             ?: error("Joyn lieferte für '${series.title}' keine Staffeln.")
-        val season = newestSeason(allSeasons)
-            ?: error("Für '${series.title}' wurde keine gültige Staffel gefunden.")
+        val season = findSeason(allSeasons, TARGET_SEASON_NUMBER)
+            ?: error("Staffel $TARGET_SEASON_NUMBER wurde im Joyn-$LICENSE_FILTER-Katalog für '${series.title}' nicht gefunden.")
 
         val episodeData = persistedGraphQl(
             client = client,
@@ -205,57 +206,50 @@ internal class JoynBauerSuchtFrauProfileTester(context: Context) {
             persistedHash = EPISODES_HASH,
             variables = JSONObject()
                 .put("id", season.id)
-                .put("licenseFilter", "ALL")
+                .put("licenseFilter", LICENSE_FILTER)
                 .put("first", 1000)
                 .put("offset", 0),
         )
         val episodes = episodeData.optJSONObject("season")?.optJSONArray("episodes")
-            ?: error("Joyn lieferte für Staffel ${season.number ?: "?"} keine Episoden.")
-        val latest = newestPlayableEpisode(episodes)
-            ?: error("In Staffel ${season.number ?: "?"} wurde keine abspielbare Episode mit Video-ID gefunden.")
+            ?: error("Joyn lieferte für Staffel $TARGET_SEASON_NUMBER keine Episoden.")
+        val target = findEpisode(episodes, TARGET_EPISODE_NUMBER)
+            ?: error("Staffel $TARGET_SEASON_NUMBER, Folge $TARGET_EPISODE_NUMBER wurde im Joyn-$LICENSE_FILTER-Katalog nicht mit Video-ID gefunden.")
 
         return EpisodeRef(
             seriesTitle = series.title,
             seriesPath = series.path,
-            episodeTitle = latest.title,
+            episodeTitle = target.title,
             seasonNumber = season.number,
-            episodeNumber = latest.number,
-            videoId = latest.videoId,
+            episodeNumber = target.number,
+            videoId = target.videoId,
         )
     }
 
-    private fun newestSeason(seasons: JSONArray): SeasonRef? {
-        val values = buildList {
-            for (index in 0 until seasons.length()) {
-                val item = seasons.optJSONObject(index) ?: continue
-                val id = item.optString("id").takeIf(String::isNotBlank) ?: continue
-                val number = item.optInt("number", Int.MIN_VALUE).takeIf { it != Int.MIN_VALUE }
-                add(SeasonRef(id = id, number = number, order = index))
+    private fun findSeason(seasons: JSONArray, targetNumber: Int): SeasonRef? {
+        for (index in 0 until seasons.length()) {
+            val item = seasons.optJSONObject(index) ?: continue
+            val id = item.optString("id").takeIf(String::isNotBlank) ?: continue
+            val number = item.optInt("number", Int.MIN_VALUE).takeIf { it != Int.MIN_VALUE }
+            if (number == targetNumber) {
+                return SeasonRef(id = id, number = number, order = index)
             }
         }
-        return values.maxWithOrNull(
-            compareBy<SeasonRef> { it.number ?: Int.MIN_VALUE }
-                .thenBy { it.order },
-        )
+        return null
     }
 
-    private fun newestPlayableEpisode(episodes: JSONArray): EpisodeCandidate? {
-        val values = buildList {
-            for (index in 0 until episodes.length()) {
-                val item = episodes.optJSONObject(index) ?: continue
-                val videoId = item.optJSONObject("video")
-                    ?.optString("id")
-                    ?.takeIf(String::isNotBlank)
-                    ?: continue
-                val title = item.optString("title").takeIf(String::isNotBlank) ?: "Episode"
-                val number = item.optInt("number", Int.MIN_VALUE).takeIf { it != Int.MIN_VALUE }
-                add(EpisodeCandidate(title = title, number = number, videoId = videoId, order = index))
-            }
+    private fun findEpisode(episodes: JSONArray, targetNumber: Int): EpisodeCandidate? {
+        for (index in 0 until episodes.length()) {
+            val item = episodes.optJSONObject(index) ?: continue
+            val number = item.optInt("number", Int.MIN_VALUE).takeIf { it != Int.MIN_VALUE }
+            if (number != targetNumber) continue
+            val videoId = item.optJSONObject("video")
+                ?.optString("id")
+                ?.takeIf(String::isNotBlank)
+                ?: continue
+            val title = item.optString("title").takeIf(String::isNotBlank) ?: "Episode"
+            return EpisodeCandidate(title = title, number = number, videoId = videoId, order = index)
         }
-        return values.maxWithOrNull(
-            compareBy<EpisodeCandidate> { it.number ?: Int.MIN_VALUE }
-                .thenBy { it.order },
-        )
+        return null
     }
 
     private fun persistedGraphQl(
@@ -582,6 +576,9 @@ internal class JoynBauerSuchtFrauProfileTester(context: Context) {
         private const val KEY_AT_ACCOUNT_SESSION = "auth_token_AT"
         private const val ACCOUNT_TOKEN_MARGIN_SECONDS = 120L
         private const val SERIES_SEARCH_TEXT = "Bauer sucht Frau"
+        private const val TARGET_SEASON_NUMBER = 23
+        private const val TARGET_EPISODE_NUMBER = 3
+        private const val LICENSE_FILTER = "FREE"
 
         // Persisted-query identifiers currently used by Joyn's web catalogue/API contract.
         private const val SEARCH_OPERATION = "SearchQ"
