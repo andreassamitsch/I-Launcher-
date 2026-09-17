@@ -54,6 +54,7 @@ private enum class HomeSection(val label: String, val path: String?) {
     SPORT("Sport", "/sport"),
     LIVE("Live TV", null),
     FAVORITES("Favoriten", null),
+    TESTS("Tests", null),
 }
 
 private val LIVE_COUNTRY_SECTIONS = listOf(
@@ -245,6 +246,13 @@ internal fun JoynHomeScreen(
                 return@LaunchedEffect
             }
 
+            HomeSection.TESTS -> {
+                selectedMedia = null
+                selectedLive = null
+                prewarmLive = null
+                return@LaunchedEffect
+            }
+
             else -> Unit
         }
 
@@ -298,6 +306,7 @@ internal fun JoynHomeScreen(
             catalogueLoading ||
             section == HomeSection.LIVE ||
             section == HomeSection.FAVORITES ||
+            section == HomeSection.TESTS ||
             artworkEnrichedSection == section
         ) {
             return@LaunchedEffect
@@ -321,7 +330,7 @@ internal fun JoynHomeScreen(
     ) {
         val compact = maxWidth < 720.dp || maxHeight < 520.dp
         val heroMedia = when (section) {
-            HomeSection.LIVE -> null
+            HomeSection.LIVE, HomeSection.TESTS -> null
             else -> selectedMedia
         }
         val heroLive = when {
@@ -373,17 +382,25 @@ internal fun JoynHomeScreen(
                     onAccount = onAccount,
                 )
             }
-            item {
-                HeroArea(
-                    compact = compact,
-                    media = heroMedia,
-                    live = heroLive,
-                    favorite = heroFavorite,
-                    onToggleFavorite = heroToggleFavorite,
-                )
+            if (section != HomeSection.TESTS) {
+                item {
+                    HeroArea(
+                        compact = compact,
+                        media = heroMedia,
+                        live = heroLive,
+                        favorite = heroFavorite,
+                        onToggleFavorite = heroToggleFavorite,
+                    )
+                }
             }
 
             when (section) {
+                HomeSection.TESTS -> {
+                    item(key = "tests") {
+                        JoynTestsPanel(compact = compact)
+                    }
+                }
+
                 HomeSection.LIVE -> {
                     item {
                         SectionTitle("Live TV", compact)
