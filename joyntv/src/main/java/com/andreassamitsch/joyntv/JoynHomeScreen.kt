@@ -1,6 +1,5 @@
 package com.andreassamitsch.joyntv
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,7 +34,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -64,9 +62,6 @@ private val LIVE_COUNTRY_SECTIONS = listOf(
     JoynCountry.CH to "Schweiz",
 )
 
-private val HomeSection.isLiveSection: Boolean
-    get() = this == HomeSection.LIVE || this == HomeSection.FAVORITES
-
 @Composable
 internal fun JoynHomeScreen(
     repository: JoynRepository,
@@ -79,7 +74,9 @@ internal fun JoynHomeScreen(
     val context = LocalContext.current
     val initialLiveRows = remember(repository) { repository.cachedLiveTvRows() }
     val initialCatalogue = remember(repository) { repository.cachedCatalogue("/neu-beliebt")?.forJoynUi() }
-    val favoritesStore = remember(context) { JoynLiveFavoritesStore(context.applicationContext) }
+    val homeCache = remember(context) { JoynHomeCache(context.applicationContext) }
+    val liveFavoritesStore = remember(context) { JoynLiveFavoritesStore(context.applicationContext) }
+    val mediaFavoritesStore = remember(context) { JoynMediaFavoritesStore(context.applicationContext) }
 
     var section by remember { mutableStateOf(HomeSection.START) }
     var catalogue by remember { mutableStateOf(initialCatalogue) }
@@ -89,11 +86,19 @@ internal fun JoynHomeScreen(
     var countryLiveChannels by remember { mutableStateOf(initialLiveRows?.byCountry.orEmpty()) }
     var liveError by remember { mutableStateOf<String?>(null) }
     var liveRefreshing by remember { mutableStateOf(false) }
-    var liveRefreshCompleted by remember { mutableStateOf(false) }
-    var favoriteIds by remember { mutableStateOf(favoritesStore.ids()) }
+    var liveRefreshCompleted by remember {
+        mutableStateOf(initialLiveRows?.byCountry?.values?.all { it.isNotEmpty() } == true)
+    }
+    var liveFavoriteIds by remember { mutableStateOf(liveFavoritesStore.ids()) }
+    var mediaFavorites by remember { mutableStateOf(mediaFavoritesStore.items()) }
+    val mediaFavoriteKeys = mediaFavorites
+        .mapTo(linkedSetOf()) { JoynMediaFavoritesStore.favoriteKey(it) }
     var selectedMedia by remember { mutableStateOf(initialCatalogue?.lanes?.firstOrNull()?.items?.firstOrNull()) }
     var selectedLive by remember {
-        mutableStateOf(initialLiveRows?.combined?.firstOrNull() ?: initialLiveRows?.byCountry?.values?.firstNotNullOfOrNull { it.firstOrNull() })
+        mutableStateOf(
+            initialLiveRows?.combined?.firstOrNull()
+                ?: initialLiveRows?.byCountry?.values?.firstNotNullOfOrNull { it.firstOrNull() },
+        )
     }
     var prewarmLive by remember { mutableStateOf<JoynLiveChannel?>(null) }
     var artworkEnrichedSection by remember { mutableStateOf<HomeSection?>(null) }
@@ -101,15 +106,46 @@ internal fun JoynHomeScreen(
     val scope = rememberCoroutineScope()
     val artworkDetailClient = remember(context) { JoynArtworkDetailClient(context.applicationContext) }
 
-    fun applyLiveRows(rows: JoynLiveTvRows) {
-        liveChannels = rows.combined
-        countryLiveChannels = rows.byCountry
-        val current = selectedLive?.id
-        selectedLive = current?.let { id ->
-            rows.combined.firstOrNull { it.id == id }
-                ?: rows.byCountry.values.asSequence().flatten().firstOrNull { it.id == id }
-        } ?: rows.combined.firstOrNull()
-            ?: rows.byCountry.values.firstNotNullOfOrNull { it.firstOrNull() }
+    /**
+     * During progressive refresh an empty country means "not loaded yet" or "temporarily failed".
+     * Keep an already cached country visible until fresh data for that country arrives. This also
+     * prevents one transient DE/CH route failure from visually deleting the previous good list.
+     */
+    fun applyLiveRows(rows: JoynLiveTvRows, preserveMissing: Boolean): JoynLiveTvRows {
+        val previousCombined = liveChannels
+        val previousByCountry = countryLiveChannels
+        val freshCountries = JoynCountry.entries.filterTo(linkedSetOf()) { country ->
+            rows.byCountry[country].orEmpty().isNotEmpty()
+        }
+
+        val displayRows = if (!preserveMissing) {
+            rows
+        } else {
+            val mergedByCountry = JoynCountry.entries.associateWith { country ->
+                rows.byCountry[country].orEmpty().ifEmpty { previousByCountry[country].orEmpty() }
+            }
+            val freshIds = rows.combined.mapTo(hashSetOf()) { it.id }
+            val retained = previousCombined.filter { existing ->
+                existing.id !in freshIds && liveCountryFromCombinedId(existing.id) !in freshCountries
+            }
+            JoynLiveTvRows(
+                combined = rows.combined + retained,
+                byCountry = mergedByCountry,
+            )
+        }
+
+        liveChannels = displayRows.combined
+        countryLiveChannels = displayRows.byCountry
+
+        if (!(section == HomeSection.FAVORITES && selectedMedia != null)) {
+            val current = selectedLive?.id
+            selectedLive = current?.let { id ->
+                displayRows.combined.firstOrNull { it.id == id }
+                    ?: displayRows.byCountry.values.asSequence().flatten().firstOrNull { it.id == id }
+            } ?: displayRows.combined.firstOrNull()
+                ?: displayRows.byCountry.values.firstNotNullOfOrNull { it.firstOrNull() }
+        }
+        return displayRows
     }
 
     suspend fun refreshLiveRows() {
@@ -119,22 +155,46 @@ internal fun JoynHomeScreen(
         runCatching {
             withContext(Dispatchers.IO) {
                 repository.loadLiveTvRowsAndPublish { partial ->
-                    withContext(Dispatchers.Main.immediate) { applyLiveRows(partial) }
+                    withContext(Dispatchers.Main.immediate) {
+                        applyLiveRows(partial, preserveMissing = true)
+                    }
                 }
             }
         }.onSuccess { rows ->
-            applyLiveRows(rows)
-            liveRefreshCompleted = true
+            val displayRows = applyLiveRows(rows, preserveMissing = true)
+            val complete = JoynCountry.entries.all { country -> rows.byCountry[country].orEmpty().isNotEmpty() }
+            liveRefreshCompleted = complete
+
+            // Repository intentionally writes the authoritative network result. When one foreign
+            // country failed transiently, put the retained last-good rows back into the UI cache so
+            // the next app start does not regress to an AT-only list.
+            if (!complete && displayRows != rows) {
+                homeCache.writeLiveRows(displayRows)
+            }
         }.onFailure {
             liveError = it.message ?: it.javaClass.simpleName
+            liveRefreshCompleted = false
         }
         liveRefreshing = false
     }
 
-    fun toggleFavorite(channel: JoynLiveChannel) {
-        favoriteIds = favoritesStore.toggle(channel.id)
-        if (section == HomeSection.FAVORITES && channel.id !in favoriteIds) {
-            selectedLive = liveChannels.firstOrNull { it.id in favoriteIds }
+    fun toggleLiveFavorite(channel: JoynLiveChannel) {
+        liveFavoriteIds = liveFavoritesStore.toggle(channel.id)
+        if (section == HomeSection.FAVORITES && channel.id !in liveFavoriteIds && selectedMedia == null) {
+            selectedLive = liveChannels.firstOrNull { it.id in liveFavoriteIds }
+            if (selectedLive == null) selectedMedia = mediaFavorites.firstOrNull()
+        }
+    }
+
+    fun toggleMediaFavorite(item: JoynMediaItem) {
+        mediaFavorites = mediaFavoritesStore.toggle(item)
+        val key = JoynMediaFavoritesStore.favoriteKey(item)
+        val stillFavorite = mediaFavorites.any { JoynMediaFavoritesStore.favoriteKey(it) == key }
+        if (section == HomeSection.FAVORITES && !stillFavorite && selectedMedia?.let(JoynMediaFavoritesStore::favoriteKey) == key) {
+            selectedMedia = mediaFavorites.firstOrNull()
+            if (selectedMedia == null) {
+                selectedLive = liveChannels.firstOrNull { it.id in liveFavoriteIds }
+            }
         }
     }
 
@@ -149,10 +209,11 @@ internal fun JoynHomeScreen(
         }
     }
 
-    // TV users normally focus a card shortly before pressing OK. Use that small dwell time to
-    // prepare the target country's already-approved Mysterium route. Moving focus again cancels the
-    // debounce before any unnecessary country switch starts.
-    LaunchedEffect(prewarmLive?.id) {
+    // Progressive AT/DE/CH loading changes the process-wide Joyn route. Never run focus-prewarm at
+    // the same time: the old behaviour could switch the route back to the focused AT card between
+    // ensureJoynCountryRouting(DE/CH) and the corresponding GraphQL request, leaving DE/CH empty.
+    LaunchedEffect(prewarmLive?.id, liveRefreshing) {
+        if (liveRefreshing) return@LaunchedEffect
         val channel = prewarmLive ?: return@LaunchedEffect
         delay(LIVE_ROUTE_PREWARM_DELAY_MS)
         withContext(Dispatchers.IO) {
@@ -162,13 +223,29 @@ internal fun JoynHomeScreen(
 
     LaunchedEffect(section) {
         artworkEnrichedSection = null
-        if (section.isLiveSection) {
-            selectedMedia = null
-            if (section == HomeSection.FAVORITES && selectedLive?.id !in favoriteIds) {
-                selectedLive = liveChannels.firstOrNull { it.id in favoriteIds }
+
+        when (section) {
+            HomeSection.LIVE -> {
+                selectedMedia = null
+                if (!liveRefreshCompleted) refreshLiveRows()
+                return@LaunchedEffect
             }
-            if (!liveRefreshCompleted) refreshLiveRows()
-            return@LaunchedEffect
+
+            HomeSection.FAVORITES -> {
+                val firstMedia = mediaFavorites.firstOrNull()
+                if (firstMedia != null) {
+                    selectedMedia = firstMedia
+                    selectedLive = null
+                    prewarmLive = null
+                } else {
+                    selectedMedia = null
+                    selectedLive = liveChannels.firstOrNull { it.id in liveFavoriteIds }
+                }
+                if (liveFavoriteIds.isNotEmpty() && !liveRefreshCompleted) refreshLiveRows()
+                return@LaunchedEffect
+            }
+
+            else -> Unit
         }
 
         val path = section.path ?: "/neu-beliebt"
@@ -194,16 +271,35 @@ internal fun JoynHomeScreen(
         catalogueLoading = false
     }
 
-    LaunchedEffect(section, favoriteIds, liveChannels) {
-        if (section == HomeSection.FAVORITES && selectedLive?.id !in favoriteIds) {
-            selectedLive = liveChannels.firstOrNull { it.id in favoriteIds }
+    LaunchedEffect(section, liveFavoriteIds, mediaFavorites, liveChannels) {
+        if (section != HomeSection.FAVORITES) return@LaunchedEffect
+
+        val selectedMediaKey = selectedMedia?.let(JoynMediaFavoritesStore::favoriteKey)
+        val mediaStillValid = selectedMediaKey != null && mediaFavorites.any {
+            JoynMediaFavoritesStore.favoriteKey(it) == selectedMediaKey
+        }
+        val liveStillValid = selectedLive?.id in liveFavoriteIds
+
+        if (!mediaStillValid && !liveStillValid) {
+            selectedMedia = mediaFavorites.firstOrNull()
+            selectedLive = if (selectedMedia == null) {
+                liveChannels.firstOrNull { it.id in liveFavoriteIds }
+            } else {
+                null
+            }
         }
     }
 
     // Render cached/landing data immediately, then enrich only logo-only cards after the authoritative
-    // refresh. The cache is intentionally stale-while-revalidate, so this work never blocks first paint.
+    // refresh. Favorites already contain a persistent visual/navigation snapshot and do not need to
+    // block their first paint on another enrichment round.
     LaunchedEffect(catalogueLoading, section, catalogue?.title) {
-        if (catalogueLoading || section.isLiveSection || artworkEnrichedSection == section) {
+        if (
+            catalogueLoading ||
+            section == HomeSection.LIVE ||
+            section == HomeSection.FAVORITES ||
+            artworkEnrichedSection == section
+        ) {
             return@LaunchedEffect
         }
         val initial = catalogue ?: return@LaunchedEffect
@@ -223,16 +319,29 @@ internal fun JoynHomeScreen(
     BoxWithConstraints(
         Modifier.fillMaxSize().background(Color(0xFF080A0E)),
     ) {
-        // A phone is compact in both portrait and landscape. TVs stay in the spacious layout.
         val compact = maxWidth < 720.dp || maxHeight < 520.dp
-        val heroMedia = if (section.isLiveSection) null else selectedMedia
+        val heroMedia = when (section) {
+            HomeSection.LIVE -> null
+            else -> selectedMedia
+        }
         val heroLive = when {
-            section.isLiveSection -> selectedLive
-            section == HomeSection.START && selectedMedia == null -> selectedLive
+            section == HomeSection.LIVE -> selectedLive
+            section == HomeSection.FAVORITES && heroMedia == null -> selectedLive
+            section == HomeSection.START && heroMedia == null -> selectedLive
             else -> null
         }
         val heroImage = heroMedia?.backdropUrl ?: heroMedia?.imageUrl
             ?: heroLive?.currentProgram?.imageUrl ?: heroLive?.logoUrl
+        val heroFavorite = when {
+            heroMedia != null -> JoynMediaFavoritesStore.favoriteKey(heroMedia) in mediaFavoriteKeys
+            heroLive != null -> heroLive.id in liveFavoriteIds
+            else -> false
+        }
+        val heroToggleFavorite: (() -> Unit)? = when {
+            heroMedia != null -> heroMedia.let { item -> { toggleMediaFavorite(item) } }
+            heroLive != null -> heroLive.let { channel -> { toggleLiveFavorite(channel) } }
+            else -> null
+        }
 
         AsyncImage(
             model = heroImage,
@@ -269,8 +378,8 @@ internal fun JoynHomeScreen(
                     compact = compact,
                     media = heroMedia,
                     live = heroLive,
-                    favorite = heroLive?.id in favoriteIds,
-                    onToggleFavorite = heroLive?.let { channel -> { toggleFavorite(channel) } },
+                    favorite = heroFavorite,
+                    onToggleFavorite = heroToggleFavorite,
                 )
             }
 
@@ -282,7 +391,7 @@ internal fun JoynHomeScreen(
                             liveChannels.isNotEmpty() -> LiveRow(
                                 channels = liveChannels,
                                 compact = compact,
-                                favoriteIds = favoriteIds,
+                                favoriteIds = liveFavoriteIds,
                                 onFocused = {
                                     selectedLive = it
                                     prewarmLive = it
@@ -293,47 +402,77 @@ internal fun JoynHomeScreen(
                             else -> StatusText("Live-Sender werden geladen …", compact)
                         }
                     }
+
                     LIVE_COUNTRY_SECTIONS.forEach { (country, label) ->
                         val channels = countryLiveChannels[country].orEmpty()
-                        if (channels.isNotEmpty()) {
-                            item(key = "live-country-${country.name}") {
-                                SectionTitle(label, compact)
-                                LiveRow(
+                        item(key = "live-country-${country.name}") {
+                            SectionTitle(label, compact)
+                            when {
+                                channels.isNotEmpty() -> LiveRow(
                                     channels = channels,
                                     compact = compact,
-                                    favoriteIds = favoriteIds,
+                                    favoriteIds = liveFavoriteIds,
                                     onFocused = {
                                         selectedLive = it
                                         prewarmLive = it
                                     },
                                     onPlay = onPlayLive,
                                 )
+                                liveRefreshing -> StatusText("Sender werden geladen …", compact)
+                                else -> StatusText("Sender aktuell nicht verfügbar.", compact)
                             }
                         }
                     }
                 }
 
                 HomeSection.FAVORITES -> {
-                    val favorites = liveChannels.filter { it.id in favoriteIds }
-                    item {
-                        SectionTitle("Favoriten", compact)
-                        when {
-                            favorites.isNotEmpty() -> LiveRow(
-                                channels = favorites,
-                                compact = compact,
-                                favoriteIds = favoriteIds,
-                                onFocused = {
-                                    selectedLive = it
-                                    prewarmLive = it
-                                },
-                                onPlay = onPlayLive,
-                            )
-                            favoriteIds.isNotEmpty() && liveRefreshing ->
-                                StatusText("Favoriten-Sender werden geladen …", compact)
-                            else -> StatusText(
-                                "Noch keine Favoriten. In Live TV einen Sender fokussieren und oben ☆ Zu Favoriten wählen.",
-                                compact,
-                            )
+                    val favoriteLiveChannels = liveChannels.filter { it.id in liveFavoriteIds }
+                    when {
+                        mediaFavorites.isEmpty() && favoriteLiveChannels.isEmpty() -> item {
+                            val text = if (liveFavoriteIds.isNotEmpty() && liveRefreshing) {
+                                "Live-Favoriten werden geladen …"
+                            } else {
+                                "Noch keine Favoriten. Serie, Film, Sendung oder Live-Sender fokussieren und oben ☆ Zu Favoriten wählen."
+                            }
+                            StatusText(text, compact)
+                        }
+
+                        else -> {
+                            if (mediaFavorites.isNotEmpty()) {
+                                item(key = "favorite-media") {
+                                    SectionTitle("Serien, Filme & mehr", compact)
+                                    MediaRow(
+                                        items = mediaFavorites,
+                                        compact = compact,
+                                        onFocused = {
+                                            selectedMedia = it
+                                            selectedLive = null
+                                            prewarmLive = null
+                                        },
+                                        onOpen = onOpenMedia,
+                                    )
+                                }
+                            }
+                            if (favoriteLiveChannels.isNotEmpty()) {
+                                item(key = "favorite-live") {
+                                    SectionTitle("Live TV", compact)
+                                    LiveRow(
+                                        channels = favoriteLiveChannels,
+                                        compact = compact,
+                                        favoriteIds = liveFavoriteIds,
+                                        onFocused = {
+                                            selectedMedia = null
+                                            selectedLive = it
+                                            prewarmLive = it
+                                        },
+                                        onPlay = onPlayLive,
+                                    )
+                                }
+                            } else if (liveFavoriteIds.isNotEmpty() && liveRefreshing) {
+                                item(key = "favorite-live-loading") {
+                                    StatusText("Live-Favoriten werden geladen …", compact)
+                                }
+                            }
                         }
                     }
                 }
@@ -345,7 +484,7 @@ internal fun JoynHomeScreen(
                             LiveRow(
                                 channels = liveChannels.take(16),
                                 compact = compact,
-                                favoriteIds = favoriteIds,
+                                favoriteIds = liveFavoriteIds,
                                 onFocused = {
                                     selectedLive = it
                                     prewarmLive = it
@@ -400,6 +539,13 @@ internal fun JoynHomeScreen(
             },
         )
     }
+}
+
+private fun liveCountryFromCombinedId(id: String): JoynCountry? {
+    if (!id.startsWith("multi:")) return null
+    return runCatching {
+        JoynCountry.valueOf(id.removePrefix("multi:").substringBefore(':'))
+    }.getOrNull()
 }
 
 private fun JoynCataloguePage?.orEmptyLanes(): List<JoynLane> = this?.lanes.orEmpty()
@@ -495,6 +641,9 @@ private fun HeroArea(
                     media.episodeNumber?.let { "F$it" },
                 ).joinToString(" · ").ifBlank { "Folge" }
                 JoynMediaType.SPORT -> "Sport"
+                JoynMediaType.COMPILATION -> "Sendung"
+                JoynMediaType.CHANNEL -> "Mediathek"
+                JoynMediaType.COLLECTION -> "Sammlung"
                 else -> "Joyn"
             }
             live != null -> listOfNotNull(live.title, live.quality).joinToString(" · ")
@@ -516,7 +665,7 @@ private fun HeroArea(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (live != null && onToggleFavorite != null) {
+        if ((media != null || live != null) && onToggleFavorite != null) {
             Spacer(Modifier.height(12.dp))
             FavoriteChip(
                 label = if (favorite) "★ Favorit entfernen" else "☆ Zu Favoriten",
@@ -594,7 +743,7 @@ private fun MediaRow(
         ),
         horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 16.dp),
     ) {
-        items(items, key = { it.id }) { item ->
+        items(items, key = { "${it.type.name}:${it.id}" }) { item ->
             MediaCard(item, compact, onFocused) { onOpen(item) }
         }
     }
@@ -778,7 +927,9 @@ private fun UpdateChipHome(
         is JoynUpdateState.ReadyToInstall -> "Update installieren"
         is JoynUpdateState.Error -> "Update prüfen"
     } ?: return
-    val actionable = state is JoynUpdateState.Available || state is JoynUpdateState.ReadyToInstall || state is JoynUpdateState.Error
+    val actionable = state is JoynUpdateState.Available ||
+        state is JoynUpdateState.ReadyToInstall ||
+        state is JoynUpdateState.Error
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(18.dp)
     Box(
