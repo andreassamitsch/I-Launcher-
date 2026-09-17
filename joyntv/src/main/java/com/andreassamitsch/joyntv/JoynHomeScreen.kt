@@ -86,9 +86,9 @@ internal fun JoynHomeScreen(
     var countryLiveChannels by remember { mutableStateOf(initialLiveRows?.byCountry.orEmpty()) }
     var liveError by remember { mutableStateOf<String?>(null) }
     var liveRefreshing by remember { mutableStateOf(false) }
-    var liveRefreshCompleted by remember {
-        mutableStateOf(initialLiveRows?.byCountry?.values?.all { it.isNotEmpty() } == true)
-    }
+    // Cache is only the instant first paint. Refresh Live TV once per process/session so current/next
+    // programme data and channel availability never become permanently stale across app launches.
+    var liveRefreshCompleted by remember { mutableStateOf(false) }
     var liveFavoriteIds by remember { mutableStateOf(liveFavoritesStore.ids()) }
     var mediaFavorites by remember { mutableStateOf(mediaFavoritesStore.items()) }
     val mediaFavoriteKeys = mediaFavorites
