@@ -2,7 +2,7 @@
 
 > **Für neue Chats / neue Entwicklungssitzungen:** Diese Datei zuerst lesen, wenn es um `joyntv`, Mysterium, Geo-Routing, Joyn-Live-TV oder die Joyn-Integration in I Launcher geht. Das Repo ist die maßgebliche Quelle; ältere Chat-Annahmen dürfen diesen Stand nicht überschreiben.
 
-Stand: **2026-09-16**  
+Stand: **2026-09-17**  
 Entwicklungs-Branch: **`feature/joyn-tv-client`**  
 PR: **#46 – `feat: add standalone Joyn Android TV client`**
 
@@ -242,13 +242,69 @@ Relevante Dateien:
 
 Die neue SAT-first-/Manual-/Prewarm-Logik ist ab Source-SHA **`7cc2b958fb4ce1e276e78f8a81dc23fa5f223a31`** enthalten. Der erste erfolgreich gebaute und im I-Launcher-Updater veröffentlichte Build dieses Stands ist **`0.1.0-dev.524`**. Unit-Tests und APK-Build waren erfolgreich.
 
-Auf realer Hardware waren zuvor bereits Bouquet-Mapping, SAT-/OSCam-Diagnose, OSCam→Fallback-Auslösung und der Cross-App-Handoff bis zur Joyn-Bridge bestätigt. Die neue konservative Automatik, manuelle Rückkehr zu SAT, CH-Qualitätspräferenz und Prewarm-Beschleunigung müssen noch auf dem TCL verifiziert werden.
+Der Benutzer hat am **17.09.2026** den überarbeiteten Live-TV-Stand nach dem Einbau der manuellen SAT/Joyn-Umschaltung und der Auto-Fallback-Steuerung mit **„funktioniert“** bestätigt. Damit gelten diese Bedienpfade auf dem TCL als funktional bestätigt. Die genaue Zeitersparnis des Joyn-Prewarm wurde noch nicht separat gemessen.
 
 Detaillierte Architektur:
 
 - `docs/IL_LIVETV_JOYN_FALLBACK.md`
 
-## 9. Regeln für zukünftige Änderungen
+## 9. Standalone Joyn: Start-/Live-Performance und Favoriten
+
+Am **17.09.2026** wurde die Ursache für den langsamen Aufbau der Joyn-Startseite und der Live-TV-Senderliste im Code identifiziert.
+
+### Ursache
+
+Beim bisherigen Start liefen zwei teure Datenpfade praktisch gleichzeitig an:
+
+1. `JoynHomeScreen` startete sofort den kompletten AT/DE/CH-Live-TV-Ladevorgang;
+2. parallel wollte die Startseite `/neu-beliebt` laden;
+3. beide Pfade wurden in `JoynRepository` über denselben `networkOperationMutex` serialisiert;
+4. der Live-TV-Pfad wechselte AT/DE/CH nacheinander und lud das aktuell ausgewählte Land absichtlich **zuletzt**, damit die Prozessroute am Ende wieder stimmte;
+5. die Startseite führte für `/neu-beliebt` zusätzlich `loadCatalogue`, `loadMediaLibraries` und `loadCategories` **nacheinander** aus;
+6. für die Joyn-Metadaten gab es keinen lokalen Startseiten-/Live-Inventar-Cache.
+
+Damit konnte die Startseite auf den vollständigen mehrländrigen Live-TV-Pfad warten, obwohl dessen Daten für den ersten Bildaufbau gar nicht benötigt wurden.
+
+### Umsetzung
+
+Ab dem neuen Stand gilt:
+
+- die normale **Startseite startet nicht mehr ungefragt den vollständigen AT/DE/CH-Live-Refresh**;
+- `JoynHomeCache` speichert Startseiten-Kataloge und das letzte vollständige Live-TV-Inventar lokal;
+- vorhandene Cache-Daten werden **sofort angezeigt** und anschließend im Hintergrund aktualisiert (`stale while revalidate`);
+- bei `/neu-beliebt` laufen Basiskatalog, Media-Libraries und Kategorien auf derselben stabilen Route **parallel statt seriell**;
+- beim Live-TV-Refresh wird das aktuell ausgewählte Land **zuerst** geladen;
+- nach jedem erfolgreichen Land kann die UI bereits einen Teilstand anzeigen, statt auf alle drei Länder zu warten;
+- AT/DE/CH bleiben wegen der prozessweiten Joyn-Route bewusst **seriell** – sie dürfen nicht blind parallelisiert werden;
+- nach dem vollständigen Multi-Country-Refresh wird die vom Benutzer ausgewählte Länderroute wiederhergestellt;
+- der vollständige Live-Stand wird anschließend wieder lokal gecacht.
+
+Erwartetes Verhalten:
+
+- **erster Start nach Neuinstallation:** noch kein Cache vorhanden, aber die Startseite wartet nicht mehr auf den kompletten Live-TV-Ladevorgang und die Landing-Requests sind parallelisiert;
+- **ab dem zweiten Start:** Startseite kann sofort aus dem Cache zeichnen und aktualisiert danach im Hintergrund;
+- **Live TV beim ersten Öffnen:** das lokale/ausgewählte Land erscheint zuerst, weitere Länder kommen schrittweise hinzu;
+- **spätere Live-TV-Aufrufe:** das zuletzt bekannte vollständige Inventar steht sofort aus dem Cache zur Verfügung.
+
+### Favoriten
+
+Die Standalone-Joyn-App besitzt jetzt zusätzlich eine persistente **Live-TV-Favoritenliste**:
+
+- neuer Hauptpunkt **`Favoriten`**;
+- beim fokussierten Live-Sender erscheint im Hero **`☆ Zu Favoriten`** bzw. **`★ Favorit entfernen`**;
+- Favoriten werden lokal anhand der stabilen Joyn-Live-ID inklusive Markt (`AT/DE/CH`) gespeichert;
+- favorisierte Sender tragen auf der Live-Karte einen Stern;
+- die Favoritenliste zeigt ausschließlich die ausgewählten Live-Sender in der normalen Joyn-Sortierung.
+
+Relevante Dateien:
+
+- `joyntv/src/main/java/com/andreassamitsch/joyntv/JoynHomeScreen.kt`
+- `joyntv/src/main/java/com/andreassamitsch/joyntv/JoynHomeCache.kt`
+- `joyntv/src/main/java/com/andreassamitsch/joyntv/JoynRepository.kt`
+
+Build-Stand: **Joyn TV `0.1.0-dev.645`**, Source-SHA `69e5343d65627ae66e475df731e1a494684be554`. `:joyntv:testDebugUnitTest`, signierter Release-Build, Signaturprüfung und Veröffentlichung in `joyn-downloads` waren erfolgreich. Die tatsächliche Startzeitverbesserung und Favoritenbedienung müssen noch auf dem realen TCL bestätigt werden.
+
+## 10. Regeln für zukünftige Änderungen
 
 - SAT/Gigablue bleibt die bevorzugte Quelle; Joyn bleibt Fallback.
 - Jeder neue Senderwechsel beginnt mit SAT.
@@ -262,4 +318,6 @@ Detaillierte Architektur:
 - Gigablue-Bouquet bleibt Quelle für sichtbare Senderliste, Reihenfolge und EPG.
 - Keine Joyn-only-Sender automatisch in I Launcher einschleusen.
 - I Launcher darf durch Joyn-Fallback nicht global geproxyt werden.
+- Standalone-Startseite nicht wieder an einen vollständigen Multi-Country-Live-Refresh koppeln.
+- Multi-Country-Live-Routen in der Standalone-App nicht parallelisieren, solange die Route prozessweit ist; stattdessen Cache und progressive Darstellung verwenden.
 - Netzwerk-/Fallback-Änderungen immer auf realer TV-Hardware validieren.
