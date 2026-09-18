@@ -254,7 +254,9 @@ internal class JoynApiClient(context: Context) {
 
     suspend fun setResumePosition(assetId: String, positionSeconds: Int): Boolean {
         if (readToken()?.hasAccount != true) return false
-        accountState(refreshRemote = true)
+        if (prefs.getString(KEY_ACCOUNT_USER_STATE, null).isNullOrBlank()) {
+            accountState(refreshRemote = true)
+        }
         val config = bootstrapConfig()
         val authorization = authorizationHeader(config.country)
         val body = JSONObject()
