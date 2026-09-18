@@ -59,11 +59,20 @@ internal class JoynNextEpisodeStore(context: Context) {
         current.removeAll { it.seriesKey == key }
 
         val previousSeason = previous?.seasonNumber
-        val currentSeason = media.seasonNumber ?: previousSeason
+        val incomingSeason = media.seasonNumber
+        if (
+            previous != null &&
+            previousSeason != null &&
+            incomingSeason != null &&
+            (incomingSeason < previousSeason ||
+                (incomingSeason == previousSeason && episodeNumber < previous.episodeNumber))
+        ) {
+            return previous
+        }
+        val currentSeason = incomingSeason ?: previousSeason
         val effectiveEpisode = when {
             previous == null -> episodeNumber
             currentSeason != null && previousSeason != null && currentSeason > previousSeason -> episodeNumber
-            currentSeason != null && previousSeason != null && currentSeason < previousSeason -> previous.episodeNumber
             else -> maxOf(episodeNumber, previous.episodeNumber)
         }
         val completed = JoynCompletedSeries(
@@ -176,16 +185,21 @@ internal class JoynNextEpisodeRefresher(private val context: Context) {
             runCatching {
                 val next = findNext(state)
                 if (next == null) {
-                    publisher.removeNextEpisode(state.seriesKey)
-                    store.markAnnounced(state.seriesKey, null)
+                    if (state.announcedVideoId != null) {
+                        publisher.removeNextEpisode(state.seriesKey)
+                        store.markAnnounced(state.seriesKey, null)
+                    }
                 } else {
                     val enriched = next.copy(
                         seriesTitle = next.seriesTitle ?: state.seriesTitle,
                         seriesId = next.seriesId ?: state.seriesId,
                         seriesPath = next.seriesPath ?: state.seriesPath,
                     )
-                    publisher.publishNextEpisode(state.seriesKey, enriched)
-                    store.markAnnounced(state.seriesKey, enriched.videoId ?: enriched.id)
+                    val nextVideoId = enriched.videoId ?: enriched.id
+                    if (nextVideoId != state.announcedVideoId) {
+                        publisher.publishNextEpisode(state.seriesKey, enriched)
+                        store.markAnnounced(state.seriesKey, nextVideoId)
+                    }
                 }
             }
         }
