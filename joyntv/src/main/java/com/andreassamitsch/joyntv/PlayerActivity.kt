@@ -66,28 +66,39 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val contentId = intent.getStringExtra(EXTRA_CONTENT_ID)
+        val continueStore = JoynContinueWatchingStore(applicationContext)
+        val watchNextAssetId = intent.data
+            ?.takeIf { it.scheme == "ilauncherjoyn" && it.host == "watchnext" }
+            ?.lastPathSegment
+            ?.takeIf(String::isNotBlank)
+        val storedContinue = continueStore.find(watchNextAssetId)
+        val contentId = watchNextAssetId
+            ?: intent.getStringExtra(EXTRA_CONTENT_ID)
             ?: intent.getStringExtra(EXTRA_CHANNEL_ID)
             ?: intent.data?.lastPathSegment
             ?: run {
                 finish()
                 return
             }
-        val title = intent.getStringExtra(EXTRA_TITLE)
+        val title = storedContinue?.media?.title
+            ?: intent.getStringExtra(EXTRA_TITLE)
             ?: intent.getStringExtra(EXTRA_CHANNEL_TITLE)
             ?: "Joyn"
-        val streamType = intent.getStringExtra(EXTRA_STREAM_TYPE) ?: STREAM_LIVE
+        val streamType = if (watchNextAssetId != null) STREAM_VOD
+            else intent.getStringExtra(EXTRA_STREAM_TYPE) ?: STREAM_LIVE
+        val media = storedContinue?.media ?: mediaFromIntent(intent, contentId, title, streamType)
         val repository = JoynRepository(applicationContext)
 
         setContent {
             JoynTvTheme {
-                JoynPlayer(repository, contentId, title, streamType)
+                JoynPlayer(repository, contentId, title, streamType, media)
             }
         }
     }
@@ -98,6 +109,18 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_CONTENT_ID = "joyn_content_id"
         private const val EXTRA_TITLE = "joyn_title"
         private const val EXTRA_STREAM_TYPE = "joyn_stream_type"
+        private const val EXTRA_MEDIA_ID = "joyn_media_id"
+        private const val EXTRA_MEDIA_TYPE = "joyn_media_type"
+        private const val EXTRA_MEDIA_PATH = "joyn_media_path"
+        private const val EXTRA_MEDIA_DESCRIPTION = "joyn_media_description"
+        private const val EXTRA_MEDIA_IMAGE = "joyn_media_image"
+        private const val EXTRA_MEDIA_BACKDROP = "joyn_media_backdrop"
+        private const val EXTRA_MEDIA_LOGO = "joyn_media_logo"
+        private const val EXTRA_MEDIA_VIDEO_ID = "joyn_media_video_id"
+        private const val EXTRA_MEDIA_SEASON_ID = "joyn_media_season_id"
+        private const val EXTRA_MEDIA_SERIES_TITLE = "joyn_media_series_title"
+        private const val EXTRA_MEDIA_SEASON_NUMBER = "joyn_media_season_number"
+        private const val EXTRA_MEDIA_EPISODE_NUMBER = "joyn_media_episode_number"
         private const val STREAM_LIVE = "LIVE"
         private const val STREAM_VOD = "VOD"
 
@@ -110,6 +133,29 @@ class PlayerActivity : ComponentActivity() {
                 putExtra(EXTRA_CHANNEL_TITLE, title)
             }
 
+        fun vodIntent(context: Context, item: JoynMediaItem): Intent {
+            val contentRef = item.videoId
+                ?: item.path?.takeIf { item.type == JoynMediaType.MOVIE && it.isNotBlank() }
+                ?: item.id
+            return Intent(context, PlayerActivity::class.java).apply {
+                putExtra(EXTRA_CONTENT_ID, contentRef)
+                putExtra(EXTRA_TITLE, item.title)
+                putExtra(EXTRA_STREAM_TYPE, STREAM_VOD)
+                putExtra(EXTRA_MEDIA_ID, item.id)
+                putExtra(EXTRA_MEDIA_TYPE, item.type.name)
+                item.path?.let { putExtra(EXTRA_MEDIA_PATH, it) }
+                item.description?.let { putExtra(EXTRA_MEDIA_DESCRIPTION, it) }
+                item.imageUrl?.let { putExtra(EXTRA_MEDIA_IMAGE, it) }
+                item.backdropUrl?.let { putExtra(EXTRA_MEDIA_BACKDROP, it) }
+                item.logoUrl?.let { putExtra(EXTRA_MEDIA_LOGO, it) }
+                item.videoId?.let { putExtra(EXTRA_MEDIA_VIDEO_ID, it) }
+                item.seasonId?.let { putExtra(EXTRA_MEDIA_SEASON_ID, it) }
+                item.seriesTitle?.let { putExtra(EXTRA_MEDIA_SERIES_TITLE, it) }
+                item.seasonNumber?.let { putExtra(EXTRA_MEDIA_SEASON_NUMBER, it) }
+                item.episodeNumber?.let { putExtra(EXTRA_MEDIA_EPISODE_NUMBER, it) }
+            }
+        }
+
         fun vodIntent(context: Context, videoId: String, title: String): Intent =
             Intent(context, PlayerActivity::class.java).apply {
                 putExtra(EXTRA_CONTENT_ID, videoId)
@@ -119,18 +165,54 @@ class PlayerActivity : ComponentActivity() {
     }
 }
 
+private fun mediaFromIntent(
+    intent: Intent,
+    contentId: String,
+    title: String,
+    streamType: String,
+): JoynMediaItem? {
+    if (streamType != "VOD") return null
+    val type = intent.getStringExtra("joyn_media_type")
+        ?.let { runCatching { JoynMediaType.valueOf(it) }.getOrNull() }
+        ?: return null
+    return JoynMediaItem(
+        id = intent.getStringExtra("joyn_media_id") ?: contentId,
+        title = title,
+        description = intent.getStringExtra("joyn_media_description"),
+        path = intent.getStringExtra("joyn_media_path"),
+        type = type,
+        imageUrl = intent.getStringExtra("joyn_media_image"),
+        backdropUrl = intent.getStringExtra("joyn_media_backdrop"),
+        logoUrl = intent.getStringExtra("joyn_media_logo"),
+        videoId = intent.getStringExtra("joyn_media_video_id"),
+        seasonId = intent.getStringExtra("joyn_media_season_id"),
+        seriesTitle = intent.getStringExtra("joyn_media_series_title"),
+        seasonNumber = intent.getIntExtra("joyn_media_season_number", -1).takeIf { it > 0 },
+        episodeNumber = intent.getIntExtra("joyn_media_episode_number", -1).takeIf { it > 0 },
+    )
+}
+
 @Composable
 private fun JoynPlayer(
     repository: JoynRepository,
     contentId: String,
     title: String,
     streamType: String,
+    media: JoynMediaItem?,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val streamProxyFallback = remember(context.applicationContext) {
         JoynStreamProxyFallback(context.applicationContext)
     }
+    val continueStore = remember(context.applicationContext) {
+        JoynContinueWatchingStore(context.applicationContext)
+    }
+    val watchNextPublisher = remember(context.applicationContext) {
+        JoynWatchNextPublisher(context.applicationContext)
+    }
+    var startPositionMs by remember(contentId, streamType) { mutableStateOf(0L) }
+    var lastRemoteSyncAt by remember(contentId, streamType) { mutableStateOf(0L) }
     var playback by remember(contentId, streamType) { mutableStateOf<JoynPlayback?>(null) }
     var errorText by remember(contentId, streamType) { mutableStateOf<String?>(null) }
     var retryKey by remember(contentId, streamType) { mutableIntStateOf(0) }
@@ -165,6 +247,8 @@ private fun JoynPlayer(
         routeRecoveryInProgress = false
         fullProxyActive = false
         playerRouteKey = 0
+        startPositionMs = 0L
+        lastRemoteSyncAt = 0L
         runCatching {
             withContext(Dispatchers.IO) {
                 if (streamType == "LIVE") {
@@ -187,6 +271,9 @@ private fun JoynPlayer(
                 resolved to useFullProxy
             }
         }.onSuccess { (resolved, useFullProxy) ->
+            if (streamType == "VOD") {
+                startPositionMs = continueStore.find(resolved.assetId ?: contentId)?.positionMs ?: 0L
+            }
             playback = resolved
             fullProxyActive = useFullProxy
             pinInvalid = false
@@ -215,6 +302,49 @@ private fun JoynPlayer(
             playback != null -> Media3Player(
                 playback = requireNotNull(playback),
                 routeKey = playerRouteKey,
+                startPositionMs = startPositionMs,
+                onProgress = { positionMs, durationMs, ended ->
+                    if (streamType == "VOD" && media != null && durationMs > 0L) {
+                        val assetId = playback?.assetId ?: contentId
+                        val finished = ended || JoynContinueWatchingPolicy.isFinished(positionMs, durationMs)
+                        if (finished) {
+                            continueStore.remove(assetId, pendingRemoteDelete = true)
+                            watchNextPublisher.remove(assetId)
+                            scope.launch {
+                                val cleared = withContext(Dispatchers.IO) {
+                                    runCatching { repository.setResumePosition(assetId, 0) }.getOrDefault(false)
+                                }
+                                if (cleared) continueStore.clearPendingDelete(assetId)
+                            }
+                        } else {
+                            val entry = continueStore.upsert(
+                                assetId = assetId,
+                                media = media,
+                                positionMs = positionMs,
+                                durationMs = durationMs,
+                                dirty = true,
+                            )
+                            if (entry != null) {
+                                watchNextPublisher.publish(entry)
+                                val now = System.currentTimeMillis()
+                                if (now - lastRemoteSyncAt >= 30_000L) {
+                                    lastRemoteSyncAt = now
+                                    scope.launch {
+                                        val synced = withContext(Dispatchers.IO) {
+                                            runCatching {
+                                                repository.setResumePosition(
+                                                    assetId,
+                                                    (positionMs / 1000L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                                                )
+                                            }.getOrDefault(false)
+                                        }
+                                        if (synced) continueStore.markSynced(assetId)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
                 onPlaybackReady = {
                     if (streamType == "LIVE" && fallbackPendingConfirmation) {
                         streamProxyFallback.confirmFullProxyRequired(contentId)
@@ -531,6 +661,8 @@ private fun RetryButton(onRetry: () -> Unit, label: String = "Erneut versuchen")
 private fun Media3Player(
     playback: JoynPlayback,
     routeKey: Int,
+    startPositionMs: Long,
+    onProgress: (positionMs: Long, durationMs: Long, ended: Boolean) -> Unit,
     onPlaybackReady: () -> Unit,
     onPlaybackError: (PlaybackException) -> Unit,
 ) {
@@ -563,6 +695,7 @@ private fun Media3Player(
                     .apply { if (drm != null) setDrmConfiguration(drm) }
                     .build()
                 setMediaItem(media)
+                if (startPositionMs > 0L) seekTo(startPositionMs)
                 prepare()
                 playWhenReady = true
             }
@@ -572,14 +705,38 @@ private fun Media3Player(
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) onPlaybackReady()
+                if (playbackState == Player.STATE_ENDED) {
+                    val durationMs = player.duration.takeIf { it > 0L && it != C.TIME_UNSET } ?: 0L
+                    onProgress(player.currentPosition, durationMs, true)
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) = onPlaybackError(error)
         }
         player.addListener(listener)
         onDispose {
+            val durationMs = player.duration.takeIf { it > 0L && it != C.TIME_UNSET } ?: 0L
+            if (durationMs > 0L) {
+                onProgress(
+                    player.currentPosition,
+                    durationMs,
+                    player.playbackState == Player.STATE_ENDED,
+                )
+            }
             player.removeListener(listener)
             player.release()
+        }
+    }
+
+    LaunchedEffect(player) {
+        while (true) {
+            delay(10_000L)
+            val durationMs = player.duration.takeIf { it > 0L && it != C.TIME_UNSET } ?: continue
+            onProgress(
+                player.currentPosition,
+                durationMs,
+                player.playbackState == Player.STATE_ENDED,
+            )
         }
     }
 
