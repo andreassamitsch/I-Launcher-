@@ -175,7 +175,7 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
-        fun vodResumeIntent(context: Context, entry: JoynContinueWatchingEntry): Intent =
+        internal fun vodResumeIntent(context: Context, entry: JoynContinueWatchingEntry): Intent =
             vodIntent(context, entry.media).apply {
                 putExtra(EXTRA_RESUME_ASSET_ID, entry.assetId)
                 putExtra(EXTRA_RESUME_POSITION_MS, entry.positionMs)
