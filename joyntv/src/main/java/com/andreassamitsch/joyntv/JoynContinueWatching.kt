@@ -2,6 +2,7 @@ package com.andreassamitsch.joyntv
 
 import android.content.ContentUris
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -304,7 +305,9 @@ internal class JoynWatchNextPublisher(context: Context) {
             JoynContinueWatchingPolicy.shouldContinue(it.media, it.positionMs, it.durationMs)
         }
         val liveIds = eligible.mapTo(hashSetOf()) { it.assetId }
-        knownRows().keys.filterNot { it in liveIds }.forEach(::remove)
+        knownRows().keys
+            .filter { !it.startsWith(NEXT_KEY_PREFIX) && it !in liveIds }
+            .forEach(::remove)
         eligible.forEach(::publish)
     }
 
@@ -320,6 +323,68 @@ internal class JoynWatchNextPublisher(context: Context) {
             }
         }
         forgetRow(assetId)
+    }
+
+
+    fun publishNextEpisode(seriesKey: String, media: JoynMediaItem) {
+        if (!isSupportedDevice() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        if (media.type != JoynMediaType.EPISODE) return
+        val storageKey = NEXT_KEY_PREFIX + seriesKey
+        val title = media.seriesTitle?.takeIf(String::isNotBlank) ?: media.title
+        val episodeText = buildList {
+            add("Nächste Folge")
+            media.seasonNumber?.let { add("S$it") }
+            media.episodeNumber?.let { add("F$it") }
+            media.title.takeIf { it != title }?.let(::add)
+        }.joinToString(" · ")
+        val launchUri = Uri.parse(
+            PlayerActivity.vodIntent(appContext, media).toUri(Intent.URI_INTENT_SCHEME),
+        )
+        val program = WatchNextProgram.Builder()
+            .setWatchNextType(TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_NEXT)
+            .setType(TvContractCompat.PreviewPrograms.TYPE_TV_EPISODE)
+            .setTitle(title)
+            .setDescription(episodeText)
+            .setIntentUri(launchUri)
+            .setInternalProviderId("joyn-next:$seriesKey")
+            .setContentId(media.videoId ?: media.id)
+            .setLastPlaybackPositionMillis(0)
+            .setLastEngagementTimeUtcMillis(System.currentTimeMillis())
+            .apply {
+                setEpisodeTitle(media.title)
+                media.seasonNumber?.let(::setSeasonNumber)
+                media.episodeNumber?.let(::setEpisodeNumber)
+                (media.backdropUrl ?: media.imageUrl)?.takeIf(String::isNotBlank)?.let {
+                    setPosterArtUri(Uri.parse(it))
+                }
+            }
+            .build()
+
+        val knownId = rowId(storageKey)
+        if (knownId != null) {
+            val updated = runCatching {
+                appContext.contentResolver.update(
+                    TvContractCompat.buildWatchNextProgramUri(knownId),
+                    program.toContentValues(),
+                    null,
+                    null,
+                )
+            }.getOrDefault(0)
+            if (updated > 0) return
+            forgetRow(storageKey)
+        }
+
+        val uri = runCatching {
+            appContext.contentResolver.insert(
+                TvContractCompat.WatchNextPrograms.CONTENT_URI,
+                program.toContentValues(),
+            )
+        }.getOrNull() ?: return
+        rememberRow(storageKey, ContentUris.parseId(uri))
+    }
+
+    fun removeNextEpisode(seriesKey: String) {
+        remove(NEXT_KEY_PREFIX + seriesKey)
     }
 
     private fun buildProgram(entry: JoynContinueWatchingEntry): WatchNextProgram {
@@ -415,6 +480,7 @@ internal class JoynWatchNextPublisher(context: Context) {
 
     companion object {
         private const val PREFS_NAME = "joyn_watch_next_v1"
+        private const val NEXT_KEY_PREFIX = "next:"
         private const val KEY_ROWS = "rows"
         private const val KEY_SUPPRESSED = "suppressed"
     }
