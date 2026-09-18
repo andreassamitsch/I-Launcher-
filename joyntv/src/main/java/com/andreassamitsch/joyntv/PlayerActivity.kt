@@ -136,6 +136,8 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_MEDIA_VIDEO_ID = "joyn_media_video_id"
         private const val EXTRA_MEDIA_SEASON_ID = "joyn_media_season_id"
         private const val EXTRA_MEDIA_SERIES_TITLE = "joyn_media_series_title"
+        private const val EXTRA_MEDIA_SERIES_ID = "joyn_media_series_id"
+        private const val EXTRA_MEDIA_SERIES_PATH = "joyn_media_series_path"
         private const val EXTRA_MEDIA_SEASON_NUMBER = "joyn_media_season_number"
         private const val EXTRA_MEDIA_EPISODE_NUMBER = "joyn_media_episode_number"
         private const val EXTRA_RESUME_ASSET_ID = "joyn_resume_asset_id"
@@ -170,6 +172,8 @@ class PlayerActivity : ComponentActivity() {
                 item.videoId?.let { putExtra(EXTRA_MEDIA_VIDEO_ID, it) }
                 item.seasonId?.let { putExtra(EXTRA_MEDIA_SEASON_ID, it) }
                 item.seriesTitle?.let { putExtra(EXTRA_MEDIA_SERIES_TITLE, it) }
+                item.seriesId?.let { putExtra(EXTRA_MEDIA_SERIES_ID, it) }
+                item.seriesPath?.let { putExtra(EXTRA_MEDIA_SERIES_PATH, it) }
                 item.seasonNumber?.let { putExtra(EXTRA_MEDIA_SEASON_NUMBER, it) }
                 item.episodeNumber?.let { putExtra(EXTRA_MEDIA_EPISODE_NUMBER, it) }
             }
@@ -214,6 +218,8 @@ private fun mediaFromIntent(
         seriesTitle = intent.getStringExtra("joyn_media_series_title"),
         seasonNumber = intent.getIntExtra("joyn_media_season_number", -1).takeIf { it > 0 },
         episodeNumber = intent.getIntExtra("joyn_media_episode_number", -1).takeIf { it > 0 },
+        seriesId = intent.getStringExtra("joyn_media_series_id"),
+        seriesPath = intent.getStringExtra("joyn_media_series_path"),
     )
 }
 
@@ -238,6 +244,11 @@ private fun JoynPlayer(
     val watchNextPublisher = remember(context.applicationContext) {
         JoynWatchNextPublisher(context.applicationContext)
     }
+    val nextEpisodeStore = remember(context.applicationContext) {
+        JoynNextEpisodeStore(context.applicationContext)
+    }
+    var completionHandled by remember(contentId, streamType, resumeAssetId) { mutableStateOf(false) }
+    var nextSuggestionCleared by remember(contentId, streamType, resumeAssetId) { mutableStateOf(false) }
     var startPositionMs by remember(contentId, streamType, resumeAssetId) { mutableStateOf(0L) }
     var lastRemoteSyncAt by remember(contentId, streamType, resumeAssetId) { mutableStateOf(0L) }
     var playback by remember(contentId, streamType) { mutableStateOf<JoynPlayback?>(null) }
@@ -276,6 +287,8 @@ private fun JoynPlayer(
         playerRouteKey = 0
         startPositionMs = 0L
         lastRemoteSyncAt = 0L
+        completionHandled = false
+        nextSuggestionCleared = false
         runCatching {
             withContext(Dispatchers.IO) {
                 if (streamType == "LIVE") {
@@ -338,15 +351,30 @@ private fun JoynPlayer(
                 onProgress = { positionMs, durationMs, ended ->
                     if (streamType == "VOD" && media != null && durationMs > 0L) {
                         val assetId = resumeAssetId ?: playback?.assetId ?: contentId
+                        if (
+                            media.type == JoynMediaType.EPISODE &&
+                            positionMs > 0L &&
+                            !nextSuggestionCleared
+                        ) {
+                            JoynNextEpisodeStore.seriesKey(media)?.let(watchNextPublisher::removeNextEpisode)
+                            nextSuggestionCleared = true
+                        }
                         val finished = ended || JoynContinueWatchingPolicy.isFinished(positionMs, durationMs)
                         if (finished) {
-                            continueStore.remove(assetId, pendingRemoteDelete = true)
-                            watchNextPublisher.remove(assetId)
-                            scope.launch {
-                                val cleared = withContext(Dispatchers.IO) {
-                                    runCatching { repository.setResumePosition(assetId, 0) }.getOrDefault(false)
+                            if (!completionHandled) {
+                                completionHandled = true
+                                continueStore.remove(assetId, pendingRemoteDelete = true)
+                                watchNextPublisher.remove(assetId)
+                                nextEpisodeStore.markCompleted(media)?.let { completed ->
+                                    watchNextPublisher.removeNextEpisode(completed.seriesKey)
+                                    JoynNextEpisodeScheduler.enqueueNow(context)
                                 }
-                                if (cleared) continueStore.clearPendingDelete(assetId)
+                                scope.launch {
+                                    val cleared = withContext(Dispatchers.IO) {
+                                        runCatching { repository.setResumePosition(assetId, 0) }.getOrDefault(false)
+                                    }
+                                    if (cleared) continueStore.clearPendingDelete(assetId)
+                                }
                             }
                         } else {
                             val entry = continueStore.upsert(
