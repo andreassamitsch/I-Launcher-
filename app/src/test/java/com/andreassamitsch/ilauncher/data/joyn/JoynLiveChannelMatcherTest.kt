@@ -37,6 +37,20 @@ class JoynLiveChannelMatcherTest {
     }
 
     @Test
+    fun `country suffixes are ignored when choosing the swiss variant`() {
+        val sat = channel("1:0:19:1223:0:0:0:0:0:0:", "TLC Austria HD")
+        val result = JoynLiveChannelMatcher.mapBouquet(
+            bouquet = listOf(sat),
+            joynChannels = listOf(
+                joyn("multi:AT:tlc", "TLC Austria", "AT"),
+                joyn("multi:CH:tlc", "TLC Schweiz", "CH"),
+            ),
+        )
+
+        assertEquals("multi:CH:tlc", result[sat.serviceReference]?.id)
+    }
+
+    @Test
     fun `swiss bouquet suffix prefers swiss Joyn variant`() {
         val sat = channel("1:0:19:2222:0:0:0:0:0:0:", "ProSieben Schweiz HD")
         val result = JoynLiveChannelMatcher.mapBouquet(
@@ -51,17 +65,17 @@ class JoynLiveChannelMatcherTest {
     }
 
     @Test
-    fun `non quality preferred Austria station remains Austria`() {
+    fun `Austria bouquet label still prefers swiss Joyn when same station exists there`() {
         val puls4 = channel("1:0:19:3333:0:0:0:0:0:0:", "PULS 4 HD Austria")
         val result = JoynLiveChannelMatcher.mapBouquet(
             bouquet = listOf(puls4),
             joynChannels = listOf(
-                joyn("multi:AT:puls4", "PULS 4", "AT"),
-                joyn("multi:CH:puls4", "PULS 4", "CH"),
+                joyn("multi:AT:puls4", "PULS 4 Austria", "AT"),
+                joyn("multi:CH:puls4", "PULS 4 Schweiz", "CH"),
             ),
         )
 
-        assertEquals("multi:AT:puls4", result[puls4.serviceReference]?.id)
+        assertEquals("multi:CH:puls4", result[puls4.serviceReference]?.id)
     }
 
     @Test
