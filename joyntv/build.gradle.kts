@@ -86,6 +86,7 @@ dependencies {
     implementation("androidx.tv:tv-material:1.1.0")
     implementation("androidx.tvprovider:tvprovider:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    implementation("androidx.work:work-runtime-ktx:2.11.0")
 
     val media3Version = "1.10.1"
     implementation("androidx.media3:media3-exoplayer:$media3Version")
