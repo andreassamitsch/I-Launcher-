@@ -2,7 +2,7 @@
 
 > **Für neue Chats / neue Entwicklungssitzungen:** Diese Datei zuerst lesen, wenn es um `joyntv`, Mysterium, Geo-Routing, Joyn-Live-TV oder die Joyn-Integration in I Launcher geht. Das Repo ist die maßgebliche Quelle; ältere Chat-Annahmen dürfen diesen Stand nicht überschreiben.
 
-Stand: **2026-09-17**  
+Stand: **2026-09-18**  
 Entwicklungs-Branch: **`feature/joyn-tv-client`**  
 PR: **#46 – `feat: add standalone Joyn Android TV client`**
 
@@ -158,18 +158,9 @@ Die gewählte Gigablue-Bouquetliste bleibt die alleinige sichtbare Senderliste. 
 
 Das Matching bleibt konservativ und basiert auf exakten normalisierten Senderfamilien. Keine unscharfen Laufzeit-Treffer.
 
-Für Sender mit bestätigtem Qualitätsvorteil der Schweizer Joyn-Feeds gilt jetzt bewusst **CH → AT → DE**, sofern ein exakter CH-Treffer existiert. Dazu gehören aktuell:
+Für **jede exakt gematchte Senderfamilie** gilt jetzt bewusst **CH → AT → DE**, sofern Joyn denselben Sender im Schweizer Inventar anbietet. Regionale Namenszusätze wie `Austria`, `Österreich`, `Schweiz`, `CH`, `DE`, `HD` oder `UHD` werden für die Senderfamilie entfernt. Damit darf z. B. ein Bouquet-Eintrag `TLC Austria HD` auf `TLC Schweiz` aus Joyn CH gemappt werden.
 
-- ProSieben;
-- SAT.1;
-- Kabel Eins;
-- ProSieben MAXX;
-- sixx;
-- SAT.1 Gold;
-- Kabel Eins Doku;
-- TLC.
-
-Grund: Auf realer Hardware wurde für die ProSiebenSat.1-Gruppe Schweiz bis **1080p** als angebotene DASH-Qualität bestätigt. Andere Sender behalten die normale regionale Präferenz; z. B. bleibt **PULS 4 Austria → Joyn AT**.
+Grund: Auf realer Hardware wurde bei Schweizer Joyn-Feeds die beste verfügbare Qualität beobachtet, unter anderem bis **1080p** bei der ProSiebenSat.1-Gruppe. Die Länderkennung des Bouquet-Senders ist daher kein Qualitätskriterium mehr; entscheidend bleibt nur der **exakte kanonische Senderfamilien-Treffer**. Existiert kein CH-Treffer, folgt AT und danach DE.
 
 Relevante Datei:
 
@@ -304,6 +295,15 @@ Relevante Dateien:
 
 Build-Stand: **Joyn TV `0.1.0-dev.645`**, Source-SHA `69e5343d65627ae66e475df731e1a494684be554`. `:joyntv:testDebugUnitTest`, signierter Release-Build, Signaturprüfung und Veröffentlichung in `joyn-downloads` waren erfolgreich. Die tatsächliche Startzeitverbesserung und Favoritenbedienung müssen noch auf dem realen TCL bestätigt werden.
 
+
+### Weiterschauen / Android TV Watch Next
+
+Joyn TV speichert Wiedergabefortschritt lokal und synchronisiert ihn bei angemeldetem Konto zusätzlich über Joyns Resume-API. I Launcher liest Androids `TvContract.WatchNextPrograms` und kann daher von Apps veröffentlichte Watch-Next-Einträge direkt in seiner eigenen **Weiterschauen**-Zeile anzeigen.
+
+Am **18.09.2026** wurde ein Resume-Fehler korrigiert: Joyns Resume-Asset-ID und die für Playback verwendete Video-ID werden nun getrennt behandelt. Beim Öffnen aus Joyn-`Weiterschauen` oder über den Android-TV-Watch-Next-Deep-Link wird die explizit gespeicherte Position an den Player übergeben und Fortschritt weiter unter der Resume-Asset-ID gespeichert.
+
+Aktuell veröffentlicht Joyn TV dort **unfertige Inhalte** als `WATCH_NEXT_TYPE_CONTINUE`. Eine erst später neu veröffentlichte Folge einer bereits fertig angesehenen Serie wird noch **nicht automatisch** als `NEXT`/`NEW` erzeugt; Android TV entdeckt neue Joyn-Folgen nicht selbst, sondern benötigt dafür einen von der App veröffentlichten Watch-Next-Eintrag.
+
 ## 10. Regeln für zukünftige Änderungen
 
 - SAT/Gigablue bleibt die bevorzugte Quelle; Joyn bleibt Fallback.
@@ -314,7 +314,7 @@ Build-Stand: **Joyn TV `0.1.0-dev.645`**, Source-SHA `69e5343d65627ae66e475df731
 - Nicht auf systemweiten VPN-Tunnel zurückbauen, solange der app-lokale Proxy stabil funktioniert.
 - Für die österreichische Zielinstallation Joyn AT direkt abspielen; kein Mysterium-Gateway erzwingen.
 - CH/DE-Geo-Routing weiter über den bewährten Mysterium-Residential-Pfad führen, solange dies dort erforderlich ist.
-- Für die bestätigten Qualitäts-Sendergruppen CH bevorzugen, solange dort die bessere Joyn-Qualität angeboten wird.
+- Bei jedem exakten Joyn-Senderfamilien-Match CH vor AT und DE bevorzugen, sofern ein CH-Kanal vorhanden ist; regionale Namenszusätze nicht als Gegenargument verwenden.
 - Gigablue-Bouquet bleibt Quelle für sichtbare Senderliste, Reihenfolge und EPG.
 - Keine Joyn-only-Sender automatisch in I Launcher einschleusen.
 - I Launcher darf durch Joyn-Fallback nicht global geproxyt werden.
