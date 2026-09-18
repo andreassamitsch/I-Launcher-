@@ -58,14 +58,22 @@ internal class JoynNextEpisodeStore(context: Context) {
         val previous = current.firstOrNull { it.seriesKey == key }
         current.removeAll { it.seriesKey == key }
 
+        val previousSeason = previous?.seasonNumber
+        val currentSeason = media.seasonNumber ?: previousSeason
+        val effectiveEpisode = when {
+            previous == null -> episodeNumber
+            currentSeason != null && previousSeason != null && currentSeason > previousSeason -> episodeNumber
+            currentSeason != null && previousSeason != null && currentSeason < previousSeason -> previous.episodeNumber
+            else -> maxOf(episodeNumber, previous.episodeNumber)
+        }
         val completed = JoynCompletedSeries(
             seriesKey = key,
             seriesTitle = seriesTitle,
             seriesId = media.seriesId ?: previous?.seriesId,
             seriesPath = media.seriesPath ?: previous?.seriesPath,
             seasonId = media.seasonId ?: previous?.seasonId,
-            seasonNumber = media.seasonNumber ?: previous?.seasonNumber,
-            episodeNumber = maxOf(episodeNumber, previous?.episodeNumber ?: 0),
+            seasonNumber = currentSeason,
+            episodeNumber = effectiveEpisode,
             completedAt = System.currentTimeMillis(),
             announcedVideoId = null,
         )
@@ -189,22 +197,36 @@ internal class JoynNextEpisodeRefresher(private val context: Context) {
             JoynNextEpisodePolicy.nextInSeason(state.episodeNumber, sameSeason)?.let { return it }
         }
 
-        val seriesPath = state.seriesPath ?: return null
         val currentSeason = state.seasonNumber ?: return null
-        val series = JoynMediaItem(
-            id = state.seriesId ?: seriesPath,
-            title = state.seriesTitle,
-            path = seriesPath,
-            type = JoynMediaType.SERIES,
-            seriesId = state.seriesId,
-            seriesPath = seriesPath,
-        )
+        val series = resolveSeries(state) ?: return null
         val details = repository.loadSeriesDetails(series)
         val laterSeasons = details.seasons.filter { it.number > currentSeason }.sortedBy { it.number }
         for (season in laterSeasons) {
             JoynNextEpisodePolicy.firstEpisode(repository.loadSeasonEpisodes(season.id))?.let { return it }
         }
         return null
+    }
+
+    private suspend fun resolveSeries(state: JoynCompletedSeries): JoynMediaItem? {
+        state.seriesPath?.let { path ->
+            return JoynMediaItem(
+                id = state.seriesId ?: path,
+                title = state.seriesTitle,
+                path = path,
+                type = JoynMediaType.SERIES,
+                seriesId = state.seriesId,
+                seriesPath = path,
+            )
+        }
+
+        return repository.searchMedia(state.seriesTitle)
+            .asSequence()
+            .filter { it.type == JoynMediaType.SERIES && !it.path.isNullOrBlank() }
+            .minWithOrNull(
+                compareBy<JoynMediaItem> {
+                    if (it.title.equals(state.seriesTitle, ignoreCase = true)) 0 else 1
+                }.thenBy { it.title.length },
+            )
     }
 }
 
