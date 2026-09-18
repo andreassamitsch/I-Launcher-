@@ -4,12 +4,20 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
+    private val resumeGeneration = mutableIntStateOf(0)
+
+    override fun onResume() {
+        super.onResume()
+        resumeGeneration.intValue++
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val repository = JoynRepository(applicationContext)
@@ -19,6 +27,7 @@ class MainActivity : ComponentActivity() {
                 JoynHomeScreen(
                     repository = repository,
                     updateManager = updateManager,
+                    resumeKey = resumeGeneration.intValue,
                     onPlayLive = { channel ->
                         // Prepare exactly the market encoded in the combined live-channel id before
                         // PlayerActivity exists. If that market has a fresh Mysterium CONNECT lease,
