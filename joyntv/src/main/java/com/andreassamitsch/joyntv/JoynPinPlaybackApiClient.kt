@@ -93,6 +93,7 @@ internal class JoynPinPlaybackApiClient(context: Context) {
                 ?: error("Joyn lieferte kein DASH-Manifest"),
             licenseUrl = playlist.optString("licenseUrl").takeIf(String::isNotBlank),
             certificateUrl = playlist.optString("certificateUrl").takeIf(String::isNotBlank),
+            assetId = videoId,
         )
     }
 
