@@ -175,6 +175,132 @@ internal class JoynApiClient(context: Context) {
             .sortedWith(compareBy({ it.seasonNumber ?: 0 }, { it.episodeNumber ?: 0 }))
     }
 
+    suspend fun loadContinueWatching(): List<JoynContinueWatchingEntry> {
+        if (readToken()?.hasAccount != true) return emptyList()
+        // Refreshing the account also gives us Joyn-User-State, which Joyn expects for personalized
+        // GraphQL lanes such as Continue Watching.
+        accountState(refreshRemote = true)
+        val config = bootstrapConfig()
+        val landing = persistedGraphQl(
+            config = config,
+            operationName = "LandingPageClient",
+            hash = HASH_LANDING_PAGE,
+            variables = JSONObject().put("path", "/neu-beliebt"),
+        )
+        val page = landing.optJSONObject("page") ?: return emptyList()
+        val blocks = mutableListOf<JSONObject>()
+        page.optJSONArray("blocks").appendObjectsTo(blocks)
+        page.optJSONArray("lazyBlocks").appendObjectsTo(blocks)
+
+        var resumeBlock = blocks.firstOrNull { it.optString("__typename") == "ResumeLane" }
+        if (resumeBlock == null) {
+            val unresolvedIds = blocks
+                .mapNotNull { it.optString("id").takeIf(String::isNotBlank) }
+                .distinct()
+            if (unresolvedIds.isNotEmpty()) {
+                val resolved = persistedGraphQl(
+                    config = config,
+                    operationName = "LandingBlocks",
+                    hash = HASH_LANDING_BLOCKS,
+                    variables = JSONObject().put(
+                        "ids",
+                        JSONArray().apply { unresolvedIds.forEach(::put) },
+                    ),
+                )
+                val resolvedBlocks = mutableListOf<JSONObject>()
+                resolved.optJSONArray("blocks").appendObjectsTo(resolvedBlocks)
+                resumeBlock = resolvedBlocks.firstOrNull { it.optString("__typename") == "ResumeLane" }
+            }
+        }
+
+        val blockId = resumeBlock?.optString("id")?.takeIf(String::isNotBlank) ?: return emptyList()
+        val response = persistedGraphQl(
+            config = config,
+            operationName = "ResumeLaneWithToken",
+            hash = HASH_RESUME_LANE,
+            variables = JSONObject().put("blockId", blockId),
+        )
+        val assets = response.optJSONObject("block")?.optJSONArray("assets") ?: return emptyList()
+        val now = System.currentTimeMillis()
+        return buildList {
+            for (index in 0 until assets.length()) {
+                val asset = assets.optJSONObject(index) ?: continue
+                val media = asset.toMediaItem() ?: continue
+                if (!JoynContinueWatchingPolicy.supports(media)) continue
+                val resume = asset.optJSONObject("resumePosition") ?: continue
+                val positionMs = resume.optLong("position").takeIf { it > 0L }?.times(1000L) ?: continue
+                val durationMs = asset.optJSONObject("video")
+                    ?.optLong("duration")
+                    ?.takeIf { it > 0L }
+                    ?.times(1000L)
+                    ?: continue
+                val assetId = resume.optString("assetId").takeIf(String::isNotBlank)
+                    ?: asset.optJSONObject("video")?.optString("id")?.takeIf(String::isNotBlank)
+                    ?: continue
+                if (!JoynContinueWatchingPolicy.shouldContinue(media, positionMs, durationMs)) continue
+                add(
+                    JoynContinueWatchingEntry(
+                        assetId = assetId,
+                        media = media,
+                        positionMs = positionMs,
+                        durationMs = durationMs,
+                        updatedAt = now - index,
+                        dirty = false,
+                    ),
+                )
+            }
+        }
+    }
+
+    suspend fun setResumePosition(assetId: String, positionSeconds: Int): Boolean {
+        if (readToken()?.hasAccount != true) return false
+        accountState(refreshRemote = true)
+        val config = bootstrapConfig()
+        val authorization = authorizationHeader(config.country)
+        val body = JSONObject()
+            .put("query", RESUME_MUTATION_QUERY)
+            .put("operationName", "setResumeMutation")
+            .put(
+                "variables",
+                JSONObject()
+                    .put("assetId", assetId)
+                    .put("position", positionSeconds.coerceAtLeast(0)),
+            )
+            .put(
+                "extensions",
+                JSONObject().put(
+                    "persistedQuery",
+                    JSONObject()
+                        .put("version", 1)
+                        .put("sha256Hash", HASH_SET_RESUME_POSITION),
+                ),
+            )
+        val request = Request.Builder()
+            .url(JoynProtocol.graphQlUrl)
+            .header("User-Agent", USER_AGENT)
+            .header("x-api-key", config.apiKey)
+            .header("Joyn-Platform", "web")
+            .header("Joyn-Country", config.country.name)
+            .header("Joyn-Distribution-Tenant", config.country.graphqlTenant)
+            .header("Authorization", authorization)
+            .header("Content-Type", JSON_MEDIA_TYPE.toString())
+            .apply {
+                prefs.getString(KEY_ACCOUNT_USER_STATE, null)
+                    ?.takeIf(String::isNotBlank)
+                    ?.let { header("Joyn-User-State", it) }
+            }
+            .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        val json = executeJson(request)
+        val errors = json.optJSONArray("errors")
+        if (errors != null && errors.length() > 0) {
+            val details = errors.toString()
+            if (details.contains("INVALID_JWT", true)) throw JoynSessionException(details)
+            error("Joyn setResumeMutation: ${details.take(260)}")
+        }
+        return json.optJSONObject("data")?.optJSONObject("setResumePosition") != null
+    }
+
     suspend fun resolveLivePlayback(channelId: String): JoynPlayback =
         resolvePlaybackWithRecovery(channelId, "LIVE", "channel")
 
@@ -337,6 +463,9 @@ internal class JoynApiClient(context: Context) {
                 variables = JSONObject(),
             )
             val me = response.optJSONObject("me")
+            me?.optString("state")?.takeIf(String::isNotBlank)?.let { state ->
+                prefs.edit().putString(KEY_ACCOUNT_USER_STATE, state).apply()
+            }
             val profile = me?.optJSONObject("profile")
             val subscriptions = me?.optJSONObject("subscriptionsData")?.optJSONObject("config")
             JoynAccountState(
@@ -422,6 +551,7 @@ internal class JoynApiClient(context: Context) {
             manifestUrl = manifest,
             licenseUrl = playlist.optString("licenseUrl").takeIf(String::isNotBlank),
             certificateUrl = playlist.optString("certificateUrl").takeIf(String::isNotBlank),
+            assetId = contentId,
         )
     }
 
@@ -439,6 +569,13 @@ internal class JoynApiClient(context: Context) {
                 .header("Joyn-Country", config.country.name)
                 .header("Joyn-Distribution-Tenant", config.country.graphqlTenant)
                 .header("Authorization", authorization)
+                .apply {
+                    if (operationName != "GetMeState") {
+                        prefs.getString(KEY_ACCOUNT_USER_STATE, null)
+                            ?.takeIf(String::isNotBlank)
+                            ?.let { header("Joyn-User-State", it) }
+                    }
+                }
                 .get()
                 .build(),
         )
@@ -780,6 +917,7 @@ internal class JoynApiClient(context: Context) {
             logoUrl = logo,
             videoId = optJSONObject("video")?.optString("id")?.takeIf(String::isNotBlank),
             seasonId = optJSONObject("season")?.optString("id")?.takeIf(String::isNotBlank),
+            seriesTitle = optJSONObject("series")?.optString("title")?.takeIf(String::isNotBlank),
             seasonNumber = optJSONObject("season")?.optInt("number")?.takeIf { it > 0 }
                 ?: optJSONObject("season")?.optInt("seasonNumber")?.takeIf { it > 0 },
             episodeNumber = optInt("number").takeIf { it > 0 },
@@ -866,5 +1004,10 @@ internal class JoynApiClient(context: Context) {
         private const val HASH_EPISODES = "ee2396bb1b7c9f800e5cefd0b341271b7213fceb4ebe18d5a30dab41d703009f"
         private const val HASH_MOVIE_DETAIL = "9ae6bcd8c45a5e350438d1cc415a022fe053e938c93438509f60ae3abb425fa7"
         private const val HASH_ACCOUNT = "55ebb3812b45628017ee6c7f36f0b88a94e9778b9f11ad8a6fc05849182c07ec"
+        private const val HASH_RESUME_LANE = "8795acc1fe7e6183e5a81f51a7a38b07fad9f60d3018f0db70b4ba72a49aec0d"
+        private const val HASH_SET_RESUME_POSITION = "430242420319dea155f54913862e4befdf73f75e83f7199e1a92e2b00ba9dbf5"
+        private const val KEY_ACCOUNT_USER_STATE = "account_user_state"
+        private const val RESUME_MUTATION_QUERY =
+            "mutation setResumeMutation (\$assetId: ID!, \$position: Int!) { setResumePosition(assetId:\$assetId, position:\$position) { __typename assetId position } }"
     }
 }
