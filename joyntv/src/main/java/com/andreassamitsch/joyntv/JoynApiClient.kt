@@ -443,7 +443,7 @@ internal class JoynApiClient(context: Context) {
 
     suspend fun logout() {
         tokenMutex.withLock {
-            prefs.edit().remove("auth_token").apply()
+            prefs.edit().remove("auth_token").remove(KEY_ACCOUNT_USER_STATE).apply()
             createAnonymousToken(country)
         }
     }
