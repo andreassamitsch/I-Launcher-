@@ -1,0 +1,8 @@
+{
+  "versionCode": 10000705,
+  "versionName": "0.1.0-dev.705",
+  "apkUrl": "https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/joyn-downloads/Joyn-TV.apk",
+  "sha256": "8b420ead6280a60cd7e489173a644d24154ee3762e003ad5ece25cd9e4e871e9",
+  "signerSha256": "45e1ae301efa5a17d04c5aebaeea584323d6caf4e6c99fe98fa3c7f0d0f9a550",
+  "sourceSha": "f37a9ac586b12333dcd89169579cffd551432503"
+}
