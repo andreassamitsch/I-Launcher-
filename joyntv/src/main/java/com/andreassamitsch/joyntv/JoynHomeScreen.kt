@@ -67,6 +67,7 @@ private val LIVE_COUNTRY_SECTIONS = listOf(
 internal fun JoynHomeScreen(
     repository: JoynRepository,
     updateManager: JoynUpdateManager,
+    resumeKey: Int,
     onPlayLive: (JoynLiveChannel) -> Unit,
     onOpenMedia: (JoynMediaItem) -> Unit,
     onSearch: () -> Unit,
@@ -78,6 +79,8 @@ internal fun JoynHomeScreen(
     val homeCache = remember(context) { JoynHomeCache(context.applicationContext) }
     val liveFavoritesStore = remember(context) { JoynLiveFavoritesStore(context.applicationContext) }
     val mediaFavoritesStore = remember(context) { JoynMediaFavoritesStore(context.applicationContext) }
+    val continueWatchingStore = remember(context) { JoynContinueWatchingStore(context.applicationContext) }
+    val watchNextPublisher = remember(context) { JoynWatchNextPublisher(context.applicationContext) }
 
     var section by remember { mutableStateOf(HomeSection.START) }
     var catalogue by remember { mutableStateOf(initialCatalogue) }
@@ -92,6 +95,7 @@ internal fun JoynHomeScreen(
     var liveRefreshCompleted by remember { mutableStateOf(false) }
     var liveFavoriteIds by remember { mutableStateOf(liveFavoritesStore.ids()) }
     var mediaFavorites by remember { mutableStateOf(mediaFavoritesStore.items()) }
+    var continueWatching by remember { mutableStateOf(continueWatchingStore.items()) }
     val mediaFavoriteKeys = mediaFavorites
         .mapTo(linkedSetOf()) { JoynMediaFavoritesStore.favoriteKey(it) }
     var selectedMedia by remember { mutableStateOf(initialCatalogue?.lanes?.firstOrNull()?.items?.firstOrNull()) }
@@ -196,6 +200,46 @@ internal fun JoynHomeScreen(
             if (selectedMedia == null) {
                 selectedLive = liveChannels.firstOrNull { it.id in liveFavoriteIds }
             }
+        }
+    }
+
+    LaunchedEffect(resumeKey) {
+        val refreshed = withContext(Dispatchers.IO) {
+            val loggedIn = runCatching { repository.accountState(refreshRemote = false).loggedIn }
+                .getOrDefault(false)
+            if (loggedIn) {
+                continueWatchingStore.pendingDeleteIds().forEach { assetId ->
+                    val cleared = runCatching { repository.setResumePosition(assetId, 0) }.getOrDefault(false)
+                    if (cleared) continueWatchingStore.clearPendingDelete(assetId)
+                }
+                continueWatchingStore.dirtyItems().forEach { entry ->
+                    val synced = runCatching {
+                        repository.setResumePosition(
+                            entry.assetId,
+                            (entry.positionMs / 1000L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                        )
+                    }.getOrDefault(false)
+                    if (synced) continueWatchingStore.markSynced(entry.assetId)
+                }
+                val remote = runCatching { repository.loadContinueWatching() }.getOrNull()
+                if (remote != null) continueWatchingStore.replaceFromRemote(remote)
+                else continueWatchingStore.items()
+            } else {
+                continueWatchingStore.items()
+            }
+        }
+        continueWatching = refreshed
+        watchNextPublisher.sync(refreshed)
+    }
+
+    fun removeContinueWatching(entry: JoynContinueWatchingEntry) {
+        continueWatching = continueWatchingStore.remove(entry.assetId, pendingRemoteDelete = true)
+        watchNextPublisher.remove(entry.assetId)
+        scope.launch {
+            val cleared = withContext(Dispatchers.IO) {
+                runCatching { repository.setResumePosition(entry.assetId, 0) }.getOrDefault(false)
+            }
+            if (cleared) continueWatchingStore.clearPendingDelete(entry.assetId)
         }
     }
 
@@ -495,6 +539,23 @@ internal fun JoynHomeScreen(
                 }
 
                 else -> {
+                    if (section == HomeSection.START && continueWatching.isNotEmpty()) {
+                        item(key = "continue-watching") {
+                            SectionTitle("Weiterschauen", compact)
+                            ContinueWatchingRow(
+                                entries = continueWatching,
+                                compact = compact,
+                                onFocused = {
+                                    selectedMedia = it.media
+                                    selectedLive = null
+                                    prewarmLive = null
+                                },
+                                onOpen = { onOpenMedia(it.media) },
+                                onRemove = ::removeContinueWatching,
+                            )
+                        }
+                    }
+
                     if (section == HomeSection.START && liveChannels.isNotEmpty()) {
                         item {
                             SectionTitle("Jetzt live", compact)
@@ -744,6 +805,104 @@ private fun SectionTitle(title: String, compact: Boolean) {
             bottom = 8.dp,
         ),
     )
+}
+
+@Composable
+private fun ContinueWatchingRow(
+    entries: List<JoynContinueWatchingEntry>,
+    compact: Boolean,
+    onFocused: (JoynContinueWatchingEntry) -> Unit,
+    onOpen: (JoynContinueWatchingEntry) -> Unit,
+    onRemove: (JoynContinueWatchingEntry) -> Unit,
+) {
+    val cardWidth = if (compact) 220.dp else 270.dp
+    val cardHeight = if (compact) 124.dp else 152.dp
+    LazyRow(
+        contentPadding = PaddingValues(
+            horizontal = if (compact) 28.dp else 64.dp,
+            vertical = 8.dp,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 16.dp),
+    ) {
+        items(entries, key = { it.assetId }) { entry ->
+            Box(
+                Modifier
+                    .width(cardWidth)
+                    .height(cardHeight),
+            ) {
+                JoynMediaTile(
+                    item = entry.media,
+                    compact = compact,
+                    cardHeight = cardHeight,
+                    fallbackWidth = cardWidth,
+                    fixedWidth = cardWidth,
+                    displayTitle = entry.media.seriesTitle?.takeIf(String::isNotBlank)
+                        ?: entry.media.title,
+                    subtitle = if (entry.media.type == JoynMediaType.EPISODE) {
+                        listOfNotNull(
+                            entry.media.seasonNumber?.let { "S$it" },
+                            entry.media.episodeNumber?.let { "F$it" },
+                            entry.media.title.takeIf { it != entry.media.seriesTitle },
+                        ).joinToString(" · ").takeIf(String::isNotBlank)
+                    } else null,
+                    onFocused = { onFocused(entry) },
+                    onClick = { onOpen(entry) },
+                )
+
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .background(Color(0x66000000)),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(entry.progress.coerceIn(0.01f, 1f))
+                            .height(4.dp)
+                            .background(Color.White),
+                    )
+                }
+
+                ContinueRemoveButton(
+                    compact = compact,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(7.dp),
+                    onClick = { onRemove(entry) },
+                )
+            }
+        }
+    }
+    Spacer(Modifier.height(if (compact) 20.dp else 30.dp))
+}
+
+@Composable
+private fun ContinueRemoveButton(
+    compact: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(18.dp)
+    Box(
+        modifier
+            .clip(shape)
+            .background(if (focused) Color.White else Color(0xCC10141A))
+            .border(1.dp, if (focused) Color.White else Color(0xFF606A76), shape)
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .focusable()
+            .padding(
+                horizontal = if (compact) 9.dp else 10.dp,
+                vertical = if (compact) 5.dp else 6.dp,
+            ),
+    ) {
+        Text(
+            "✕",
+            color = if (focused) Color(0xFF11151B) else Color.White,
+            fontSize = if (compact) 12.sp else 13.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
 }
 
 @Composable
