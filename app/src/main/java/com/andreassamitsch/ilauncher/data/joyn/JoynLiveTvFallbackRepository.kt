@@ -190,13 +190,8 @@ internal object JoynLiveChannelMatcher {
     }
 
     internal fun countryPriority(value: String, core: String = canonicalCore(value)): List<String> {
-        // The bouquet name is used only to identify the exact station family. Regional suffixes such
-        // as "Austria" or "Schweiz" must not lower the quality preference: if the same canonical
-        // station exists in Joyn CH, use that feed first.
-        @Suppress("UNUSED_VARIABLE")
-        val exactMatchedCore = core
-        @Suppress("UNUSED_VARIABLE")
-        val sourceLabel = value
+        // The bouquet name/core has already been used for the exact station-family match above.
+        // Regional suffixes must not lower the quality preference.
         return listOf("CH", "AT", "DE")
     }
 }
