@@ -210,6 +210,8 @@ internal class JoynContinueWatchingStore(context: Context) {
             .putNullable("seriesTitle", item.seriesTitle)
             .putNullable("seasonNumber", item.seasonNumber)
             .putNullable("episodeNumber", item.episodeNumber)
+            .putNullable("seriesId", item.seriesId)
+            .putNullable("seriesPath", item.seriesPath)
             .put("licenseTypes", JSONArray(item.licenseTypes.toList()))
             .put("markings", JSONArray(item.markings.toList()))
 
@@ -233,6 +235,8 @@ internal class JoynContinueWatchingStore(context: Context) {
                 episodeNumber = json.nullableInt("episodeNumber"),
                 licenseTypes = json.optJSONArray("licenseTypes").toStringSet(),
                 markings = json.optJSONArray("markings").toStringSet(),
+                seriesId = json.nullableString("seriesId"),
+                seriesPath = json.nullableString("seriesPath"),
             )
         }
 
