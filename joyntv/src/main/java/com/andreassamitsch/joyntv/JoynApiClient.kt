@@ -86,6 +86,7 @@ internal class JoynApiClient(context: Context) {
         val lanes = blocks.mapNotNull { original ->
             val id = original.optString("id").takeIf(String::isNotBlank) ?: return@mapNotNull null
             val block = resolvedById[id] ?: original
+            if (block.optString("__typename") == "ResumeLane") return@mapNotNull null
             val assets = block.optJSONArray("assets") ?: return@mapNotNull null
             val items = assets.toMediaItems()
                 .filter { it.isFree || account.hasPlus }
