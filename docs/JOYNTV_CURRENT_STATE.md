@@ -302,7 +302,9 @@ Joyn TV speichert Wiedergabefortschritt lokal und synchronisiert ihn bei angemel
 
 Am **18.09.2026** wurde ein Resume-Fehler korrigiert: Joyns Resume-Asset-ID und die für Playback verwendete Video-ID werden nun getrennt behandelt. Beim Öffnen aus Joyn-`Weiterschauen` oder über den Android-TV-Watch-Next-Deep-Link wird die explizit gespeicherte Position an den Player übergeben und Fortschritt weiter unter der Resume-Asset-ID gespeichert.
 
-Aktuell veröffentlicht Joyn TV dort **unfertige Inhalte** als `WATCH_NEXT_TYPE_CONTINUE`. Eine erst später neu veröffentlichte Folge einer bereits fertig angesehenen Serie wird noch **nicht automatisch** als `NEXT`/`NEW` erzeugt; Android TV entdeckt neue Joyn-Folgen nicht selbst, sondern benötigt dafür einen von der App veröffentlichten Watch-Next-Eintrag.
+Joyn TV veröffentlicht dort **unfertige Inhalte** als `WATCH_NEXT_TYPE_CONTINUE`. Seit dem Stand vom **18.09.2026** werden zusätzlich fertig angesehene Serienfolgen verfolgt. Die App merkt sich Serie, Staffel und Folgennummer, prüft sofort nach dem Folgenende, beim App-Start sowie per WorkManager ungefähr alle **6 Stunden** bei bestehender Netzwerkverbindung auf neu verfügbare Folgen und veröffentlicht die nächste Folge als `WATCH_NEXT_TYPE_NEXT`.
+
+Die Suche prüft zuerst die aktuelle Staffel und danach – sofern nötig – spätere Staffeln. Fehlt im Resume-/Episode-Datensatz der Serienpfad, wird die Serie über die Joyn-Suche erneut aufgelöst. Der veröffentlichte Android-TV-Eintrag enthält einen direkten Intent in den Joyn-VOD-Player. Dadurch kann die Folge sowohl in Android/Google TVs systemweiter Watch-Next-Fläche als auch in I Launchers bestehender **Weiterschauen**-Zeile erscheinen. Sobald die vorgeschlagene Folge gestartet wird, wird der NEXT-Eintrag entfernt; nach ausreichendem Wiedergabefortschritt übernimmt wieder der normale CONTINUE-Eintrag.
 
 ## 10. Regeln für zukünftige Änderungen
 
