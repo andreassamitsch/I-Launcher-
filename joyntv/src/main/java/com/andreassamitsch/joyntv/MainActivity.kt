@@ -27,6 +27,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val repository = JoynRepository(applicationContext)
         val updateManager = JoynUpdateManager(applicationContext)
+        JoynNextEpisodeScheduler.enqueueNow(applicationContext)
         setContent {
             JoynTvTheme {
                 JoynHomeScreen(
