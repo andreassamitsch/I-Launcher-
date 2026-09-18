@@ -110,15 +110,22 @@ internal class JoynLiveTvFallbackRepository(context: Context) : Closeable {
     }
 
     private suspend fun mappedFor(channel: LiveTvChannel): JoynBridgeChannel? = mutex.withLock {
-        mappings[channel.serviceReference] ?: run {
-            // The initial background inventory request may still have been unavailable when the
-            // player started. Retry lazily on a real SAT failure/manual source switch.
-            val available = inventory ?: loadInventoryPreferSwiss()
-            val source = if (bouquetChannels.isEmpty()) listOf(channel) else bouquetChannels
-            mappings = JoynLiveChannelMatcher.mapBouquet(source, available)
-            bouquetKey = source.joinToString("|") { "${it.serviceReference}\u0000${it.name}" }
-            mappings[channel.serviceReference]
+        val current = mappings[channel.serviceReference]
+        val inventoryStale = inventory == null ||
+            SystemClock.elapsedRealtime() - inventoryLoadedAtElapsedMs >= INVENTORY_TTL_MS
+
+        if (current != null && (!inventoryStale || current.country.equals("CH", ignoreCase = true))) {
+            return@withLock current
         }
+
+        // Retry lazily when no mapping exists or when a non-CH mapping has outlived the inventory
+        // TTL. This prevents a temporary Swiss inventory failure from pinning an AT/DE choice for
+        // the rest of a long-running launcher process.
+        val available = if (inventoryStale) loadInventoryPreferSwiss() else requireNotNull(inventory)
+        val source = if (bouquetChannels.isEmpty()) listOf(channel) else bouquetChannels
+        mappings = JoynLiveChannelMatcher.mapBouquet(source, available)
+        bouquetKey = source.joinToString("|") { "${it.serviceReference}\u0000${it.name}" }
+        mappings[channel.serviceReference]
     }
 
     fun mappedChannel(serviceReference: String): JoynBridgeChannel? = mappings[serviceReference]
