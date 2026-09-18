@@ -46,6 +46,7 @@ data class JoynMediaItem(
     val logoUrl: String? = null,
     val videoId: String? = null,
     val seasonId: String? = null,
+    val seriesTitle: String? = null,
     val seasonNumber: Int? = null,
     val episodeNumber: Int? = null,
     val licenseTypes: Set<String> = emptySet(),
@@ -101,6 +102,7 @@ data class JoynPlayback(
     val manifestUrl: String,
     val licenseUrl: String?,
     val certificateUrl: String?,
+    val assetId: String? = null,
 )
 
 data class JoynRuntimeConfig(
