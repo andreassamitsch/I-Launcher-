@@ -550,7 +550,9 @@ internal fun JoynHomeScreen(
                                     selectedLive = null
                                     prewarmLive = null
                                 },
-                                onOpen = { onOpenMedia(it.media) },
+                                onOpen = { entry ->
+                                    context.startActivity(PlayerActivity.vodResumeIntent(context, entry))
+                                },
                                 onRemove = ::removeContinueWatching,
                             )
                         }
