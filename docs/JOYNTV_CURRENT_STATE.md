@@ -162,6 +162,8 @@ Für **jede exakt gematchte Senderfamilie** gilt jetzt bewusst **CH → AT → D
 
 Grund: Auf realer Hardware wurde bei Schweizer Joyn-Feeds die beste verfügbare Qualität beobachtet, unter anderem bis **1080p** bei der ProSiebenSat.1-Gruppe. Die Länderkennung des Bouquet-Senders ist daher kein Qualitätskriterium mehr; entscheidend bleibt nur der **exakte kanonische Senderfamilien-Treffer**. Existiert kein CH-Treffer, folgt AT und danach DE.
 
+Das Joyn-Inventar im I Launcher läuft nach **10 Minuten** ab. Wurde ein Sender nur auf AT/DE gemappt, wird das Mapping nach Ablauf dieses Caches beim nächsten Prewarm/Wechsel erneut geprüft. Liefert ein Multi-Country-Refresh gar keine CH-Zeilen, wird der Inventarabruf einmal wiederholt, damit ein temporärer CH-Routingfehler nicht für die gesamte Launcher-Sitzung an einem AT/DE-Fallback festhält.
+
 Relevante Datei:
 
 - `app/src/main/java/com/andreassamitsch/ilauncher/data/joyn/JoynLiveTvFallbackRepository.kt`
@@ -231,7 +233,7 @@ Relevante Dateien:
 
 ### Build- und Teststand
 
-Die neue SAT-first-/Manual-/Prewarm-Logik ist ab Source-SHA **`7cc2b958fb4ce1e276e78f8a81dc23fa5f223a31`** enthalten. Der erste erfolgreich gebaute und im I-Launcher-Updater veröffentlichte Build dieses Stands ist **`0.1.0-dev.524`**. Unit-Tests und APK-Build waren erfolgreich.
+Die neue SAT-first-/Manual-/Prewarm-Logik ist ab Source-SHA **`7cc2b958fb4ce1e276e78f8a81dc23fa5f223a31`** enthalten. Der erste erfolgreich gebaute Stand war **`0.1.0-dev.524`**. Die globale **CH → AT → DE**-Präferenz inklusive erneuter Prüfung eines veralteten Nicht-CH-Mappings ist im I-Launcher-Updater ab **`0.1.0-dev.529`**, Source-SHA **`b19aae57eec4367a895a7df2803dfaa17a8df996`**, veröffentlicht.
 
 Der Benutzer hat am **17.09.2026** den überarbeiteten Live-TV-Stand nach dem Einbau der manuellen SAT/Joyn-Umschaltung und der Auto-Fallback-Steuerung mit **„funktioniert“** bestätigt. Damit gelten diese Bedienpfade auf dem TCL als funktional bestätigt. Die genaue Zeitersparnis des Joyn-Prewarm wurde noch nicht separat gemessen.
 
