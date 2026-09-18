@@ -235,12 +235,12 @@ internal class JoynNextEpisodeRefresher(private val context: Context) {
 
         return repository.searchMedia(state.seriesTitle)
             .asSequence()
-            .filter { it.type == JoynMediaType.SERIES && !it.path.isNullOrBlank() }
-            .minWithOrNull(
-                compareBy<JoynMediaItem> {
-                    if (it.title.equals(state.seriesTitle, ignoreCase = true)) 0 else 1
-                }.thenBy { it.title.length },
-            )
+            .filter {
+                it.type == JoynMediaType.SERIES &&
+                    !it.path.isNullOrBlank() &&
+                    it.title.equals(state.seriesTitle, ignoreCase = true)
+            }
+            .minByOrNull { it.title.length }
     }
 }
 
