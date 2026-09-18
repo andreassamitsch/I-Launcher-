@@ -926,6 +926,8 @@ internal class JoynApiClient(context: Context) {
             episodeNumber = optInt("number").takeIf { it > 0 },
             licenseTypes = optJSONArray("licenseTypes").toStringSet(),
             markings = optJSONArray("markings").toStringSet(),
+            seriesId = optJSONObject("series")?.optString("id")?.takeIf(String::isNotBlank),
+            seriesPath = optJSONObject("series")?.optString("path")?.takeIf(String::isNotBlank),
         )
     }
 
