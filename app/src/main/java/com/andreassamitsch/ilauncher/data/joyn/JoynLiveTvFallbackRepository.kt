@@ -1,6 +1,7 @@
 package com.andreassamitsch.ilauncher.data.joyn
 
 import android.content.Context
+import android.os.SystemClock
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import java.io.Closeable
 import java.text.Normalizer
@@ -29,6 +30,7 @@ internal class JoynLiveTvFallbackRepository(context: Context) : Closeable {
     private val playbackGeneration = AtomicLong(0L)
 
     private var inventory: List<JoynBridgeChannel>? = null
+    private var inventoryLoadedAtElapsedMs: Long = 0L
     private var bouquetKey: String? = null
     private var bouquetChannels: List<LiveTvChannel> = emptyList()
     private var mappings: Map<String, JoynBridgeChannel> = emptyMap()
@@ -38,15 +40,36 @@ internal class JoynLiveTvFallbackRepository(context: Context) : Closeable {
 
     suspend fun primeBouquet(channels: List<LiveTvChannel>): JoynFallbackMappingSnapshot = mutex.withLock {
         val currentKey = channels.joinToString("|") { "${it.serviceReference}\u0000${it.name}" }
-        if (currentKey == bouquetKey && inventory != null) {
+        val inventoryFresh = inventory != null &&
+            SystemClock.elapsedRealtime() - inventoryLoadedAtElapsedMs < INVENTORY_TTL_MS
+        if (currentKey == bouquetKey && inventoryFresh) {
             return@withLock snapshot(channels.size)
         }
 
         bouquetChannels = channels
-        val available = inventory ?: bridge.listChannels().also { inventory = it }
+        val available = if (inventoryFresh) {
+            requireNotNull(inventory)
+        } else {
+            loadInventoryPreferSwiss()
+        }
         mappings = JoynLiveChannelMatcher.mapBouquet(channels, available)
         bouquetKey = currentKey
         snapshot(channels.size)
+    }
+
+    private suspend fun loadInventoryPreferSwiss(): List<JoynBridgeChannel> {
+        var loaded = bridge.listChannels()
+        // A whole-country routing failure can yield a valid but partial AT/DE inventory. Because CH
+        // is our quality-first source, retry the inventory once when no Swiss rows arrived at all.
+        if (loaded.none { it.country.equals("CH", ignoreCase = true) }) {
+            runCatching { bridge.listChannels() }
+                .getOrNull()
+                ?.takeIf { retry -> retry.any { it.country.equals("CH", ignoreCase = true) } }
+                ?.let { loaded = it }
+        }
+        inventory = loaded
+        inventoryLoadedAtElapsedMs = SystemClock.elapsedRealtime()
+        return loaded
     }
 
     /** Resolve and hold the current channel's Joyn route before SAT actually needs it. */
@@ -90,7 +113,7 @@ internal class JoynLiveTvFallbackRepository(context: Context) : Closeable {
         mappings[channel.serviceReference] ?: run {
             // The initial background inventory request may still have been unavailable when the
             // player started. Retry lazily on a real SAT failure/manual source switch.
-            val available = inventory ?: bridge.listChannels().also { inventory = it }
+            val available = inventory ?: loadInventoryPreferSwiss()
             val source = if (bouquetChannels.isEmpty()) listOf(channel) else bouquetChannels
             mappings = JoynLiveChannelMatcher.mapBouquet(source, available)
             bouquetKey = source.joinToString("|") { "${it.serviceReference}\u0000${it.name}" }
@@ -131,6 +154,8 @@ internal data class JoynFallbackMappingSnapshot(
 ) {
     val mappedCount: Int get() = mappedByServiceReference.size
 }
+
+private const val INVENTORY_TTL_MS = 10L * 60L * 1000L
 
 internal object JoynLiveChannelMatcher {
     private val strippedWords = setOf(
