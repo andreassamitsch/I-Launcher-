@@ -12,10 +12,15 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val resumeGeneration = mutableIntStateOf(0)
+    private var firstResume = true
 
     override fun onResume() {
         super.onResume()
-        resumeGeneration.intValue++
+        if (firstResume) {
+            firstResume = false
+        } else {
+            resumeGeneration.intValue++
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
