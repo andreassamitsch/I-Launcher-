@@ -260,7 +260,6 @@ internal object JoynNextEpisodeScheduler {
             ExistingPeriodicWorkPolicy.UPDATE,
             periodic,
         )
-        enqueueNow(context)
     }
 
     fun enqueueNow(context: Context) {
