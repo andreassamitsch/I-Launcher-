@@ -15,7 +15,8 @@ import kotlinx.coroutines.sync.withLock
  * The map is intentionally exact after conservative normalization. Runtime fuzzy matching is not
  * used: a wrong regional channel is worse than having no fallback. For selected stations whose
  * Swiss Joyn feed is known to offer the better TV quality, CH is preferred when that exact station
- * is available there. Other stations keep the normal regional priority.
+ * is available there. CH is therefore the first choice for every exact station family whenever
+ * Joyn exposes a Swiss variant; AT and DE are only fallbacks.
  *
  * Playback resolution can be prewarmed while SAT is still running. The resolved manifest, DRM URL
  * and loopback bridge stay cached for the current channel session so a later manual or automatic
@@ -150,22 +151,6 @@ internal object JoynLiveChannelMatcher {
         "arddaserste" to "daserste",
     )
 
-    /**
-     * These exact station families prefer Joyn CH because real-device testing has shown the Swiss
-     * feeds can expose materially better DASH quality (1080p for the ProSiebenSat.1 group). The
-     * fallback remains exact-name based; this list only changes the country order for a matched core.
-     */
-    private val swissQualityPreferredCores = setOf(
-        "prosieben",
-        "sat1",
-        "kabeleins",
-        "prosiebenmaxx",
-        "sixx",
-        "sat1gold",
-        "kabeleinsdoku",
-        "tlc",
-    )
-
     fun mapBouquet(
         bouquet: List<LiveTvChannel>,
         joynChannels: List<JoynBridgeChannel>,
@@ -205,20 +190,13 @@ internal object JoynLiveChannelMatcher {
     }
 
     internal fun countryPriority(value: String, core: String = canonicalCore(value)): List<String> {
-        if (core in swissQualityPreferredCores) return listOf("CH", "AT", "DE")
-
-        val normalized = Normalizer.normalize(value, Normalizer.Form.NFD)
-            .replace(Regex("\\p{Mn}+"), "")
-            .lowercase(Locale.GERMAN)
-        val preferred = when {
-            Regex("\\b(schweiz|suisse|svizzera|switzerland|ch)\\b").containsMatchIn(normalized) -> "CH"
-            Regex("\\b(deutschland|germany|de)\\b").containsMatchIn(normalized) -> "DE"
-            Regex("\\b(austria|osterreich|oesterreich|at)\\b").containsMatchIn(normalized) -> "AT"
-            else -> "AT"
-        }
-        return buildList {
-            add(preferred)
-            listOf("AT", "CH", "DE").forEach { if (it !in this) add(it) }
-        }
+        // The bouquet name is used only to identify the exact station family. Regional suffixes such
+        // as "Austria" or "Schweiz" must not lower the quality preference: if the same canonical
+        // station exists in Joyn CH, use that feed first.
+        @Suppress("UNUSED_VARIABLE")
+        val exactMatchedCore = core
+        @Suppress("UNUSED_VARIABLE")
+        val sourceLabel = value
+        return listOf("CH", "AT", "DE")
     }
 }
