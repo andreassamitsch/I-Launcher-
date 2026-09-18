@@ -164,6 +164,16 @@ internal class JoynRepository(context: Context) {
         return api.loadSeasonEpisodes(seasonId)
     }
 
+    suspend fun loadContinueWatching(): List<JoynContinueWatchingEntry> = networkOperationMutex.withLock {
+        ensureJoynCountryRouting()
+        api.loadContinueWatching()
+    }
+
+    suspend fun setResumePosition(assetId: String, positionSeconds: Int): Boolean = networkOperationMutex.withLock {
+        ensureJoynCountryRouting()
+        api.setResumePosition(assetId, positionSeconds)
+    }
+
     suspend fun prepareLiveChannel(channelId: String): Result<Unit> {
         val countryRef = parseLiveChannelRef(channelId) ?: return Result.success(Unit)
         return ensureMysteriumForCountry(countryRef.country)
