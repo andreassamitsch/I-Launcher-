@@ -569,13 +569,6 @@ internal class JoynApiClient(context: Context) {
                 .header("Joyn-Country", config.country.name)
                 .header("Joyn-Distribution-Tenant", config.country.graphqlTenant)
                 .header("Authorization", authorization)
-                .apply {
-                    if (operationName != "GetMeState") {
-                        prefs.getString(KEY_ACCOUNT_USER_STATE, null)
-                            ?.takeIf(String::isNotBlank)
-                            ?.let { header("Joyn-User-State", it) }
-                    }
-                }
                 .get()
                 .build(),
         )
@@ -621,6 +614,13 @@ internal class JoynApiClient(context: Context) {
                 .header("Joyn-Country", config.country.name)
                 .header("Joyn-Distribution-Tenant", config.country.graphqlTenant)
                 .header("Authorization", authorization)
+                .apply {
+                    if (operationName != "GetMeState") {
+                        prefs.getString(KEY_ACCOUNT_USER_STATE, null)
+                            ?.takeIf(String::isNotBlank)
+                            ?.let { header("Joyn-User-State", it) }
+                    }
+                }
                 .get()
                 .build(),
         )
