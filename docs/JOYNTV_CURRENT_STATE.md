@@ -295,7 +295,7 @@ Relevante Dateien:
 - `joyntv/src/main/java/com/andreassamitsch/joyntv/JoynHomeCache.kt`
 - `joyntv/src/main/java/com/andreassamitsch/joyntv/JoynRepository.kt`
 
-Build-Stand: **Joyn TV `0.1.0-dev.645`**, Source-SHA `69e5343d65627ae66e475df731e1a494684be554`. `:joyntv:testDebugUnitTest`, signierter Release-Build, Signaturprüfung und Veröffentlichung in `joyn-downloads` waren erfolgreich. Die tatsächliche Startzeitverbesserung und Favoritenbedienung müssen noch auf dem realen TCL bestätigt werden.
+Historischer Cache/Favoriten-Build: **Joyn TV `0.1.0-dev.645`**, Source-SHA `69e5343d65627ae66e475df731e1a494684be554`. Der aktuell veröffentlichte Joyn-Stand mit Resume-Fix, minimalistischem Player und automatischer Next-Episode-/Android-TV-Watch-Next-Logik ist **`0.1.0-dev.705`**, Source-SHA **`f37a9ac586b12333dcd89169579cffd551432503`**. `:joyntv:testDebugUnitTest`, signierter Release-Build, Signaturprüfung und Veröffentlichung in `joyn-downloads` waren erfolgreich.
 
 
 ### Weiterschauen / Android TV Watch Next
@@ -307,6 +307,8 @@ Am **18.09.2026** wurde ein Resume-Fehler korrigiert: Joyns Resume-Asset-ID und 
 Joyn TV veröffentlicht dort **unfertige Inhalte** als `WATCH_NEXT_TYPE_CONTINUE`. Seit dem Stand vom **18.09.2026** werden zusätzlich fertig angesehene Serienfolgen verfolgt. Die App merkt sich Serie, Staffel und Folgennummer, prüft sofort nach dem Folgenende, beim App-Start sowie per WorkManager ungefähr alle **6 Stunden** bei bestehender Netzwerkverbindung auf neu verfügbare Folgen und veröffentlicht die nächste Folge als `WATCH_NEXT_TYPE_NEXT`.
 
 Die Suche prüft zuerst die aktuelle Staffel und danach – sofern nötig – spätere Staffeln. Fehlt im Resume-/Episode-Datensatz der Serienpfad, wird die Serie über die Joyn-Suche erneut aufgelöst. Der veröffentlichte Android-TV-Eintrag enthält einen direkten Intent in den Joyn-VOD-Player. Dadurch kann die Folge sowohl in Android/Google TVs systemweiter Watch-Next-Fläche als auch in I Launchers bestehender **Weiterschauen**-Zeile erscheinen. Sobald die vorgeschlagene Folge gestartet wird, wird der NEXT-Eintrag entfernt; nach ausreichendem Wiedergabefortschritt übernimmt wieder der normale CONTINUE-Eintrag.
+
+Erster veröffentlichter Build dieses Stands: **Joyn TV `0.1.0-dev.705`**.
 
 ## 10. Regeln für zukünftige Änderungen
 
