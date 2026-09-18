@@ -348,6 +348,12 @@ internal class JoynWatchNextPublisher(context: Context) {
             .setDurationMillis(entry.durationMs.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
             .setLastEngagementTimeUtcMillis(entry.updatedAt)
 
+        if (media.type == JoynMediaType.EPISODE) {
+            builder.setEpisodeTitle(media.title)
+            media.seasonNumber?.let(builder::setSeasonNumber)
+            media.episodeNumber?.let(builder::setEpisodeNumber)
+        }
+
         (media.backdropUrl ?: media.imageUrl)?.takeIf(String::isNotBlank)?.let {
             builder.setPosterArtUri(Uri.parse(it))
         }
