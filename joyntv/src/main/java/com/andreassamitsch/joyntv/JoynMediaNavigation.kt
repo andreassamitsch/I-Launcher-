@@ -11,7 +11,7 @@ internal fun openJoynMedia(context: Context, item: JoynMediaItem): Boolean {
     val playbackRef = item.videoId
         ?: item.path?.takeIf { item.type == JoynMediaType.MOVIE && it.isNotBlank() }
     if (!playbackRef.isNullOrBlank()) {
-        context.startActivity(PlayerActivity.vodIntent(context, playbackRef, item.title))
+        context.startActivity(PlayerActivity.vodIntent(context, item))
         return true
     }
 
