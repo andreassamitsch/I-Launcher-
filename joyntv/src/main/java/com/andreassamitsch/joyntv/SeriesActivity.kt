@@ -126,8 +126,12 @@ private fun SeriesScreen(
         episodes = emptyList()
         runCatching {
             withContext(Dispatchers.IO) { repository.loadSeasonEpisodes(season.id) }
-        }.onSuccess { episodes = it }
-            .onFailure { error = it.message ?: it.javaClass.simpleName }
+        }.onSuccess { loaded ->
+            val seriesTitle = (details?.series ?: initialItem).title
+            episodes = loaded.map { episode ->
+                episode.copy(seriesTitle = episode.seriesTitle ?: seriesTitle)
+            }
+        }.onFailure { error = it.message ?: it.javaClass.simpleName }
     }
 
     val series = details?.series ?: initialItem
