@@ -78,27 +78,44 @@ class PlayerActivity : ComponentActivity() {
             ?.takeIf { it.scheme == "ilauncherjoyn" && it.host == "watchnext" }
             ?.lastPathSegment
             ?.takeIf(String::isNotBlank)
-        val storedContinue = continueStore.find(watchNextAssetId)
-        val contentId = watchNextAssetId
+        val explicitResumeAssetId = intent.getStringExtra(EXTRA_RESUME_ASSET_ID)
+        val explicitResumePositionMs = intent.getLongExtra(EXTRA_RESUME_POSITION_MS, -1L)
+            .takeIf { it > 0L }
+        val storedContinue = continueStore.find(watchNextAssetId ?: explicitResumeAssetId)
+        val resumeMedia = storedContinue?.media
+        val resumePlaybackRef = resumeMedia?.videoId
+            ?: resumeMedia?.path?.takeIf { resumeMedia.type == JoynMediaType.MOVIE && it.isNotBlank() }
+        val contentId = resumePlaybackRef
             ?: intent.getStringExtra(EXTRA_CONTENT_ID)
             ?: intent.getStringExtra(EXTRA_CHANNEL_ID)
+            ?: watchNextAssetId
             ?: intent.data?.lastPathSegment
             ?: run {
                 finish()
                 return
             }
-        val title = storedContinue?.media?.title
+        val title = resumeMedia?.title
             ?: intent.getStringExtra(EXTRA_TITLE)
             ?: intent.getStringExtra(EXTRA_CHANNEL_TITLE)
             ?: "Joyn"
-        val streamType = if (watchNextAssetId != null) STREAM_VOD
+        val streamType = if (watchNextAssetId != null || explicitResumeAssetId != null) STREAM_VOD
             else intent.getStringExtra(EXTRA_STREAM_TYPE) ?: STREAM_LIVE
-        val media = storedContinue?.media ?: mediaFromIntent(intent, contentId, title, streamType)
+        val media = resumeMedia ?: mediaFromIntent(intent, contentId, title, streamType)
+        val resumeAssetId = explicitResumeAssetId ?: storedContinue?.assetId
+        val resumePositionMs = explicitResumePositionMs ?: storedContinue?.positionMs
         val repository = JoynRepository(applicationContext)
 
         setContent {
             JoynTvTheme {
-                JoynPlayer(repository, contentId, title, streamType, media)
+                JoynPlayer(
+                    repository = repository,
+                    contentId = contentId,
+                    title = title,
+                    streamType = streamType,
+                    media = media,
+                    resumeAssetId = resumeAssetId,
+                    requestedStartPositionMs = resumePositionMs,
+                )
             }
         }
     }
@@ -121,6 +138,8 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_MEDIA_SERIES_TITLE = "joyn_media_series_title"
         private const val EXTRA_MEDIA_SEASON_NUMBER = "joyn_media_season_number"
         private const val EXTRA_MEDIA_EPISODE_NUMBER = "joyn_media_episode_number"
+        private const val EXTRA_RESUME_ASSET_ID = "joyn_resume_asset_id"
+        private const val EXTRA_RESUME_POSITION_MS = "joyn_resume_position_ms"
         private const val STREAM_LIVE = "LIVE"
         private const val STREAM_VOD = "VOD"
 
@@ -155,6 +174,12 @@ class PlayerActivity : ComponentActivity() {
                 item.episodeNumber?.let { putExtra(EXTRA_MEDIA_EPISODE_NUMBER, it) }
             }
         }
+
+        fun vodResumeIntent(context: Context, entry: JoynContinueWatchingEntry): Intent =
+            vodIntent(context, entry.media).apply {
+                putExtra(EXTRA_RESUME_ASSET_ID, entry.assetId)
+                putExtra(EXTRA_RESUME_POSITION_MS, entry.positionMs)
+            }
 
         fun vodIntent(context: Context, videoId: String, title: String): Intent =
             Intent(context, PlayerActivity::class.java).apply {
@@ -199,6 +224,8 @@ private fun JoynPlayer(
     title: String,
     streamType: String,
     media: JoynMediaItem?,
+    resumeAssetId: String?,
+    requestedStartPositionMs: Long?,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -211,8 +238,8 @@ private fun JoynPlayer(
     val watchNextPublisher = remember(context.applicationContext) {
         JoynWatchNextPublisher(context.applicationContext)
     }
-    var startPositionMs by remember(contentId, streamType) { mutableStateOf(0L) }
-    var lastRemoteSyncAt by remember(contentId, streamType) { mutableStateOf(0L) }
+    var startPositionMs by remember(contentId, streamType, resumeAssetId) { mutableStateOf(0L) }
+    var lastRemoteSyncAt by remember(contentId, streamType, resumeAssetId) { mutableStateOf(0L) }
     var playback by remember(contentId, streamType) { mutableStateOf<JoynPlayback?>(null) }
     var errorText by remember(contentId, streamType) { mutableStateOf<String?>(null) }
     var retryKey by remember(contentId, streamType) { mutableIntStateOf(0) }
@@ -236,7 +263,7 @@ private fun JoynPlayer(
         }
     }
 
-    LaunchedEffect(contentId, streamType, retryKey, pinAttemptKey) {
+    LaunchedEffect(contentId, streamType, resumeAssetId, requestedStartPositionMs, retryKey, pinAttemptKey) {
         playback = null
         errorText = null
         pinRequested = false
@@ -272,7 +299,12 @@ private fun JoynPlayer(
             }
         }.onSuccess { (resolved, useFullProxy) ->
             if (streamType == "VOD") {
-                startPositionMs = continueStore.find(resolved.assetId ?: contentId)?.positionMs ?: 0L
+                val lookupId = resumeAssetId ?: resolved.assetId ?: contentId
+                startPositionMs = requestedStartPositionMs
+                    ?.takeIf { it > 0L }
+                    ?: continueStore.find(lookupId)?.positionMs
+                    ?: continueStore.find(resolved.assetId ?: contentId)?.positionMs
+                    ?: 0L
             }
             playback = resolved
             fullProxyActive = useFullProxy
@@ -305,7 +337,7 @@ private fun JoynPlayer(
                 startPositionMs = startPositionMs,
                 onProgress = { positionMs, durationMs, ended ->
                     if (streamType == "VOD" && media != null && durationMs > 0L) {
-                        val assetId = playback?.assetId ?: contentId
+                        val assetId = resumeAssetId ?: playback?.assetId ?: contentId
                         val finished = ended || JoynContinueWatchingPolicy.isFinished(positionMs, durationMs)
                         if (finished) {
                             continueStore.remove(assetId, pendingRemoteDelete = true)
