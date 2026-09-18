@@ -257,7 +257,7 @@ internal object JoynNextEpisodeScheduler {
             .build()
         WorkManager.getInstance(context.applicationContext).enqueueUniquePeriodicWork(
             PERIODIC_WORK,
-            ExistingPeriodicWorkPolicy.UPDATE,
+            ExistingPeriodicWorkPolicy.KEEP,
             periodic,
         )
     }
