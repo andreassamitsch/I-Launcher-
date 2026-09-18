@@ -55,6 +55,8 @@ internal class JoynMediaFavoritesStore(context: Context) {
                         .putNullable("seasonId", item.seasonId)
                         .putNullable("seasonNumber", item.seasonNumber)
                         .putNullable("episodeNumber", item.episodeNumber)
+                        .putNullable("seriesId", item.seriesId)
+                        .putNullable("seriesPath", item.seriesPath)
                         .put(
                             "licenseTypes",
                             JSONArray().apply {
@@ -96,6 +98,8 @@ internal class JoynMediaFavoritesStore(context: Context) {
                             episodeNumber = json.nullableInt("episodeNumber"),
                             licenseTypes = json.optJSONArray("licenseTypes").toStringSet(),
                             markings = json.optJSONArray("markings").toStringSet(),
+                            seriesId = json.nullableString("seriesId"),
+                            seriesPath = json.nullableString("seriesPath"),
                         ),
                     )
                 }
