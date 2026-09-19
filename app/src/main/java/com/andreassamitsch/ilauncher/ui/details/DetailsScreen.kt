@@ -95,7 +95,14 @@ fun DetailsScreen(
         } else {
             item
         }
-        displayItem = detailed
+        displayItem = if (item.source.provider == "epg") {
+            detailed.copy(
+                seasonNumber = item.seasonNumber ?: detailed.seasonNumber,
+                episodeNumber = item.episodeNumber ?: detailed.episodeNumber,
+                tmdbEpisodeId = item.tmdbEpisodeId ?: detailed.tmdbEpisodeId,
+                source = item.source,
+            )
+        } else detailed
 
         if (loader != null && detailed.tmdbId != null) {
             coroutineScope {
@@ -228,6 +235,12 @@ private fun MediaDetailsContent(
     var selectedSeasonContent by remember(item.id) { mutableStateOf<SeriesSeasonContent?>(null) }
     var seasonSelectionTouched by remember(item.id) { mutableStateOf(false) }
     var seasonContentLoading by remember(item.id) { mutableStateOf(false) }
+    val requestedEpgSeason = item.seasonNumber.takeIf {
+        item.source.provider == "epg" && item.type == MediaType.Series
+    }
+    val requestedEpgEpisode = item.episodeNumber.takeIf {
+        requestedEpgSeason != null && it != null && it > 0
+    }
 
     LaunchedEffect(item.id, item.type, item.title, item.originalTitle) {
         seriesResume = null
@@ -244,13 +257,14 @@ private fun MediaDetailsContent(
         if (item.type != MediaType.Series || item.tmdbId == null || loader == null) return@LaunchedEffect
         val loaded = runCatching { loader.loadSeriesSeasons(item) }.getOrDefault(emptyList())
         seasons = loaded
+        val epgSeason = requestedEpgSeason?.takeIf { wanted -> loaded.any { it.seasonNumber == wanted } }
         val resumeSeason = seriesResume?.seasonNumber?.takeIf { wanted -> loaded.any { it.seasonNumber == wanted } }
-        selectedSeasonNumber = resumeSeason
+        selectedSeasonNumber = epgSeason ?: resumeSeason
             ?: loaded.firstOrNull { it.seasonNumber > 0 }?.seasonNumber
             ?: loaded.firstOrNull()?.seasonNumber
     }
-    LaunchedEffect(seriesResume, seasons, seasonSelectionTouched) {
-        if (seasonSelectionTouched) return@LaunchedEffect
+    LaunchedEffect(seriesResume, seasons, seasonSelectionTouched, requestedEpgSeason) {
+        if (seasonSelectionTouched || requestedEpgSeason != null) return@LaunchedEffect
         val resumeSeason = seriesResume?.seasonNumber ?: return@LaunchedEffect
         if (seasons.any { it.seasonNumber == resumeSeason }) selectedSeasonNumber = resumeSeason
     }
@@ -275,7 +289,11 @@ private fun MediaDetailsContent(
         else emptyList()
     }
     val seriesPlaybackItem = remember(item, seriesResume) {
-        if (item.type == MediaType.Series) seriesPlaybackTarget(item, seriesResume) else item
+        when {
+            item.type == MediaType.Series && requestedEpgSeason != null && requestedEpgEpisode != null -> item
+            item.type == MediaType.Series -> seriesPlaybackTarget(item, seriesResume)
+            else -> item
+        }
     }
     val cloudStreamDirect = remember(externalTargets, seriesPlaybackItem, handoff) {
         ContentSearchTarget.CloudStream in externalTargets &&
@@ -461,6 +479,9 @@ private fun MediaDetailsContent(
                     seasonContent = selectedSeasonContent,
                     isLoading = seasonContentLoading,
                     resume = seriesResume,
+                    requestedEpgSeason = requestedEpgSeason,
+                    requestedEpgEpisode = requestedEpgEpisode,
+                    requestedEpgEpisodeId = item.tmdbEpisodeId,
                     onSelectSeason = { seasonNumber ->
                         seasonSelectionTouched = true
                         selectedSeasonNumber = seasonNumber
@@ -540,6 +561,9 @@ private fun SeriesEpisodesSection(
     seasonContent: SeriesSeasonContent?,
     isLoading: Boolean,
     resume: SeriesResumePosition?,
+    requestedEpgSeason: Int?,
+    requestedEpgEpisode: Int?,
+    requestedEpgEpisodeId: Int?,
     onSelectSeason: (Int) -> Unit,
     onPlayEpisode: (MediaItem) -> Unit,
 ) {
@@ -576,6 +600,22 @@ private fun SeriesEpisodesSection(
                 style = MaterialTheme.typography.titleMedium,
             )
             val episodeRowState = rememberLazyListState()
+            val episodeFocusRequester = remember(requestedEpgSeason, requestedEpgEpisode, requestedEpgEpisodeId) {
+                FocusRequester()
+            }
+            val requestedIndex = if (selectedSeasonNumber == requestedEpgSeason) {
+                seasonContent.episodes.indexOfFirst { episode ->
+                    (requestedEpgEpisodeId != null && episode.tmdbEpisodeId == requestedEpgEpisodeId) ||
+                        (requestedEpgEpisode != null && episode.episodeNumber == requestedEpgEpisode)
+                }
+            } else -1
+            LaunchedEffect(selectedSeasonNumber, seasonContent.episodes, requestedIndex) {
+                if (requestedIndex >= 0) {
+                    episodeRowState.scrollToItem(requestedIndex)
+                    withFrameNanos { }
+                    runCatching { episodeFocusRequester.requestFocus() }
+                }
+            }
             LazyRow(
                 state = episodeRowState,
                 modifier = Modifier.fillMaxWidth().touchScrollFallback(episodeRowState, Orientation.Horizontal),
@@ -586,12 +626,17 @@ private fun SeriesEpisodesSection(
                     seasonContent.episodes,
                     key = { "episode-${it.tmdbEpisodeId ?: it.id}" },
                 ) { episode ->
+                    val isRequestedEpisode = selectedSeasonNumber == requestedEpgSeason &&
+                        ((requestedEpgEpisodeId != null && episode.tmdbEpisodeId == requestedEpgEpisodeId) ||
+                            (requestedEpgEpisode != null && episode.episodeNumber == requestedEpgEpisode))
                     val isResumeEpisode = resume?.let {
                         it.seasonNumber == episode.seasonNumber && it.episodeNumber == episode.episodeNumber
                     } == true
                     EpisodeCard(
                         episode = episode,
                         isResumeEpisode = isResumeEpisode,
+                        isRequestedEpisode = isRequestedEpisode,
+                        modifier = if (isRequestedEpisode) Modifier.focusRequester(episodeFocusRequester) else Modifier,
                         onClick = { onPlayEpisode(episode) },
                     )
                 }
@@ -604,9 +649,11 @@ private fun SeriesEpisodesSection(
 private fun EpisodeCard(
     episode: MediaItem,
     isResumeEpisode: Boolean,
+    isRequestedEpisode: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    TouchCard(onClick = onClick) {
+    TouchCard(onClick = onClick, modifier = modifier) {
         Column(Modifier.width(246.dp)) {
             Box(
                 Modifier.width(246.dp).height(138.dp).clip(RoundedCornerShape(12.dp))
@@ -621,9 +668,9 @@ private fun EpisodeCard(
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
-                if (isResumeEpisode) {
+                if (isResumeEpisode || isRequestedEpisode) {
                     Text(
-                        "WEITERSCHAUEN",
+                        if (isRequestedEpisode) "AKTUELLE TV-FOLGE" else "WEITERSCHAUEN",
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.align(Alignment.BottomStart)
                             .background(MaterialTheme.colorScheme.background.copy(alpha = .82f))

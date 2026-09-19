@@ -1,6 +1,10 @@
 package com.andreassamitsch.ilauncher.ui.livetv
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,14 +14,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
@@ -29,6 +37,7 @@ import com.andreassamitsch.ilauncher.ui.components.TouchButton
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
 
 private val LIVE_INFO_CLOCK = DateTimeFormatter.ofPattern("HH:mm")
 
@@ -151,13 +160,12 @@ internal fun LiveTvProgramHero(
                 )
             }
             program?.let {
-                Text(
-                    text = it.longDescription?.takeIf(String::isNotBlank)
-                        ?: it.shortDescription?.takeIf(String::isNotBlank)
-                        ?: "Keine Beschreibung verfügbar.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 6,
-                    overflow = TextOverflow.Ellipsis,
+                val description = it.longDescription?.takeIf(String::isNotBlank)
+                    ?: it.shortDescription?.takeIf(String::isNotBlank)
+                    ?: "Keine Beschreibung verfügbar."
+                AutoScrollingLiveInfoDescription(
+                    key = "${channel.serviceReference}:${it.startUtcMillis}",
+                    text = description,
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -171,6 +179,41 @@ internal fun LiveTvProgramHero(
                 }
             }
         }
+    }
+}
+
+/** Scrolls only when the text exceeds its window; resets when the focused programme changes. */
+@Composable
+private fun AutoScrollingLiveInfoDescription(key: String, text: String) {
+    val scrollState = remember(key, text) { ScrollState(0) }
+    val density = LocalDensity.current
+    val pixelsPerSecond = with(density) { 30.dp.toPx() }
+    LaunchedEffect(key, text, scrollState.maxValue, pixelsPerSecond) {
+        val distance = scrollState.maxValue
+        if (distance <= 0) return@LaunchedEffect
+        val duration = ((distance / pixelsPerSecond) * 1_000f).toInt().coerceIn(3_000, 40_000)
+        delay(5_000)
+        while (true) {
+            scrollState.animateScrollTo(
+                distance,
+                animationSpec = tween(durationMillis = duration, easing = LinearEasing),
+            )
+            delay(3_500)
+            scrollState.scrollTo(0)
+            delay(5_000)
+        }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(80.dp)
+            .verticalScroll(scrollState),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 

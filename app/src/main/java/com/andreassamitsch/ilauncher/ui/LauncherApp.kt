@@ -635,14 +635,17 @@ fun LauncherApp(
                     scope.launch { epgRepository.enrichProgram(serviceReference, startUtcMillis) }
                 },
                 onOpenEpgProgramDetails = { channel, program ->
+                    val resolvedProgram = epgState.guide(channel.serviceReference)
+                        .firstOrNull { it.startUtcMillis == program.startUtcMillis }
+                        ?: program
                     restoreHomeHeroOnDetailsClose = false
                     selectedDetailsSourceId = null
                     selectedSearchDetailsMedia = null
                     selectedSearchDetailsResultId = null
-                    selectedHomeDetailsMedia = epgProgramMedia(channel, program)
+                    selectedHomeDetailsMedia = epgProgramMedia(channel, resolvedProgram)
                     selectedHomeDetailsSourceLabel = channel.name
                     openPlayerEpgInitially = true
-                    initialPlayerEpgProgramStartUtcMillis = program.startUtcMillis
+                    initialPlayerEpgProgramStartUtcMillis = resolvedProgram.startUtcMillis
                 },
                 onBack = closeLiveTvPlayer,
             )
@@ -948,8 +951,11 @@ private fun orderBrowseSections(
 
 private fun epgProgramMedia(channel: LiveTvChannel, program: LiveTvProgram): MediaItem = MediaItem(
     id = "epg:${channel.serviceReference}:${program.startUtcMillis}",
-    type = program.tmdbType ?: MediaType.Unknown,
-    title = program.title,
+    type = if (
+        program.tmdbId != null && program.seasonNumber != null && program.episodeNumber != null &&
+        program.tmdbType != MediaType.Movie
+    ) MediaType.Series else program.tmdbType ?: MediaType.Unknown,
+    title = program.tmdbTitle?.takeIf(String::isNotBlank) ?: program.title,
     subtitle = program.subtitle,
     overview = program.longDescription ?: program.shortDescription,
     releaseYear = program.releaseYear,

@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -156,6 +157,7 @@ internal fun LiveTvPlayerScreen(
     var longOkHandled by remember { mutableStateOf(false) }
     var showExitConfirmation by remember { mutableStateOf(false) }
     var showProgramInfo by remember { mutableStateOf(false) }
+    var infoFocusedServiceReference by remember(currentServiceReference) { mutableStateOf(currentServiceReference) }
     var playbackRestartToken by remember { mutableStateOf(0) }
     var preparedServiceReference by remember { mutableStateOf<String?>(null) }
     var autoRetryAttempt by remember(currentServiceReference) { mutableStateOf(0) }
@@ -239,12 +241,29 @@ internal fun LiveTvPlayerScreen(
             ?: channel.now
     }
 
+    val infoChannel = channels.firstOrNull { it.serviceReference == infoFocusedServiceReference } ?: currentChannel
+    val infoProgram = infoChannel?.let { channel ->
+        val now = System.currentTimeMillis()
+        epgState.guide(channel.serviceReference)
+            .firstOrNull { now >= it.startUtcMillis && now < it.endUtcMillis }
+            ?: channel.now?.takeIf { now >= it.startUtcMillis && now < it.endUtcMillis }
+    }
+
+    LaunchedEffect(showProgramInfo, infoChannel?.serviceReference, infoProgram?.startUtcMillis) {
+        val channel = infoChannel
+        val program = infoProgram
+        if (showProgramInfo && channel != null && program != null) {
+            onEnrichEpgProgram(channel.serviceReference, program.startUtcMillis)
+        }
+    }
+
     fun resetForChannelChange() {
         joynFallbackRepository.releasePlayback()
         channelOverviewPinned = false
         overlayVisible = true
         showExitConfirmation = false
         showProgramInfo = false
+        infoFocusedServiceReference = currentServiceReference
         autoRetryAttempt = 0
         retryingPlayback = false
         errorMessage = null
@@ -343,15 +362,9 @@ internal fun LiveTvPlayerScreen(
 
     fun openProgramInfo() {
         val channel = currentChannel ?: return
-        val program = currentProgram
-        if (program == null) {
-            overlayVisible = true
-            errorMessage = "Für ${channel.name} sind aktuell keine Sendungsinformationen verfügbar."
-            return
-        }
-        onEnrichEpgProgram(channel.serviceReference, program.startUtcMillis)
+        infoFocusedServiceReference = channel.serviceReference
         showExitConfirmation = false
-        channelOverviewPinned = false
+        channelOverviewPinned = true
         overlayVisible = true
         showProgramInfo = true
     }
@@ -682,7 +695,7 @@ internal fun LiveTvPlayerScreen(
         withFrameNanos { }
         when {
             showExitConfirmation -> runCatching { exitConfirmFocusRequester.requestFocus() }
-            showProgramInfo -> runCatching { programInfoFocusRequester.requestFocus() }
+            showProgramInfo -> runCatching { overlayFocusRequester.requestFocus() }
             showEpg && selectedEpgProgramStartUtcMillis == null -> runCatching { epgBackFocusRequester.requestFocus() }
             showEpg -> Unit
             channelOverviewPinned -> runCatching { overlayFocusRequester.requestFocus() }
@@ -799,14 +812,35 @@ internal fun LiveTvPlayerScreen(
                 it.keepScreenOn = true
                 it.player = player
                 it.setOnClickListener {
-                    if (!showEpg && !showExitConfirmation) openChannelOverview()
+                    if (!showEpg && !showProgramInfo && !showExitConfirmation) openChannelOverview()
                 }
             },
             modifier = Modifier.fillMaxSize(),
         )
 
-        if (overlayVisible && !showEpg && !showProgramInfo) {
-            currentChannel?.let { channel ->
+        if (showProgramInfo && !showEpg) {
+            infoChannel?.let { channel ->
+                LiveTvProgramHero(
+                    channel = channel,
+                    program = infoProgram,
+                    onClose = {
+                        showProgramInfo = false
+                        openChannelOverview()
+                    },
+                    onDetails = {
+                        infoProgram?.let { program -> onOpenEpgProgramDetails(channel, program) }
+                    },
+                    closeFocusRequester = programInfoFocusRequester,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.78f),
+                )
+            }
+        }
+
+        if (overlayVisible && !showEpg) {
+            if (!showProgramInfo) currentChannel?.let { channel ->
                 val mappedJoyn = joynMappings[channel.serviceReference]
                 Row(
                     modifier = Modifier
@@ -933,7 +967,9 @@ internal fun LiveTvPlayerScreen(
                         .padding(horizontal = 24.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("Jetzt im TV", style = MaterialTheme.typography.titleMedium)
+                    if (!showProgramInfo) {
+                        Text("Jetzt im TV", style = MaterialTheme.typography.titleMedium)
+                    }
                     LazyRow(
                         state = zapListState,
                         modifier = Modifier.touchScrollFallback(zapListState, Orientation.Horizontal),
@@ -945,13 +981,23 @@ internal fun LiveTvPlayerScreen(
                                 channelNumber = index + 1,
                                 selected = index == currentIndex,
                                 onClick = { selectChannel(index) },
-                                modifier = if (index == currentIndex) {
-                                    Modifier.focusRequester(overlayFocusRequester).focusProperties { down = infoButtonFocusRequester }
-                                } else Modifier,
+                                modifier = (if (index == currentIndex) {
+                                    Modifier.focusRequester(overlayFocusRequester)
+                                } else Modifier)
+                                    .onFocusChanged { focus ->
+                                        if (showProgramInfo && focus.isFocused) {
+                                            infoFocusedServiceReference = channel.serviceReference
+                                        }
+                                    }
+                                    .then(
+                                        if (index == currentIndex && !showProgramInfo) {
+                                            Modifier.focusProperties { down = infoButtonFocusRequester }
+                                        } else Modifier,
+                                    ),
                             )
                         }
                     }
-                    Row(
+                    if (!showProgramInfo) Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -1046,26 +1092,6 @@ internal fun LiveTvPlayerScreen(
                     channelListState = epgChannelListState,
                     programListState = epgProgramListState,
                     modifier = Modifier.weight(1f),
-                )
-            }
-        }
-
-        if (showProgramInfo) {
-            currentChannel?.let { channel ->
-                LiveTvProgramHero(
-                    channel = channel,
-                    program = currentProgram,
-                    onClose = {
-                        showProgramInfo = false
-                        openChannelOverview()
-                    },
-                    onDetails = {
-                        currentProgram?.let { program ->
-                            onOpenEpgProgramDetails(channel, program)
-                        }
-                    },
-                    closeFocusRequester = programInfoFocusRequester,
-                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }
