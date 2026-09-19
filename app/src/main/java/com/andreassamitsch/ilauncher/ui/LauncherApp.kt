@@ -92,7 +92,8 @@ private const val TMDB_ENRICHMENT_BATCH_SIZE = 4
 private const val TMDB_ENRICHMENT_RETRY_DELAY_MILLIS = 1_500L
 private const val LOCAL_SEARCH_DEBOUNCE_MILLIS = 120L
 private const val TMDB_SEARCH_DEBOUNCE_MILLIS = 450L
-private const val OPENWEBIF_REFRESH_INTERVAL_MILLIS = 5L * 60L * 1_000L
+private const val EPG_CLOCK_TICK_INTERVAL_MILLIS = 15_000L
+private const val OPENWEBIF_REFRESH_INTERVAL_MILLIS = 60_000L
 
 @Composable
 fun LauncherApp(
@@ -251,7 +252,13 @@ fun LauncherApp(
     }
 
     LaunchedEffect(openWebifRepository, epgRepository) {
-        launch { epgRepository.refresh(openWebifRepository.state.value.channels) }
+        launch {
+            epgRepository.refresh(openWebifRepository.state.value.channels)
+            while (true) {
+                epgRepository.advanceCurrentPrograms(openWebifRepository.state.value.channels)
+                delay(EPG_CLOCK_TICK_INTERVAL_MILLIS)
+            }
+        }
         while (true) {
             openWebifRepository.refresh()
             epgRepository.refresh(openWebifRepository.state.value.channels)
