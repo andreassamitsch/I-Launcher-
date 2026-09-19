@@ -6,4 +6,6 @@ Im Live-TV-Overlay steht **Info** vor **EPG**. Nach Info erscheint statt des bis
 
 **Info schließen** oder Zurück führt zur Senderübersicht zurück. Die Info-Taste auf der Fernbedienung schließt den Hero ebenfalls; CH+/CH− schaltet den Sender und beendet die Infoansicht. Der Senderwechsel stellt die reguläre Kanalinfo wieder her. Das bisherige EPG und die Sender-/SAT-/Joyn-Steuerung bleiben unverändert.
 
+Der D-Pad-Fokus springt von der ausgewählten Senderkachel nach unten zuerst zu **Info** (nicht mehr direkt zu EPG).
+
 Relevante Dateien: `LiveTvPlayerScreen.kt`, `LiveTvProgramHero.kt`.
