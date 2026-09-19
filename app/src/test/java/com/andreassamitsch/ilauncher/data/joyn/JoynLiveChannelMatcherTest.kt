@@ -65,6 +65,39 @@ class JoynLiveChannelMatcherTest {
     }
 
     @Test
+    fun `TV Sat naming aliases map to Joyn station families`() {
+        val bouquet = listOf(
+            channel("atv2", "ATV2 HD"),
+            channel("p7maxx", "Pro7 MAXX HD"),
+            channel("orfst", "ORF2St HD"),
+            channel("mdr", "MDR S-Anhalt HD"),
+            channel("ndr", "NDR FS NDS HD"),
+            channel("swr", "SWR BW HD"),
+            channel("euronews", "EURONEWS GERMAN SD"),
+        )
+        val result = JoynLiveChannelMatcher.mapBouquet(
+            bouquet = bouquet,
+            joynChannels = listOf(
+                joyn("multi:AT:atv2", "ATV II", "AT"),
+                joyn("multi:CH:p7maxx", "ProSieben MAXX Schweiz", "CH"),
+                joyn("multi:AT:orfst", "ORF St", "AT"),
+                joyn("multi:DE:mdr", "MDR Sachsen-Anhalt", "DE"),
+                joyn("multi:DE:ndr", "NDR Niedersachsen", "DE"),
+                joyn("multi:DE:swr", "SWR Baden-Württemberg", "DE"),
+                joyn("multi:AT:euronews", "Euronews", "AT"),
+            ),
+        )
+
+        assertEquals("multi:AT:atv2", result["atv2"]?.id)
+        assertEquals("multi:CH:p7maxx", result["p7maxx"]?.id)
+        assertEquals("multi:AT:orfst", result["orfst"]?.id)
+        assertEquals("multi:DE:mdr", result["mdr"]?.id)
+        assertEquals("multi:DE:ndr", result["ndr"]?.id)
+        assertEquals("multi:DE:swr", result["swr"]?.id)
+        assertEquals("multi:AT:euronews", result["euronews"]?.id)
+    }
+
+    @Test
     fun `swiss bouquet suffix prefers swiss Joyn variant`() {
         val sat = channel("1:0:19:2222:0:0:0:0:0:0:", "ProSieben Schweiz HD")
         val result = JoynLiveChannelMatcher.mapBouquet(
