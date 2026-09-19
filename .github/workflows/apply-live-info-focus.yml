@@ -1,0 +1,32 @@
+name: Apply one-time Live TV Info focus
+
+on:
+  push:
+    branches:
+      - feature/joyn-tv-client
+    paths:
+      - .github/workflows/apply-live-info-focus.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/joyn-tv-client
+          persist-credentials: true
+      - name: Apply checked one-time focus change
+        run: python3 tools/apply_live_info_focus_once.py
+      - name: Commit source and remove one-time tooling
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f tools/apply_live_info_focus_once.py .github/workflows/apply-live-info-focus.yml
+          git add app/src/main/java/com/andreassamitsch/ilauncher/ui/livetv/LiveTvPlayerScreen.kt tools/apply_live_info_focus_once.py .github/workflows/apply-live-info-focus.yml
+          git commit -m 'fix: focus Info first from Live TV channel row'
+          git push origin HEAD:feature/joyn-tv-client
