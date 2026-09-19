@@ -37,6 +37,20 @@ class JoynLiveChannelMatcherTest {
     }
 
     @Test
+    fun `Nitro matches RTL Nitro and prefers swiss feed`() {
+        val sat = channel("1:0:19:1224:0:0:0:0:0:0:", "NITRO HD")
+        val result = JoynLiveChannelMatcher.mapBouquet(
+            bouquet = listOf(sat),
+            joynChannels = listOf(
+                joyn("multi:AT:nitro", "NITRO Austria", "AT"),
+                joyn("multi:CH:nitro", "RTL NITRO Schweiz", "CH"),
+            ),
+        )
+
+        assertEquals("multi:CH:nitro", result[sat.serviceReference]?.id)
+    }
+
+    @Test
     fun `country suffixes are ignored when choosing the swiss variant`() {
         val sat = channel("1:0:19:1223:0:0:0:0:0:0:", "TLC Austria HD")
         val result = JoynLiveChannelMatcher.mapBouquet(
