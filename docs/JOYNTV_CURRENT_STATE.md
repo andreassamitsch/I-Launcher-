@@ -250,7 +250,7 @@ Relevante Dateien:
 
 ### Build- und Teststand
 
-Die neue SAT-first-/Manual-/Prewarm-Logik ist ab Source-SHA **`7cc2b958fb4ce1e276e78f8a81dc23fa5f223a31`** enthalten. Der erste erfolgreich gebaute Stand war **`0.1.0-dev.524`**. Die globale **CH → AT → DE**-Präferenz inklusive erneuter Prüfung eines veralteten Nicht-CH-Mappings ist im I-Launcher-Updater ab **`0.1.0-dev.529`**, Source-SHA **`b19aae57eec4367a895a7df2803dfaa17a8df996`**, veröffentlicht.
+Die neue SAT-first-/Manual-/Prewarm-Logik ist ab Source-SHA **`7cc2b958fb4ce1e276e78f8a81dc23fa5f223a31`** enthalten. Der erste erfolgreich gebaute Stand war **`0.1.0-dev.524`**. Die globale **CH → AT → DE**-Präferenz inklusive erneuter Prüfung eines veralteten Nicht-CH-Mappings ist ab **`0.1.0-dev.529`** enthalten. Der aktuell veröffentlichte I-Launcher-Stand mit TV-Sat-Alias-Audit, NITRO/BR-Süd-Fixes, kontinuierlicher EPG-Aktualisierung, Sendungs-Info im Live-TV-Overlay und Uhr in der Top-Navigation ist **`0.1.0-dev.539`**, Source-SHA **`8172f80b4183b88b6ced7812cd132366f9510f13`**. Tests, Debug-APK-Build und Veröffentlichung im `downloads`-Branch waren erfolgreich.
 
 Der Benutzer hat am **17.09.2026** den überarbeiteten Live-TV-Stand nach dem Einbau der manuellen SAT/Joyn-Umschaltung und der Auto-Fallback-Steuerung mit **„funktioniert“** bestätigt. Damit gelten diese Bedienpfade auf dem TCL als funktional bestätigt. Die genaue Zeitersparnis des Joyn-Prewarm wurde noch nicht separat gemessen.
 
