@@ -155,6 +155,7 @@ internal fun LiveTvPlayerScreen(
     var confirmOpenedOverview by remember { mutableStateOf(false) }
     var longOkHandled by remember { mutableStateOf(false) }
     var showExitConfirmation by remember { mutableStateOf(false) }
+    var showProgramInfo by remember { mutableStateOf(false) }
     var playbackRestartToken by remember { mutableStateOf(0) }
     var preparedServiceReference by remember { mutableStateOf<String?>(null) }
     var autoRetryAttempt by remember(currentServiceReference) { mutableStateOf(0) }
@@ -220,6 +221,7 @@ internal fun LiveTvPlayerScreen(
     val overlayFocusRequester = remember { FocusRequester() }
     val epgButtonFocusRequester = remember { FocusRequester() }
     val epgBackFocusRequester = remember { FocusRequester() }
+    val programInfoFocusRequester = remember { FocusRequester() }
     val exitConfirmFocusRequester = remember { FocusRequester() }
     val player = remember { ExoPlayer.Builder(context).build().apply { playWhenReady = true } }
     val currentIndex = LiveTvZapping.indexForServiceReference(
@@ -230,12 +232,19 @@ internal fun LiveTvPlayerScreen(
     val selectedEpgProgram = selectedEpgProgramStartUtcMillis?.let { start ->
         epgState.guide(selectedEpgServiceReference).firstOrNull { it.startUtcMillis == start }
     }
+    val currentProgram = currentChannel?.let { channel ->
+        val now = System.currentTimeMillis()
+        epgState.guide(channel.serviceReference)
+            .firstOrNull { now >= it.startUtcMillis && now < it.endUtcMillis }
+            ?: channel.now
+    }
 
     fun resetForChannelChange() {
         joynFallbackRepository.releasePlayback()
         channelOverviewPinned = false
         overlayVisible = true
         showExitConfirmation = false
+        showProgramInfo = false
         autoRetryAttempt = 0
         retryingPlayback = false
         errorMessage = null
@@ -327,8 +336,24 @@ internal fun LiveTvPlayerScreen(
 
     fun openChannelOverview() {
         showExitConfirmation = false
+        showProgramInfo = false
         overlayVisible = true
         channelOverviewPinned = true
+    }
+
+    fun openProgramInfo() {
+        val channel = currentChannel ?: return
+        val program = currentProgram
+        if (program == null) {
+            overlayVisible = true
+            errorMessage = "Für ${channel.name} sind aktuell keine Sendungsinformationen verfügbar."
+            return
+        }
+        onEnrichEpgProgram(channel.serviceReference, program.startUtcMillis)
+        showExitConfirmation = false
+        channelOverviewPinned = false
+        overlayVisible = true
+        showProgramInfo = true
     }
 
     fun openEpg() {
@@ -345,6 +370,7 @@ internal fun LiveTvPlayerScreen(
 
     fun requestExit() {
         showEpg = false
+        showProgramInfo = false
         channelOverviewPinned = false
         overlayVisible = true
         showExitConfirmation = true
@@ -353,6 +379,10 @@ internal fun LiveTvPlayerScreen(
     BackHandler {
         when {
             showExitConfirmation -> showExitConfirmation = false
+            showProgramInfo -> {
+                showProgramInfo = false
+                openChannelOverview()
+            }
             showEpg -> showEpg = false
             channelOverviewPinned -> {
                 channelOverviewPinned = false
@@ -628,11 +658,12 @@ internal fun LiveTvPlayerScreen(
         loading,
         errorMessage,
         showEpg,
+        showProgramInfo,
         showExitConfirmation,
     ) {
         if (
             overlayVisible && !channelOverviewPinned && !loading && errorMessage == null &&
-            !showEpg && !showExitConfirmation
+            !showEpg && !showProgramInfo && !showExitConfirmation
         ) {
             delay(PLAYER_OVERLAY_TIMEOUT_MILLIS)
             overlayVisible = false
@@ -643,6 +674,7 @@ internal fun LiveTvPlayerScreen(
         overlayVisible,
         channelOverviewPinned,
         showEpg,
+        showProgramInfo,
         showExitConfirmation,
         currentIndex,
         selectedEpgProgramStartUtcMillis,
@@ -650,6 +682,7 @@ internal fun LiveTvPlayerScreen(
         withFrameNanos { }
         when {
             showExitConfirmation -> runCatching { exitConfirmFocusRequester.requestFocus() }
+            showProgramInfo -> runCatching { programInfoFocusRequester.requestFocus() }
             showEpg && selectedEpgProgramStartUtcMillis == null -> runCatching { epgBackFocusRequester.requestFocus() }
             showEpg -> Unit
             channelOverviewPinned -> runCatching { overlayFocusRequester.requestFocus() }
@@ -664,7 +697,7 @@ internal fun LiveTvPlayerScreen(
             .focusRequester(rootFocusRequester)
             .focusable()
             .onPreviewKeyEvent { keyEvent ->
-                if (showEpg || showExitConfirmation) return@onPreviewKeyEvent false
+                if (showEpg || showProgramInfo || showExitConfirmation) return@onPreviewKeyEvent false
                 val nativeEvent = keyEvent.nativeKeyEvent
                 val isConfirmKey = nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
                     nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
@@ -741,7 +774,7 @@ internal fun LiveTvPlayerScreen(
                     this.player = player
                     isClickable = true
                     setOnClickListener {
-                        if (!showEpg && !showExitConfirmation) openChannelOverview()
+                        if (!showEpg && !showProgramInfo && !showExitConfirmation) openChannelOverview()
                     }
                 }
             },
@@ -909,6 +942,9 @@ internal fun LiveTvPlayerScreen(
                         TouchButton(onClick = ::openEpg, modifier = Modifier.focusRequester(epgButtonFocusRequester)) {
                             Text("EPG")
                         }
+                        TouchButton(onClick = ::openProgramInfo) {
+                            Text("Info")
+                        }
                         TouchButton(onClick = ::toggleAutoFallback) {
                             Text(if (autoFallbackEnabled) "Auto-Fallback: EIN" else "Auto-Fallback: AUS")
                         }
@@ -994,6 +1030,102 @@ internal fun LiveTvPlayerScreen(
                     programListState = epgProgramListState,
                     modifier = Modifier.weight(1f),
                 )
+            }
+        }
+
+        if (showProgramInfo) {
+            val program = currentProgram
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.78f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(760.dp)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.97f), RoundedCornerShape(22.dp))
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.28f),
+                            RoundedCornerShape(22.dp),
+                        )
+                        .padding(horizontal = 30.dp, vertical = 26.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        currentChannel?.name ?: "Live TV",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    if (program != null) {
+                        Text(program.title, style = MaterialTheme.typography.headlineSmall)
+                        program.subtitle?.takeIf(String::isNotBlank)?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text(
+                            "${formatLiveTvStartTime(program.startUtcMillis)}–${formatLiveTvStartTime(program.endUtcMillis)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        val details = buildList {
+                            program.seasonNumber?.let { add("Staffel $it") }
+                            program.episodeNumber?.let { add("Folge $it") }
+                            program.releaseYear?.let { add(it.toString()) }
+                            program.categories.orEmpty().filter(String::isNotBlank).take(3).forEach(::add)
+                        }.distinct()
+                        if (details.isNotEmpty()) {
+                            Text(
+                                details.joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text(
+                            program.longDescription
+                                ?.takeIf(String::isNotBlank)
+                                ?: program.shortDescription?.takeIf(String::isNotBlank)
+                                ?: "Für diese Sendung ist keine Beschreibung verfügbar.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 9,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    } else {
+                        Text(
+                            "Für die aktuelle Sendung sind keine Programminformationen verfügbar.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TouchButton(
+                            onClick = {
+                                showProgramInfo = false
+                                openChannelOverview()
+                            },
+                            modifier = Modifier.focusRequester(programInfoFocusRequester),
+                        ) {
+                            Text("Zurück")
+                        }
+                        TouchButton(
+                            onClick = {
+                                val channel = currentChannel
+                                val selected = currentProgram
+                                if (channel != null && selected != null) {
+                                    onOpenEpgProgramDetails(channel, selected)
+                                }
+                            },
+                            enabled = program != null,
+                        ) {
+                            Text("Details")
+                        }
+                    }
+                }
             }
         }
 
