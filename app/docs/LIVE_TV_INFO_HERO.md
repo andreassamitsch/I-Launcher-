@@ -2,10 +2,12 @@
 
 Stand: 19.09.2026
 
-Im Live-TV-Overlay steht **Info** vor **EPG**. Nach Info erscheint statt des bisherigen gerahmten Dialogs ein bildschirmfüllender Sendungs-Hero im Stil der I-Launcher-Startseite: großes Artwork rechts, Verlauf nach links/unten, Sendungsdaten und Beschreibung links. Die laufende SAT-/Joyn-Wiedergabe wird nicht angehalten. Während der Hero sichtbar ist, wird die kleine Kanalinfo links oben ausgeblendet.
+**OK → Info** öffnet den großen, an die I-Launcher-Übersicht angelehnten Sendungs-Hero. Das Sendungsbild mit seitlichem Verlauf und die Beschreibung stehen oberhalb der weiter sichtbaren Senderreihe. Die Überschrift **„Jetzt im TV“** und die darunterliegende Bedienknopfleiste werden während Info ausgeblendet. Die kleine Kanalinfo links oben verschwindet ebenfalls. Die SAT-/Joyn-Wiedergabe läuft weiter.
 
-**Info schließen** oder Zurück führt zur Senderübersicht zurück. Die Info-Taste auf der Fernbedienung schließt den Hero ebenfalls; CH+/CH− schaltet den Sender und beendet die Infoansicht. Der Senderwechsel stellt die reguläre Kanalinfo wieder her. Das bisherige EPG und die Sender-/SAT-/Joyn-Steuerung bleiben unverändert.
+**Fokus statt Umschalten:** Mit D-Pad links/rechts bewegt man sich durch die Senderkacheln und die Hero-Sendungsinfo folgt dem gerade fokussierten Sender. Erst mit OK auf eine Kachel wird tatsächlich umgeschaltet; damit endet der Info-Modus und die normale Kanalinfo erscheint wieder. Die EPG-Anreicherung folgt dem fokussierten Sender. Über „Info schließen“, Zurück oder die Info-Taste gelangt man zur normalen Senderübersicht. CH+/CH− schaltet weiterhin direkt den Sender.
 
-Der D-Pad-Fokus springt von der ausgewählten Senderkachel nach unten zuerst zu **Info** (nicht mehr direkt zu EPG).
+**Lange Beschreibung:** Innerhalb des begrenzten Textfensters wird nur bei Überlänge nach einer kurzen Lesepause sanft vertikal gescrollt; nach einer Pause am Ende beginnt der Text wieder oben. Bei Fokus-/Sendungswechsel startet der Text oben neu. Der vollständige Text wird nicht mehr nach sechs Zeilen abgeschnitten.
 
-Relevante Dateien: `LiveTvPlayerScreen.kt`, `LiveTvProgramHero.kt`.
+**Details zu Serien:** Der aus Live-TV übergebene EPG-Eintrag hat bei bekannter TMDB-Serie/Staffel/Folge Vorrang vor einer gespeicherten Serien-Fortsetzung. Die zugehörige Staffel wird geladen, die konkrete Episode in der Episodenreihe hervorgehoben und nach Möglichkeit fokussiert; auch der direkte CloudStream-Handoff verwendet diese EPG-Episode statt der bisherigen Serien-Fortsetzung. Bei fehlenden EPG-Staffel- oder Episodennummern wird keine Folge geraten; der normale Serien-Standard bleibt erhalten.
+
+Relevante Dateien: `ui/livetv/LiveTvPlayerScreen.kt`, `ui/livetv/LiveTvProgramHero.kt`, `ui/details/DetailsScreen.kt`, `ui/LauncherApp.kt`.
