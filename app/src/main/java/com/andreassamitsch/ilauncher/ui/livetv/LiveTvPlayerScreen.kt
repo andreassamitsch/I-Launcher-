@@ -219,7 +219,7 @@ internal fun LiveTvPlayerScreen(
     val zapListState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
     val rootFocusRequester = remember { FocusRequester() }
     val overlayFocusRequester = remember { FocusRequester() }
-    val epgButtonFocusRequester = remember { FocusRequester() }
+    val infoButtonFocusRequester = remember { FocusRequester() }
     val epgBackFocusRequester = remember { FocusRequester() }
     val programInfoFocusRequester = remember { FocusRequester() }
     val exitConfirmFocusRequester = remember { FocusRequester() }
@@ -946,7 +946,7 @@ internal fun LiveTvPlayerScreen(
                                 selected = index == currentIndex,
                                 onClick = { selectChannel(index) },
                                 modifier = if (index == currentIndex) {
-                                    Modifier.focusRequester(overlayFocusRequester).focusProperties { down = epgButtonFocusRequester }
+                                    Modifier.focusRequester(overlayFocusRequester).focusProperties { down = infoButtonFocusRequester }
                                 } else Modifier,
                             )
                         }
@@ -956,10 +956,10 @@ internal fun LiveTvPlayerScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TouchButton(onClick = ::openProgramInfo) {
+                        TouchButton(onClick = ::openProgramInfo, modifier = Modifier.focusRequester(infoButtonFocusRequester)) {
                             Text("Info")
                         }
-                        TouchButton(onClick = ::openEpg, modifier = Modifier.focusRequester(epgButtonFocusRequester)) {
+                        TouchButton(onClick = ::openEpg) {
                             Text("EPG")
                         }
                         TouchButton(onClick = ::toggleAutoFallback) {
