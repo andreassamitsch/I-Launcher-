@@ -2,7 +2,7 @@
 
 > **Für neue Chats / neue Entwicklungssitzungen:** Diese Datei zuerst lesen, wenn es um `joyntv`, Mysterium, Geo-Routing, Joyn-Live-TV oder die Joyn-Integration in I Launcher geht. Das Repo ist die maßgebliche Quelle; ältere Chat-Annahmen dürfen diesen Stand nicht überschreiben.
 
-Stand: **2026-09-18**  
+Stand: **2026-09-19**  
 Entwicklungs-Branch: **`feature/joyn-tv-client`**  
 PR: **#46 – `feat: add standalone Joyn Android TV client`**
 
@@ -166,6 +166,19 @@ Das Joyn-Inventar im I Launcher läuft nach **10 Minuten** ab. Wurde ein Sender 
 
 Bekannte Sender-Aliase werden weiterhin nur explizit und konservativ gepflegt. Seit **19.09.2026** werden **`NITRO`** und **`RTL NITRO`** als dieselbe Senderfamilie behandelt; bei vorhandenem Schweizer Feed gilt auch hier **CH → AT → DE**.
 
+Am **19.09.2026** wurde das vom Benutzer bereitgestellte Enigma2-Bouquet **`TV Sat`** (71 Einträge) gegen die Joyn-Senderbezeichnungen für AT/DE/CH geprüft. Zusätzlich zu NITRO wurden folgende sichere Namens-Aliase ergänzt:
+
+- `ATV2` ↔ `ATV II`;
+- `Pro7 MAXX` ↔ `ProSieben MAXX`;
+- `ORF2St` ↔ `ORF St` / `ORF 2 Steiermark`;
+- `MDR S-Anhalt` ↔ `MDR Sachsen-Anhalt`;
+- `NDR FS NDS` ↔ `NDR Niedersachsen`;
+- `SWR BW` ↔ `SWR Baden-Württemberg`;
+- `BR Süd` ↔ `BR Fernsehen Süd`;
+- `EURONEWS GERMAN` ↔ `Euronews`.
+
+Es bleibt bewusst bei expliziten Aliasen statt unscharfer Laufzeit-Suche. Sender ohne belastbaren 1:1-Joyn-Gegenpart werden nicht automatisch auf einen ähnlich klingenden Kanal gelegt.
+
 Relevante Datei:
 
 - `app/src/main/java/com/andreassamitsch/ilauncher/data/joyn/JoynLiveTvFallbackRepository.kt`
@@ -196,6 +209,8 @@ Die erste Joyn-TV-Version mit direktem AT-Fallback ohne Mysterium-Zwang ist **`0
 
 Normales OK öffnet weiterhin die angeheftete Live-TV-Übersicht. Dort gibt es jetzt zusätzlich:
 
+- **`EPG`** – öffnet den vollständigen TV-Guide;
+- **`Info`** – zeigt zur aktuell laufenden Sendung Titel, Untertitel, Zeit, Staffel/Folge, Kategorien, Jahr und Beschreibung; vorhandene TMDB-Anreicherung wird dabei nachgeladen und über **Details** kann die bestehende Detailansicht geöffnet werden;
 - **`Auto-Fallback: EIN/AUS`** – persistent gespeichert;
 - **`Zu Joyn <Land>`** – manuelle Umschaltung, wenn der Bouquet-Sender gemappt ist;
 - **`Zu SAT`** – jederzeit manuell zurück zum Gigablue-Stream.
@@ -238,6 +253,17 @@ Relevante Dateien:
 Die neue SAT-first-/Manual-/Prewarm-Logik ist ab Source-SHA **`7cc2b958fb4ce1e276e78f8a81dc23fa5f223a31`** enthalten. Der erste erfolgreich gebaute Stand war **`0.1.0-dev.524`**. Die globale **CH → AT → DE**-Präferenz inklusive erneuter Prüfung eines veralteten Nicht-CH-Mappings ist im I-Launcher-Updater ab **`0.1.0-dev.529`**, Source-SHA **`b19aae57eec4367a895a7df2803dfaa17a8df996`**, veröffentlicht.
 
 Der Benutzer hat am **17.09.2026** den überarbeiteten Live-TV-Stand nach dem Einbau der manuellen SAT/Joyn-Umschaltung und der Auto-Fallback-Steuerung mit **„funktioniert“** bestätigt. Damit gelten diese Bedienpfade auf dem TCL als funktional bestätigt. Die genaue Zeitersparnis des Joyn-Prewarm wurde noch nicht separat gemessen.
+
+### EPG-Aktualisierung und Launcher-Uhr
+
+Für die I-Launcher-Zeile **„Jetzt im TV“** wird der aktuelle/folgende Programmslot nicht mehr nur beim größeren Netzwerk-Refresh neu bestimmt:
+
+- der bereits lokal geladene EPG-Guide wird alle **15 Sekunden** gegen die aktuelle Uhrzeit neu ausgewertet;
+- OpenWebif/Receiver-Now-Next wird alle **60 Sekunden** aktualisiert;
+- XMLTV wird regulär spätestens jede **1 Stunde** neu geladen (manueller Force-Refresh weiterhin sofort);
+- bei gültigem XMLTV-Guide kann ein Sendungswechsel dadurch lokal innerhalb von höchstens ungefähr 15 Sekunden sichtbar werden, ohne auf einen erneuten Download zu warten.
+
+Die obere Google-TV-Navigation des I Launchers zeigt rechts vor den Einstellungen nun zusätzlich die lokale Uhrzeit im Format **HH:mm**; sie wird minutengenau aktualisiert.
 
 Detaillierte Architektur:
 
