@@ -73,6 +73,7 @@ class JoynLiveChannelMatcherTest {
             channel("mdr", "MDR S-Anhalt HD"),
             channel("ndr", "NDR FS NDS HD"),
             channel("swr", "SWR BW HD"),
+            channel("br", "BR Süd HD"),
             channel("euronews", "EURONEWS GERMAN SD"),
         )
         val result = JoynLiveChannelMatcher.mapBouquet(
@@ -84,6 +85,7 @@ class JoynLiveChannelMatcherTest {
                 joyn("multi:DE:mdr", "MDR Sachsen-Anhalt", "DE"),
                 joyn("multi:DE:ndr", "NDR Niedersachsen", "DE"),
                 joyn("multi:DE:swr", "SWR Baden-Württemberg", "DE"),
+                joyn("multi:DE:br", "BR Fernsehen Süd", "DE"),
                 joyn("multi:AT:euronews", "Euronews", "AT"),
             ),
         )
@@ -94,6 +96,7 @@ class JoynLiveChannelMatcherTest {
         assertEquals("multi:DE:mdr", result["mdr"]?.id)
         assertEquals("multi:DE:ndr", result["ndr"]?.id)
         assertEquals("multi:DE:swr", result["swr"]?.id)
+        assertEquals("multi:DE:br", result["br"]?.id)
         assertEquals("multi:AT:euronews", result["euronews"]?.id)
     }
 
