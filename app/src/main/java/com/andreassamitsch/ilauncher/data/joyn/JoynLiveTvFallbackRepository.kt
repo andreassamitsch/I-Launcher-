@@ -195,6 +195,8 @@ internal object JoynLiveChannelMatcher {
         "ndrniedersachsen" to "ndrniedersachsen",
         "swrbw" to "swrbadenwurttemberg",
         "swrbadenwurttemberg" to "swrbadenwurttemberg",
+        "brsud" to "brfernsehensud",
+        "brfernsehensud" to "brfernsehensud",
         "euronewsgerman" to "euronews",
         "euronews" to "euronews",
         "daserste" to "daserste",
