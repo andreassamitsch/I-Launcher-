@@ -697,6 +697,23 @@ internal fun LiveTvPlayerScreen(
             .focusRequester(rootFocusRequester)
             .focusable()
             .onPreviewKeyEvent { keyEvent ->
+                if (showProgramInfo && keyEvent.type == KeyEventType.KeyDown) {
+                    when (keyEvent.nativeKeyEvent.keyCode) {
+                        AndroidKeyEvent.KEYCODE_INFO -> {
+                            showProgramInfo = false
+                            openChannelOverview()
+                            return@onPreviewKeyEvent true
+                        }
+                        AndroidKeyEvent.KEYCODE_CHANNEL_UP -> {
+                            zap(+1)
+                            return@onPreviewKeyEvent true
+                        }
+                        AndroidKeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                            zap(-1)
+                            return@onPreviewKeyEvent true
+                        }
+                    }
+                }
                 if (showEpg || showProgramInfo || showExitConfirmation) return@onPreviewKeyEvent false
                 val nativeEvent = keyEvent.nativeKeyEvent
                 val isConfirmKey = nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
@@ -788,7 +805,7 @@ internal fun LiveTvPlayerScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
-        if (overlayVisible && !showEpg) {
+        if (overlayVisible && !showEpg && !showProgramInfo) {
             currentChannel?.let { channel ->
                 val mappedJoyn = joynMappings[channel.serviceReference]
                 Row(
@@ -939,11 +956,11 @@ internal fun LiveTvPlayerScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TouchButton(onClick = ::openEpg, modifier = Modifier.focusRequester(epgButtonFocusRequester)) {
-                            Text("EPG")
-                        }
                         TouchButton(onClick = ::openProgramInfo) {
                             Text("Info")
+                        }
+                        TouchButton(onClick = ::openEpg, modifier = Modifier.focusRequester(epgButtonFocusRequester)) {
+                            Text("EPG")
                         }
                         TouchButton(onClick = ::toggleAutoFallback) {
                             Text(if (autoFallbackEnabled) "Auto-Fallback: EIN" else "Auto-Fallback: AUS")
@@ -1034,98 +1051,22 @@ internal fun LiveTvPlayerScreen(
         }
 
         if (showProgramInfo) {
-            val program = currentProgram
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.78f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .width(760.dp)
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.97f), RoundedCornerShape(22.dp))
-                        .border(
-                            1.dp,
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.28f),
-                            RoundedCornerShape(22.dp),
-                        )
-                        .padding(horizontal = 30.dp, vertical = 26.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text(
-                        currentChannel?.name ?: "Live TV",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    if (program != null) {
-                        Text(program.title, style = MaterialTheme.typography.headlineSmall)
-                        program.subtitle?.takeIf(String::isNotBlank)?.let {
-                            Text(
-                                it,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+            currentChannel?.let { channel ->
+                LiveTvProgramHero(
+                    channel = channel,
+                    program = currentProgram,
+                    onClose = {
+                        showProgramInfo = false
+                        openChannelOverview()
+                    },
+                    onDetails = {
+                        currentProgram?.let { program ->
+                            onOpenEpgProgramDetails(channel, program)
                         }
-                        Text(
-                            "${formatLiveTvStartTime(program.startUtcMillis)}–${formatLiveTvStartTime(program.endUtcMillis)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        val details = buildList {
-                            program.seasonNumber?.let { add("Staffel $it") }
-                            program.episodeNumber?.let { add("Folge $it") }
-                            program.releaseYear?.let { add(it.toString()) }
-                            program.categories.orEmpty().filter(String::isNotBlank).take(3).forEach(::add)
-                        }.distinct()
-                        if (details.isNotEmpty()) {
-                            Text(
-                                details.joinToString(" · "),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Text(
-                            program.longDescription
-                                ?.takeIf(String::isNotBlank)
-                                ?: program.shortDescription?.takeIf(String::isNotBlank)
-                                ?: "Für diese Sendung ist keine Beschreibung verfügbar.",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 9,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    } else {
-                        Text(
-                            "Für die aktuelle Sendung sind keine Programminformationen verfügbar.",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TouchButton(
-                            onClick = {
-                                showProgramInfo = false
-                                openChannelOverview()
-                            },
-                            modifier = Modifier.focusRequester(programInfoFocusRequester),
-                        ) {
-                            Text("Zurück")
-                        }
-                        TouchButton(
-                            onClick = {
-                                val channel = currentChannel
-                                val selected = currentProgram
-                                if (channel != null && selected != null) {
-                                    onOpenEpgProgramDetails(channel, selected)
-                                }
-                            },
-                            enabled = program != null,
-                        ) {
-                            Text("Details")
-                        }
-                    }
-                }
+                    },
+                    closeFocusRequester = programInfoFocusRequester,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
         }
 
