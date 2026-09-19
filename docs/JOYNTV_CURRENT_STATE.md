@@ -164,6 +164,8 @@ Grund: Auf realer Hardware wurde bei Schweizer Joyn-Feeds die beste verfügbare 
 
 Das Joyn-Inventar im I Launcher läuft nach **10 Minuten** ab. Wurde ein Sender nur auf AT/DE gemappt, wird das Mapping nach Ablauf dieses Caches beim nächsten Prewarm/Wechsel erneut geprüft. Liefert ein Multi-Country-Refresh gar keine CH-Zeilen, wird der Inventarabruf einmal wiederholt, damit ein temporärer CH-Routingfehler nicht für die gesamte Launcher-Sitzung an einem AT/DE-Fallback festhält.
 
+Bekannte Sender-Aliase werden weiterhin nur explizit und konservativ gepflegt. Seit **19.09.2026** werden **`NITRO`** und **`RTL NITRO`** als dieselbe Senderfamilie behandelt; bei vorhandenem Schweizer Feed gilt auch hier **CH → AT → DE**.
+
 Relevante Datei:
 
 - `app/src/main/java/com/andreassamitsch/ilauncher/data/joyn/JoynLiveTvFallbackRepository.kt`
