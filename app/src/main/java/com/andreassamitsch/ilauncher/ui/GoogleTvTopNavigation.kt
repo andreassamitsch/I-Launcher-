@@ -22,8 +22,12 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.andreassamitsch.ilauncher.system.androidSystemSettingsIntent
 import com.andreassamitsch.ilauncher.ui.components.TouchButton
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
 
 internal val GoogleTvTopNavigationHeight = 58.dp
+private val CLOCK_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 @Composable
 internal fun GoogleTvTopNavigation(
@@ -47,6 +51,14 @@ internal fun GoogleTvTopNavigation(
         else -> utilityRequester
     }
     var hasFocus by remember { mutableStateOf(true) }
+    var clockText by remember { mutableStateOf(LocalTime.now().format(CLOCK_FORMATTER)) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            clockText = LocalTime.now().format(CLOCK_FORMATTER)
+            val now = System.currentTimeMillis()
+            delay((60_000L - (now % 60_000L)).coerceAtLeast(1_000L))
+        }
+    }
     val collapsed = activeSection == LauncherSection.Home && !hasFocus
     val navAlpha by animateFloatAsState(if (collapsed) 0f else 1f, tween(150), label = "top-nav-alpha")
     val cueAlpha by animateFloatAsState(if (collapsed) 1f else 0f, tween(180), label = "top-nav-cue-alpha")
@@ -108,6 +120,13 @@ internal fun GoogleTvTopNavigation(
                     { onSelect(LauncherSection.Search) },
                     compact = true,
                     glyph = NavGlyph.Search,
+                )
+                Text(
+                    text = clockText,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.90f),
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    maxLines = 1,
                 )
                 NavDestination(
                     null,
