@@ -179,6 +179,8 @@ internal object JoynLiveChannelMatcher {
         "kabeleins" to "kabeleins",
         "rtlzwei" to "rtl2",
         "rtl2" to "rtl2",
+        "rtlnitro" to "nitro",
+        "nitro" to "nitro",
         "daserste" to "daserste",
         "arddaserste" to "daserste",
     )
