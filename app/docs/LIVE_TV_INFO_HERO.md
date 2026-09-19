@@ -11,3 +11,5 @@ Stand: 19.09.2026
 **Details zu Serien:** Der aus Live-TV übergebene EPG-Eintrag hat bei bekannter TMDB-Serie/Staffel/Folge Vorrang vor einer gespeicherten Serien-Fortsetzung. Die zugehörige Staffel wird geladen, die konkrete Episode in der Episodenreihe hervorgehoben und nach Möglichkeit fokussiert; auch der direkte CloudStream-Handoff verwendet diese EPG-Episode statt der bisherigen Serien-Fortsetzung. Bei fehlenden EPG-Staffel- oder Episodennummern wird keine Folge geraten; der normale Serien-Standard bleibt erhalten.
 
 Relevante Dateien: `ui/livetv/LiveTvPlayerScreen.kt`, `ui/livetv/LiveTvProgramHero.kt`, `ui/details/DetailsScreen.kt`, `ui/LauncherApp.kt`.
+
+Der fehlende Compose-Import für die angepasste Hero-Höhe wurde nach dem ersten Buildversuch ergänzt; der nachfolgende Build testet den vollständigen Stand erneut.
