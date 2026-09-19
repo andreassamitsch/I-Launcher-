@@ -61,6 +61,57 @@ class EpgRepository(
     )
     val state: StateFlow<EpgState> = _state.asStateFlow()
 
+
+    /**
+     * Advances the visible now/next programmes from the already cached guide without downloading
+     * XMLTV again. This keeps Home/Live-TV programme labels correct across exact programme
+     * boundaries even between network refreshes.
+     */
+    fun advanceCurrentPrograms(
+        channels: List<LiveTvChannel>,
+        nowUtcMillis: Long = System.currentTimeMillis(),
+    ) {
+        if (channels.isEmpty()) return
+        currentChannels = channels
+        _state.update { current ->
+            val previousByRef = current.enrichedChannels.associateBy(LiveTvChannel::serviceReference)
+            val advanced = channels.map { channel ->
+                val guide = current.guideByServiceReference[channel.serviceReference].orEmpty()
+                val guideNow = guide.firstOrNull {
+                    nowUtcMillis >= it.startUtcMillis && nowUtcMillis < it.endUtcMillis
+                }
+                val guideNext = guide.firstOrNull {
+                    it.startUtcMillis >= (guideNow?.endUtcMillis ?: nowUtcMillis)
+                }
+                val previous = previousByRef[channel.serviceReference]
+                val previousNow = previous?.now?.takeIf {
+                    nowUtcMillis >= it.startUtcMillis && nowUtcMillis < it.endUtcMillis
+                }
+                val receiverNow = channel.now?.takeIf {
+                    nowUtcMillis >= it.startUtcMillis && nowUtcMillis < it.endUtcMillis
+                }
+                val previousNext = previous?.next?.takeIf { it.endUtcMillis > nowUtcMillis }
+                val receiverNext = channel.next?.takeIf { it.endUtcMillis > nowUtcMillis }
+
+                val nowProgram = when {
+                    guideNow != null && previousNow?.startUtcMillis == guideNow.startUtcMillis -> previousNow
+                    guideNow != null -> guideNow
+                    previousNow != null -> previousNow
+                    else -> receiverNow
+                }
+                val nextProgram = when {
+                    guideNext != null && previousNext?.startUtcMillis == guideNext.startUtcMillis -> previousNext
+                    guideNext != null -> guideNext
+                    previousNext != null && previousNext.startUtcMillis >= (nowProgram?.endUtcMillis ?: nowUtcMillis) -> previousNext
+                    receiverNext != null && receiverNext.startUtcMillis >= (nowProgram?.endUtcMillis ?: nowUtcMillis) -> receiverNext
+                    else -> null
+                }
+                channel.copy(now = nowProgram, next = nextProgram)
+            }
+            current.copy(enrichedChannels = advanced)
+        }
+    }
+
     suspend fun updateSource(rawUrl: String): Boolean = withContext(Dispatchers.IO) {
         val normalized = EpgSourceUrl.normalize(rawUrl)
         if (normalized == null) {
@@ -476,7 +527,7 @@ class EpgRepository(
     companion object {
         private const val CATEGORY_SEPARATOR = "\u001F"
         private const val SOURCE_REFRESH_INTERVAL_MILLIS = 24L * 60L * 60L * 1_000L
-        private const val XMLTV_REFRESH_INTERVAL_MILLIS = 6L * 60L * 60L * 1_000L
+        private const val XMLTV_REFRESH_INTERVAL_MILLIS = 60L * 60L * 1_000L
         private const val GUIDE_PAST_MILLIS = 6L * 60L * 60L * 1_000L
         private const val GUIDE_FUTURE_MILLIS = 72L * 60L * 60L * 1_000L
         private const val MAX_CURRENT_TMDB_ITEMS = 12
