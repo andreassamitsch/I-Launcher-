@@ -37,7 +37,7 @@ class HomePreferences(context: Context) {
         _watchNextCardArtworkMode.asStateFlow()
 
     private val _watchNextHeroArtworkMode = MutableStateFlow(
-        loadArtworkMode(KEY_WATCH_NEXT_HERO_ARTWORK_MODE),
+        loadArtworkMode(KEY_WATCH_NEXT_HERO_ARTWORK_MODE, WatchNextArtworkMode.Series),
     )
     val watchNextHeroArtworkMode: StateFlow<WatchNextArtworkMode> =
         _watchNextHeroArtworkMode.asStateFlow()
@@ -56,8 +56,8 @@ class HomePreferences(context: Context) {
     }
 
     fun moveApp(availablePackages: List<String>, packageName: String, delta: Int) {
-        val current = mergeOrder(_appOrder.value, availablePackages)
-        saveAppOrder(move(current, packageName, delta))
+        val current = mergeOrder(_appOrder.value, availableKeys = availablePackages)
+        saveAppOrder(move(current, key, delta))
     }
 
     fun resetApps() {
@@ -92,10 +92,13 @@ class HomePreferences(context: Context) {
 
     private fun loadList(key: String): List<String> = decode(preferences.getString(key, null))
 
-    private fun loadArtworkMode(key: String): WatchNextArtworkMode =
+    private fun loadArtworkMode(
+        key: String,
+        fallback: WatchNextArtworkMode = WatchNextArtworkMode.Episode,
+    ): WatchNextArtworkMode =
         preferences.getString(key, null)
             ?.let { raw -> runCatching { WatchNextArtworkMode.valueOf(raw) }.getOrNull() }
-            ?: WatchNextArtworkMode.Episode
+            ?: fallback
 
     private fun loadHeroTextScrollSpeed(): HeroTextScrollSpeed =
         preferences.getString(KEY_HERO_TEXT_SCROLL_SPEED, null)
