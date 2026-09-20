@@ -62,7 +62,7 @@
 32-->[androidx.core:core:1.18.0] /home/runner/.gradle/caches/9.5.0/transforms/9131f610e5f6d935d3b4cd0fd6bb3178/transformed/core-1.18.0/AndroidManifest.xml:26:22-94
 33
 34    <application
-34-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:10:5-64:19
+34-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:10:5-72:19
 35        android:allowBackup="false"
 35-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:11:9-36
 36        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
@@ -72,269 +72,285 @@
 38        android:debuggable="true"
 39        android:extractNativeLibs="false"
 39-->INJECTED
-40        android:icon="@drawable/ic_launcher"
-40-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:13:9-45
+40        android:icon="@mipmap/ic_launcher"
+40-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:13:9-43
 41        android:label="ServusTV"
-41-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:14:9-33
-42        android:supportsRtl="true"
-42-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:15:9-35
-43        android:theme="@style/Theme.ServusProvider" >
-43-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:16:9-52
-44        <activity
-44-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:18:9-28:20
-45            android:name="com.andreassamitsch.servusprovider.ui.PlaybackActivity"
-45-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:19:13-48
-46            android:configChanges="orientation|screenSize|smallestScreenSize"
-46-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:20:13-78
-47            android:exported="true" >
-47-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:21:13-36
-48            <intent-filter>
-48-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:22:13-27:29
-49                <action android:name="android.intent.action.VIEW" />
-49-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:23:17-69
-49-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:23:25-66
+41-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:15:9-33
+42        android:roundIcon="@mipmap/ic_launcher_round"
+42-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:14:9-54
+43        android:supportsRtl="true"
+43-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:16:9-35
+44        android:theme="@style/Theme.ServusProvider" >
+44-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:17:9-52
+45        <provider
+45-->INJECTED
+46            android:name="com.andreassamitsch.servusprovider.tv.ServusBrandingProvider"
+46-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:20:13-54
+47            android:authorities="com.andreassamitsch.servusprovider.branding"
+47-->INJECTED
+48            android:exported="true"
+48-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:22:13-36
+49            android:grantUriPermissions="false" />
+49-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:23:13-48
 50
-51                <category android:name="android.intent.category.DEFAULT" />
-51-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:24:17-76
-51-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:24:27-73
-52                <category android:name="android.intent.category.BROWSABLE" />
-52-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:25:17-78
-52-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:25:27-75
-53
-54                <data
-54-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:26:17-70
-55                    android:host="play"
-55-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:26:48-67
-56                    android:scheme="iservus" />
-56-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:26:23-47
-57            </intent-filter>
-58        </activity>
-59        <activity
-59-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:30:9-39:20
-60            android:name="com.andreassamitsch.servusprovider.ui.ShowActivity"
-60-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:31:13-44
-61            android:exported="true" >
-61-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:32:13-36
-62            <intent-filter>
-62-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:33:13-38:29
-63                <action android:name="android.intent.action.VIEW" />
-63-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:23:17-69
-63-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:23:25-66
-64
-65                <category android:name="android.intent.category.DEFAULT" />
-65-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:24:17-76
-65-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:24:27-73
-66                <category android:name="android.intent.category.BROWSABLE" />
-66-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:25:17-78
-66-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:25:27-75
-67
-68                <data
-68-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:26:17-70
-69                    android:host="show"
-69-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:26:48-67
-70                    android:scheme="iservus" />
-70-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:26:23-47
-71            </intent-filter>
-72        </activity>
-73        <activity
-73-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:41:9-55:20
-74            android:name="com.andreassamitsch.servusprovider.ui.MainActivity"
-74-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:42:13-44
-75            android:exported="true" >
-75-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:43:13-36
-76            <intent-filter>
-76-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:44:13-48:29
-77                <action android:name="android.intent.action.MAIN" />
-77-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:45:17-69
-77-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:45:25-66
-78
-79                <category android:name="android.intent.category.LAUNCHER" />
-79-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:46:17-77
-79-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:46:27-74
-80                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
-80-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:47:17-86
-80-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:47:27-83
-81            </intent-filter>
-82            <intent-filter>
-82-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:49:13-54:29
-83                <action android:name="android.intent.action.VIEW" />
-83-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:23:17-69
-83-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:23:25-66
-84
-85                <category android:name="android.intent.category.DEFAULT" />
-85-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:24:17-76
-85-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:24:27-73
-86                <category android:name="android.intent.category.BROWSABLE" />
-86-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:25:17-78
-86-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:25:27-75
-87
-88                <data
-88-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:26:17-70
-89                    android:host="channel"
-89-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:26:48-67
-90                    android:scheme="iservus" />
-90-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:26:23-47
-91            </intent-filter>
-92        </activity>
-93
-94        <receiver
-94-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:57:9-63:20
-95            android:name="com.andreassamitsch.servusprovider.work.ServusInitializeReceiver"
-95-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:58:13-58
-96            android:exported="true" >
-96-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:59:13-36
-97            <intent-filter>
-97-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:60:13-62:29
-98                <action android:name="android.media.tv.action.INITIALIZE_PROGRAMS" />
-98-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:61:17-86
-98-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:61:25-83
-99            </intent-filter>
-100        </receiver>
-101
-102        <provider
-102-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:29:9-37:20
-103            android:name="androidx.startup.InitializationProvider"
-103-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:30:13-67
-104            android:authorities="com.andreassamitsch.servusprovider.androidx-startup"
-104-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:31:13-68
-105            android:exported="false" >
-105-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:32:13-37
-106            <meta-data
-106-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:34:13-36:52
-107                android:name="androidx.work.WorkManagerInitializer"
-107-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:35:17-68
-108                android:value="androidx.startup" />
-108-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:36:17-49
-109            <meta-data
-109-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:29:13-31:52
-110                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
-110-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:30:17-85
-111                android:value="androidx.startup" />
-111-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:31:17-49
-112            <meta-data
-112-->[com.squareup.okhttp3:okhttp-android:5.3.0] /home/runner/.gradle/caches/9.5.0/transforms/b9daee2dbb9fe03a790dce8d554b7d64/transformed/okhttp-release/AndroidManifest.xml:16:13-18:52
-113                android:name="okhttp3.internal.platform.PlatformInitializer"
-113-->[com.squareup.okhttp3:okhttp-android:5.3.0] /home/runner/.gradle/caches/9.5.0/transforms/b9daee2dbb9fe03a790dce8d554b7d64/transformed/okhttp-release/AndroidManifest.xml:17:17-77
-114                android:value="androidx.startup" />
-114-->[com.squareup.okhttp3:okhttp-android:5.3.0] /home/runner/.gradle/caches/9.5.0/transforms/b9daee2dbb9fe03a790dce8d554b7d64/transformed/okhttp-release/AndroidManifest.xml:18:17-49
-115        </provider>
-116
-117        <service
-117-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:39:9-45:35
-118            android:name="androidx.work.impl.background.systemjob.SystemJobService"
-118-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:40:13-84
-119            android:directBootAware="false"
-119-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:41:13-44
-120            android:enabled="@bool/enable_system_job_service_default"
-120-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:42:13-70
-121            android:exported="true"
-121-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:43:13-36
-122            android:permission="android.permission.BIND_JOB_SERVICE" />
-122-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:44:13-69
-123        <service
-123-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:46:9-52:35
-124            android:name="androidx.work.impl.foreground.SystemForegroundService"
-124-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:47:13-81
-125            android:directBootAware="false"
-125-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:48:13-44
-126            android:enabled="@bool/enable_system_foreground_service_default"
-126-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:49:13-77
-127            android:exported="false" />
-127-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:50:13-37
-128
-129        <receiver
-129-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:54:9-59:35
-130            android:name="androidx.work.impl.utils.ForceStopRunnable$BroadcastReceiver"
-130-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:55:13-88
-131            android:directBootAware="false"
-131-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:56:13-44
-132            android:enabled="true"
-132-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:57:13-35
-133            android:exported="false" />
-133-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:58:13-37
-134        <receiver
-134-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:60:9-69:20
-135            android:name="androidx.work.impl.background.systemalarm.RescheduleReceiver"
-135-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:61:13-88
-136            android:directBootAware="false"
-136-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:62:13-44
-137            android:enabled="false"
-137-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:63:13-36
-138            android:exported="false" >
-138-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:64:13-37
-139            <intent-filter>
-139-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:66:13-68:29
-140                <action android:name="android.intent.action.BOOT_COMPLETED" />
-140-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:67:17-79
-140-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:67:25-76
-141            </intent-filter>
-142        </receiver>
-143        <receiver
-143-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:70:9-80:20
-144            android:name="androidx.work.impl.diagnostics.DiagnosticsReceiver"
-144-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:71:13-78
-145            android:directBootAware="false"
-145-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:72:13-44
-146            android:enabled="true"
-146-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:73:13-35
-147            android:exported="true"
-147-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:74:13-36
-148            android:permission="android.permission.DUMP" >
-148-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:75:13-57
-149            <intent-filter>
-149-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:77:13-79:29
-150                <action android:name="androidx.work.diagnostics.REQUEST_DIAGNOSTICS" />
-150-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:78:17-88
-150-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:78:25-85
-151            </intent-filter>
-152        </receiver>
-153
-154        <service
-154-->[androidx.room:room-runtime-android:2.7.0] /home/runner/.gradle/caches/9.5.0/transforms/b92bd3674c522b9b1a17d27691eb3d47/transformed/room-runtime-release/AndroidManifest.xml:24:9-28:63
-155            android:name="androidx.room.MultiInstanceInvalidationService"
-155-->[androidx.room:room-runtime-android:2.7.0] /home/runner/.gradle/caches/9.5.0/transforms/b92bd3674c522b9b1a17d27691eb3d47/transformed/room-runtime-release/AndroidManifest.xml:25:13-74
-156            android:directBootAware="true"
-156-->[androidx.room:room-runtime-android:2.7.0] /home/runner/.gradle/caches/9.5.0/transforms/b92bd3674c522b9b1a17d27691eb3d47/transformed/room-runtime-release/AndroidManifest.xml:26:13-43
-157            android:exported="false" />
-157-->[androidx.room:room-runtime-android:2.7.0] /home/runner/.gradle/caches/9.5.0/transforms/b92bd3674c522b9b1a17d27691eb3d47/transformed/room-runtime-release/AndroidManifest.xml:27:13-37
-158
-159        <receiver
-159-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:34:9-52:20
-160            android:name="androidx.profileinstaller.ProfileInstallReceiver"
-160-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:35:13-76
-161            android:directBootAware="false"
-161-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:36:13-44
-162            android:enabled="true"
-162-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:37:13-35
-163            android:exported="true"
-163-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:38:13-36
-164            android:permission="android.permission.DUMP" >
-164-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:39:13-57
-165            <intent-filter>
-165-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:40:13-42:29
-166                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
-166-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:41:17-91
-166-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:41:25-88
-167            </intent-filter>
-168            <intent-filter>
-168-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:43:13-45:29
-169                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
-169-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:44:17-85
-169-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:44:25-82
-170            </intent-filter>
-171            <intent-filter>
-171-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:46:13-48:29
-172                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
-172-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:47:17-88
-172-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:47:25-85
-173            </intent-filter>
-174            <intent-filter>
-174-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:49:13-51:29
-175                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
-175-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:50:17-95
-175-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:50:25-92
-176            </intent-filter>
-177        </receiver>
-178    </application>
-179
-180</manifest>
+51        <activity
+51-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:25:9-35:20
+52            android:name="com.andreassamitsch.servusprovider.ui.PlaybackActivity"
+52-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:26:13-48
+53            android:configChanges="orientation|screenSize|smallestScreenSize"
+53-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:27:13-78
+54            android:exported="true" >
+54-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:28:13-36
+55            <intent-filter>
+55-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:29:13-34:29
+56                <action android:name="android.intent.action.VIEW" />
+56-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:30:17-69
+56-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:30:25-66
+57
+58                <category android:name="android.intent.category.DEFAULT" />
+58-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:31:17-76
+58-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:31:27-73
+59                <category android:name="android.intent.category.BROWSABLE" />
+59-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:32:17-78
+59-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:32:27-75
+60
+61                <data
+61-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:33:17-70
+62                    android:host="play"
+62-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:33:48-67
+63                    android:scheme="iservus" />
+63-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:33:23-47
+64            </intent-filter>
+65        </activity>
+66        <activity
+66-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:37:9-46:20
+67            android:name="com.andreassamitsch.servusprovider.ui.ShowActivity"
+67-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:38:13-44
+68            android:exported="true" >
+68-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:39:13-36
+69            <intent-filter>
+69-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:40:13-45:29
+70                <action android:name="android.intent.action.VIEW" />
+70-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:30:17-69
+70-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:30:25-66
+71
+72                <category android:name="android.intent.category.DEFAULT" />
+72-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:31:17-76
+72-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:31:27-73
+73                <category android:name="android.intent.category.BROWSABLE" />
+73-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:32:17-78
+73-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:32:27-75
+74
+75                <data
+75-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:33:17-70
+76                    android:host="show"
+76-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:33:48-67
+77                    android:scheme="iservus" />
+77-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:33:23-47
+78            </intent-filter>
+79        </activity>
+80        <activity
+80-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:48:9-62:20
+81            android:name="com.andreassamitsch.servusprovider.ui.MainActivity"
+81-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:49:13-44
+82            android:exported="true" >
+82-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:50:13-36
+83            <intent-filter>
+83-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:51:13-55:29
+84                <action android:name="android.intent.action.MAIN" />
+84-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:52:17-69
+84-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:52:25-66
+85
+86                <category android:name="android.intent.category.LAUNCHER" />
+86-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:53:17-77
+86-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:53:27-74
+87                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+87-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:54:17-86
+87-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:54:27-83
+88            </intent-filter>
+89            <intent-filter>
+89-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:56:13-61:29
+90                <action android:name="android.intent.action.VIEW" />
+90-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:30:17-69
+90-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:30:25-66
+91
+92                <category android:name="android.intent.category.DEFAULT" />
+92-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:31:17-76
+92-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:31:27-73
+93                <category android:name="android.intent.category.BROWSABLE" />
+93-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:32:17-78
+93-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:32:27-75
+94
+95                <data
+95-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:33:17-70
+96                    android:host="channel"
+96-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:33:48-67
+97                    android:scheme="iservus" />
+97-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:33:23-47
+98            </intent-filter>
+99        </activity>
+100
+101        <receiver
+101-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:64:9-71:20
+102            android:name="com.andreassamitsch.servusprovider.work.ServusInitializeReceiver"
+102-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:65:13-58
+103            android:exported="true" >
+103-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:66:13-36
+104            <intent-filter>
+104-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:67:13-70:29
+105                <action android:name="android.media.tv.action.INITIALIZE_PROGRAMS" />
+105-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:68:17-86
+105-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:68:25-83
+106                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+106-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:69:17-84
+106-->/home/runner/work/I-Launcher-/I-Launcher-/servustv-provider/src/main/AndroidManifest.xml:69:25-81
+107            </intent-filter>
+108        </receiver>
+109
+110        <provider
+110-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:29:9-37:20
+111            android:name="androidx.startup.InitializationProvider"
+111-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:30:13-67
+112            android:authorities="com.andreassamitsch.servusprovider.androidx-startup"
+112-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:31:13-68
+113            android:exported="false" >
+113-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:32:13-37
+114            <meta-data
+114-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:34:13-36:52
+115                android:name="androidx.work.WorkManagerInitializer"
+115-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:35:17-68
+116                android:value="androidx.startup" />
+116-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:36:17-49
+117            <meta-data
+117-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:29:13-31:52
+118                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+118-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:30:17-85
+119                android:value="androidx.startup" />
+119-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:31:17-49
+120            <meta-data
+120-->[com.squareup.okhttp3:okhttp-android:5.3.0] /home/runner/.gradle/caches/9.5.0/transforms/b9daee2dbb9fe03a790dce8d554b7d64/transformed/okhttp-release/AndroidManifest.xml:16:13-18:52
+121                android:name="okhttp3.internal.platform.PlatformInitializer"
+121-->[com.squareup.okhttp3:okhttp-android:5.3.0] /home/runner/.gradle/caches/9.5.0/transforms/b9daee2dbb9fe03a790dce8d554b7d64/transformed/okhttp-release/AndroidManifest.xml:17:17-77
+122                android:value="androidx.startup" />
+122-->[com.squareup.okhttp3:okhttp-android:5.3.0] /home/runner/.gradle/caches/9.5.0/transforms/b9daee2dbb9fe03a790dce8d554b7d64/transformed/okhttp-release/AndroidManifest.xml:18:17-49
+123        </provider>
+124
+125        <service
+125-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:39:9-45:35
+126            android:name="androidx.work.impl.background.systemjob.SystemJobService"
+126-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:40:13-84
+127            android:directBootAware="false"
+127-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:41:13-44
+128            android:enabled="@bool/enable_system_job_service_default"
+128-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:42:13-70
+129            android:exported="true"
+129-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:43:13-36
+130            android:permission="android.permission.BIND_JOB_SERVICE" />
+130-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:44:13-69
+131        <service
+131-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:46:9-52:35
+132            android:name="androidx.work.impl.foreground.SystemForegroundService"
+132-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:47:13-81
+133            android:directBootAware="false"
+133-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:48:13-44
+134            android:enabled="@bool/enable_system_foreground_service_default"
+134-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:49:13-77
+135            android:exported="false" />
+135-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:50:13-37
+136
+137        <receiver
+137-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:54:9-59:35
+138            android:name="androidx.work.impl.utils.ForceStopRunnable$BroadcastReceiver"
+138-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:55:13-88
+139            android:directBootAware="false"
+139-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:56:13-44
+140            android:enabled="true"
+140-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:57:13-35
+141            android:exported="false" />
+141-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:58:13-37
+142        <receiver
+142-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:60:9-69:20
+143            android:name="androidx.work.impl.background.systemalarm.RescheduleReceiver"
+143-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:61:13-88
+144            android:directBootAware="false"
+144-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:62:13-44
+145            android:enabled="false"
+145-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:63:13-36
+146            android:exported="false" >
+146-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:64:13-37
+147            <intent-filter>
+147-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:66:13-68:29
+148                <action android:name="android.intent.action.BOOT_COMPLETED" />
+148-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:67:17-79
+148-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:67:25-76
+149            </intent-filter>
+150        </receiver>
+151        <receiver
+151-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:70:9-80:20
+152            android:name="androidx.work.impl.diagnostics.DiagnosticsReceiver"
+152-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:71:13-78
+153            android:directBootAware="false"
+153-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:72:13-44
+154            android:enabled="true"
+154-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:73:13-35
+155            android:exported="true"
+155-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:74:13-36
+156            android:permission="android.permission.DUMP" >
+156-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:75:13-57
+157            <intent-filter>
+157-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:77:13-79:29
+158                <action android:name="androidx.work.diagnostics.REQUEST_DIAGNOSTICS" />
+158-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:78:17-88
+158-->[androidx.work:work-runtime:2.11.2] /home/runner/.gradle/caches/9.5.0/transforms/7823ee6d6df6c058c8865102afedc5af/transformed/work-runtime-2.11.2/AndroidManifest.xml:78:25-85
+159            </intent-filter>
+160        </receiver>
+161
+162        <service
+162-->[androidx.room:room-runtime-android:2.7.0] /home/runner/.gradle/caches/9.5.0/transforms/b92bd3674c522b9b1a17d27691eb3d47/transformed/room-runtime-release/AndroidManifest.xml:24:9-28:63
+163            android:name="androidx.room.MultiInstanceInvalidationService"
+163-->[androidx.room:room-runtime-android:2.7.0] /home/runner/.gradle/caches/9.5.0/transforms/b92bd3674c522b9b1a17d27691eb3d47/transformed/room-runtime-release/AndroidManifest.xml:25:13-74
+164            android:directBootAware="true"
+164-->[androidx.room:room-runtime-android:2.7.0] /home/runner/.gradle/caches/9.5.0/transforms/b92bd3674c522b9b1a17d27691eb3d47/transformed/room-runtime-release/AndroidManifest.xml:26:13-43
+165            android:exported="false" />
+165-->[androidx.room:room-runtime-android:2.7.0] /home/runner/.gradle/caches/9.5.0/transforms/b92bd3674c522b9b1a17d27691eb3d47/transformed/room-runtime-release/AndroidManifest.xml:27:13-37
+166
+167        <receiver
+167-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:34:9-52:20
+168            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+168-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:35:13-76
+169            android:directBootAware="false"
+169-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:36:13-44
+170            android:enabled="true"
+170-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:37:13-35
+171            android:exported="true"
+171-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:38:13-36
+172            android:permission="android.permission.DUMP" >
+172-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:39:13-57
+173            <intent-filter>
+173-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:40:13-42:29
+174                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+174-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:41:17-91
+174-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:41:25-88
+175            </intent-filter>
+176            <intent-filter>
+176-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:43:13-45:29
+177                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+177-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:44:17-85
+177-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:44:25-82
+178            </intent-filter>
+179            <intent-filter>
+179-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:46:13-48:29
+180                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+180-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:47:17-88
+180-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:47:25-85
+181            </intent-filter>
+182            <intent-filter>
+182-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:49:13-51:29
+183                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+183-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:50:17-95
+183-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/runner/.gradle/caches/9.5.0/transforms/226e2e432a172f3ee9fdc188b30ff9aa/transformed/profileinstaller-1.4.0/AndroidManifest.xml:50:25-92
+184            </intent-filter>
+185        </receiver>
+186    </application>
+187
+188</manifest>

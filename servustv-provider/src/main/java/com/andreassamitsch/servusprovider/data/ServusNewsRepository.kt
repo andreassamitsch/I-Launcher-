@@ -9,6 +9,7 @@ import com.andreassamitsch.servusprovider.api.ServusCardDto
 import com.andreassamitsch.servusprovider.api.ServusCollectionRefDto
 import com.andreassamitsch.servusprovider.api.ServusNetwork
 import com.andreassamitsch.servusprovider.tv.ServusChannelPublisher
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -242,7 +243,63 @@ class ServusNewsRepository(
         return last <= 0L || nowMillis - last >= CATALOG_REFRESH_INTERVAL_MS
     }
 
+    /**
+     * The exact ServusTV show-page API exposes current videos directly in its editorial
+     * collections. Prefer it over repeated text searches. Keep the original search discovery as
+     * a full fallback if either of the two previously supported shows becomes unavailable.
+     */
     private suspend fun discoverCurrentCandidates(
+        market: String,
+        previousEpisodes: List<ServusNewsEpisode>,
+    ): CurrentDiscoveryResult {
+        val direct = try {
+            discoverDirectCurrentCandidates(market)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            Log.w(TAG, "Aktuelles direct source unavailable (${error.javaClass.simpleName}); search fallback")
+            null
+        }
+        if (direct != null) {
+            Log.i(TAG, "Aktuelles source=direct, candidates=${direct.size}")
+            return CurrentDiscoveryResult(direct, emptyList())
+        }
+        Log.i(TAG, "Aktuelles source=search-fallback")
+        return discoverSearchCurrentCandidates(market, previousEpisodes)
+    }
+
+    private suspend fun discoverDirectCurrentCandidates(market: String): List<ServusCurrentCandidate> = coroutineScope {
+        val collectionSemaphore = Semaphore(DIRECT_COLLECTION_PARALLELISM)
+        val roots = listOf(ServusBranding.NEWS_SHOW_ID, WEGSCHEIDER_SHOW_ID)
+        val byShow = roots.map { rootId ->
+            async {
+                val product = api.product(market, rootId)
+                check(product.id == rootId) { "Direct Aktuelles show missing: $rootId" }
+                val collectionIds = product.collections.mapNotNull { it.id?.takeIf(String::isNotBlank) }
+                    .distinct().take(MAX_DIRECT_COLLECTIONS_PER_SHOW)
+                check(collectionIds.isNotEmpty()) { "No collections for direct Aktuelles show: $rootId" }
+                collectionIds.map { collectionId ->
+                    async {
+                        collectionSemaphore.withPermit {
+                            val response = api.collection(market, collectionId, 0)
+                            ServusDirectCurrentPolicy.candidatesForCollection(rootId, response.label, response.cards)
+                        }
+                    }
+                }.awaitAll().flatten()
+            }
+        }.awaitAll()
+        val news = byShow[0]
+        val commentary = byShow[1]
+        // A partial API response must not silently replace the previously available three formats.
+        check(news.any { it.contentKindHint == ServusContentKind.NEWS_90_SECONDS } &&
+            news.any { it.contentKindHint == ServusContentKind.FULL_NEWS } &&
+            commentary.any { it.contentKindHint == ServusContentKind.WEGSCHEIDER }) {
+            "Direct Aktuelles collections are incomplete"
+        }
+        mergeCurrentCandidates(news + commentary).take(MAX_DETAIL_CANDIDATES)
+    }
+
+    private suspend fun discoverSearchCurrentCandidates(
         market: String,
         previousEpisodes: List<ServusNewsEpisode>,
     ): CurrentDiscoveryResult = coroutineScope {
@@ -891,6 +948,9 @@ class ServusNewsRepository(
         const val DETAIL_PARALLELISM = 6
         const val MAX_DIRECT_PREFETCH_CANDIDATES = 8
         const val DIRECT_PREFETCH_PARALLELISM = 2
+        const val WEGSCHEIDER_SHOW_ID = "AA-1Q66UK71N1W11"
+        const val DIRECT_COLLECTION_PARALLELISM = 4
+        const val MAX_DIRECT_COLLECTIONS_PER_SHOW = 8
         const val MAX_CONTENT_PAGES = 8
         const val MAX_CURRENT_COLLECTIONS = 12
         const val MAX_DETAIL_CANDIDATES = 72

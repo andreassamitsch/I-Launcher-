@@ -2,10 +2,15 @@ R_DEF: Internal format may change without notice
 local
 drawable ic_info
 drawable ic_launcher
+drawable ic_launcher_background
+drawable ic_launcher_foreground
 drawable ic_refresh
 drawable ic_settings
 drawable ic_star
 drawable ic_tv
 drawable ic_update
+drawable servus_news_90_logo
 drawable tv_banner
+mipmap ic_launcher
+mipmap ic_launcher_round
 style Theme.ServusProvider
