@@ -81,6 +81,10 @@ class MainActivity : Activity() {
     private var episodes: List<ServusNewsEpisode> = emptyList()
     private var categories: List<ServusCategory> = emptyList()
     private var liveChannels: List<ServusLiveChannel> = emptyList()
+    // Reuse an unchanged rail (and its artwork views + horizontal scroll state) when another
+    // independent source refreshes. Cards remain identified by their stable content IDs.
+    private var railViews = mutableMapOf<String, Pair<Any, HorizontalScrollView>>()
+    private var previousRailViews: Map<String, Pair<Any, HorizontalScrollView>> = emptyMap()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -241,10 +245,13 @@ class MainActivity : Activity() {
 
     private fun renderContent() {
         val focusedContentId = contentContainer.findFocus()?.tag as? String
+        previousRailViews = railViews
+        railViews = mutableMapOf()
         contentContainer.removeAllViews()
         addSectionTitle("Aktuelles")
         if (episodes.isNotEmpty()) {
-            addRail(episodes.take(MAX_CURRENT_UI_ITEMS).map(::buildEpisodeCard))
+            val visibleEpisodes = episodes.take(MAX_CURRENT_UI_ITEMS)
+            addRail("current", visibleEpisodes) { visibleEpisodes.map(::buildEpisodeCard) }
         } else {
             contentContainer.addView(TextView(this).apply {
                 text = if (currentSelectionStore.isConfigured()) {
@@ -259,7 +266,7 @@ class MainActivity : Activity() {
         }
         if (liveChannels.isNotEmpty()) {
             addSectionTitle("Live TV")
-            addRail(liveChannels.map(::buildLiveCard))
+            addRail("live", liveChannels) { liveChannels.map(::buildLiveCard) }
         }
         if (categories.isEmpty()) {
             addSectionTitle("Sendungen")
@@ -277,7 +284,10 @@ class MainActivity : Activity() {
         } else {
             categories.sortedBy { it.order }.forEach { category ->
                 addSectionTitle(category.title)
-                addRail(category.shows.map(::buildShowCard))
+                val appearance = category.shows.map { show ->
+                    Triple(show, currentSelectionStore.isSelected(show, categories), repository.isShowChannelSelected(show.id))
+                }
+                addRail("category:${category.id}", appearance) { category.shows.map(::buildShowCard) }
             }
         }
         if (focusedContentId != null &&
@@ -285,6 +295,7 @@ class MainActivity : Activity() {
         ) {
             refreshButton.requestFocus()
         }
+        previousRailViews = emptyMap()
     }
 
     private fun addSectionTitle(title: String) {
@@ -296,26 +307,35 @@ class MainActivity : Activity() {
         })
     }
 
-    private fun addRail(cards: List<View>) {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.TOP
-            setPadding(dp(2), dp(2), dp(2), dp(8))
-        }
-        cards.forEach { card ->
-            row.addView(
-                card,
-                LinearLayout.LayoutParams(
-                    dp(if (isTvDevice) CARD_WIDTH_TV_DP else CARD_WIDTH_PHONE_DP),
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply { marginEnd = dp(if (isTvDevice) 14 else 10) },
-            )
-        }
-        contentContainer.addView(
+    private fun addRail(key: String, signature: Any, cards: () -> List<View>) {
+        val cached = previousRailViews[key]
+        val scroller = if (cached?.first == signature) {
+            cached.second
+        } else {
+            val oldScrollX = cached?.second?.scrollX ?: 0
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.TOP
+                setPadding(dp(2), dp(2), dp(2), dp(8))
+            }
+            cards().forEach { card ->
+                row.addView(
+                    card,
+                    LinearLayout.LayoutParams(
+                        dp(if (isTvDevice) CARD_WIDTH_TV_DP else CARD_WIDTH_PHONE_DP),
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply { marginEnd = dp(if (isTvDevice) 14 else 10) },
+                )
+            }
             HorizontalScrollView(this).apply {
                 isHorizontalScrollBarEnabled = false
                 addView(row)
-            },
+                if (oldScrollX > 0) post { scrollTo(oldScrollX, 0) }
+            }
+        }
+        railViews[key] = signature to scroller
+        contentContainer.addView(
+            scroller,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
         )
     }

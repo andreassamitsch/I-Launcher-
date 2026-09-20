@@ -15,6 +15,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.sync.withPermit
 import retrofit2.HttpException
 
@@ -490,6 +491,9 @@ class ServusNewsRepository(
         diagnostics.recordCategoryFilter(categoryRefs.size)
         if (categoryRefs.isEmpty()) throw diagnostics.failure("Kategorien", "0 verwertbare Collections")
 
+        // A cold cache can show the first useful category without waiting for every
+        // category's remaining pages. The regular complete snapshot always replaces it.
+        val firstCategoryPublished = AtomicBoolean(false)
         // Bound category pagination instead of issuing every category request at once.
         val categorySemaphore = Semaphore(CATALOG_CATEGORY_PARALLELISM)
         val categoryLoads = try {
@@ -499,6 +503,32 @@ class ServusNewsRepository(
                     runCatching {
                         val (first, cards) = categorySemaphore.withPermit {
                             val first = api.collection(market, collectionId, 0)
+                            if (cachedCategories.isEmpty() && !firstCategoryPublished.get()) {
+                                val initialShows = first.cards.filter(ServusCatalogPolicy::isShowCard)
+                                    .mapNotNull { card ->
+                                        val core = showMetadataFromCard(card, null) ?: return@mapNotNull null
+                                        val categoryTitle = first.label?.takeIf { it.isNotBlank() }
+                                            ?: ref.label?.takeIf { it.isNotBlank() } ?: "ServusTV"
+                                        ServusShow(
+                                            id = core.id,
+                                            title = core.title,
+                                            description = core.description,
+                                            categoryId = collectionId,
+                                            categoryTitle = categoryTitle,
+                                            artworkUri = core.artworkUri,
+                                            squareArtworkUri = core.squareArtworkUri,
+                                            logoUri = core.logoUri,
+                                            episodes = core.episodes,
+                                            collections = core.collections,
+                                        )
+                                    }.distinctBy { it.id }
+                                if (initialShows.isNotEmpty() && firstCategoryPublished.compareAndSet(false, true)) {
+                                    hubStore.saveCatalogContent(listOf(ServusCategory(
+                                        collectionId, initialShows.first().categoryTitle, order, initialShows,
+                                    )))
+                                    Log.i(TAG, "Katalog preview: first category displayed from first collection page")
+                                }
+                            }
                             first to fetchCollectionCards(market, collectionId, first, MAX_CATEGORY_PAGES)
                         }
                         val showCards = cards.filter(ServusCatalogPolicy::isShowCard)
