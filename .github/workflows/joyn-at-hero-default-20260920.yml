@@ -1,0 +1,53 @@
+name: Set Watch Next hero series default
+on:
+  push:
+    paths:
+      - .github/workflows/joyn-at-hero-default-20260920.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/joyn-tv-client
+          persist-credentials: true
+      - name: Apply focused default artwork preference
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/andreassamitsch/ilauncher/data/home/HomePreferences.kt')
+          s = p.read_text()
+          a = '        loadArtworkMode(KEY_WATCH_NEXT_HERO_ARTWORK_MODE),'
+          b = '        loadArtworkMode(KEY_WATCH_NEXT_HERO_ARTWORK_MODE, WatchNextArtworkMode.Series),'
+          assert s.count(a) == 1, 'Expected existing hero-mode initialization'
+          s = s.replace(a,b)
+          a = '''    private fun loadArtworkMode(key: String): WatchNextArtworkMode =
+        preferences.getString(key, null)
+            ?.let { raw -> runCatching { WatchNextArtworkMode.valueOf(raw) }.getOrNull() }
+            ?: WatchNextArtworkMode.Episode'''
+          b = '''    private fun loadArtworkMode(
+        key: String,
+        fallback: WatchNextArtworkMode = WatchNextArtworkMode.Episode,
+    ): WatchNextArtworkMode =
+        preferences.getString(key, null)
+            ?.let { raw -> runCatching { WatchNextArtworkMode.valueOf(raw) }.getOrNull() }
+            ?: fallback'''
+          assert s.count(a) == 1, 'Expected existing artwork-mode loader'
+          p.write_text(s.replace(a,b))
+          doc=Path('docs/JOYNTV_CURRENT_STATE.md')
+          doc.write_text(doc.read_text() + '\nFür Neuinstallationen zeigt „Weiterschauen“ standardmäßig Serien-/Staffel-Artwork im großen Hero und Episodenbild auf der Karte. Explizit gespeicherte Nutzereinstellungen für den Hero bleiben erhalten.\n')
+          PY
+          git diff --check
+      - name: Commit default hero correction
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/joyn-at-hero-default-20260920.yml
+          git add app/src/main/java/com/andreassamitsch/ilauncher/data/home/HomePreferences.kt docs/JOYNTV_CURRENT_STATE.md
+          git diff --cached --check
+          git commit -m 'fix: default Watch Next hero to series artwork and keep episode card still'
+          git push origin HEAD:feature/joyn-tv-client
