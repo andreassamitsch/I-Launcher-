@@ -1,0 +1,137 @@
+name: Optimize ServusTV current fetch once
+
+on:
+  push:
+    branches:
+      - fix/servustv-progressive-refresh
+    paths:
+      - .github/workflows/optimize-servustv-current-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/servustv-progressive-refresh
+          persist-credentials: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Apply bounded early detail fetching and timings
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusNewsRepository.kt')
+          t = p.read_text()
+          def patch(old, new):
+              global t
+              assert t.count(old) == 1, (old[:110], t.count(old))
+              t = t.replace(old, new, 1)
+
+          patch('import android.util.Log\n', 'import android.util.Log\nimport android.os.SystemClock\n')
+          patch('''            val candidates = discoverCurrentCandidates(market)
+            val currentPlan = ServusCurrentRefreshPolicy.planCandidates(candidates, previousEpisodes)
+            val details = fetchDetails(market, currentPlan.candidatesToLoad)
+''', '''            val startedAt = SystemClock.elapsedRealtime()
+            val discovery = discoverCurrentCandidates(market, previousEpisodes)
+            val discoveryMs = SystemClock.elapsedRealtime() - startedAt
+            val currentPlan = ServusCurrentRefreshPolicy.planCandidates(discovery.candidates, previousEpisodes)
+            val earlyIds = discovery.earlyDetails.mapNotNull { it.card.id }.toSet()
+            val remainingCandidates = currentPlan.candidatesToLoad.filterNot { it.id in earlyIds }
+            val remainingDetails = fetchDetails(market, remainingCandidates)
+            val hintsById = currentPlan.candidatesToLoad.associate { it.id to it.contentKindHint }
+            val details = discovery.earlyDetails.map { early ->
+                early.copy(contentKindHint = early.card.id?.let(hintsById::get) ?: early.contentKindHint)
+            } + remainingDetails
+            val detailMs = SystemClock.elapsedRealtime() - startedAt - discoveryMs
+''')
+          patch('''            newsStore.save(result)
+
+            val liveChannels''', '''            newsStore.save(result)
+            Log.i(
+                TAG,
+                "Aktuelles refresh: discovery=${discoveryMs}ms, remainingDetails=${detailMs}ms, " +
+                    "firstCache=${SystemClock.elapsedRealtime() - startedAt}ms, " +
+                    "candidates=${discovery.candidates.size}, prefetched=${discovery.earlyDetails.size}, " +
+                    "late=${remainingCandidates.size}, episodes=${episodes.size}",
+            )
+
+            val liveChannels''')
+          patch('''    private suspend fun discoverCurrentCandidates(market: String): List<ServusCurrentCandidate> = coroutineScope {
+        val responseGroups''', '''    private suspend fun discoverCurrentCandidates(
+        market: String,
+        previousEpisodes: List<ServusNewsEpisode>,
+    ): CurrentDiscoveryResult = coroutineScope {
+        val searchStartedAt = SystemClock.elapsedRealtime()
+        val responseGroups''')
+          patch('''        val contentPages = directCards.filter''', '''        val searchMs = SystemClock.elapsedRealtime() - searchStartedAt
+        // Prefetch only a small set of genuinely new direct results while editorial collection
+        // discovery runs. Keep collection discovery authoritative for the final identity hints.
+        val earlyCandidates = ServusCurrentRefreshPolicy.planCandidates(
+            directCandidates, previousEpisodes,
+        ).candidatesToLoad.take(MAX_DIRECT_PREFETCH_CANDIDATES)
+        val earlyDetails = async {
+            fetchDetails(market, earlyCandidates, parallelism = DIRECT_PREFETCH_PARALLELISM)
+        }
+        val contentPages = directCards.filter''')
+          patch('''        mergeCurrentCandidates(directCandidates + collectionCandidates).take(MAX_DETAIL_CANDIDATES)
+    }
+''', '''        val candidates = mergeCurrentCandidates(directCandidates + collectionCandidates).take(MAX_DETAIL_CANDIDATES)
+        val details = earlyDetails.await()
+        Log.i(
+            TAG,
+            "Aktuelles discovery: search=${searchMs}ms, collections+prefetch=" +
+                "${SystemClock.elapsedRealtime() - searchStartedAt - searchMs}ms, " +
+                "direct=${directCandidates.size}, collections=${collectionCandidates.size}, " +
+                "early=${details.size}",
+        )
+        CurrentDiscoveryResult(candidates, details)
+    }
+''')
+          patch('''        candidates: List<ServusCurrentCandidate>,
+    ): List<HydratedCurrentCandidate> = coroutineScope {
+        val semaphore = Semaphore(DETAIL_PARALLELISM)
+''', '''        candidates: List<ServusCurrentCandidate>,
+        parallelism: Int = DETAIL_PARALLELISM,
+    ): List<HydratedCurrentCandidate> = coroutineScope {
+        val semaphore = Semaphore(parallelism)
+''')
+          patch('''    private data class HydratedCurrentCandidate(val card: ServusCardDto, val contentKindHint: ServusContentKind?)
+''', '''    private data class HydratedCurrentCandidate(val card: ServusCardDto, val contentKindHint: ServusContentKind?)
+    private data class CurrentDiscoveryResult(
+        val candidates: List<ServusCurrentCandidate>,
+        val earlyDetails: List<HydratedCurrentCandidate>,
+    )
+''')
+          patch('''        const val DETAIL_PARALLELISM = 6
+''', '''        const val DETAIL_PARALLELISM = 6
+        const val MAX_DIRECT_PREFETCH_CANDIDATES = 8
+        const val DIRECT_PREFETCH_PARALLELISM = 2
+''')
+          p.write_text(t)
+          print('Patched bounded concurrent prefetch and timing logs.')
+          PY
+      - name: Test and build affected app and launcher
+        run: gradle :servustv-provider:testDebugUnitTest :servustv-provider:assembleDebug :app:testDebugUnitTest :app:assembleDebug --stacktrace
+      - name: Commit tested source and remove one-off workflow
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm .github/workflows/optimize-servustv-current-once.yml
+          git add servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusNewsRepository.kt .github/workflows/optimize-servustv-current-once.yml
+          git commit -m 'perf(servustv): overlap bounded current detail fetch with collection discovery'
+          git push origin HEAD:fix/servustv-progressive-refresh
