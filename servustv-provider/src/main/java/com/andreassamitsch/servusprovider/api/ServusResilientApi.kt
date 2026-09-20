@@ -24,13 +24,14 @@ internal class ServusResilientApi(
     private val retryDelayMillis: Long = DEFAULT_RETRY_DELAY_MS,
 ) : ServusApi {
     private val searchSemaphore = Semaphore(searchParallelism.coerceAtLeast(1))
+    private val networkSemaphore = Semaphore(DEFAULT_NETWORK_PARALLELISM)
 
     override suspend fun session(
         namespace: String,
         category: String,
         osFamily: String,
     ): SessionDto = retryTransient {
-        delegate.session(namespace, category, osFamily)
+        networkSemaphore.withPermit { delegate.session(namespace, category, osFamily) }
     }
 
     override suspend fun search(
@@ -41,7 +42,7 @@ internal class ServusResilientApi(
         return try {
             retryTransient {
                 searchSemaphore.withPermit {
-                    delegate.search(market, query, offset)
+                    networkSemaphore.withPermit { delegate.search(market, query, offset) }
                 }
             }
         } catch (cancelled: CancellationException) {
@@ -56,7 +57,7 @@ internal class ServusResilientApi(
     }
 
     override suspend fun product(market: String, id: String): ServusCardDto = retryTransient {
-        delegate.product(market, id)
+        networkSemaphore.withPermit { delegate.product(market, id) }
     }
 
     override suspend fun collection(
@@ -64,7 +65,7 @@ internal class ServusResilientApi(
         id: String,
         offset: Int,
     ): SearchResponseDto = retryTransient {
-        delegate.collection(market, id, offset)
+        networkSemaphore.withPermit { delegate.collection(market, id, offset) }
     }
 
     override suspend fun guide(
@@ -72,11 +73,11 @@ internal class ServusResilientApi(
         id: String,
         complete: Boolean,
     ): SearchResponseDto = retryTransient {
-        delegate.guide(market, id, complete)
+        networkSemaphore.withPermit { delegate.guide(market, id, complete) }
     }
 
     override suspend fun dynamicProduct(market: String, id: String): DynamicProductDto = retryTransient {
-        delegate.dynamicProduct(market, id)
+        networkSemaphore.withPermit { delegate.dynamicProduct(market, id) }
     }
 
     private suspend fun <T> retryTransient(block: suspend () -> T): T {
@@ -98,6 +99,7 @@ internal class ServusResilientApi(
 
     internal companion object {
         const val DEFAULT_SEARCH_PARALLELISM = 4
+        const val DEFAULT_NETWORK_PARALLELISM = 5
         const val DEFAULT_MAX_ATTEMPTS = 3
         const val DEFAULT_RETRY_DELAY_MS = 300L
 
