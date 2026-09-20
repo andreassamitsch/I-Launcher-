@@ -896,13 +896,20 @@ internal class JoynApiClient(context: Context) {
             "Brand", "ChannelPage" -> JoynMediaType.CHANNEL
             else -> JoynMediaType.UNKNOWN
         }
-        val primary = optJSONObject("primaryImage")?.urlValue()
+        // Episode thumbnails are usually episode-specific, while series-level hero artwork
+        // in lightweight catalogue/resume assets may depict the parent series.
+        val episodeThumbnail = if (type == JoynMediaType.EPISODE) {
+            optJSONObject("thumbnailImage")?.urlValue()
+        } else null
+        val primary = episodeThumbnail
+            ?: optJSONObject("primaryImage")?.urlValue()
             ?: optJSONObject("thumbnailImage")?.urlValue()
             ?: optJSONObject("posterImage")?.urlValue()
             ?: optJSONObject("heroPortraitImage")?.urlValue()
             ?: optJSONObject("heroPortrait")?.urlValue()
             ?: optJSONArray("images").firstImageUrl()
-        val backdrop = optJSONObject("heroLandscapeImage")?.urlValue()
+        val backdrop = episodeThumbnail
+            ?: optJSONObject("heroLandscapeImage")?.urlValue()
             ?: optJSONObject("posterImage")?.urlValue()
             ?: primary
         val logo = optJSONObject("artLogoImage")?.urlValue()
@@ -922,8 +929,10 @@ internal class JoynApiClient(context: Context) {
             seasonId = optJSONObject("season")?.optString("id")?.takeIf(String::isNotBlank),
             seriesTitle = optJSONObject("series")?.optString("title")?.takeIf(String::isNotBlank),
             seasonNumber = optJSONObject("season")?.optInt("number")?.takeIf { it > 0 }
-                ?: optJSONObject("season")?.optInt("seasonNumber")?.takeIf { it > 0 },
-            episodeNumber = optInt("number").takeIf { it > 0 },
+                ?: optJSONObject("season")?.optInt("seasonNumber")?.takeIf { it > 0 }
+                ?: optInt("seasonNumber").takeIf { it > 0 },
+            episodeNumber = optInt("number").takeIf { it > 0 }
+                ?: optInt("episodeNumber").takeIf { it > 0 },
             licenseTypes = optJSONArray("licenseTypes").toStringSet(),
             markings = optJSONArray("markings").toStringSet(),
             seriesId = optJSONObject("series")?.optString("id")?.takeIf(String::isNotBlank),

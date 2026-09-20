@@ -78,7 +78,7 @@ internal class JoynContinueWatchingStore(context: Context) {
         current.removeAll { it.assetId == assetId }
         val entry = JoynContinueWatchingEntry(
             assetId = assetId,
-            media = media,
+            media = JoynResumeMediaMerger.merge(media, previous?.media),
             positionMs = positionMs,
             durationMs = durationMs,
             updatedAt = System.currentTimeMillis(),
@@ -93,11 +93,15 @@ internal class JoynContinueWatchingStore(context: Context) {
     fun replaceFromRemote(remote: List<JoynContinueWatchingEntry>): List<JoynContinueWatchingEntry> {
         val deleted = pendingDeletes()
         val local = decodeEntries(prefs.getString(KEY_ITEMS, null))
+        val localById = local.associateBy { it.assetId }
         val dirtyById = local.filter { it.dirty }.associateBy { it.assetId }
         val merged = linkedMapOf<String, JoynContinueWatchingEntry>()
         remote.forEach { remoteEntry ->
             if (remoteEntry.assetId !in deleted) {
-                merged[remoteEntry.assetId] = dirtyById[remoteEntry.assetId] ?: remoteEntry.copy(dirty = false)
+                val selected = dirtyById[remoteEntry.assetId] ?: remoteEntry.copy(dirty = false)
+                merged[remoteEntry.assetId] = selected.copy(
+                    media = JoynResumeMediaMerger.merge(selected.media, localById[remoteEntry.assetId]?.media),
+                )
             }
         }
         local.filter { it.dirty && it.assetId !in deleted }.forEach { merged[it.assetId] = it }
@@ -354,9 +358,12 @@ internal class JoynWatchNextPublisher(context: Context) {
                 setEpisodeTitle(media.title)
                 media.seasonNumber?.let(::setSeasonNumber)
                 media.episodeNumber?.let(::setEpisodeNumber)
-                (media.backdropUrl ?: media.imageUrl)?.takeIf(String::isNotBlank)?.let {
-                    setPosterArtUri(Uri.parse(it))
+                val artwork = if (media.type == JoynMediaType.EPISODE) {
+                    media.imageUrl ?: media.backdropUrl
+                } else {
+                    media.backdropUrl ?: media.imageUrl
                 }
+                artwork?.takeIf(String::isNotBlank)?.let { setPosterArtUri(Uri.parse(it)) }
             }
             .build()
 
@@ -423,9 +430,12 @@ internal class JoynWatchNextPublisher(context: Context) {
             media.episodeNumber?.let(builder::setEpisodeNumber)
         }
 
-        (media.backdropUrl ?: media.imageUrl)?.takeIf(String::isNotBlank)?.let {
-            builder.setPosterArtUri(Uri.parse(it))
+        val artwork = if (media.type == JoynMediaType.EPISODE) {
+            media.imageUrl ?: media.backdropUrl
+        } else {
+            media.backdropUrl ?: media.imageUrl
         }
+        artwork?.takeIf(String::isNotBlank)?.let { builder.setPosterArtUri(Uri.parse(it)) }
         return builder.build()
     }
 

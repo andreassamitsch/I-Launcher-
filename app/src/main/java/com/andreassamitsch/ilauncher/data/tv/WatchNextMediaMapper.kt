@@ -45,11 +45,9 @@ object WatchNextMediaMapper {
 
     fun enrich(base: MediaItem, metadata: TmdbMetadata): MediaItem {
         val episode = metadata.episode
-        val resultingType = if (base.type == MediaType.Episode && episode != null) {
-            MediaType.Episode
-        } else {
-            metadata.mediaType
-        }
+        // Android marks an item as an episode even if TMDB resolves only the parent series.
+        // Keep its provider episode metadata and allow its episode-specific artwork to win.
+        val resultingType = if (base.type == MediaType.Episode) MediaType.Episode else metadata.mediaType
         val subtitle = if (resultingType == MediaType.Episode) {
             buildList {
                 (episode?.seasonNumber ?: base.seasonNumber)?.let { add("S$it") }
@@ -83,7 +81,9 @@ object WatchNextMediaMapper {
             posterUri = metadata.posterUri,
             backdropUri = metadata.backdropUri,
             logoUri = metadata.logoUri ?: base.logoUri,
-            episodeStillUri = episode?.stillUri,
+            episodeStillUri = episode?.stillUri
+                ?: base.episodeStillUri
+                ?: base.sourceArtworkUri.takeIf { resultingType == MediaType.Episode },
             durationMillis = base.durationMillis ?: metadataDuration,
             voteAverage = episode?.voteAverage ?: metadata.voteAverage,
             imdbId = metadata.imdbId,

@@ -355,3 +355,8 @@ Erster veröffentlichter Build dieses Stands: **Joyn TV `0.1.0-dev.705`**.
 - Standalone-Startseite nicht wieder an einen vollständigen Multi-Country-Live-Refresh koppeln.
 - Multi-Country-Live-Routen in der Standalone-App nicht parallelisieren, solange die Route prozessweit ist; stattdessen Cache und progressive Darstellung verwenden.
 - Netzwerk-/Fallback-Änderungen immer auf realer TV-Hardware validieren.
+
+
+### Weiterschauen – Episodenmetadaten beim Kontoabgleich bewahren (20.09.2026)
+
+Joyn-ResumeLane-Einträge können Staffel/Folge und Episodenbild weglassen. Für dieselbe Asset-/Video-ID bleiben beim Abspielen bereits ermittelte Staffel-/Folgenangaben und Episode-Artwork nach einem Kontoabgleich erhalten. Der Android-TV-Watch-Next-Eintrag einer Folge bevorzugt das Thumbnail vor einem generischen Serien-Backdrop. Der Joyn-Parser akzeptiert auch direkt gelieferte `seasonNumber` und `episodeNumber`; I Launcher hält einen vom Provider als Episode gekennzeichneten Eintrag als Episode, selbst wenn TMDB zunächst nur die Serie erkennt, und priorisiert dessen Quellbild. Fehlende Episodenangaben werden nicht geraten. Für bereits ohne Koordinaten gespeicherte Resume-Einträge bleibt ein zusätzlicher Test am TV nötig.
