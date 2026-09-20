@@ -56,8 +56,8 @@ class HomePreferences(context: Context) {
     }
 
     fun moveApp(availablePackages: List<String>, packageName: String, delta: Int) {
-        val current = mergeOrder(_appOrder.value, availableKeys = availablePackages)
-        saveAppOrder(move(current, key, delta))
+        val current = mergeOrder(_appOrder.value, availablePackages)
+        saveAppOrder(move(current, packageName, delta))
     }
 
     fun resetApps() {
