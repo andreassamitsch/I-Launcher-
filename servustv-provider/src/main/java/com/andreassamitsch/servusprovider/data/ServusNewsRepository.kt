@@ -2,6 +2,7 @@ package com.andreassamitsch.servusprovider.data
 
 import android.content.Context
 import android.util.Log
+import android.os.SystemClock
 import com.andreassamitsch.servusprovider.api.SearchResponseDto
 import com.andreassamitsch.servusprovider.api.ServusApi
 import com.andreassamitsch.servusprovider.api.ServusCardDto
@@ -111,9 +112,18 @@ class ServusNewsRepository(
             val refreshNow = System.currentTimeMillis()
             val detectNewAvailability = observedAvailabilityStore.isInitialized()
 
-            val candidates = discoverCurrentCandidates(market)
-            val currentPlan = ServusCurrentRefreshPolicy.planCandidates(candidates, previousEpisodes)
-            val details = fetchDetails(market, currentPlan.candidatesToLoad)
+            val startedAt = SystemClock.elapsedRealtime()
+            val discovery = discoverCurrentCandidates(market, previousEpisodes)
+            val discoveryMs = SystemClock.elapsedRealtime() - startedAt
+            val currentPlan = ServusCurrentRefreshPolicy.planCandidates(discovery.candidates, previousEpisodes)
+            val earlyIds = discovery.earlyDetails.mapNotNull { it.card.id }.toSet()
+            val remainingCandidates = currentPlan.candidatesToLoad.filterNot { it.id in earlyIds }
+            val remainingDetails = fetchDetails(market, remainingCandidates)
+            val hintsById = currentPlan.candidatesToLoad.associate { it.id to it.contentKindHint }
+            val details = discovery.earlyDetails.map { early ->
+                early.copy(contentKindHint = early.card.id?.let(hintsById::get) ?: early.contentKindHint)
+            } + remainingDetails
+            val detailMs = SystemClock.elapsedRealtime() - startedAt - discoveryMs
             val mappedEpisodes = ServusNewsPolicy.deduplicateEpisodes(
                 currentPlan.cachedEpisodes + details.mapNotNull { detailed ->
                     ServusNewsPolicy.toSupportedEpisode(
@@ -131,6 +141,13 @@ class ServusNewsRepository(
             check(episodes.isNotEmpty()) { "Keine unterstützte ServusTV-Sendung in den API-Ergebnissen gefunden" }
             val result = ServusRefreshResult(episodes, refreshNow)
             newsStore.save(result)
+            Log.i(
+                TAG,
+                "Aktuelles refresh: discovery=${discoveryMs}ms, remainingDetails=${detailMs}ms, " +
+                    "firstCache=${SystemClock.elapsedRealtime() - startedAt}ms, " +
+                    "candidates=${discovery.candidates.size}, prefetched=${discovery.earlyDetails.size}, " +
+                    "late=${remainingCandidates.size}, episodes=${episodes.size}",
+            )
 
             val liveChannels = runCatching { refreshLiveChannels(market, refreshNow) }
                 .onFailure { Log.w(TAG, "Live refresh failed (${it.javaClass.simpleName})") }
@@ -225,7 +242,11 @@ class ServusNewsRepository(
         return last <= 0L || nowMillis - last >= CATALOG_REFRESH_INTERVAL_MS
     }
 
-    private suspend fun discoverCurrentCandidates(market: String): List<ServusCurrentCandidate> = coroutineScope {
+    private suspend fun discoverCurrentCandidates(
+        market: String,
+        previousEpisodes: List<ServusNewsEpisode>,
+    ): CurrentDiscoveryResult = coroutineScope {
+        val searchStartedAt = SystemClock.elapsedRealtime()
         val responseGroups = SEARCH_QUERIES.map { query -> async { fetchCurrentSearchPages(market, query) } }.awaitAll()
         val directCards = responseGroups.flatten().flatMap { it.cards }
         val directCandidates = responseGroups.flatMap { responses ->
@@ -234,6 +255,16 @@ class ServusNewsRepository(
                 .mapNotNull { card -> card.id?.let { ServusCurrentCandidate(it, ServusNewsPolicy.contentKind(card)) } }
                 .distinctBy { it.id }
                 .take(MAX_DIRECT_IDS_PER_QUERY)
+        }
+        val searchMs = SystemClock.elapsedRealtime() - searchStartedAt
+        // Overlap a small number of new direct video products with collection discovery. Avoid
+        // prefetching page products: their collections are already requested by the discovery.
+        val pageIds = directCards.asSequence().filter { it.type == "page" }.mapNotNull { it.id }.toSet()
+        val earlyCandidates = ServusCurrentRefreshPolicy.planCandidates(
+            directCandidates, previousEpisodes,
+        ).candidatesToLoad.filterNot { it.id in pageIds }.take(MAX_DIRECT_PREFETCH_CANDIDATES)
+        val earlyDetails = async {
+            fetchDetails(market, earlyCandidates, parallelism = DIRECT_PREFETCH_PARALLELISM)
         }
         val contentPages = directCards.filter { it.type == "page" && ServusNewsPolicy.couldBelongToSupportedContent(it) }
             .distinctBy { it.id }
@@ -274,7 +305,16 @@ class ServusNewsRepository(
             }
         }.awaitAll().flatten()
 
-        mergeCurrentCandidates(directCandidates + collectionCandidates).take(MAX_DETAIL_CANDIDATES)
+        val candidates = mergeCurrentCandidates(directCandidates + collectionCandidates).take(MAX_DETAIL_CANDIDATES)
+        val details = earlyDetails.await()
+        Log.i(
+            TAG,
+            "Aktuelles discovery: search=${searchMs}ms, collections+prefetch=" +
+                "${SystemClock.elapsedRealtime() - searchStartedAt - searchMs}ms, " +
+                "direct=${directCandidates.size}, collections=${collectionCandidates.size}, " +
+                "early=${details.size}",
+        )
+        CurrentDiscoveryResult(candidates, details)
     }
 
     private fun mergeCurrentCandidates(candidates: List<ServusCurrentCandidate>): List<ServusCurrentCandidate> {
@@ -310,8 +350,9 @@ class ServusNewsRepository(
     private suspend fun fetchDetails(
         market: String,
         candidates: List<ServusCurrentCandidate>,
+        parallelism: Int = DETAIL_PARALLELISM,
     ): List<HydratedCurrentCandidate> = coroutineScope {
-        val semaphore = Semaphore(DETAIL_PARALLELISM)
+        val semaphore = Semaphore(parallelism)
         candidates.map { candidate ->
             async {
                 semaphore.withPermit {
@@ -816,6 +857,10 @@ class ServusNewsRepository(
         val ownerShowTitle: String?,
     )
     private data class HydratedCurrentCandidate(val card: ServusCardDto, val contentKindHint: ServusContentKind?)
+    private data class CurrentDiscoveryResult(
+        val candidates: List<ServusCurrentCandidate>,
+        val earlyDetails: List<HydratedCurrentCandidate>,
+    )
     private data class CategorySeed(val id: String, val title: String, val order: Int, val rawCardCount: Int, val cards: List<ServusCardDto>)
     private data class CategoryLoadResult(val seed: CategorySeed? = null, val skippedTitle: String? = null, val error: Throwable? = null)
     private data class CatalogRefreshOutcome(val categories: List<ServusCategory>, val diagnostic: String)
@@ -844,6 +889,8 @@ class ServusNewsRepository(
         const val MAX_CURRENT_SEARCH_PAGES = 3
         const val MAX_DIRECT_IDS_PER_QUERY = 16
         const val DETAIL_PARALLELISM = 6
+        const val MAX_DIRECT_PREFETCH_CANDIDATES = 8
+        const val DIRECT_PREFETCH_PARALLELISM = 2
         const val MAX_CONTENT_PAGES = 8
         const val MAX_CURRENT_COLLECTIONS = 12
         const val MAX_DETAIL_CANDIDATES = 72
