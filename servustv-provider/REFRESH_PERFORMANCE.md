@@ -1,19 +1,23 @@
-# ServusTV: Aktuelles-Refresh messen
+# ServusTV: Aktualisierung und Katalog messen
 
-Die Aktuelles-Discovery bleibt vollständig: Suchbegriffe, redaktionelle Sendungs-/Collection-Zuordnung und abschließende Kandidatenplanung werden weiterhin durchlaufen. Bis zu acht neue direkte Videotreffer werden bereits **während** der Collection-Discovery mit höchstens zwei gleichzeitig laufenden Produktanfragen vorab geladen. Bereits erfolgreich vorgeladene Treffer werden nicht noch einmal in der abschließenden Detailphase angefragt. Seiten-/Show-Produkte werden dabei nicht vorab geladen, damit sie sich nicht mit der Collection-Ermittlung überschneiden. Die korrekte redaktionelle Identität des endgültigen Kandidatenplans hat Vorrang vor vorläufigen Hinweisen.
+## Ablauf
+
+**Aktuelles** nutzt zuerst die verifizierten ServusTV-Sendungsprodukte und deren dynamisch gelieferte redaktionelle Collections. Nur wenn die benötigten Formate nicht direkt erreichbar sind, greift die bisherige vollständige Textsuch-/Collection-Discovery als Fallback. Dabei werden bis zu acht neue direkte Videotreffer mit höchstens zwei gleichzeitigen Produktanfragen bereits während der Collection-Suche vorgeladen und später nicht doppelt geladen. Logcat meldet `Aktuelles source=direct` oder `Aktuelles source=search-fallback` sowie `Aktuelles refresh` mit `discovery`, `remainingDetails` und `firstCache` (Millisekunden).
+
+**Sendungskatalog**: Das Produkt `sendungen` liefert die Kategorien und Sendungen; der reguläre Metadatenabgleich erfolgt höchstens alle sechs Stunden oder auf ausdrückliche Anforderung. Höchstens vier Kategorien einschließlich ihrer Folgeseiten werden gleichzeitig angefragt. Sobald die gesamte Katalog-Metadatenliste bereitsteht, wird sie sofort im lokalen Cache gespeichert, noch bevor die ausgewählten Sendungen/Collections zusätzlich aktualisiert und Android-TV-Kanäle veröffentlicht werden. Dadurch kann die Oberfläche den Katalog bereits anzeigen, während die nachgelagerte Arbeit noch läuft. `Katalog cache: categories=…, elapsed=…ms` meldet den Speicherzeitpunkt seit Beginn des gemeinsamen Refreshs; dies ist **kein** gemessener Zeitpunkt des ersten sichtbaren Frames.
+
+**Sendungsdetail**: Bereits gespeicherte Folgen werden beim Öffnen sofort angezeigt. Das Produkt der geöffneten Sendung und seine Folgen-Collections werden anschließend direkt abgefragt; weitere Seiten werden bei Bedarf nachgeladen. Empfehlungen und andere nicht redaktionelle Collections werden nicht als Folgen behandelt.
 
 ## Reproduzierbarer Gerätetest
 
-1. Bestehende ServusTV-Version `0.2.0-dev.65` auf dem Android-TV starten, einmal die Nachrichten aktualisieren und Ladezeit bis zur ersten aktualisierten Aktuelles-Karte beobachten.
-2. Stabile neue Entwicklungs-APK installieren, denselben Ablauf mit unveränderten Empfangs- und Netzwerkbedingungen wiederholen; einmal mit warmem Cache und, soweit möglich, einmal mit tatsächlich neuen Inhalten.
-3. Während des Tests Logcat auf dem verbundenen Android-TV erfassen: `adb logcat -s ServusRepository:I`.
-4. Die Logzeilen `Aktuelles discovery` (`search`, `collections+prefetch`, Kandidaten und vorgeladene Treffer) und `Aktuelles refresh` (`discovery`, `remainingDetails`, `firstCache`) vergleichen. Alle Zeitwerte sind Millisekunden; `firstCache` endet beim Speichern der Nachrichten im lokalen Cache und ist nicht automatisch mit dem ersten sichtbaren Karten-Frame gleichzusetzen.
-5. D-Pad-Fokus, News-Format/Logo, Anzahl der Nachrichten, Live-TV, Kategorien und den vorhandenen Preview-Channel unverändert überprüfen. Eine messbare Verbesserung darf erst nach dem echten Gerätevergleich behauptet werden.
-
-Die Logzeilen enthalten keine Account-Tokens oder vollständigen privaten Netzwerk-URLs.
+1. Vorhandene Version `0.2.0-dev.67` auf dem Android-TV mit warmem Cache öffnen. Verfügbarkeit und Zeitpunkt der ersten Aktuelles-Karte, der Kategorien und der Folgen beim Öffnen einer Sendung beobachten.
+2. Neuere stabil signierte ServusTV-Entwicklungs-APK über den In-App-Updater installieren. Unter vergleichbaren Netzwerkbedingungen erneut prüfen; soweit möglich auch einen Katalogabgleich nach sechs Stunden oder bei einem frischen Cache erfassen.
+3. Diagnose parallel aufzeichnen: `adb logcat -s ServusRepository:I`. `Aktuelles refresh` und `Katalog cache` zwischen den Versionen vergleichen, ohne Log-Zeitwerte mit Bildaufbauzeiten gleichzusetzen.
+4. Die Kategorien und Sendungsanzahl müssen vollständig bleiben; bestehende Folgen, redaktionelle Bereiche, ServusTV-Live-Kanäle, Nachrichtenversionen und Logos prüfen. Bei laufendem Refresh D-Pad-Fokus und Scrollposition kontrollieren; es dürfen keine Fokusverluste oder unnötig wiederholte Neuzeichnungen auftreten.
+5. Direktaufruf-Fehler müssen weiterhin den Such-Fallback zulassen. Die tatsächliche Performanceverbesserung erst nach Gerätevergleich behaupten; ein CI-Build ist kein Hardwaretest.
 
 ## Verifizierte direkte Quellen (20.09.2026)
 
-Der öffentliche `/de/sendungen`-Einstieg entspricht dem API-Produkt `sendungen`; dessen Katalog wird separat alle sechs Stunden geladen. Für den häufigen Aktuelles-Refresh werden die zwei verifizierten Show-IDs direkt abgefragt: `AA-1Y5RJCD1H2111` (Servus Nachrichten) und `AA-1Q66UK71N1W11` (Der Wegscheider). Deren API-Produktantworten liefern die Collection-IDs dynamisch. Im Nachrichten-Produkt sind die redaktionellen Collections „Servus Nachrichten in 90 Sekunden“ und „Servus Nachrichten 19:20“ die Quellen für die schnelle Aktuelles-Reihe; „Einzelbeiträge“ bleibt Bestandteil der Sendungsdetailansicht und wird nicht fälschlich als vollständige Nachrichtensendung einsortiert. Für den Wegscheider wird nur „Aktuelle Sendungen“ verwendet. „Das könnte Ihnen auch gefallen“ und „Mehr zu“ sind keine eigenen Sendungsfolgen.
+Der öffentliche `/de/sendungen`-Einstieg entspricht dem API-Produkt `sendungen`. Das Nachrichtenprodukt `AA-1Y5RJCD1H2111` enthält die redaktionellen Collections „Servus Nachrichten in 90 Sekunden“, „Servus Nachrichten 19:20“ und „Einzelbeiträge“. Für die schnelle Aktuelles-Reihe werden nur die ersten beiden verwendet; Einzelbeiträge bleiben auf der Sendungsdetailseite. Das eigene Produkt `AA-1Q66UK71N1W11` liefert „Der Wegscheider“ mit der Collection „Aktuelle Sendungen“. Empfehlungen und „Mehr zu“ sind keine eigenen Sendungsfolgen. Collection-IDs werden aus den API-Produktantworten gelesen und nicht fest verdrahtet.
 
-Sind eine der erforderlichen Collection-Gruppen oder eine Show-API nicht erreichbar, bleibt die ursprüngliche vollständige Such-/Collection-Discovery als Fallback erhalten. Logcat `Aktuelles source=direct` bzw. `Aktuelles source=search-fallback` hilft beim Vergleich. Die bisherige begrenzte Vorab-Ladung greift weiterhin im Fallback. Die 20.09.2026 live überprüften Collection-IDs sind bewusst nicht fest verdrahtet, sondern werden aus dem Show-Produkt gelesen.
+Die Diagnoselogzeilen enthalten keine Account-Tokens oder vollständigen privaten Netzwerk-URLs.
