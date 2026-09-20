@@ -1,0 +1,41 @@
+name: Probe ServusTV direct content once
+on:
+  push:
+    branches: [fix/servustv-progressive-refresh]
+    paths: [.github/workflows/probe-servustv-direct-content-once.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect public show and news collection metadata
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, urllib.request, urllib.error
+          BASE='https://tv-api.redbull.com/'
+          HEADERS={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:153.0) Gecko/20100101 Firefox/153.0','Accept':'application/json, text/plain, */*','Accept-Language':'de-DE,de;q=0.9,en;q=0.8','Origin':'https://www.servustv.com','Referer':'https://www.servustv.com/'}
+          def get(url):
+            try:
+              with urllib.request.urlopen(urllib.request.Request(url,headers=HEADERS),timeout=20) as res: return json.load(res)
+            except Exception as e:
+              print('FAILED',url.rsplit('/',1)[-1],type(e).__name__,str(e)[:120]); return None
+          for market in ('at','de'):
+            print('MARKET',market)
+            for product_id in ('sendungen','AA-1Y5RJCD1H2111','AAYGF2URW6ALQYE42IJK'):
+              p=get(BASE+f'products/v5.3/stv/de/{market}/{product_id}')
+              if not p: continue
+              print('PRODUCT',product_id,'actualId',p.get('id'),'type',p.get('type'),'title',p.get('title'),'collectionCount',len(p.get('collections') or []))
+              refs=(p.get('collections') or [])[:12]
+              for ref in refs:
+                cid=ref.get('id')
+                print('REF',json.dumps({k:ref.get(k) for k in ('id','label','list_type','type')},ensure_ascii=False))
+                if product_id == 'sendungen' and cid not in [r.get('id') for r in refs[:2]]: continue
+                if not cid: continue
+                c=get(BASE+f'collections/v5.3/stv/de/{market}/{cid}?offset=0')
+                if not c: continue
+                cards=c.get('cards') or []
+                print('COLLECTION',cid,'label',c.get('label'),'type',c.get('type'),'listType',c.get('list_type'),'count',len(cards),'next',bool((c.get('meta') or {}).get('next')))
+                for card in cards[:4]: print('CARD',json.dumps({k:card.get(k) for k in ('id','type','content_type','title','playable')},ensure_ascii=False))
+          PY
