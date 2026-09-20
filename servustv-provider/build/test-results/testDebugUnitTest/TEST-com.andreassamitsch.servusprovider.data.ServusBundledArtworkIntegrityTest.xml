@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andreassamitsch.servusprovider.data.ServusBundledArtworkIntegrityTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-09-20T16:39:43.559Z" hostname="runnervmlun5p" time="0.043">
-  <properties/>
-  <testcase name="ninetySecondLogoIsCompleteDecodablePng" classname="com.andreassamitsch.servusprovider.data.ServusBundledArtworkIntegrityTest" time="0.037"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>

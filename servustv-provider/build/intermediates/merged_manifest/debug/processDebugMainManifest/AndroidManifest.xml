@@ -37,17 +37,10 @@
         android:banner="@drawable/tv_banner"
         android:debuggable="true"
         android:extractNativeLibs="false"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/ic_launcher"
         android:label="ServusTV"
-        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.ServusProvider" >
-        <provider
-            android:name="com.andreassamitsch.servusprovider.tv.ServusBrandingProvider"
-            android:authorities="com.andreassamitsch.servusprovider.branding"
-            android:exported="true"
-            android:grantUriPermissions="false" />
-
         <activity
             android:name="com.andreassamitsch.servusprovider.ui.PlaybackActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize"
@@ -103,7 +96,6 @@
             android:exported="true" >
             <intent-filter>
                 <action android:name="android.media.tv.action.INITIALIZE_PROGRAMS" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 
