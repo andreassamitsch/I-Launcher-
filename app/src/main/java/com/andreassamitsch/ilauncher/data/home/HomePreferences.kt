@@ -55,7 +55,7 @@ class HomePreferences(context: Context) {
 
     fun moveApp(availablePackages: List<String>, packageName: String, delta: Int) {
         val current = mergeOrder(_appOrder.value, availablePackages)
-        saveAppOrder(move(current, key, delta))
+        saveAppOrder(move(current, packageName, delta))
     }
 
     fun resetApps() {
@@ -90,9 +90,8 @@ class HomePreferences(context: Context) {
 
     private fun loadList(key: String): List<String> = decode(preferences.getString(key, null))
 
-    /** The previous build accidentally chose series artwork as the default for every episode.
-     * Restore episode artwork once for existing installations as well as fresh installations.
-     * After this one-time correction, a user may explicitly choose series artwork again.
+    /** Undo the previous build's series-first hero preference once for existing installations.
+     * Subsequent explicit selections, including Series, remain user-controllable.
      */
     private fun loadHeroArtworkMode(): WatchNextArtworkMode {
         if (!preferences.getBoolean(KEY_HERO_EPISODE_RESTORE_V1, false)) {
