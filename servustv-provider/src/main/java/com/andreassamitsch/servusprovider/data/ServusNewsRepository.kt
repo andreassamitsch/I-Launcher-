@@ -162,6 +162,10 @@ class ServusNewsRepository(
                 try {
                     val outcome = refreshShowCatalog(market, cachedCategories)
                     hubStore.saveCatalogDiagnostic(outcome.diagnostic)
+                    // Show the newly loaded catalogue before hydrating selected shows and TV channels.
+                    hubStore.saveCatalog(outcome.categories, refreshNow)
+                    Log.i(TAG, "Katalog cache: categories=${outcome.categories.size}, " +
+                        "elapsed=${SystemClock.elapsedRealtime() - startedAt}ms")
                     catalogRefreshSucceeded = true
                     outcome.categories
                 } catch (catalogError: ServusCatalogRefreshException) {
@@ -201,9 +205,9 @@ class ServusNewsRepository(
             )
             val trackedAvailabilityChanged = categories != beforeAvailabilityAnnotation
 
-            if (catalogRefreshSucceeded) {
-                hubStore.saveCatalog(categories, refreshNow)
-            } else if (periodicShowsRefreshed || trackedAvailabilityChanged) {
+            // The metadata snapshot is already visible. Write again only for actual
+            // subscribed-show or availability changes, avoiding a redundant full UI redraw.
+            if (periodicShowsRefreshed || trackedAvailabilityChanged) {
                 hubStore.saveCatalogContent(categories)
             }
 
@@ -436,13 +440,17 @@ class ServusNewsRepository(
         diagnostics.recordCategoryFilter(categoryRefs.size)
         if (categoryRefs.isEmpty()) throw diagnostics.failure("Kategorien", "0 verwertbare Collections")
 
+        // Bound category pagination instead of issuing every category request at once.
+        val categorySemaphore = Semaphore(CATALOG_CATEGORY_PARALLELISM)
         val categoryLoads = try {
             categoryRefs.mapIndexed { order, ref ->
                 async {
                     val collectionId = requireNotNull(ref.id)
                     runCatching {
-                        val first = api.collection(market, collectionId, 0)
-                        val cards = fetchCollectionCards(market, collectionId, first, MAX_CATEGORY_PAGES)
+                        val (first, cards) = categorySemaphore.withPermit {
+                            val first = api.collection(market, collectionId, 0)
+                            first to fetchCollectionCards(market, collectionId, first, MAX_CATEGORY_PAGES)
+                        }
                         val showCards = cards.filter(ServusCatalogPolicy::isShowCard)
                         CategoryLoadResult(
                             seed = CategorySeed(
@@ -958,6 +966,7 @@ class ServusNewsRepository(
         const val SHOW_EPISODE_DETAIL_PARALLELISM = 6
         const val MAX_SHOW_EPISODE_DETAIL_CANDIDATES = 20
         const val MAX_CATEGORY_PAGES = 20
+        const val CATALOG_CATEGORY_PARALLELISM = 4
         const val MAX_SHOW_COLLECTIONS = 8
         const val MAX_SHOW_COLLECTION_PAGES = 3
         const val SUBSCRIBED_SHOW_PARALLELISM = 2
