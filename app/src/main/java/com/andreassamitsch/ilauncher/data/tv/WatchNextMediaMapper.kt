@@ -19,6 +19,7 @@ object WatchNextMediaMapper {
             item.programType.toMediaType()
         }
 
+        val joynEpisode = item.packageName == "com.andreassamitsch.joyntv" && type == MediaType.Episode
         return MediaItem(
             id = "watch-next:${item.packageName ?: "unknown"}:${item.id}",
             type = type,
@@ -30,7 +31,9 @@ object WatchNextMediaMapper {
             episodeNumber = episode,
             episodeTitle = item.episodeTitle,
             logoUri = item.logoUri,
-            sourceArtworkUri = item.artworkUri,
+            episodeStillUri = item.posterArtUri.takeIf { joynEpisode },
+            heroBackdropUri = item.thumbnailUri.takeIf { joynEpisode },
+            sourceArtworkUri = if (joynEpisode) item.posterArtUri ?: item.artworkUri else item.artworkUri,
             durationMillis = item.durationMillis,
             playbackPositionMillis = item.playbackPositionMillis,
             lastEngagementTimeUtcMillis = item.lastEngagementTimeUtcMillis,

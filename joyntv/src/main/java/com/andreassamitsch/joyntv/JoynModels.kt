@@ -53,6 +53,8 @@ data class JoynMediaItem(
     val markings: Set<String> = emptySet(),
     val seriesId: String? = null,
     val seriesPath: String? = null,
+    val seasonArtworkUrl: String? = null,
+    val seriesBackdropUrl: String? = null,
 ) {
     /**
      * Joyn can expose more than one license type for the same asset (for example AVOD + SVOD).
@@ -91,6 +93,7 @@ data class JoynSeason(
     val id: String,
     val number: Int,
     val licenseTypes: Set<String> = emptySet(),
+    val artworkUrl: String? = null,
 )
 
 data class JoynAccountState(

@@ -133,6 +133,10 @@ private fun SeriesScreen(
                     seriesTitle = episode.seriesTitle ?: series.title,
                     seriesId = episode.seriesId ?: series.id,
                     seriesPath = episode.seriesPath ?: series.path,
+                    logoUrl = series.logoUrl ?: episode.logoUrl,
+                    seriesBackdropUrl = series.backdropUrl ?: series.imageUrl,
+                    seasonArtworkUrl = season.artworkUrl ?: episode.seasonArtworkUrl,
+                    seasonNumber = episode.seasonNumber ?: season.number,
                 )
             }
         }.onFailure { error = it.message ?: it.javaClass.simpleName }

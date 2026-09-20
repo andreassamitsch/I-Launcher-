@@ -27,6 +27,8 @@ internal object JoynResumeMediaMerger {
             backdropUrl = if (recoveredEpisode) previous.backdropUrl ?: incoming.backdropUrl
                           else incoming.backdropUrl ?: previous.backdropUrl,
             logoUrl = incoming.logoUrl ?: previous.logoUrl,
+            seriesBackdropUrl = incoming.seriesBackdropUrl ?: previous.seriesBackdropUrl,
+            seasonArtworkUrl = incoming.seasonArtworkUrl ?: previous.seasonArtworkUrl,
         )
     }
 }

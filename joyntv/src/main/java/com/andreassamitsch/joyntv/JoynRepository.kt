@@ -166,7 +166,57 @@ internal class JoynRepository(context: Context) {
 
     suspend fun loadContinueWatching(): List<JoynContinueWatchingEntry> = networkOperationMutex.withLock {
         ensureJoynCountryRouting()
-        api.loadContinueWatching()
+        val entries = api.loadContinueWatching()
+        val seasonCache = mutableMapOf<String, List<JoynMediaItem>>()
+        val seriesCache = mutableMapOf<String, JoynSeriesDetails?>()
+        entries.mapIndexed { index, entry ->
+            if (index >= 20 || entry.media.type != JoynMediaType.EPISODE) return@mapIndexed entry
+            var seriesPath = entry.media.seriesPath
+            var details = seriesPath?.let { path ->
+                seriesCache.getOrPut(path) {
+                    runCatching {
+                        api.loadSeriesDetails(
+                            JoynMediaItem(
+                                id = entry.media.seriesId ?: path,
+                                title = entry.media.seriesTitle ?: entry.media.title,
+                                path = path,
+                                type = JoynMediaType.SERIES,
+                            ),
+                        )
+                    }.getOrNull()
+                }
+            }
+            val seasonId = entry.media.seasonId ?: details?.seasons
+                ?.firstOrNull { it.number == entry.media.seasonNumber }?.id
+            val candidate = seasonId?.let { id ->
+                val seasonEpisodes = seasonCache.getOrPut(id) {
+                    runCatching { api.loadSeasonEpisodes(id) }.getOrDefault(emptyList())
+                }
+                seasonEpisodes.firstOrNull { JoynExactEpisodeMetadata.matches(entry, it) }
+            }
+            if (details == null) {
+                seriesPath = candidate?.seriesPath
+                details = seriesPath?.let { path ->
+                    seriesCache.getOrPut(path) {
+                        runCatching {
+                            api.loadSeriesDetails(
+                                JoynMediaItem(
+                                    id = candidate?.seriesId ?: path,
+                                    title = candidate?.seriesTitle ?: entry.media.seriesTitle ?: entry.media.title,
+                                    path = path,
+                                    type = JoynMediaType.SERIES,
+                                ),
+                            )
+                        }.getOrNull()
+                    }
+                }
+            }
+            val seasonArtwork = details?.seasons?.firstOrNull { season ->
+                season.id == seasonId || (entry.media.seasonNumber != null &&
+                    season.number == entry.media.seasonNumber)
+            }?.artworkUrl
+            JoynExactEpisodeMetadata.enrich(entry, candidate, details?.series, seasonArtwork)
+        }
     }
 
     suspend fun setResumePosition(assetId: String, positionSeconds: Int): Boolean = networkOperationMutex.withLock {

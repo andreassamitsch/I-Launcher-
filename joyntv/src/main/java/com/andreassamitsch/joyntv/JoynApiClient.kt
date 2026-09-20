@@ -150,7 +150,10 @@ internal class JoynApiClient(context: Context) {
                 val id = season.optString("id").takeIf(String::isNotBlank) ?: continue
                 val licenseTypes = season.optJSONArray("licenseTypes").toStringSet()
                 if ("SVOD" in licenseTypes && !account.hasPlus) continue
-                add(JoynSeason(id, season.optInt("number", index + 1), licenseTypes))
+                val seasonArtwork = season.optJSONObject("heroLandscapeImage")?.urlValue()
+                    ?: season.optJSONObject("thumbnailImage")?.urlValue()
+                    ?: season.optJSONObject("posterImage")?.urlValue()
+                add(JoynSeason(id, season.optInt("number", index + 1), licenseTypes, seasonArtwork))
             }
         }
         return JoynSeriesDetails(mappedSeries, seasons.sortedBy(JoynSeason::number))

@@ -56,6 +56,7 @@ class WatchNextEnrichmentRepository(
     }
 
     suspend fun enrichMediaOne(media: MediaItem): MediaItem {
+        if (media.source.packageName == JOYN_TV_PACKAGE) return media
         if (!isTmdbConfigured) return media
         val metadata = tmdbRepository.resolve(
             sourceKey = resolverSourceKey(media),
@@ -72,6 +73,7 @@ class WatchNextEnrichmentRepository(
     }
 
     companion object {
+        private const val JOYN_TV_PACKAGE = "com.andreassamitsch.joyntv"
         private const val MAX_PARALLEL_LOOKUPS = 2
     }
 }

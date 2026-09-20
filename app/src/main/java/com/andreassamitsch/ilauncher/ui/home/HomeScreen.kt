@@ -978,6 +978,14 @@ internal fun mediaHero(
 
 internal fun watchNextCardArtwork(item: MediaItem, mode: WatchNextArtworkMode): String? {
     if (item.type != MediaType.Episode) return item.preferredArtworkUri
+    if (item.source.packageName == "com.andreassamitsch.joyntv") {
+        return when (mode) {
+            WatchNextArtworkMode.Episode -> item.episodeStillUri ?: item.sourceArtworkUri
+                ?: item.heroBackdropUri
+            WatchNextArtworkMode.Series -> item.heroBackdropUri ?: item.episodeStillUri
+                ?: item.sourceArtworkUri
+        }
+    }
     return when (mode) {
         WatchNextArtworkMode.Episode -> item.episodeStillUri
             ?: item.backdropUri
@@ -995,6 +1003,14 @@ internal fun watchNextHeroArtwork(
     mode: WatchNextArtworkMode,
 ): Pair<String?, Boolean> {
     if (item.type != MediaType.Episode) return mediaHeroArtwork(item)
+    if (item.source.packageName == "com.andreassamitsch.joyntv") {
+        return when (mode) {
+            WatchNextArtworkMode.Episode -> (item.episodeStillUri ?: item.sourceArtworkUri
+                ?: item.heroBackdropUri) to false
+            WatchNextArtworkMode.Series -> (item.heroBackdropUri ?: item.episodeStillUri
+                ?: item.sourceArtworkUri) to false
+        }
+    }
 
     if (item.tmdbId != null) {
         return when (mode) {

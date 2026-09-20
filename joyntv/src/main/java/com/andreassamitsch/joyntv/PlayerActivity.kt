@@ -138,6 +138,8 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_MEDIA_SERIES_TITLE = "joyn_media_series_title"
         private const val EXTRA_MEDIA_SERIES_ID = "joyn_media_series_id"
         private const val EXTRA_MEDIA_SERIES_PATH = "joyn_media_series_path"
+        private const val EXTRA_MEDIA_SERIES_BACKDROP = "joyn_media_series_backdrop"
+        private const val EXTRA_MEDIA_SEASON_ARTWORK = "joyn_media_season_artwork"
         private const val EXTRA_MEDIA_SEASON_NUMBER = "joyn_media_season_number"
         private const val EXTRA_MEDIA_EPISODE_NUMBER = "joyn_media_episode_number"
         private const val EXTRA_RESUME_ASSET_ID = "joyn_resume_asset_id"
@@ -174,6 +176,8 @@ class PlayerActivity : ComponentActivity() {
                 item.seriesTitle?.let { putExtra(EXTRA_MEDIA_SERIES_TITLE, it) }
                 item.seriesId?.let { putExtra(EXTRA_MEDIA_SERIES_ID, it) }
                 item.seriesPath?.let { putExtra(EXTRA_MEDIA_SERIES_PATH, it) }
+                item.seriesBackdropUrl?.let { putExtra(EXTRA_MEDIA_SERIES_BACKDROP, it) }
+                item.seasonArtworkUrl?.let { putExtra(EXTRA_MEDIA_SEASON_ARTWORK, it) }
                 item.seasonNumber?.let { putExtra(EXTRA_MEDIA_SEASON_NUMBER, it) }
                 item.episodeNumber?.let { putExtra(EXTRA_MEDIA_EPISODE_NUMBER, it) }
             }
@@ -220,6 +224,8 @@ private fun mediaFromIntent(
         episodeNumber = intent.getIntExtra("joyn_media_episode_number", -1).takeIf { it > 0 },
         seriesId = intent.getStringExtra("joyn_media_series_id"),
         seriesPath = intent.getStringExtra("joyn_media_series_path"),
+        seriesBackdropUrl = intent.getStringExtra("joyn_media_series_backdrop"),
+        seasonArtworkUrl = intent.getStringExtra("joyn_media_season_artwork"),
     )
 }
 

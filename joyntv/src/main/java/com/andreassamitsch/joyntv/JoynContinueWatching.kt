@@ -217,6 +217,8 @@ internal class JoynContinueWatchingStore(context: Context) {
             .putNullable("episodeNumber", item.episodeNumber)
             .putNullable("seriesId", item.seriesId)
             .putNullable("seriesPath", item.seriesPath)
+            .putNullable("seasonArtworkUrl", item.seasonArtworkUrl)
+            .putNullable("seriesBackdropUrl", item.seriesBackdropUrl)
             .put("licenseTypes", JSONArray(item.licenseTypes.toList()))
             .put("markings", JSONArray(item.markings.toList()))
 
@@ -242,6 +244,8 @@ internal class JoynContinueWatchingStore(context: Context) {
                 markings = json.optJSONArray("markings").toStringSet(),
                 seriesId = json.nullableString("seriesId"),
                 seriesPath = json.nullableString("seriesPath"),
+                seasonArtworkUrl = json.nullableString("seasonArtworkUrl"),
+                seriesBackdropUrl = json.nullableString("seriesBackdropUrl"),
             )
         }
 
@@ -364,6 +368,9 @@ internal class JoynWatchNextPublisher(context: Context) {
                     media.backdropUrl ?: media.imageUrl
                 }
                 artwork?.takeIf(String::isNotBlank)?.let { setPosterArtUri(Uri.parse(it)) }
+                (media.seasonArtworkUrl ?: media.seriesBackdropUrl)
+                    ?.takeIf(String::isNotBlank)?.let { setThumbnailUri(Uri.parse(it)) }
+                media.logoUrl?.takeIf(String::isNotBlank)?.let { setLogoUri(Uri.parse(it)) }
             }
             .build()
 
@@ -416,7 +423,7 @@ internal class JoynWatchNextPublisher(context: Context) {
                 },
             )
             .setTitle(title)
-            .setDescription(episodeText ?: media.description)
+            .setDescription(media.description?.takeIf(String::isNotBlank) ?: episodeText)
             .setIntentUri(watchNextUri(entry.assetId))
             .setInternalProviderId("joyn:" + entry.assetId)
             .setContentId(entry.assetId)
@@ -436,6 +443,11 @@ internal class JoynWatchNextPublisher(context: Context) {
             media.backdropUrl ?: media.imageUrl
         }
         artwork?.takeIf(String::isNotBlank)?.let { builder.setPosterArtUri(Uri.parse(it)) }
+        if (media.type == JoynMediaType.EPISODE) {
+            (media.seasonArtworkUrl ?: media.seriesBackdropUrl)
+                ?.takeIf(String::isNotBlank)?.let { builder.setThumbnailUri(Uri.parse(it)) }
+        }
+        media.logoUrl?.takeIf(String::isNotBlank)?.let { builder.setLogoUri(Uri.parse(it)) }
         return builder.build()
     }
 
