@@ -1,0 +1,174 @@
+name: ServusTV progressive refresh fix
+
+on:
+  push:
+    branches: [fix/servustv-progressive-refresh]
+    paths: ['.github/workflows/servustv-progressive-refresh.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/servustv-progressive-refresh
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Apply narrow source-verified update
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('servustv-provider/src/main/java/com/andreassamitsch/servusprovider/ui/MainActivity.kt')
+          text = path.read_text()
+
+          def replace_once(old: str, new: str):
+              global text
+              actual = text.count(old)
+              assert actual == 1, f'Expected exactly one matching source block; found {actual}: {old[:100]!r}'
+              text = text.replace(old, new, 1)
+
+          replace_once('import android.app.Activity\n',
+                       'import android.app.Activity\nimport android.content.SharedPreferences\n')
+
+          replace_once('    private var updatePollingJob: Job? = null\n', '''    private var updatePollingJob: Job? = null
+              private var cachedDataRenderJob: Job? = null
+              private val newsPreferences by lazy { getSharedPreferences("servus_news", MODE_PRIVATE) }
+              private val hubPreferences by lazy { getSharedPreferences("servus_hub", MODE_PRIVATE) }
+              private val cachedDataListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                  if (key == "episodes" || key == "categories" || key == "live_channels") {
+                      scope.launch {
+                          cachedDataRenderJob?.cancel()
+                          cachedDataRenderJob = scope.launch {
+                              delay(80L)
+                              if (::contentContainer.isInitialized) renderCached()
+                          }
+                      }
+                  }
+              }
+          ''')
+
+          replace_once('        renderCached()\n        observeUpdates()\n', '''        renderCached()
+                  // The periodic worker and manual refresh may save Aktuelles well before live/guide,
+                  // the whole catalogue and TV-provider publishing have completed.
+                  newsPreferences.registerOnSharedPreferenceChangeListener(cachedDataListener)
+                  hubPreferences.registerOnSharedPreferenceChangeListener(cachedDataListener)
+                  observeUpdates()
+          ''')
+
+          replace_once('        updatePollingJob?.cancel()\n        scope.cancel()\n', '''        updatePollingJob?.cancel()
+                  cachedDataRenderJob?.cancel()
+                  newsPreferences.unregisterOnSharedPreferenceChangeListener(cachedDataListener)
+                  hubPreferences.unregisterOnSharedPreferenceChangeListener(cachedDataListener)
+                  scope.cancel()
+          ''')
+
+          replace_once('''    private fun renderCached() {
+                  categories = repository.cachedCategories()
+                  episodes = currentSelectionStore.effectiveEpisodes(
+                      categories = categories,
+                      legacyEpisodes = repository.cachedEpisodes(),
+                  )
+                  liveChannels = repository.cachedLiveChannels()
+          ''', '''    private fun renderCached() {
+                  val nextCategories = repository.cachedCategories()
+                  val nextEpisodes = currentSelectionStore.effectiveEpisodes(
+                      categories = nextCategories,
+                      legacyEpisodes = repository.cachedEpisodes(),
+                  )
+                  val nextLiveChannels = repository.cachedLiveChannels()
+                  val contentChanged = contentContainer.childCount == 0 ||
+                      categories != nextCategories || episodes != nextEpisodes || liveChannels != nextLiveChannels
+                  categories = nextCategories
+                  episodes = nextEpisodes
+                  liveChannels = nextLiveChannels
+          ''')
+
+          replace_once('''        renderDeveloperInfoVisibility()
+                  renderContent()
+              }
+
+              private fun renderContent() {
+                  contentContainer.removeAllViews()
+          ''', '''        renderDeveloperInfoVisibility()
+                  if (contentChanged) renderContent()
+              }
+
+              private fun renderContent() {
+                  val focusedContentId = contentContainer.findFocus()?.tag as? String
+                  contentContainer.removeAllViews()
+          ''')
+
+          replace_once('''            categories.sortedBy { it.order }.forEach { category ->
+                      addSectionTitle(category.title)
+                      addRail(category.shows.map(::buildShowCard))
+                  }
+              }
+          }
+
+          private fun addSectionTitle''', '''            categories.sortedBy { it.order }.forEach { category ->
+                      addSectionTitle(category.title)
+                      addRail(category.shows.map(::buildShowCard))
+                  }
+              }
+                  if (focusedContentId != null &&
+                      contentContainer.findViewWithTag<View>(focusedContentId)?.requestFocus() != true
+                  ) {
+                      refreshButton.requestFocus()
+                  }
+          }
+
+          private fun addSectionTitle''')
+
+          replace_once('''        onClick = { openPlayback(episode.id) },
+              )
+
+              private fun buildLiveCard''', '''        onClick = { openPlayback(episode.id) },
+              ).apply { tag = episode.id }
+
+              private fun buildLiveCard''')
+
+          replace_once('''            onClick = { openPlayback(channel.id) },
+                  )
+              }
+
+              private fun buildShowCard''', '''            onClick = { openPlayback(channel.id) },
+                  ).apply { tag = channel.id }
+              }
+
+              private fun buildShowCard''')
+
+          replace_once('''            onClick = { openShow(show.id) },
+                  )
+              }
+
+              private fun buildMediaCard''', '''            onClick = { openShow(show.id) },
+                  ).apply { tag = show.id }
+              }
+
+              private fun buildMediaCard''')
+
+          path.write_text(text)
+          print('Patched only ServusTV MainActivity: pref-driven progressive UI, change-aware rendering, stable content focus.')
+          PY
+      - name: Run both modules' unit tests and debug builds
+        run: gradle :servustv-provider:testDebugUnitTest :servustv-provider:assembleDebug :app:testDebugUnitTest :app:assembleDebug --stacktrace
+      - name: Commit verified source change to isolated feature branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/servustv-progressive-refresh.yml
+          git add servustv-provider/src/main/java/com/andreassamitsch/servusprovider/ui/MainActivity.kt
+          git commit -m 'fix(servustv): show saved content before full refresh completes'
+          git push origin HEAD:fix/servustv-progressive-refresh
