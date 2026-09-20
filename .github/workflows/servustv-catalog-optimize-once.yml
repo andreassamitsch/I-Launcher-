@@ -17,72 +17,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
-      - name: Patch catalog snapshot timing and bound category requests
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusNewsRepository.kt')
-          src = path.read_text()
-          changes = [
-              (
-                  '''                    hubStore.saveCatalogDiagnostic(outcome.diagnostic)
-                    catalogRefreshSucceeded = true
-                    outcome.categories''',
-                  '''                    hubStore.saveCatalogDiagnostic(outcome.diagnostic)
-                    // The catalogue must become visible as soon as its own metadata is ready.
-                    // Targeted show hydration and TV-provider publishing can take considerably longer.
-                    hubStore.saveCatalog(outcome.categories, refreshNow)
-                    Log.i(TAG, "Katalog cache: categories=${outcome.categories.size}, " +
-                        "elapsed=${SystemClock.elapsedRealtime() - startedAt}ms")
-                    catalogRefreshSucceeded = true
-                    outcome.categories''',
-              ),
-              (
-                  '''            if (catalogRefreshSucceeded) {
-                hubStore.saveCatalog(categories, refreshNow)
-            } else if (periodicShowsRefreshed || trackedAvailabilityChanged) {
-                hubStore.saveCatalogContent(categories)
-            }''',
-                  '''            // The metadata snapshot was already published. Save a second time only when
-            // selected shows or availability actually changed; avoid a redundant full UI redraw.
-            if (periodicShowsRefreshed || trackedAvailabilityChanged) {
-                hubStore.saveCatalogContent(categories)
-            }''',
-              ),
-              (
-                  '''        val categoryLoads = try {
-            categoryRefs.mapIndexed { order, ref ->''',
-                  '''        // An unbounded launch here previously made every category and its paginated
-        // requests compete with the live guide and content details at the same time.
-        val categorySemaphore = Semaphore(CATALOG_CATEGORY_PARALLELISM)
-        val categoryLoads = try {
-            categoryRefs.mapIndexed { order, ref ->''',
-              ),
-              (
-                  '''                        val first = api.collection(market, collectionId, 0)
-                        val cards = fetchCollectionCards(market, collectionId, first, MAX_CATEGORY_PAGES)
-                        val showCards = cards.filter(ServusCatalogPolicy::isShowCard)''',
-                  '''                        val (first, cards) = categorySemaphore.withPermit {
-                            val first = api.collection(market, collectionId, 0)
-                            first to fetchCollectionCards(market, collectionId, first, MAX_CATEGORY_PAGES)
-                        }
-                        val showCards = cards.filter(ServusCatalogPolicy::isShowCard)''',
-              ),
-              (
-                  '''        const val MAX_CATEGORY_PAGES = 20
-        const val MAX_SHOW_COLLECTIONS = 8''',
-                  '''        const val MAX_CATEGORY_PAGES = 20
-        const val CATALOG_CATEGORY_PARALLELISM = 4
-        const val MAX_SHOW_COLLECTIONS = 8''',
-              ),
-          ]
-          for old, new in changes:
-              count = src.count(old)
-              assert count == 1, f'Expected exactly one match, found {count}: {old[:100]!r}'
-              src = src.replace(old, new, 1)
-          path.write_text(src)
-          print('Catalog snapshot now published immediately; category requests capped at 4.')
-          PY
+      - name: Apply catalog cache optimization
+        run: python3 .github/scripts/servustv-catalog-optimize-once.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -97,11 +33,11 @@ jobs:
           gradle-version: '9.5.0'
       - name: ServusTV and Launcher unit tests and debug builds
         run: gradle :servustv-provider:testDebugUnitTest :servustv-provider:assembleDebug :app:testDebugUnitTest :app:assembleDebug --stacktrace
-      - name: Commit only verified source change and remove one-off workflow
+      - name: Commit verified change and remove temporary workflow
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm -- .github/workflows/servustv-catalog-optimize-once.yml
+          git rm -- .github/workflows/servustv-catalog-optimize-once.yml .github/scripts/servustv-catalog-optimize-once.py
           git add -- servustv-provider/src/main/java/com/andreassamitsch/servusprovider/data/ServusNewsRepository.kt
           git diff --cached --check
           git diff --cached --stat
