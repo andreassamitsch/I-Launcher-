@@ -36,9 +36,7 @@ class HomePreferences(context: Context) {
     val watchNextCardArtworkMode: StateFlow<WatchNextArtworkMode> =
         _watchNextCardArtworkMode.asStateFlow()
 
-    private val _watchNextHeroArtworkMode = MutableStateFlow(
-        loadArtworkMode(KEY_WATCH_NEXT_HERO_ARTWORK_MODE, WatchNextArtworkMode.Series),
-    )
+    private val _watchNextHeroArtworkMode = MutableStateFlow(loadHeroArtworkMode())
     val watchNextHeroArtworkMode: StateFlow<WatchNextArtworkMode> =
         _watchNextHeroArtworkMode.asStateFlow()
 
@@ -57,7 +55,7 @@ class HomePreferences(context: Context) {
 
     fun moveApp(availablePackages: List<String>, packageName: String, delta: Int) {
         val current = mergeOrder(_appOrder.value, availablePackages)
-        saveAppOrder(move(current, packageName, delta))
+        saveAppOrder(move(current, key, delta))
     }
 
     fun resetApps() {
@@ -92,6 +90,21 @@ class HomePreferences(context: Context) {
 
     private fun loadList(key: String): List<String> = decode(preferences.getString(key, null))
 
+    /** The previous build accidentally chose series artwork as the default for every episode.
+     * Restore episode artwork once for existing installations as well as fresh installations.
+     * After this one-time correction, a user may explicitly choose series artwork again.
+     */
+    private fun loadHeroArtworkMode(): WatchNextArtworkMode {
+        if (!preferences.getBoolean(KEY_HERO_EPISODE_RESTORE_V1, false)) {
+            val editor = preferences.edit().putBoolean(KEY_HERO_EPISODE_RESTORE_V1, true)
+            if (preferences.getString(KEY_WATCH_NEXT_HERO_ARTWORK_MODE, null) == WatchNextArtworkMode.Series.name) {
+                editor.putString(KEY_WATCH_NEXT_HERO_ARTWORK_MODE, WatchNextArtworkMode.Episode.name)
+            }
+            editor.apply()
+        }
+        return loadArtworkMode(KEY_WATCH_NEXT_HERO_ARTWORK_MODE)
+    }
+
     private fun loadArtworkMode(
         key: String,
         fallback: WatchNextArtworkMode = WatchNextArtworkMode.Episode,
@@ -115,6 +128,7 @@ class HomePreferences(context: Context) {
         private const val KEY_APP_ORDER = "app_order"
         private const val KEY_WATCH_NEXT_CARD_ARTWORK_MODE = "watch_next_card_artwork_mode"
         private const val KEY_WATCH_NEXT_HERO_ARTWORK_MODE = "watch_next_hero_artwork_mode"
+        private const val KEY_HERO_EPISODE_RESTORE_V1 = "watch_next_hero_restore_episode_v1"
         private const val KEY_HERO_TEXT_SCROLL_SPEED = "hero_text_scroll_speed"
         private const val SEPARATOR = "\u001F"
 
