@@ -1,6 +1,7 @@
 package com.andreassamitsch.servusprovider.ui
 
 import android.app.Activity
+import android.content.SharedPreferences
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.content.pm.PackageManager
@@ -63,6 +64,20 @@ class MainActivity : Activity() {
     private lateinit var devInfoButton: ImageButton
     private var developerInfoVisible = false
     private var updatePollingJob: Job? = null
+    private var cachedDataRenderJob: Job? = null
+    private val newsPreferences by lazy { getSharedPreferences("servus_news", MODE_PRIVATE) }
+    private val hubPreferences by lazy { getSharedPreferences("servus_hub", MODE_PRIVATE) }
+    private val cachedDataListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "episodes" || key == "categories" || key == "live_channels") {
+            scope.launch {
+                cachedDataRenderJob?.cancel()
+                cachedDataRenderJob = scope.launch {
+                    delay(80L)
+                    if (::contentContainer.isInitialized) renderCached()
+                }
+            }
+        }
+    }
     private var episodes: List<ServusNewsEpisode> = emptyList()
     private var categories: List<ServusCategory> = emptyList()
     private var liveChannels: List<ServusLiveChannel> = emptyList()
@@ -75,6 +90,10 @@ class MainActivity : Activity() {
         ServusRefreshWorker.schedule(applicationContext)
         setContentView(buildUi())
         renderCached()
+        // The periodic worker and manual refresh may save Aktuelles well before live/guide,
+        // the whole catalogue and TV-provider publishing have completed.
+        newsPreferences.registerOnSharedPreferenceChangeListener(cachedDataListener)
+        hubPreferences.registerOnSharedPreferenceChangeListener(cachedDataListener)
         observeUpdates()
         scope.launch { updateManager.checkForUpdates() }
         refresh(forceCatalog = false)
@@ -88,6 +107,9 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         updatePollingJob?.cancel()
+        cachedDataRenderJob?.cancel()
+        newsPreferences.unregisterOnSharedPreferenceChangeListener(cachedDataListener)
+        hubPreferences.unregisterOnSharedPreferenceChangeListener(cachedDataListener)
         scope.cancel()
         super.onDestroy()
     }
@@ -177,12 +199,17 @@ class MainActivity : Activity() {
     }
 
     private fun renderCached() {
-        categories = repository.cachedCategories()
-        episodes = currentSelectionStore.effectiveEpisodes(
-            categories = categories,
+        val nextCategories = repository.cachedCategories()
+        val nextEpisodes = currentSelectionStore.effectiveEpisodes(
+            categories = nextCategories,
             legacyEpisodes = repository.cachedEpisodes(),
         )
-        liveChannels = repository.cachedLiveChannels()
+        val nextLiveChannels = repository.cachedLiveChannels()
+        val contentChanged = contentContainer.childCount == 0 ||
+            categories != nextCategories || episodes != nextEpisodes || liveChannels != nextLiveChannels
+        categories = nextCategories
+        episodes = nextEpisodes
+        liveChannels = nextLiveChannels
         val success = repository.lastSuccessMillis()
         val selectedShowCount = currentSelectionStore.effectiveSelectedShowIds(categories).size
         val tvShowCount = repository.selectedShowChannelIds(categories).size
@@ -209,10 +236,11 @@ class MainActivity : Activity() {
             repository.lastError()?.takeIf { it.isNotBlank() }?.let { append("\nLetzter Datenfehler: $it") }
         }
         renderDeveloperInfoVisibility()
-        renderContent()
+        if (contentChanged) renderContent()
     }
 
     private fun renderContent() {
+        val focusedContentId = contentContainer.findFocus()?.tag as? String
         contentContainer.removeAllViews()
         addSectionTitle("Aktuelles")
         if (episodes.isNotEmpty()) {
@@ -251,6 +279,11 @@ class MainActivity : Activity() {
                 addSectionTitle(category.title)
                 addRail(category.shows.map(::buildShowCard))
             }
+        }
+        if (focusedContentId != null &&
+            contentContainer.findViewWithTag<View>(focusedContentId)?.requestFocus() != true
+        ) {
+            refreshButton.requestFocus()
         }
     }
 
@@ -294,7 +327,7 @@ class MainActivity : Activity() {
         title = episode.title,
         meta = buildEpisodeMeta(episode),
         onClick = { openPlayback(episode.id) },
-    )
+    ).apply { tag = episode.id }
 
     private fun buildLiveCard(channel: ServusLiveChannel): View {
         val current = channel.currentProgram()
@@ -306,7 +339,7 @@ class MainActivity : Activity() {
             title = channel.title,
             meta = meta,
             onClick = { openPlayback(channel.id) },
-        )
+        ).apply { tag = channel.id }
     }
 
     private fun buildShowCard(show: ServusShow): View {
@@ -324,7 +357,7 @@ class MainActivity : Activity() {
             title = show.title,
             meta = if (show.episodes.isEmpty()) "Mediathek" else "${show.episodes.size} aktuelle Videos",
             onClick = { openShow(show.id) },
-        )
+        ).apply { tag = show.id }
     }
 
     private fun buildMediaCard(
