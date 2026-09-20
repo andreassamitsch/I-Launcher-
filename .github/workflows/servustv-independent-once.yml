@@ -13,170 +13,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           persist-credentials: true
       - name: Implement independent refresh and selective periodic fetch
         run: |
           python3 - <<'PY'
-          from pathlib import Path
-          from textwrap import indent
-          root = Path('servustv-provider/src/main/java/com/andreassamitsch/servusprovider')
-          def replace_one(s, old, new):
-              count = s.count(old)
-              assert count == 1, f'Expected one match, got {count}: {old[:90]!r}'
-              return s.replace(old, new, 1)
-          p = root / 'data/ServusNewsRepository.kt'
-          s = p.read_text()
-          start = s.index('            val startedAt = SystemClock.elapsedRealtime()', s.index('    suspend fun refresh(forceCatalog:'))
-          middle = s.index('\n            val liveChannels = runCatching { refreshLiveChannels', start)
-          catalogue_start = s.index('            val catalogRefreshRequested = forceCatalog || shouldRefreshCatalog(refreshNow)', middle)
-          catalogue_end = s.index('\n            val currentCollectionParents =', catalogue_start)
-          old_current = s[start:middle]
-          old_catalogue = s[catalogue_start:catalogue_end]
-          assert old_current.startswith('            val startedAt = SystemClock.elapsedRealtime()\n')
-          assert '            val result = ServusRefreshResult(episodes, refreshNow)' in old_current
-          assert old_catalogue.count('if (forceCatalog) throw catalogError') == 1
-          current_body = old_current.replace('            val startedAt = SystemClock.elapsedRealtime()\n', '', 1)
-          catalog_body = old_catalogue.replace('                    if (forceCatalog) throw catalogError\n', '')
-          replacement = '''            val startedAt = SystemClock.elapsedRealtime()
-            // Separate cache writes: a slow or failing section must not prevent the others.
-            val currentDeferred = async {
-                try {
-''' + indent(current_body, '    ') + '''
-                    result
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Throwable) {
-                    newsStore.saveError(error.message ?: error.javaClass.simpleName)
-                    Log.w(TAG, "Aktuelles refresh failed (${error.javaClass.simpleName}); other sections continue")
-                    null
-                }
-            }
-            val liveDeferred = async {
-                try {
-                    val fresh = refreshLiveChannels(market, refreshNow)
-                    if (fresh.isNotEmpty()) hubStore.saveLiveChannels(fresh, refreshNow)
-                    fresh.ifEmpty { hubStore.loadLiveChannels() }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Throwable) {
-                    Log.w(TAG, "Live refresh failed (${error.javaClass.simpleName}); other sections continue")
-                    hubStore.loadLiveChannels()
-                }
-            }
-            val catalogDeferred = async {
-                try {
-''' + indent(catalog_body, '    ') + '''
-                    catalogRefreshSucceeded to categories
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Throwable) {
-                    hubStore.saveCatalogDiagnostic("Katalogfehler: ${error.javaClass.simpleName}")
-                    Log.w(TAG, "Catalog refresh failed (${error.javaClass.simpleName}); other sections continue")
-                    false to hubStore.loadCategories()
-                }
-            }
-            val currentResult = currentDeferred.await()
-            val liveChannels = liveDeferred.await()
-            val (catalogRefreshSucceeded, initialCategories) = catalogDeferred.await()
-            val result = currentResult ?: ServusRefreshResult(previousEpisodes, newsStore.lastSuccessMillis())
-            var categories = initialCategories
-'''
-          s = s[:start] + replacement + s[catalogue_end:]
-          s = replace_one(s,
-              '    suspend fun refresh(forceCatalog: Boolean = false): ServusRefreshResult {\n        return try {',
-              '    suspend fun refresh(forceCatalog: Boolean = false): ServusRefreshResult = supervisorScope {\n        try {')
-          s = replace_one(s, 'import kotlinx.coroutines.coroutineScope\n', 'import kotlinx.coroutines.coroutineScope\nimport kotlinx.coroutines.supervisorScope\n')
-          s = replace_one(s,
-              '    private val channelPublisher = ServusChannelPublisher(appContext)\n',
-              '    private val channelPublisher = ServusChannelPublisher(appContext)\n    private val periodicShowRefreshStore = appContext.getSharedPreferences("servus_periodic_show_refresh", Context.MODE_PRIVATE)\n')
-          s = replace_one(s,
-              '''            var periodicShowsRefreshed = false
-            if (categories.isNotEmpty() && periodicShowIds.isNotEmpty()) {
-                val targeted = refreshSubscribedShows(market, categories, refreshNow, periodicShowIds)
-                categories = targeted.categories
-                periodicShowsRefreshed = targeted.changed
-            }
-''',
-              '''            // Only selected sources are periodically hydrated; manual refreshes may occur much
-            // more frequently than the WorkManager interval and must not refetch every show.
-            val dueShowIds = ServusShowRefreshSchedulePolicy.dueIds(periodicShowIds, refreshNow) { id ->
-                periodicShowRefreshStore.getLong("success_$id", 0L)
-            }
-            var periodicShowsRefreshed = false
-            var refreshedShowIds = emptySet<String>()
-            if (categories.isNotEmpty() && dueShowIds.isNotEmpty()) {
-                val targeted = refreshSubscribedShows(market, categories, refreshNow, dueShowIds)
-                categories = targeted.categories
-                periodicShowsRefreshed = targeted.changed
-                refreshedShowIds = targeted.refreshedIds
-                if (refreshedShowIds.isNotEmpty()) {
-                    periodicShowRefreshStore.edit().apply {
-                        refreshedShowIds.forEach { putLong("success_$it", refreshNow) }
-                    }.apply()
-                }
-            }
-''')
-          s = replace_one(s, '                trackedShowIds = periodicShowIds,\n', '                trackedShowIds = refreshedShowIds,\n')
-          s = replace_one(s, '                .filter { it.id in periodicShowIds }\n', '                .filter { it.id in refreshedShowIds }\n')
-          s = replace_one(s,
-              '        SubscribedShowRefreshOutcome(updated, updated != categories)\n',
-              '        SubscribedShowRefreshOutcome(updated, updated != categories, refreshedById.keys)\n')
-          s = replace_one(s,
-              '    private data class SubscribedShowRefreshOutcome(val categories: List<ServusCategory>, val changed: Boolean)',
-              '    private data class SubscribedShowRefreshOutcome(val categories: List<ServusCategory>, val changed: Boolean, val refreshedIds: Set<String> = emptySet())')
-          p.write_text(s)
-          (root / 'data/ServusShowRefreshSchedulePolicy.kt').write_text('''package com.andreassamitsch.servusprovider.data
-
-/** Only successfully refreshed, explicitly selected shows are throttled; opening a show is unaffected. */
-internal object ServusShowRefreshSchedulePolicy {
-    const val MIN_INTERVAL_MS = 15L * 60L * 1000L
-
-    fun dueIds(showIds: Set<String>, nowMillis: Long, lastSuccessful: (String) -> Long): Set<String> =
-        showIds.filterTo(linkedSetOf()) { id ->
-            val last = lastSuccessful(id)
-            last <= 0L || nowMillis < last || nowMillis - last >= MIN_INTERVAL_MS
-        }
-}
-''')
-          (Path('servustv-provider/src/test/java/com/andreassamitsch/servusprovider/data') / 'ServusShowRefreshSchedulePolicyTest.kt').write_text('''package com.andreassamitsch.servusprovider.data
-
-import org.junit.Assert.assertEquals
-import org.junit.Test
-
-class ServusShowRefreshSchedulePolicyTest {
-    @Test fun onlySelectedAndDueShowsRefresh() {
-        val now = 1_000_000L
-        val last = mapOf("recent" to now - 60_000L, "due" to now - 900_000L)
-        assertEquals(setOf("due", "new"),
-            ServusShowRefreshSchedulePolicy.dueIds(linkedSetOf("recent", "due", "new"), now) { last[it] ?: 0L })
-    }
-
-    @Test fun clockRollbackDoesNotBlockRefresh() {
-        assertEquals(setOf("show"), ServusShowRefreshSchedulePolicy.dueIds(setOf("show"), 500L) { 1_000L })
-    }
-}
-''')
-          api_path = root / 'api/ServusResilientApi.kt'
-          a = api_path.read_text()
-          a = replace_one(a,
-              '    private val searchSemaphore = Semaphore(searchParallelism.coerceAtLeast(1))\n',
-              '    private val searchSemaphore = Semaphore(searchParallelism.coerceAtLeast(1))\n    private val networkSemaphore = Semaphore(DEFAULT_NETWORK_PARALLELISM)\n')
-          a = replace_one(a, '        delegate.session(namespace, category, osFamily)\n',
-              '        networkSemaphore.withPermit { delegate.session(namespace, category, osFamily) }\n')
-          a = replace_one(a, '                    delegate.search(market, query, offset)\n',
-              '                    networkSemaphore.withPermit { delegate.search(market, query, offset) }\n')
-          a = replace_one(a, '        delegate.product(market, id)\n',
-              '        networkSemaphore.withPermit { delegate.product(market, id) }\n')
-          a = replace_one(a, '        delegate.collection(market, id, offset)\n',
-              '        networkSemaphore.withPermit { delegate.collection(market, id, offset) }\n')
-          a = replace_one(a, '        delegate.guide(market, id, complete)\n',
-              '        networkSemaphore.withPermit { delegate.guide(market, id, complete) }\n')
-          a = replace_one(a, '        delegate.dynamicProduct(market, id)\n',
-              '        networkSemaphore.withPermit { delegate.dynamicProduct(market, id) }\n')
-          a = replace_one(a, '        const val DEFAULT_SEARCH_PARALLELISM = 4\n',
-              '        const val DEFAULT_SEARCH_PARALLELISM = 4\n        const val DEFAULT_NETWORK_PARALLELISM = 5\n')
-          api_path.write_text(a)
-          print('Implemented independent refreshes, a shared 5-request API cap, selected-show TTL and tests.')
+          import subprocess
+          source = subprocess.check_output(['git', 'show', '6c434aed706d1b78a9405cc5f3f18dff955e35c7:.github/workflows/servustv-independent-once.yml'], text=True)
+          block = source.split("          python3 - <<'PY'\n", 1)[1].split("\n          PY\n", 1)[0]
+          inside = False
+          lines = []
+          for raw in block.splitlines():
+              line = raw if inside else raw.removeprefix('          ')
+              lines.append(line)
+              if line.count("'''") % 2:
+                  inside = not inside
+          assert not inside, 'Unclosed original Python string'
+          exec(compile('\n'.join(lines), '<validated-one-off-servustv-patch>', 'exec'))
           PY
       - uses: actions/setup-java@v4
         with:
