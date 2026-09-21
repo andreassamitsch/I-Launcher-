@@ -18,6 +18,19 @@ jobs:
       - name: Apply anchored source changes
         shell: bash
         run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/apply_joyn_tmdb_episode_and_hires_still_20260921.py')
+          source = p.read_text()
+          old = '    if matches != 1:\n'
+          new = '''    if matches != 1 and not (
+                file.name == "TmdbDtos.kt" and matches in (2, 3) and
+                old.startswith('    @SerializedName("original_name")')
+            ):
+'''
+          assert source.count(old) == 1
+          p.write_text(source.replace(old, new))
+          PY
           python3 -m py_compile scripts/apply_joyn_tmdb_episode_and_hires_still_20260921.py
           python3 scripts/apply_joyn_tmdb_episode_and_hires_still_20260921.py
           git diff --check
