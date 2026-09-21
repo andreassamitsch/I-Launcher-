@@ -6,6 +6,11 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import androidx.tvprovider.media.tv.TvContractCompat
 import androidx.tvprovider.media.tv.WatchNextProgram
 import org.json.JSONArray
@@ -272,6 +277,23 @@ internal class JoynContinueWatchingStore(context: Context) {
 internal class JoynWatchNextPublisher(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val stills = JoynHighResEpisodeArtwork(appContext)
+    private val artworkScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val probingStills = ConcurrentHashMap.newKeySet<String>()
+
+    /** No network or bitmap work runs on the UI thread. Re-publish only existing rows. */
+    private fun upgradeStill(media: JoynMediaItem, onUpgrade: () -> Unit) {
+        if (media.type != JoynMediaType.EPISODE) return
+        val url = media.imageUrl ?: return
+        if (!stills.shouldProbe(url) || !probingStills.add(url)) return
+        artworkScope.launch {
+            try {
+                if (stills.validatedOriginal(url) != null) onUpgrade()
+            } finally {
+                probingStills.remove(url)
+            }
+        }
+    }
 
     fun publish(entry: JoynContinueWatchingEntry) {
         if (!isSupportedDevice() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -280,6 +302,9 @@ internal class JoynWatchNextPublisher(context: Context) {
             return
         }
         if (isSuppressed(entry.assetId)) return
+        upgradeStill(entry.media) {
+            if (rowId(entry.assetId) != null) publish(entry)
+        }
 
         val program = buildProgram(entry)
         val knownId = rowId(entry.assetId)
@@ -338,6 +363,9 @@ internal class JoynWatchNextPublisher(context: Context) {
         if (!isSupportedDevice() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         if (media.type != JoynMediaType.EPISODE) return
         val storageKey = NEXT_KEY_PREFIX + seriesKey
+        upgradeStill(media) {
+            if (rowId(storageKey) != null) publishNextEpisode(seriesKey, media)
+        }
         val title = media.seriesTitle?.takeIf(String::isNotBlank) ?: media.title
         val episodeText = buildList {
             add("Nächste Folge")
@@ -363,7 +391,7 @@ internal class JoynWatchNextPublisher(context: Context) {
                 media.seasonNumber?.let(::setSeasonNumber)
                 media.episodeNumber?.let(::setEpisodeNumber)
                 val artwork = if (media.type == JoynMediaType.EPISODE) {
-                    media.imageUrl ?: media.backdropUrl
+                    stills.cachedUrl(media.imageUrl) ?: media.imageUrl ?: media.backdropUrl
                 } else {
                     media.backdropUrl ?: media.imageUrl
                 }
@@ -438,7 +466,7 @@ internal class JoynWatchNextPublisher(context: Context) {
         }
 
         val artwork = if (media.type == JoynMediaType.EPISODE) {
-            media.imageUrl ?: media.backdropUrl
+            stills.cachedUrl(media.imageUrl) ?: media.imageUrl ?: media.backdropUrl
         } else {
             media.backdropUrl ?: media.imageUrl
         }

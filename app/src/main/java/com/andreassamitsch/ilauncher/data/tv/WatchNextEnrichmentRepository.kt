@@ -2,6 +2,7 @@ package com.andreassamitsch.ilauncher.data.tv
 
 import com.andreassamitsch.ilauncher.data.tmdb.MediaLookup
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbRepository
+import com.andreassamitsch.ilauncher.data.tmdb.JoynVerifiedEpisodeText
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.MediaType
 import kotlinx.coroutines.async
@@ -56,7 +57,12 @@ class WatchNextEnrichmentRepository(
     }
 
     suspend fun enrichMediaOne(media: MediaItem): MediaItem {
-        if (media.source.packageName == JOYN_TV_PACKAGE) return media
+        if (media.source.packageName == JOYN_TV_PACKAGE) {
+            // Retain Joyn's authoritative Austrian series title, branding and episode imagery.
+            // Only enrich the synopsis when the unique Austrian TMDB series and S/E are verified.
+            val episodeText = JoynVerifiedEpisodeText.overview(media)
+            return if (episodeText != null) media.copy(overview = episodeText) else media
+        }
         if (!isTmdbConfigured) return media
         val metadata = tmdbRepository.resolve(
             sourceKey = resolverSourceKey(media),

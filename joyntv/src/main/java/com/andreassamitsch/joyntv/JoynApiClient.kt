@@ -902,7 +902,8 @@ internal class JoynApiClient(context: Context) {
         // Episode thumbnails are usually episode-specific, while series-level hero artwork
         // in lightweight catalogue/resume assets may depict the parent series.
         val episodeThumbnail = if (type == JoynMediaType.EPISODE) {
-            optJSONObject("thumbnailImage")?.urlValue()
+            optJSONArray("images").bestEpisodeStillUrl()
+                ?: optJSONObject("thumbnailImage")?.urlValue()
         } else null
         val primary = episodeThumbnail
             ?: optJSONObject("primaryImage")?.urlValue()
@@ -958,6 +959,22 @@ internal class JoynApiClient(context: Context) {
     private fun JSONArray?.toStringSet(): Set<String> = buildSet {
         val source = this@toStringSet ?: return@buildSet
         for (index in 0 until source.length()) source.optString(index).takeIf(String::isNotBlank)?.let(::add)
+    }
+
+    /** Prefer the largest LIVE_STILL rendition explicitly returned for the same episode. */
+    private fun JSONArray?.bestEpisodeStillUrl(): String? {
+        val source = this ?: return null
+        val size = Regex("(\\d{2,5})x(\\d{2,5})")
+        return (0 until source.length())
+            .mapNotNull { source.optJSONObject(it) }
+            .filter { it.optString("type").uppercase() in setOf("LIVE_STILL", "EPISODE_STILL", "THUMBNAIL") }
+            .mapNotNull { it.optString("url").takeIf(String::isNotBlank) }
+            .maxByOrNull { url ->
+                size.find(url.substringAfterLast("/profile:", ""))?.let { match ->
+                    (match.groupValues[1].toLongOrNull() ?: 0L) *
+                        (match.groupValues[2].toLongOrNull() ?: 0L)
+                } ?: 0L
+            }
     }
 
     private fun JSONArray?.firstImageUrl(): String? {
