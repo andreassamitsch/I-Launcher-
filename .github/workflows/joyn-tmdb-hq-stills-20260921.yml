@@ -35,7 +35,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm .github/workflows/joyn-tmdb-hq-stills-20260921.yml scripts/apply_joyn_tmdb_episode_and_hires_still_20260921.py
+          git rm -f .github/workflows/joyn-tmdb-hq-stills-20260921.yml scripts/apply_joyn_tmdb_episode_and_hires_still_20260921.py
           git add app/src/main/java/com/andreassamitsch/ilauncher/data/tmdb/TmdbDtos.kt app/src/main/java/com/andreassamitsch/ilauncher/data/tv/WatchNextEnrichmentRepository.kt joyntv/src/main/java/com/andreassamitsch/joyntv/JoynApiClient.kt joyntv/src/main/java/com/andreassamitsch/joyntv/JoynContinueWatching.kt joyntv/src/test/java/com/andreassamitsch/joyntv/JoynHighResEpisodeArtworkTest.kt docs/JOYNTV_CURRENT_STATE.md
           git diff --cached --check
           git commit -m 'feat: verify Austrian TMDB episode text and use confirmed larger Joyn stills'
