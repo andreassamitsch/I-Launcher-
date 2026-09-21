@@ -22,12 +22,8 @@ jobs:
           from pathlib import Path
           p = Path('scripts/apply_joyn_tmdb_episode_and_hires_still_20260921.py')
           source = p.read_text()
-          old = '    if matches != 1:\n'
-          new = '''    if matches != 1 and not (
-                file.name == "TmdbDtos.kt" and matches in (2, 3) and
-                old.startswith('    @SerializedName("original_name")')
-            ):
-'''
+          old = '    if matches != 1:' + chr(10)
+          new = "    if matches != 1 and not (file.name == 'TmdbDtos.kt' and matches in (2, 3) and old.startswith('    @SerializedName(\"original_name\")')):" + chr(10)
           assert source.count(old) == 1
           p.write_text(source.replace(old, new))
           PY
