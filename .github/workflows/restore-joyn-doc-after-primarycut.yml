@@ -1,0 +1,37 @@
+name: Restore full Joyn state document after primarycut change
+on:
+  push:
+    paths:
+      - .github/workflows/restore-joyn-doc-after-primarycut.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/joyn-tv-client
+          persist-credentials: true
+      - name: Restore complete prior state without losing other sections
+        shell: bash
+        run: |
+          git show 151829dbefed843842ac2331e4e91e4337ce5e13:docs/JOYNTV_CURRENT_STATE.md > docs/JOYNTV_CURRENT_STATE.md
+          cat >> docs/JOYNTV_CURRENT_STATE.md <<'DOC'
+
+
+### Episoden-Hero: verifiziertes Joyn-Primarycut-Profil (22.09.2026)
+
+Joyn AT stellt bei Bauer sucht Frau S23E3 für die gleiche von der Episoden-API identifizierte Bild-ID sowohl `/profile:nextgen-web-livestill-503x283` als auch `/profile:nextgen-web-primarycut-1920x1080` bereit. `JoynHighResEpisodeArtwork` verwendet die konkrete Episoden-Bild-URL als einzige Quelle der Bild-ID und prüft jetzt zusätzlich zur unprofilierten Originaldatei das Profil `nextgen-web-primarycut-1920x1080` auf **derselben** Joyn-Ingest-Datei. Ein begrenzter HTTP-Range-GET liest die tatsächlichen Bitmap-Abmessungen; nur gültige, nachweislich größere Breitbildvarianten werden übernommen. Unter mehreren verifizierten Kandidaten wird die mit den meisten echten Pixeln gewählt. Bei 404/Fehler, Hochformat oder fehlender Qualitätssteigerung bleibt das bisherige API-Folgenbild. Hintergrundprüfung und Wiederveröffentlichung des vorhandenen Android-Watch-Next-Eintrags gelten sowohl für CONTINUE als auch NEXT; der v2-Bildcache lässt zuvor als Original gecachte Bilder erneut prüfen. Es gibt **keine feste Bild-ID pro Sendung** und keine Zusage für 4K. Die Wirkung am TCL ist noch nach Installation des neuen Joyn-TV-Builds zu bestätigen.
+DOC
+          git diff --check
+      - name: Commit restored full document and remove this one-shot workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/restore-joyn-doc-after-primarycut.yml
+          git add docs/JOYNTV_CURRENT_STATE.md
+          git diff --cached --check
+          git commit -m 'docs: preserve complete Joyn state and document primarycut probe'
+          git push origin HEAD:feature/joyn-tv-client
