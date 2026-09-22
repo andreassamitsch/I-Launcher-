@@ -20,7 +20,6 @@ jobs:
         run: |
           git show 151829dbefed843842ac2331e4e91e4337ce5e13:docs/JOYNTV_CURRENT_STATE.md > docs/JOYNTV_CURRENT_STATE.md
           printf '%s\n' '' '### Episoden-Hero: verifiziertes Joyn-Primarycut-Profil (22.09.2026)' '' 'Joyn AT stellt bei Bauer sucht Frau S23E3 fuer die gleiche Episoden-Bild-ID sowohl das Profil nextgen-web-livestill-503x283 als auch nextgen-web-primarycut-1920x1080 bereit. JoynHighResEpisodeArtwork leitet aus der konkreten API-Episoden-Bild-URL ausschliesslich fuer dieselbe Joyn-Ingest-Datei das Primarycut-Profil und die unprofilierte Original-URL ab. Ein begrenzter HTTP-Range-GET ermittelt die wirklichen Bitmap-Pixelmasse: Nur gueltige, nachweislich groessere Breitbildvarianten werden uebernommen, unter mehreren Kandidaten die groesste. Bei HTTP-Fehlern, Hochformat oder fehlender Verbesserung bleibt das bisherige API-Bild. Die asynchrone Pruefung und erneute Veroeffentlichung des bestehenden Android-Watch-Next-Eintrags gelten fuer CONTINUE und NEXT; der v2-Bildcache prueft zuvor gecachte Originalbilder erneut. Keine feste Bild-ID pro Sendung und keine Garantie fuer 4K; das Ergebnis am TCL ist noch zu validieren.' >> docs/JOYNTV_CURRENT_STATE.md
-          git diff --check
       - name: Commit restored full document and remove this one-shot workflow
         shell: bash
         run: |
@@ -28,6 +27,5 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git rm .github/workflows/restore-joyn-doc-after-primarycut.yml
           git add docs/JOYNTV_CURRENT_STATE.md
-          git diff --cached --check
           git commit -m 'docs: preserve complete Joyn state and document primarycut probe'
           git push origin HEAD:feature/joyn-tv-client
