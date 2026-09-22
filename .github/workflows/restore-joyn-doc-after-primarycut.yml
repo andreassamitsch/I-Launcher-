@@ -13,6 +13,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feature/joyn-tv-client
+          fetch-depth: 30
           persist-credentials: true
       - name: Restore complete prior state without losing other sections
         shell: bash
