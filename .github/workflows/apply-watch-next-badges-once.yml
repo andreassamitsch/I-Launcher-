@@ -1,0 +1,28 @@
+name: Apply Watch Next labels and Joyn availability classification
+on:
+  push:
+    paths:
+      - .github/workflows/apply-watch-next-badges-once.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/joyn-tv-client
+          persist-credentials: true
+      - name: Apply guarded migration
+        run: python3 scripts/apply_watch_next_badges_once.py
+      - name: Commit source changes and remove one-time migration
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/apply-watch-next-badges-once.yml scripts/apply_watch_next_badges_once.py
+          git add app/src/main/java/com/andreassamitsch/ilauncher/model/MediaItem.kt app/src/main/java/com/andreassamitsch/ilauncher/data/tv/WatchNextMediaMapper.kt app/src/main/java/com/andreassamitsch/ilauncher/ui/components/WatchNextCard.kt app/src/main/java/com/andreassamitsch/ilauncher/ui/home/HomeScreen.kt joyntv/src/main/java/com/andreassamitsch/joyntv/JoynNextEpisode.kt joyntv/src/main/java/com/andreassamitsch/joyntv/JoynContinueWatching.kt
+          git diff --cached --check
+          git commit -m 'feat: label Watch Next and distinguish newly available Joyn episodes'
+          git push origin HEAD:feature/joyn-tv-client
