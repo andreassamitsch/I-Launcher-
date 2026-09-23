@@ -78,6 +78,7 @@ import com.andreassamitsch.ilauncher.ui.components.LiveTvCard
 import com.andreassamitsch.ilauncher.ui.components.TouchButton
 import com.andreassamitsch.ilauncher.ui.components.TouchCard
 import com.andreassamitsch.ilauncher.ui.components.WatchNextCard
+import com.andreassamitsch.ilauncher.ui.components.watchNextBadgeLabel
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import java.text.DateFormat
 import java.util.Date
@@ -945,6 +946,7 @@ internal fun mediaHero(
     artworkOverride: Pair<String?, Boolean>? = null,
 ): HomeHeroContent {
     val metadata = buildList {
+        watchNextBadgeLabel(item.watchNextType)?.let(::add)
         when (item.type) {
             MediaType.Movie -> add("Film")
             MediaType.Series -> add("Serie")

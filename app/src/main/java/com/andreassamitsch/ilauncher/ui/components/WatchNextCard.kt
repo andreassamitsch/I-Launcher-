@@ -1,6 +1,7 @@
 package com.andreassamitsch.ilauncher.ui.components
 
 import android.view.KeyEvent as AndroidKeyEvent
+import android.media.tv.TvContract
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +47,7 @@ fun WatchNextCard(
     var longPressHandled by remember(item.id) { mutableStateOf(false) }
     var focused by remember(item.id) { mutableStateOf(false) }
     val artwork = artworkOverrideUri ?: item.preferredArtworkUri
+    val statusBadge = watchNextBadgeLabel(item.watchNextType)
     val breath = rememberFocusedCardBreath(focused)
 
     Column(
@@ -133,6 +137,24 @@ fun WatchNextCard(
                         )
                     }
 
+                    statusBadge?.let { status ->
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(6.dp)
+                                .clip(RoundedCornerShape(5.dp))
+                                .background(MaterialTheme.colorScheme.primary)
+                                .padding(horizontal = 7.dp, vertical = 3.dp),
+                        ) {
+                            Text(
+                                text = status,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+
                     item.logoUri?.takeIf { it.isNotBlank() }?.let { logoUri ->
                         AsyncImage(
                             model = logoUri,
@@ -145,7 +167,9 @@ fun WatchNextCard(
                         )
                     }
 
-                    item.progressFraction?.let { progress ->
+                    // NEXT and NEW start at zero, and must never inherit a stale resume bar.
+                    item.progressFraction?.takeIf { item.watchNextType != TvContract.WatchNextPrograms.WATCH_NEXT_TYPE_NEXT &&
+                        item.watchNextType != TvContract.WatchNextPrograms.WATCH_NEXT_TYPE_NEW }?.let { progress ->
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
@@ -183,4 +207,11 @@ fun WatchNextCard(
                 .alpha(if (focused) 1f else 0.82f),
         )
     }
+}
+
+/** Provider type, not a guess based on an air date or a zero playback position. */
+internal fun watchNextBadgeLabel(type: Int?): String? = when (type) {
+    TvContract.WatchNextPrograms.WATCH_NEXT_TYPE_NEW -> "Neue Folge"
+    TvContract.WatchNextPrograms.WATCH_NEXT_TYPE_NEXT -> "Nächste Folge"
+    else -> null
 }

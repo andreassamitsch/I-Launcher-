@@ -359,12 +359,12 @@ internal class JoynWatchNextPublisher(context: Context) {
     }
 
 
-    fun publishNextEpisode(seriesKey: String, media: JoynMediaItem) {
+    fun publishNextEpisode(seriesKey: String, media: JoynMediaItem, isNew: Boolean = false) {
         if (!isSupportedDevice() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         if (media.type != JoynMediaType.EPISODE) return
         val storageKey = NEXT_KEY_PREFIX + seriesKey
         upgradeStill(media) {
-            if (rowId(storageKey) != null) publishNextEpisode(seriesKey, media)
+            if (rowId(storageKey) != null) publishNextEpisode(seriesKey, media, isNew = isNew)
         }
         val title = media.seriesTitle?.takeIf(String::isNotBlank) ?: media.title
         val episodeText = buildList {
@@ -377,7 +377,10 @@ internal class JoynWatchNextPublisher(context: Context) {
             PlayerActivity.vodIntent(appContext, media).toUri(Intent.URI_INTENT_SCHEME),
         )
         val program = WatchNextProgram.Builder()
-            .setWatchNextType(TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_NEXT)
+            .setWatchNextType(
+                if (isNew) TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_NEW
+                else TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_NEXT,
+            )
             .setType(TvContractCompat.PreviewPrograms.TYPE_TV_EPISODE)
             .setTitle(title)
             .setDescription(episodeText)

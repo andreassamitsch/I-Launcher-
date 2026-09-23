@@ -25,9 +25,16 @@ internal data class JoynCompletedSeries(
     val episodeNumber: Int,
     val completedAt: Long,
     val announcedVideoId: String? = null,
+    /** A prior catalogue check saw no available follow-up; not inferred from TMDB air_date. */
+    val observedWithoutNext: Boolean = false,
+    val announcedAsNew: Boolean = false,
 )
 
 internal object JoynNextEpisodePolicy {
+    /** Only a previously observed absence permits a NEW label on a subsequent catalogue find. */
+    fun isNewlyAvailable(state: JoynCompletedSeries): Boolean =
+        state.observedWithoutNext && state.announcedVideoId == null
+
     fun nextInSeason(
         completedEpisodeNumber: Int,
         episodes: List<JoynMediaItem>,
@@ -92,9 +99,25 @@ internal class JoynNextEpisodeStore(context: Context) {
     }
 
     @Synchronized
-    fun markAnnounced(seriesKey: String, videoId: String?) {
+    fun markAnnounced(seriesKey: String, videoId: String?, isNew: Boolean = false) {
         val current = items().map {
-            if (it.seriesKey == seriesKey) it.copy(announcedVideoId = videoId) else it
+            if (it.seriesKey == seriesKey) it.copy(
+                announcedVideoId = videoId,
+                announcedAsNew = isNew,
+                observedWithoutNext = false,
+            ) else it
+        }
+        persist(current)
+    }
+
+    @Synchronized
+    fun markNoNextAvailable(seriesKey: String) {
+        val current = items().map {
+            if (it.seriesKey == seriesKey) it.copy(
+                announcedVideoId = null,
+                announcedAsNew = false,
+                observedWithoutNext = true,
+            ) else it
         }
         persist(current)
     }
@@ -125,7 +148,9 @@ internal class JoynNextEpisodeStore(context: Context) {
                         .putNullable("seasonNumber", item.seasonNumber)
                         .put("episodeNumber", item.episodeNumber)
                         .put("completedAt", item.completedAt)
-                        .putNullable("announcedVideoId", item.announcedVideoId),
+                        .putNullable("announcedVideoId", item.announcedVideoId)
+                        .put("observedWithoutNext", item.observedWithoutNext)
+                        .put("announcedAsNew", item.announcedAsNew),
                 )
             }
         }.toString()
@@ -150,6 +175,8 @@ internal class JoynNextEpisodeStore(context: Context) {
                             episodeNumber = episode,
                             completedAt = json.optLong("completedAt").takeIf { it > 0L } ?: 0L,
                             announcedVideoId = json.nullableString("announcedVideoId"),
+                            observedWithoutNext = json.optBoolean("observedWithoutNext", false),
+                            announcedAsNew = json.optBoolean("announcedAsNew", false),
                         ),
                     )
                 }
@@ -187,8 +214,8 @@ internal class JoynNextEpisodeRefresher(private val context: Context) {
                 if (next == null) {
                     if (state.announcedVideoId != null) {
                         publisher.removeNextEpisode(state.seriesKey)
-                        store.markAnnounced(state.seriesKey, null)
                     }
+                    store.markNoNextAvailable(state.seriesKey)
                 } else {
                     val enriched = next.copy(
                         seriesTitle = next.seriesTitle ?: state.seriesTitle,
@@ -197,8 +224,9 @@ internal class JoynNextEpisodeRefresher(private val context: Context) {
                     )
                     val nextVideoId = enriched.videoId ?: enriched.id
                     if (nextVideoId != state.announcedVideoId) {
-                        publisher.publishNextEpisode(state.seriesKey, enriched)
-                        store.markAnnounced(state.seriesKey, nextVideoId)
+                        val newlyAvailable = JoynNextEpisodePolicy.isNewlyAvailable(state)
+                        publisher.publishNextEpisode(state.seriesKey, enriched, isNew = newlyAvailable)
+                        store.markAnnounced(state.seriesKey, nextVideoId, isNew = newlyAvailable)
                     }
                 }
             }

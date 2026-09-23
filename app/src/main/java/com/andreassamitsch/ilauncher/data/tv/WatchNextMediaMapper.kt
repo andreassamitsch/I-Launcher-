@@ -37,6 +37,7 @@ object WatchNextMediaMapper {
             durationMillis = item.durationMillis,
             playbackPositionMillis = item.playbackPositionMillis,
             lastEngagementTimeUtcMillis = item.lastEngagementTimeUtcMillis,
+            watchNextType = item.watchNextType,
             source = MediaSource(
                 provider = "android_watch_next",
                 sourceId = "${item.packageName ?: "unknown"}:${item.id}",

@@ -52,6 +52,8 @@ data class MediaItem(
     val trailer: TrailerRef? = null,
     val source: MediaSource,
     val resolverConfidence: Float? = null,
+    /** Android TV CONTINUE, NEXT or NEW; null for non-Watch-Next media. */
+    val watchNextType: Int? = null,
 ) {
     val preferredArtworkUri: String?
         get() = when (type) {
