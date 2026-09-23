@@ -19,23 +19,14 @@ jobs:
           from pathlib import Path
           p=Path('tools/cloudstream-bridge/apply_external_session_fix.py')
           t=p.read_text()
-          old="""    if count != expected:
-              raise RuntimeError(f'{path}: expected {expected} anchor(s), found {count}: {old[:160]!r}')
-          """
-          # Only the first of the two identical automatic/selected handoff snippets is updated
-          # in the automatic pass. The selected pass then applies its own token guard.
-          first="""    if count != expected:
-                  raise RuntimeError"""
-          if first in t:
-              raise RuntimeError('Unexpected patch-helper indentation')
           original="""    if count != expected:
-          raise RuntimeError(f'{path}: expected {expected} anchor(s), found {count}: {old[:160]!r}')
-          path.write_text(text.replace(old, new), encoding='utf-8')"""
+              raise RuntimeError(f'{path}: expected {expected} anchor(s), found {count}: {old[:160]!r}')
+              """
+          # Be precise about the existing helper's four/eight-space indentation.
+          original="    if count != expected:\n        raise RuntimeError(f'{path}: expected {expected} anchor(s), found {count}: {old[:160]!r}')\n    path.write_text(text.replace(old, new), encoding='utf-8')"
+          changed="    if count != expected and not (expected == 1 and count == 2 and old.startswith('                launchPreparedPlayback(activity, prepared)')):\n        raise RuntimeError(f'{path}: expected {expected} anchor(s), found {count}: {old[:160]!r}')\n    path.write_text(text.replace(old, new, expected), encoding='utf-8')"
           if t.count(original)!=1:
               raise RuntimeError('Patch helper changed; stop instead of editing a new version')
-          changed="""    if count != expected and not (expected == 1 and count == 2 and old.startswith('                launchPreparedPlayback(activity, prepared)')):
-          raise RuntimeError(f'{path}: expected {expected} anchor(s), found {count}: {old[:160]!r}')
-          path.write_text(text.replace(old, new, expected), encoding='utf-8')"""
           p.write_text(t.replace(original,changed,1))
           print('automatic and selected handoff anchors can now be patched independently')
           PY
