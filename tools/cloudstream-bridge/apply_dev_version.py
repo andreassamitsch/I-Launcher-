@@ -23,25 +23,30 @@ def main() -> None:
     if not build_gradle.exists():
         raise RuntimeError(f"Not a CloudStream checkout: {root}")
 
-    # Apply the CloudStream-owned episode monitor after all existing bridge compatibility
-    # patches, before the reproducible pinned-upstream build is versioned.
+    # The main workflow applies the episode monitor before the external-navigation patch.
+    # Keep this fallback for independent users of the versioning helper, but never apply it
+    # twice: its source replacements deliberately require exactly one original anchor.
+    monitor_target = root / "app/src/main/java/com/lagradost/cloudstream3/ui/player/ILauncherNextEpisodeMonitor.kt"
+    if not monitor_target.exists():
+        subprocess.run([
+            sys.executable,
+            str(Path(__file__).with_name("apply_next_episode_monitor.py")),
+            str(root),
+        ], check=True)
+
+    # The availability guard must run after the monitor has been installed.
     subprocess.run([
         sys.executable,
-        str(Path(__file__).with_name("apply_next_episode_monitor.py")),
+        str(Path(__file__).with_name("apply_episode_availability_guard.py")),
         str(root),
     ], check=True)
 
-    # Keep stock CloudStream metadata when these environment variables are absent. The bridge CI
-    # supplies both values so every published APK has a monotonically increasing Android version.
     replace_once(
         build_gradle,
         """        versionCode = libs.versions.versionCode.get().toInt()\n        versionName = libs.versions.versionName.get()""",
         """        versionCode = System.getenv("IL_BRIDGE_VERSION_CODE")?.toIntOrNull()\n            ?: libs.versions.versionCode.get().toInt()\n        versionName = System.getenv("IL_BRIDGE_VERSION_NAME")\n            ?: libs.versions.versionName.get()""",
     )
 
-    # Upstream deliberately gives prerelease builds a minute-based versionCode and appends -PRE.
-    # That happens after defaultConfig and therefore overrides the bridge values above. Preserve
-    # the upstream behavior unless a bridge build explicitly supplies its own version metadata.
     replace_once(
         build_gradle,
         """            versionNameSuffix = "-PRE"\n            versionCode = (System.currentTimeMillis() / 60000).toInt()""",
