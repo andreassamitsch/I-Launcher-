@@ -68,7 +68,7 @@ internal object ILauncherPendingResumeGuard {
                 // Only an explicitly identified, unplayed, announced successor may be migrated.
                 // Never change an in-progress episode or a pointer whose identity has since changed.
                 val last = DataStoreHelper.getLastWatched(parentId)
-                if (last?.episodeId == card.id && last.season == season && last.episode == number) {
+                if (last != null && last.episodeId == card.id && last.season == season && last.episode == number) {
                     val previous = series.episodes.mapNotNull { ep ->
                         val coords = coordinates(ep) ?: return@mapNotNull null
                         if (coords.first < season || coords.first == season && coords.second < number) {
