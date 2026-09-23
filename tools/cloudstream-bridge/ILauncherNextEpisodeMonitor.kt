@@ -17,15 +17,12 @@ import com.lagradost.cloudstream3.ui.settings.Globals.TV
 import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
 import com.lagradost.cloudstream3.utils.AppContextUtils.addProgramsToContinueWatching
 import com.lagradost.cloudstream3.utils.AppContextUtils.getApiSettings
-import com.lagradost.cloudstream3.utils.Coroutines.ioSafe
-import com.lagradost.cloudstream3.utils.DataStoreHelper
 import com.lagradost.cloudstream3.utils.DataStoreHelper.getKey
 import com.lagradost.cloudstream3.utils.DataStoreHelper.getLastWatched
 import com.lagradost.cloudstream3.utils.DOWNLOAD_HEADER_CACHE
 import com.lagradost.cloudstream3.utils.downloader.DownloadObjects
 import com.lagradost.cloudstream3.ui.home.HomeViewModel
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
@@ -80,7 +77,7 @@ internal object ILauncherNextEpisodeMonitor {
         synchronized(this) {
             val previous = read(prefs).firstOrNull { it.parentId == episode.parentId && it.apiName == episode.apiName }
             if (previous != null && (previous.finishedSeason > season ||
-                    previous.finishedSeason == season && previous.finishedEpisode > episode.episode)) return
+                    previous.finishedSeason == season && previous.finishedEpisode >= episode.episode)) return
             val updated = Tracked(
                 parentId = episode.parentId, apiName = header.apiName, seriesUrl = header.url,
                 title = header.name, poster = header.poster, finishedSeason = season,
@@ -145,7 +142,7 @@ internal object ILauncherNextEpisodeMonitor {
                 val result = runCatching {
                     withTimeoutOrNull(12_000) { APIRepository(api).load(state.seriesUrl) }
                 }.getOrNull()
-                val series = (result as? Resource.Success)?.value as? TvSeriesLoadResponse ?: return@forEach
+                val series = (result as? Resource.Success<*>)?.value as? TvSeriesLoadResponse ?: return@forEach
                 val seasons = series.seasonNames?.associate { it.season to it.displaySeason }.orEmpty()
                 val candidates = series.episodes.mapNotNull { ep ->
                     val season = ep.season?.let { seasons[it] ?: it } ?: return@mapNotNull null
@@ -159,7 +156,10 @@ internal object ILauncherNextEpisodeMonitor {
                     changed = true
                     return@forEach
                 }
-                val ((season, episode), source) = candidate
+                val coordinates = candidate.first
+                val season = coordinates.first
+                val episode = coordinates.second
+                val source = candidate.second
                 if (isFuture(source.date, now) || source.data.isBlank()) {
                     // A real provider release timestamp is useful for the next scan, not proof of playback.
                     updated[index] = state.copy(lastCheck = now, observedAbsent = true)
