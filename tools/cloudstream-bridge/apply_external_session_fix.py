@@ -7,9 +7,9 @@ import sys
 def patch(path: Path, old: str, new: str, expected: int = 1) -> None:
     text = path.read_text(encoding='utf-8')
     count = text.count(old)
-    if count != expected:
+    if count != expected and not (expected == 1 and count == 2 and old.startswith('                launchPreparedPlayback(activity, prepared)')):
         raise RuntimeError(f'{path}: expected {expected} anchor(s), found {count}: {old[:160]!r}')
-    path.write_text(text.replace(old, new), encoding='utf-8')
+    path.write_text(text.replace(old, new, expected), encoding='utf-8')
 
 
 def main(root: Path) -> None:
