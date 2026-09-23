@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply after the existing I Launcher bridge and Watch Next patches, before compilation."""
+"""Apply after the existing bridge and Watch Next patches, before compilation."""
 from pathlib import Path
 import sys
 
@@ -17,9 +17,7 @@ def main(root: Path) -> None:
     activity = p / 'MainActivity.kt'
     bridge = p / 'ILauncherDirectPlay.kt'
 
-    # The old implementation only popped navigation_player, leaving the previous results pages
-    # on the singleTask activity stack. Reset before asynchronous resume resolution; otherwise a
-    # missing legacy episode card continues to display the unrelated previous player.
+    # SingleTask retains fragments from prior launcher intents. Reset before async resume lookup.
     patch(activity,
         '''                        ILauncherBridgeNavigation.clearExistingPlayer(targetActivity)
                         ioSafe {
@@ -41,9 +39,6 @@ def main(root: Path) -> None:
                                 )
                             }''')
 
-    # Each cloudstreamplay request owns an external navigation generation. The screen is reset as
-    # soon as the new request is accepted, rather than leaving an old streaming player alive for
-    # the duration of a sometimes slow plugin search and link extraction.
     patch(bridge,
         '''        Log.i(TAG, "start kind=${request.kind} selection=${request.providerSelection} identity=$identity")
         val loading = ILauncherBridgeLoading.show''',
@@ -85,8 +80,6 @@ def main(root: Path) -> None:
                     Log.w(TAG, "bridge failed identity=$identity; opening CloudStream search")
                     fallbackToSearch(activity, request.title, launchToken)
                 }''')
-    patch(bridge, 'fallbackToSearch(activity, request.title)',
-          'fallbackToSearch(activity, request.title, launchToken)', expected=1)
     patch(bridge,
         '''        loading: ILauncherBridgeLoading,
     ): Boolean = coroutineScope {''',
@@ -133,7 +126,7 @@ def main(root: Path) -> None:
                     rememberLastProvider(activity, request, prepared.providerName)
                 }''')
 
-    # The manually selected provider path also needs the generation of its originating intent.
+    # Manual provider selection must carry the token from the original external request as well.
     patch(bridge,
         '''        providers: List<MainAPI>,
     ) {
@@ -205,14 +198,19 @@ def main(root: Path) -> None:
             activity.loadResult(response.url, response.apiName, response.name)
         }
     }''')
+    # Older fallback buttons still have two arguments. Their direct user action begins a fresh
+    # navigation generation; the automatic and error paths can supply their original token.
     patch(bridge,
         '''    private fun fallbackToSearch(activity: FragmentActivity, title: String) {
         main {
             // SearchViewModel''',
-        '''    private fun fallbackToSearch(activity: FragmentActivity, title: String, launchToken: Long) {
+        '''    private fun fallbackToSearch(
+        activity: FragmentActivity,
+        title: String,
+        launchToken: Long = ILauncherBridgeNavigation.beginExternalLaunch(activity),
+    ) {
         ILauncherBridgeNavigation.navigateExternal(activity, launchToken) {
             // SearchViewModel''')
-
     text = bridge.read_text(encoding='utf-8')
     if 'launchPreparedPlayback(activity, prepared)' in text or 'openResolvedDetails(activity, match.response)' in text:
         raise RuntimeError('Unprotected player/detail navigation remains')
