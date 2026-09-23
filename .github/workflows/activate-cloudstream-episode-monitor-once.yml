@@ -1,0 +1,27 @@
+name: Activate CloudStream episode monitor once
+on:
+  push:
+    paths:
+      - .github/workflows/activate-cloudstream-episode-monitor-once.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/cloudstream-direct-play
+          persist-credentials: true
+      - name: Apply guarded edits
+        run: python3 scripts/activate_cloudstream_episode_monitor.py
+      - name: Commit and remove one-time migration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm scripts/activate_cloudstream_episode_monitor.py .github/workflows/activate-cloudstream-episode-monitor-once.yml
+          git add tools/cloudstream-bridge/ILauncherNextEpisodeMonitor.kt .github/workflows/cloudstream-bridge.yml docs/CLOUDSTREAM_EPISODE_AVAILABILITY.md
+          git diff --cached --check
+          git commit -m 'feat: enable CloudStream-owned episode availability checks and Watch Next labels'
+          git push origin HEAD:agent/cloudstream-direct-play
