@@ -17,6 +17,7 @@ class ILauncherNextEpisodeMonitorTest {
     @Test fun futureEpisodeDateDoesNotImplyPlayableEpisode() {
         val now = 1_800_000_000_000L
         assertTrue(ILauncherNextEpisodeMonitor.isFuture(1_800_086_400L, now))
+        assertTrue(ILauncherNextEpisodeMonitor.isFuture(1_800_086_400_000L, now))
         assertFalse(ILauncherNextEpisodeMonitor.isFuture(1_799_900_000_000L, now))
         assertFalse(ILauncherNextEpisodeMonitor.isFuture(null, now))
         assertEquals(1_800_086_400_000L, ILauncherNextEpisodeMonitor.normalizedAirDate(1_800_086_400L))
