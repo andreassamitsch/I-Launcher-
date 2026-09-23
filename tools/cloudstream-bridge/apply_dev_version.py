@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -21,6 +22,14 @@ def main() -> None:
     build_gradle = root / "app/build.gradle.kts"
     if not build_gradle.exists():
         raise RuntimeError(f"Not a CloudStream checkout: {root}")
+
+    # Apply the CloudStream-owned episode monitor after all existing bridge compatibility
+    # patches, before the reproducible pinned-upstream build is versioned.
+    subprocess.run([
+        sys.executable,
+        str(Path(__file__).with_name("apply_next_episode_monitor.py")),
+        str(root),
+    ], check=True)
 
     # Keep stock CloudStream metadata when these environment variables are absent. The bridge CI
     # supplies both values so every published APK has a monotonically increasing Android version.
