@@ -30,6 +30,16 @@ internal object ILauncherBridgeNavigation {
     fun isCurrentExternalLaunch(token: Long): Boolean =
         externalLaunchSequence.get() == token
 
+    /** For external result/resume/search destinations, keep the new request on a home-only stack. */
+    fun navigateExternal(activity: FragmentActivity, token: Long, destination: () -> Unit) {
+        main {
+            if (!isCurrentExternalLaunch(token)) return@main
+            navController(activity)?.let(::resetToHome)
+            if (!isCurrentExternalLaunch(token)) return@main
+            destination()
+        }
+    }
+
     fun replacePlayer(activity: FragmentActivity, args: Bundle, token: Long? = null) {
         main {
             if (token != null && !isCurrentExternalLaunch(token)) return@main
