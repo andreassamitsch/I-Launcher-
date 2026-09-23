@@ -14,7 +14,7 @@ jobs:
         with:
           ref: agent/cloudstream-direct-play
           persist-credentials: true
-      - name: Apply compile and future-episode fixes
+      - name: Apply verified cache import and future-episode fixes
         run: python3 scripts/fix_cloudstream_episode_getkey_once.py
       - name: Commit source-only modifications
         run: |
