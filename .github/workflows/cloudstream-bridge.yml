@@ -57,8 +57,10 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
+      - name: Set up Android SDK without obsolete tools package
         uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
 
       - name: Configure stable bridge signing and version
         env:
@@ -76,7 +78,6 @@ jobs:
           echo "SIGNING_STORE_PASSWORD=$DEV_STORE_PASSWORD" >> "$GITHUB_ENV"
           echo "SIGNING_KEY_ALIAS=$DEV_KEY_ALIAS" >> "$GITHUB_ENV"
           echo "SIGNING_KEY_PASSWORD=$DEV_KEY_PASSWORD" >> "$GITHUB_ENV"
-
           BRIDGE_VERSION_CODE=$((30000000 + GITHUB_RUN_NUMBER))
           BRIDGE_VERSION_NAME="4.8.0-PRE-I-Launcher.${GITHUB_RUN_NUMBER}"
           echo "IL_BRIDGE_VERSION_CODE=$BRIDGE_VERSION_CODE" >> "$GITHUB_ENV"
@@ -91,19 +92,16 @@ jobs:
           ./gradlew :app:testPrereleaseDebugUnitTest :app:assemblePrereleaseDebug --stacktrace
 
       - name: Verify package and prepare development channel
-        id: bridge_artifact
         run: |
           APK_PATH="$(find cloudstream/app/build/outputs/apk -type f -name '*prerelease*debug*.apk' -print -quit)"
           if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
             echo "::error::CloudStream prerelease debug APK not found."
             exit 1
           fi
-
           mkdir -p bridge-output
           cp "$APK_PATH" bridge-output/CloudStream-I-Launcher-Bridge.apk
           SHA256="$(sha256sum bridge-output/CloudStream-I-Launcher-Bridge.apk | awk '{print $1}')"
           echo "$SHA256  CloudStream-I-Launcher-Bridge.apk" > bridge-output/CloudStream-I-Launcher-Bridge.sha256
-
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt -print | sort -V | tail -1)"
           if [ -z "$AAPT" ] || [ ! -x "$AAPT" ]; then
             echo "::error::aapt not found in Android SDK build-tools."
@@ -112,15 +110,10 @@ jobs:
           BADGING="$($AAPT dump badging bridge-output/CloudStream-I-Launcher-Bridge.apk | head -1)"
           ACTUAL_VERSION_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
           ACTUAL_VERSION_NAME="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")"
-          if [ "$ACTUAL_VERSION_CODE" != "$BRIDGE_VERSION_CODE" ]; then
-            echo "::error::Bridge APK versionCode $ACTUAL_VERSION_CODE does not match expected $BRIDGE_VERSION_CODE"
+          if [ "$ACTUAL_VERSION_CODE" != "$BRIDGE_VERSION_CODE" ] || [ "$ACTUAL_VERSION_NAME" != "$BRIDGE_VERSION_NAME" ]; then
+            echo "::error::Bridge APK version does not match the expected version."
             exit 1
           fi
-          if [ "$ACTUAL_VERSION_NAME" != "$BRIDGE_VERSION_NAME" ]; then
-            echo "::error::Bridge APK versionName $ACTUAL_VERSION_NAME does not match expected $BRIDGE_VERSION_NAME"
-            exit 1
-          fi
-
           cat > bridge-output/update.json <<EOF
           {
             "versionCode": $BRIDGE_VERSION_CODE,
@@ -130,9 +123,6 @@ jobs:
             "sourceSha": "$GITHUB_SHA"
           }
           EOF
-
-          echo "apk_path=bridge-output/CloudStream-I-Launcher-Bridge.apk" >> "$GITHUB_OUTPUT"
-          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
 
       - name: Upload CloudStream bridge APK
         uses: actions/upload-artifact@v4
