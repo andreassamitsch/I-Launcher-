@@ -43,7 +43,8 @@ def main() -> None:
         publish(context, reason)''',
         '''        if (shouldPersistPosition && episode != null) {
             val nextEpisode = (nextMeta as? ResultEpisode)?.takeIf {
-                it.parentId == episode.parentId && isLaterEpisode(it, episode)
+                it.parentId == episode.parentId && isLaterEpisode(it, episode) &&
+                    !ILauncherNextEpisodeMonitor.isFuture(it.airDate, System.currentTimeMillis())
             }
             updateResumePointer(
                 episode = episode,
@@ -73,6 +74,16 @@ def main() -> None:
                 }
 
                 publishNow(context, "markedWatched")''')
+    replace_once(sync,
+        '''                    val next = nextEpisode?.takeIf {
+                        it.parentId == episode.parentId && isLaterEpisode(it, episode)
+                    }
+                    if (next != null) {''',
+        '''                    val next = nextEpisode?.takeIf {
+                        it.parentId == episode.parentId && isLaterEpisode(it, episode) &&
+                            !ILauncherNextEpisodeMonitor.isFuture(it.airDate, System.currentTimeMillis())
+                    }
+                    if (next != null) {''')
     replace_once(sync,
         '''        appContext.addProgramsToContinueWatching(resumeWatching)
         Log.i(TAG, "flush reason=$reason count=${resumeWatching.size}")''',
