@@ -185,14 +185,30 @@ object ILauncherDirectPlay {
     }
 
     private suspend fun awaitProviders(activity: FragmentActivity): List<MainAPI> {
-        repeat(48) {
+        // After every bridge APK update CloudStream intentionally deletes extension oat files.
+        // On slower Android-TV hardware the first dex recompilation of several installed
+        // extensions can take noticeably longer than the old 12 second bridge deadline. The
+        // normal CloudStream startup is still loading providers in the background during that
+        // time, so treating the temporary empty API snapshot as "no extensions installed" is a
+        // false setup error. Keep polling the authoritative active API snapshot while the visible
+        // bridge loading dialog is on screen. The user can still cancel that dialog at any time.
+        repeat(PROVIDER_STARTUP_WAIT_STEPS) { attempt ->
             val activeNames = activity.getApiSettings()
             val current = apis.withLock {
                 apis.filter { api -> activeNames.contains(api.name) }
             }
-            if (current.isNotEmpty()) return current.distinctBy { it.name }
-            delay(250)
+            if (current.isNotEmpty()) {
+                if (attempt >= PROVIDER_STARTUP_SLOW_LOG_STEP) {
+                    Log.i(TAG, "providers became ready after ${attempt * PROVIDER_STARTUP_POLL_MS}ms")
+                }
+                return current.distinctBy { it.name }
+            }
+            if (attempt == PROVIDER_STARTUP_SLOW_LOG_STEP) {
+                Log.i(TAG, "providers still compiling/loading after old startup deadline; continuing to wait")
+            }
+            delay(PROVIDER_STARTUP_POLL_MS)
         }
+        Log.w(TAG, "provider startup timed out after ${PROVIDER_STARTUP_WAIT_STEPS * PROVIDER_STARTUP_POLL_MS}ms")
         return emptyList()
     }
 
@@ -667,4 +683,7 @@ object ILauncherDirectPlay {
     private const val PREF_LAST_PROVIDER_PREFIX = "last_provider_"
     private const val PROVIDER_SEPARATOR = "\u001F"
     private const val MAX_SEARCH_CANDIDATES_PER_QUERY = 6
+    private const val PROVIDER_STARTUP_POLL_MS = 250L
+    private const val PROVIDER_STARTUP_SLOW_LOG_STEP = 48
+    private const val PROVIDER_STARTUP_WAIT_STEPS = 360
 }
