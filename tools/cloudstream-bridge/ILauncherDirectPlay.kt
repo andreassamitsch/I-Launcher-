@@ -682,8 +682,8 @@ object ILauncherDirectPlay {
     private const val PREF_PROVIDER_ORDER = "provider_order"
     private const val PREF_LAST_PROVIDER_PREFIX = "last_provider_"
     private const val PROVIDER_SEPARATOR = "\u001F"
-    private const val MAX_SEARCH_CANDIDATES_PER_QUERY = 6
     private const val PROVIDER_STARTUP_POLL_MS = 250L
     private const val PROVIDER_STARTUP_SLOW_LOG_STEP = 48
     private const val PROVIDER_STARTUP_WAIT_STEPS = 360
+    private const val MAX_SEARCH_CANDIDATES_PER_QUERY = 6
 }
