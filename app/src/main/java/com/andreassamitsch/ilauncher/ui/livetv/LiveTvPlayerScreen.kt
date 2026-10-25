@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -46,7 +48,10 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -62,6 +67,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.data.epg.EpgState
+import com.andreassamitsch.ilauncher.data.livetv.LiveTvAudioPreferences
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifResolvedStream
 import com.andreassamitsch.ilauncher.data.openwebif.OpenWebifStreamHttpException
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
@@ -117,6 +123,10 @@ internal fun LiveTvPlayerScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var overlayVisible by remember { mutableStateOf(true) }
     var channelOverviewPinned by remember { mutableStateOf(false) }
+    var audioPickerVisible by remember { mutableStateOf(false) }
+    var restoreAudioButtonFocus by remember { mutableStateOf(false) }
+    var audioTracks by remember { mutableStateOf<List<LiveTvAudioTrack>>(emptyList()) }
+    var manualAudioChoice by remember { mutableStateOf<LiveTvAudioTrack?>(null) }
     var confirmOpenedOverview by remember { mutableStateOf(false) }
     var longOkHandled by remember { mutableStateOf(false) }
     var showExitConfirmation by remember { mutableStateOf(false) }
@@ -135,8 +145,11 @@ internal fun LiveTvPlayerScreen(
     val rootFocusRequester = remember { FocusRequester() }
     val overlayFocusRequester = remember { FocusRequester() }
     val epgButtonFocusRequester = remember { FocusRequester() }
+    val audioButtonFocusRequester = remember { FocusRequester() }
+    val firstAudioFocusRequester = remember { FocusRequester() }
     val epgBackFocusRequester = remember { FocusRequester() }
     val exitConfirmFocusRequester = remember { FocusRequester() }
+    val audioPreferences = remember(context) { LiveTvAudioPreferences(context) }
     val player = remember { ExoPlayer.Builder(context).build().apply { playWhenReady = true } }
     val currentIndex = LiveTvZapping.indexForServiceReference(
         serviceReferences = channels.map(LiveTvChannel::serviceReference),
@@ -145,6 +158,23 @@ internal fun LiveTvPlayerScreen(
     val currentChannel = channels.getOrNull(currentIndex)
     val selectedEpgProgram = selectedEpgProgramStartUtcMillis?.let { start ->
         epgState.guide(selectedEpgServiceReference).firstOrNull { it.startUtcMillis == start }
+    }
+
+    fun applyAudioTrack(track: LiveTvAudioTrack) {
+        val group = player.currentTracks.groups.getOrNull(track.groupIndex) ?: return
+        if (group.type != C.TRACK_TYPE_AUDIO || track.trackIndex !in 0 until group.length ||
+            !group.isTrackSupported(track.trackIndex)
+        ) return
+        val existing = player.trackSelectionParameters.overrides[group.mediaTrackGroup]
+        if (existing?.trackIndices?.singleOrNull() == track.trackIndex) return
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, track.trackIndex))
+            .build()
+    }
+
+    fun closeAudioPicker() {
+        audioPickerVisible = false
+        restoreAudioButtonFocus = channelOverviewPinned
     }
 
     fun zap(delta: Int) {
@@ -178,6 +208,7 @@ internal fun LiveTvPlayerScreen(
 
     fun openEpg() {
         val channel = currentChannel ?: return
+        audioPickerVisible = false
         val now = System.currentTimeMillis()
         selectedEpgServiceReference = channel.serviceReference
         selectedEpgProgramStartUtcMillis = epgState.guide(channel.serviceReference)
@@ -189,6 +220,7 @@ internal fun LiveTvPlayerScreen(
     }
 
     fun requestExit() {
+        audioPickerVisible = false
         showEpg = false
         channelOverviewPinned = false
         overlayVisible = true
@@ -197,6 +229,7 @@ internal fun LiveTvPlayerScreen(
 
     BackHandler {
         when {
+            audioPickerVisible -> closeAudioPicker()
             showExitConfirmation -> showExitConfirmation = false
             showEpg -> showEpg = false
             channelOverviewPinned -> {
@@ -216,6 +249,22 @@ internal fun LiveTvPlayerScreen(
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
+            override fun onTracksChanged(tracks: Tracks) {
+                if (preparedServiceReference != currentServiceReference) {
+                    audioTracks = emptyList()
+                    return
+                }
+                val available = LiveTvAudioSelection.fromMedia3(tracks)
+                audioTracks = available
+                val target = manualAudioChoice?.let { LiveTvAudioSelection.findManual(available, it) }
+                    ?: LiveTvAudioSelection.chooseAutomatic(
+                        available,
+                        audioPreferences.preferredLanguage.value,
+                        audioPreferences.avoidSpecialTracks.value,
+                    )
+                if (target != null && !target.selected) applyAudioTrack(target)
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
                 loading = playbackState == Player.STATE_BUFFERING ||
                     (playbackState == Player.STATE_IDLE && errorMessage == null)
@@ -276,6 +325,13 @@ internal fun LiveTvPlayerScreen(
         retryingPlayback = retryAttemptForStart > 0
         errorMessage = null
         preparedServiceReference = null
+        audioTracks = emptyList()
+        audioPickerVisible = false
+        if (retryAttemptForStart == 0) manualAudioChoice = null
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+            .setPreferredAudioLanguage(audioPreferences.preferredLanguage.value.languageTag)
+            .build()
         player.stop()
         player.clearMediaItems()
 
@@ -343,6 +399,7 @@ internal fun LiveTvPlayerScreen(
         channelOverviewPinned,
         showEpg,
         showExitConfirmation,
+        audioPickerVisible,
         currentIndex,
         selectedEpgProgramStartUtcMillis,
     ) {
@@ -351,6 +408,11 @@ internal fun LiveTvPlayerScreen(
             showExitConfirmation -> runCatching { exitConfirmFocusRequester.requestFocus() }
             showEpg && selectedEpgProgramStartUtcMillis == null -> runCatching { epgBackFocusRequester.requestFocus() }
             showEpg -> Unit
+            audioPickerVisible -> runCatching { firstAudioFocusRequester.requestFocus() }
+            channelOverviewPinned && restoreAudioButtonFocus -> {
+                runCatching { audioButtonFocusRequester.requestFocus() }
+                restoreAudioButtonFocus = false
+            }
             channelOverviewPinned -> runCatching { overlayFocusRequester.requestFocus() }
             else -> runCatching { rootFocusRequester.requestFocus() }
         }
@@ -363,7 +425,7 @@ internal fun LiveTvPlayerScreen(
             .focusRequester(rootFocusRequester)
             .focusable()
             .onPreviewKeyEvent { keyEvent ->
-                if (showEpg || showExitConfirmation) return@onPreviewKeyEvent false
+                if (showEpg || showExitConfirmation || audioPickerVisible) return@onPreviewKeyEvent false
                 val nativeEvent = keyEvent.nativeKeyEvent
                 val isConfirmKey = nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
                     nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
@@ -543,6 +605,12 @@ internal fun LiveTvPlayerScreen(
                         TouchButton(onClick = ::openEpg, modifier = Modifier.focusRequester(epgButtonFocusRequester)) {
                             Text("EPG")
                         }
+                        TouchButton(
+                            onClick = { audioPickerVisible = true },
+                            modifier = Modifier.focusRequester(audioButtonFocusRequester),
+                        ) {
+                            Text("Tonspur")
+                        }
                         TouchButton(onClick = ::requestExit) { Text("TV verlassen") }
                         currentChannel?.let {
                             Text(
@@ -603,6 +671,86 @@ internal fun LiveTvPlayerScreen(
                     programListState = epgProgramListState,
                     modifier = Modifier.weight(1f),
                 )
+            }
+        }
+
+        if (audioPickerVisible && !showEpg && !showExitConfirmation) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.78f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(560.dp)
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.28f),
+                            RoundedCornerShape(20.dp),
+                        )
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Tonspur auswählen", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        "Verfügbare Tonspuren des aktuellen Senders",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    val firstSupportedIndex = audioTracks.indexOfFirst { it.supported }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (audioTracks.isEmpty()) {
+                            Text("Der Stream liefert noch keine Audioinformationen.")
+                        }
+                        audioTracks.forEachIndexed { index, track ->
+                            TouchButton(
+                                onClick = {
+                                    manualAudioChoice = track
+                                    applyAudioTrack(track)
+                                    closeAudioPicker()
+                                },
+                                enabled = track.supported,
+                                modifier = if (index == firstSupportedIndex) {
+                                    Modifier.focusRequester(firstAudioFocusRequester)
+                                } else Modifier,
+                            ) {
+                                Text(
+                                    (if (track.selected) "✓  " else "") +
+                                        LiveTvAudioSelection.displayLabel(track, index + 1) +
+                                        (if (!track.supported) " (nicht unterstützt)" else ""),
+                                )
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TouchButton(
+                            onClick = {
+                                manualAudioChoice = null
+                                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                                    .build()
+                                val automatic = LiveTvAudioSelection.chooseAutomatic(
+                                    audioTracks,
+                                    audioPreferences.preferredLanguage.value,
+                                    audioPreferences.avoidSpecialTracks.value,
+                                )
+                                if (automatic != null) applyAudioTrack(automatic)
+                                closeAudioPicker()
+                            },
+                            modifier = if (firstSupportedIndex < 0) {
+                                Modifier.focusRequester(firstAudioFocusRequester)
+                            } else Modifier,
+                        ) { Text("Voreinstellung") }
+                        TouchButton(onClick = ::closeAudioPicker) { Text("Zurück") }
+                    }
+                }
             }
         }
 

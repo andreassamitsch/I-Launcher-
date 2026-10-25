@@ -56,6 +56,8 @@ import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.BuildConfig
+import com.andreassamitsch.ilauncher.data.livetv.LiveTvAudioLanguage
+import com.andreassamitsch.ilauncher.data.livetv.LiveTvAudioPreferences
 import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.data.update.InstallResult
 import com.andreassamitsch.ilauncher.data.update.UpdateManager
@@ -734,6 +736,10 @@ private fun SettingsLiveTvPane(
     onOpenLiveTv: () -> Unit,
     focusRestoreGeneration: Int,
 ) {
+    val context = LocalContext.current
+    val audioPreferences = remember(context) { LiveTvAudioPreferences(context) }
+    val preferredAudioLanguage by audioPreferences.preferredLanguage.collectAsState()
+    val avoidSpecialTracks by audioPreferences.avoidSpecialTracks.collectAsState()
     val restoreRequester = remember { FocusRequester() }
     LaunchedEffect(focusRestoreGeneration) {
         if (focusRestoreGeneration <= 0) return@LaunchedEffect
@@ -752,8 +758,25 @@ private fun SettingsLiveTvPane(
             onClick = onOpenLiveTv,
             modifier = Modifier.focusRequester(restoreRequester),
         )
+        SettingsSectionHeader("Wiedergabe · Ton")
+        SettingsActionRow(
+            title = "Bevorzugte Tonspur",
+            subtitle = "Automatische Auswahl anhand der Sprache; im Player jederzeit manuell änderbar.",
+            value = preferredAudioLanguage.displayName,
+            actionLabel = "Ändern",
+            onClick = {
+                val values = LiveTvAudioLanguage.entries
+                audioPreferences.setPreferredLanguage(values[(preferredAudioLanguage.ordinal + 1) % values.size])
+            },
+        )
+        SettingsToggleRow(
+            title = "Sondertonspuren vermeiden",
+            subtitle = "Bevorzugt normalen TV-Ton statt Hörfilm, Audiodeskription oder Kommentar, sofern er verfügbar ist.",
+            checked = avoidSpecialTracks,
+            onClick = { audioPreferences.setAvoidSpecialTracks(!avoidSpecialTracks) },
+        )
         SettingsNotice(
-            text = "Live TV bleibt direkt über OpenWebif angebunden. Die bestehende Live-TV-Seite enthält Verbindung, Senderliste und EPG-Konfiguration.",
+            text = "Im laufenden TV: OK öffnet die Senderübersicht, dort Tonspur wählen. Die Auswahl gilt für den laufenden Sender; die Spracheinstellung gilt generell.",
         )
     }
 }
