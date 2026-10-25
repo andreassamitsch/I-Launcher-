@@ -1,0 +1,9 @@
+{
+  "versionCode": 26000553,
+  "versionName": "0.1.0-dev.553",
+  "apkUrl": "https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/downloads/I-Launcher-debug.apk",
+  "sha256": "0c0efa651f9079a7b2610dadb9c89e47bbdd25391d945f53361ff1724b1de04f",
+  "updateCompatible": true,
+  "tmdbConfigured": true,
+  "sourceSha": "ce02a10ebc770fe1f40d49bab664f6c64f154282"
+}
