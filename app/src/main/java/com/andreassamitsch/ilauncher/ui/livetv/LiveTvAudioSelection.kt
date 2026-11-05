@@ -74,7 +74,7 @@ internal object LiveTvAudioSelection {
         tracks: List<LiveTvAudioTrack>,
         preferredLanguage: LiveTvAudioLanguage,
         avoidSpecialTracks: Boolean,
-        audioQuality: LiveTvAudioQuality = LiveTvAudioQuality.BestAvailable,
+        audioQuality: LiveTvAudioQuality = LiveTvAudioQuality.SenderDefault,
         preferSurround: Boolean = true,
     ): LiveTvAudioTrack? {
         if (preferredLanguage == LiveTvAudioLanguage.Automatic && !avoidSpecialTracks &&
