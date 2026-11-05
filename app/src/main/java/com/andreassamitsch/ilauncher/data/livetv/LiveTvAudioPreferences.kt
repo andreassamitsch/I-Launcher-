@@ -16,6 +16,16 @@ enum class LiveTvAudioLanguage(val displayName: String, val languageTag: String?
     }
 }
 
+enum class LiveTvAudioQuality(val displayName: String) {
+    BestAvailable("Beste verfügbare"),
+    SenderDefault("Senderstandard");
+
+    companion object {
+        fun fromStored(value: String?): LiveTvAudioQuality =
+            entries.firstOrNull { it.name == value } ?: BestAvailable
+    }
+}
+
 /** Global playback defaults. Per-stream manual track changes are deliberately not persisted. */
 class LiveTvAudioPreferences(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences(
@@ -33,6 +43,16 @@ class LiveTvAudioPreferences(context: Context) {
     )
     val avoidSpecialTracks: StateFlow<Boolean> = _avoidSpecialTracks.asStateFlow()
 
+    private val _audioQuality = MutableStateFlow(
+        LiveTvAudioQuality.fromStored(preferences.getString("audio_quality", null)),
+    )
+    val audioQuality: StateFlow<LiveTvAudioQuality> = _audioQuality.asStateFlow()
+
+    private val _preferSurround = MutableStateFlow(
+        preferences.getBoolean("prefer_surround", true),
+    )
+    val preferSurround: StateFlow<Boolean> = _preferSurround.asStateFlow()
+
     fun setPreferredLanguage(value: LiveTvAudioLanguage) {
         preferences.edit().putString("preferred_language", value.name).apply()
         _preferredLanguage.value = value
@@ -41,5 +61,15 @@ class LiveTvAudioPreferences(context: Context) {
     fun setAvoidSpecialTracks(value: Boolean) {
         preferences.edit().putBoolean("avoid_special_tracks", value).apply()
         _avoidSpecialTracks.value = value
+    }
+
+    fun setAudioQuality(value: LiveTvAudioQuality) {
+        preferences.edit().putString("audio_quality", value.name).apply()
+        _audioQuality.value = value
+    }
+
+    fun setPreferSurround(value: Boolean) {
+        preferences.edit().putBoolean("prefer_surround", value).apply()
+        _preferSurround.value = value
     }
 }

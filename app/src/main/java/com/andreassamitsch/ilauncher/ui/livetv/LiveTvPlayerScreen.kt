@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyRow
@@ -158,6 +159,7 @@ internal fun LiveTvPlayerScreen(
     var loading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var overlayVisible by remember { mutableStateOf(true) }
+    var clockNowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     var channelOverviewPinned by remember { mutableStateOf(false) }
     var audioPickerVisible by remember { mutableStateOf(false) }
     var restoreAudioButtonFocus by remember { mutableStateOf(false) }
@@ -248,18 +250,18 @@ internal fun LiveTvPlayerScreen(
         epgState.guide(selectedEpgServiceReference).firstOrNull { it.startUtcMillis == start }
     }
     val currentProgram = currentChannel?.let { channel ->
-        val now = System.currentTimeMillis()
         epgState.guide(channel.serviceReference)
-            .firstOrNull { now >= it.startUtcMillis && now < it.endUtcMillis }
+            .firstOrNull { clockNowMillis >= it.startUtcMillis && clockNowMillis < it.endUtcMillis }
             ?: channel.now
     }
 
     val infoChannel = channels.firstOrNull { it.serviceReference == infoFocusedServiceReference } ?: currentChannel
     val infoProgram = infoChannel?.let { channel ->
-        val now = System.currentTimeMillis()
         epgState.guide(channel.serviceReference)
-            .firstOrNull { now >= it.startUtcMillis && now < it.endUtcMillis }
-            ?: channel.now?.takeIf { now >= it.startUtcMillis && now < it.endUtcMillis }
+            .firstOrNull { clockNowMillis >= it.startUtcMillis && clockNowMillis < it.endUtcMillis }
+            ?: channel.now?.takeIf {
+                clockNowMillis >= it.startUtcMillis && clockNowMillis < it.endUtcMillis
+            }
     }
 
     LaunchedEffect(showProgramInfo, infoChannel?.serviceReference, infoProgram?.startUtcMillis) {
@@ -539,6 +541,8 @@ internal fun LiveTvPlayerScreen(
                         available,
                         audioPreferences.preferredLanguage.value,
                         audioPreferences.avoidSpecialTracks.value,
+                        audioPreferences.audioQuality.value,
+                        audioPreferences.preferSurround.value,
                     )
                 if (target != null && !target.selected) applyAudioTrack(target)
             }
@@ -725,6 +729,16 @@ internal fun LiveTvPlayerScreen(
         if (channels.isNotEmpty()) zapListState.animateScrollToItem((currentIndex - 2).coerceAtLeast(0))
     }
 
+    // Only update wall-clock presentation while user-facing programme information is visible.
+    // Playback and channel selection remain independent of this clock ticker.
+    LaunchedEffect(overlayVisible, showProgramInfo, showEpg) {
+        if ((!overlayVisible && !showProgramInfo) || showEpg) return@LaunchedEffect
+        while (true) {
+            clockNowMillis = System.currentTimeMillis()
+            delay(15_000L)
+        }
+    }
+
     LaunchedEffect(
         overlayVisible,
         channelOverviewPinned,
@@ -890,6 +904,7 @@ internal fun LiveTvPlayerScreen(
                 LiveTvProgramHero(
                     channel = channel,
                     program = infoProgram,
+                    nowUtcMillis = clockNowMillis,
                     onClose = {
                         showProgramInfo = false
                         openChannelOverview()
@@ -929,9 +944,39 @@ internal fun LiveTvPlayerScreen(
                             modifier = Modifier.size(width = 92.dp, height = 50.dp),
                         )
                     }
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("${currentIndex + 1} · ${channel.name}", style = MaterialTheme.typography.titleLarge)
-                        channel.now?.let { Text(it.title, style = MaterialTheme.typography.titleMedium) }
+                    Column(
+                        modifier = Modifier.widthIn(min = 520.dp, max = 670.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "${currentIndex + 1} · ${channel.name}",
+                                style = MaterialTheme.typography.titleLarge,
+                            )
+                            Text(
+                                formatLiveTvStartTime(clockNowMillis),
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        val programme = currentProgram ?: channel.now
+                        programme?.let {
+                            Text(it.title, style = MaterialTheme.typography.titleMedium)
+                            LiveTvTimelinePolicy.snapshot(it, clockNowMillis)?.let { timeline ->
+                                Text(
+                                    "${formatLiveTvStartTime(it.startUtcMillis)}–" +
+                                        "${formatLiveTvStartTime(it.endUtcMillis)} · ${timeline.timeLabel}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (timeline.endingSoon) MaterialTheme.colorScheme.error
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                LiveTvTimelineBar(timeline.progress, Modifier.padding(top = 2.dp, bottom = 3.dp))
+                            }
+                        }
                         channel.next?.let {
                             Text(
                                 "${formatLiveTvStartTime(it.startUtcMillis)} · ${it.title}",
@@ -1047,6 +1092,7 @@ internal fun LiveTvPlayerScreen(
                                 channel = channel,
                                 channelNumber = index + 1,
                                 selected = index == currentIndex,
+                                nowUtcMillis = clockNowMillis,
                                 onClick = { selectChannel(index) },
                                 modifier = (if (index == currentIndex) {
                                     Modifier.focusRequester(overlayFocusRequester)
@@ -1235,6 +1281,8 @@ internal fun LiveTvPlayerScreen(
                                     audioTracks,
                                     audioPreferences.preferredLanguage.value,
                                     audioPreferences.avoidSpecialTracks.value,
+                                    audioPreferences.audioQuality.value,
+                                    audioPreferences.preferSurround.value,
                                 )
                                 if (automatic != null) applyAudioTrack(automatic)
                                 closeAudioPicker()
@@ -1359,6 +1407,7 @@ private fun CompactLiveTvCard(
     channel: LiveTvChannel,
     channelNumber: Int,
     selected: Boolean,
+    nowUtcMillis: Long,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1425,6 +1474,16 @@ private fun CompactLiveTvCard(
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                LiveTvTimelinePolicy.snapshot(channel.now, nowUtcMillis)?.let { timeline ->
+                    LiveTvTimelineBar(timeline.progress, Modifier.padding(top = 4.dp))
+                    Text(
+                        timeline.timeLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        color = if (timeline.endingSoon) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

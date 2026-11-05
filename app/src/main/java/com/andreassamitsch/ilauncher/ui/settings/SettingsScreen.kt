@@ -57,6 +57,7 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.BuildConfig
 import com.andreassamitsch.ilauncher.data.livetv.LiveTvAudioLanguage
+import com.andreassamitsch.ilauncher.data.livetv.LiveTvAudioQuality
 import com.andreassamitsch.ilauncher.data.livetv.LiveTvAudioPreferences
 import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.data.update.InstallResult
@@ -740,6 +741,8 @@ private fun SettingsLiveTvPane(
     val audioPreferences = remember(context) { LiveTvAudioPreferences(context) }
     val preferredAudioLanguage by audioPreferences.preferredLanguage.collectAsState()
     val avoidSpecialTracks by audioPreferences.avoidSpecialTracks.collectAsState()
+    val audioQuality by audioPreferences.audioQuality.collectAsState()
+    val preferSurround by audioPreferences.preferSurround.collectAsState()
     val restoreRequester = remember { FocusRequester() }
     LaunchedEffect(focusRestoreGeneration) {
         if (focusRestoreGeneration <= 0) return@LaunchedEffect
@@ -769,6 +772,22 @@ private fun SettingsLiveTvPane(
                 audioPreferences.setPreferredLanguage(values[(preferredAudioLanguage.ordinal + 1) % values.size])
             },
         )
+        SettingsActionRow(
+            title = "Audioqualität",
+            subtitle = "Beste verfügbare: bevorzugt hochwertige unterstützte Tonformate vor der Sender-Standardspur.",
+            value = audioQuality.displayName,
+            actionLabel = "Ändern",
+            onClick = {
+                val values = LiveTvAudioQuality.entries
+                audioPreferences.setAudioQuality(values[(audioQuality.ordinal + 1) % values.size])
+            },
+        )
+        SettingsToggleRow(
+            title = "Surround-Sound bevorzugen",
+            subtitle = "Bevorzugt Dolby Atmos / 5.1 / 7.1 vor Stereo, sofern die Tonspur unterstützt wird.",
+            checked = preferSurround,
+            onClick = { audioPreferences.setPreferSurround(!preferSurround) },
+        )
         SettingsToggleRow(
             title = "Sondertonspuren vermeiden",
             subtitle = "Bevorzugt normalen TV-Ton statt Hörfilm, Audiodeskription oder Kommentar, sofern er verfügbar ist.",
@@ -776,7 +795,9 @@ private fun SettingsLiveTvPane(
             onClick = { audioPreferences.setAvoidSpecialTracks(!avoidSpecialTracks) },
         )
         SettingsNotice(
-            text = "Im laufenden TV: OK öffnet die Senderübersicht, dort Tonspur wählen. Die Auswahl gilt für den laufenden Sender; die Spracheinstellung gilt generell.",
+            text = "Bei gleicher Sprache wird normaler Ton vor Audiodeskription gewählt. " +
+                "Die tatsächliche Surround-/Atmos-Ausgabe hängt von Fernseher, Audioanlage und Stream ab. " +
+                "Im Player: OK → Tonspur für eine temporäre manuelle Auswahl.",
         )
     }
 }

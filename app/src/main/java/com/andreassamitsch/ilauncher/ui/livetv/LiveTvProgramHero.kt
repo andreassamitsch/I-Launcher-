@@ -46,6 +46,7 @@ private val LIVE_INFO_CLOCK = DateTimeFormatter.ofPattern("HH:mm")
 internal fun LiveTvProgramHero(
     channel: LiveTvChannel,
     program: LiveTvProgram?,
+    nowUtcMillis: Long,
     onClose: () -> Unit,
     onDetails: () -> Unit,
     closeFocusRequester: FocusRequester,
@@ -105,6 +106,17 @@ internal fun LiveTvProgramHero(
                 ),
         )
 
+        Text(
+            text = instantTime(nowUtcMillis),
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 28.dp, end = 42.dp)
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f), RoundedCornerShape(14.dp))
+                .padding(horizontal = 18.dp, vertical = 10.dp),
+        )
+
         Column(
             modifier = Modifier
                 .align(Alignment.CenterStart)
@@ -149,6 +161,15 @@ internal fun LiveTvProgramHero(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                 )
+            }
+            LiveTvTimelinePolicy.snapshot(program, nowUtcMillis)?.let { timeline ->
+                Text(
+                    timeline.timeLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (timeline.endingSoon) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                LiveTvTimelineBar(timeline.progress, Modifier.fillMaxWidth(0.84f))
             }
             program?.subtitle?.takeIf(String::isNotBlank)?.let {
                 Text(
