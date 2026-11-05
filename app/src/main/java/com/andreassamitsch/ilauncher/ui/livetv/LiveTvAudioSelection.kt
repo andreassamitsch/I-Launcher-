@@ -22,7 +22,7 @@ internal data class LiveTvAudioTrack(
     val selected: Boolean,
     val sampleMimeType: String? = null,
     val codecs: String? = null,
-    val bitrate: Int = C.NO_VALUE,
+    val bitrate: Int = -1,
 )
 
 internal object LiveTvAudioSelection {
