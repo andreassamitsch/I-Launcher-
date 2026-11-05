@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -945,7 +946,12 @@ internal fun LiveTvPlayerScreen(
                         )
                     }
                     Column(
-                        modifier = Modifier.widthIn(min = 520.dp, max = 670.dp),
+                        // Measure against the longest text line instead of letting the
+                        // progress bar force a screen-wide information panel.
+                        // Long SAT/OSCam diagnostics wrap at this compact upper bound.
+                        modifier = Modifier
+                            .widthIn(max = 520.dp)
+                            .width(IntrinsicSize.Max),
                         verticalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
                         Row(
@@ -1413,6 +1419,7 @@ private fun CompactLiveTvCard(
 ) {
     val shape = RoundedCornerShape(12.dp)
     val artwork = channel.now?.preferredArtworkUri
+    val timeline = LiveTvTimelinePolicy.snapshot(channel.now, nowUtcMillis)
     TouchCard(
         onClick = onClick,
         modifier = modifier
@@ -1456,10 +1463,19 @@ private fun CompactLiveTvCard(
                             .size(width = 52.dp, height = 26.dp),
                     )
                 }
+                // The thin progress indicator sits on the artwork edge instead of
+                // adding a third row and extra height to every channel card.
+                timeline?.let {
+                    LiveTvTimelineBar(
+                        progress = it.progress,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                        thickness = 2.dp,
+                    )
+                }
             }
             Column(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalArrangement = Arrangement.spacedBy(1.dp),
             ) {
                 Text(
                     "$channelNumber · ${channel.name}",
@@ -1467,22 +1483,27 @@ private fun CompactLiveTvCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    channel.now?.title ?: "Keine EPG-Daten",
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                LiveTvTimelinePolicy.snapshot(channel.now, nowUtcMillis)?.let { timeline ->
-                    LiveTvTimelineBar(timeline.progress, Modifier.padding(top = 4.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
-                        timeline.timeLabel,
+                        channel.now?.title ?: "Keine EPG-Daten",
+                        modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
-                        color = if (timeline.endingSoon) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    timeline?.let {
+                        Text(
+                            it.compactLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            color = if (it.endingSoon) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
