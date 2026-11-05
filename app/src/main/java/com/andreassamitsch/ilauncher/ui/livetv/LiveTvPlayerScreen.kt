@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,6 +20,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -50,6 +54,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -75,6 +81,7 @@ import com.andreassamitsch.ilauncher.data.epg.EpgState
 import com.andreassamitsch.ilauncher.data.joyn.JoynBridgeChannel
 import com.andreassamitsch.ilauncher.data.joyn.JoynFallbackPlayback
 import com.andreassamitsch.ilauncher.data.joyn.JoynLiveTvFallbackRepository
+import com.andreassamitsch.ilauncher.data.livetv.LiveTvAudioPreferences
 import com.andreassamitsch.ilauncher.data.livetv.LiveTvJoynFallbackStore
 import com.andreassamitsch.ilauncher.data.livetv.LiveTvReceptionMonitor
 import com.andreassamitsch.ilauncher.data.livetv.LiveTvReceptionSnapshot
@@ -153,7 +160,12 @@ internal fun LiveTvPlayerScreen(
     var loading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var overlayVisible by remember { mutableStateOf(true) }
+    var clockNowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     var channelOverviewPinned by remember { mutableStateOf(false) }
+    var audioPickerVisible by remember { mutableStateOf(false) }
+    var restoreAudioButtonFocus by remember { mutableStateOf(false) }
+    var audioTracks by remember { mutableStateOf<List<LiveTvAudioTrack>>(emptyList()) }
+    var manualAudioChoice by remember { mutableStateOf<LiveTvAudioTrack?>(null) }
     var confirmOpenedOverview by remember { mutableStateOf(false) }
     var longOkHandled by remember { mutableStateOf(false) }
     var showExitConfirmation by remember { mutableStateOf(false) }
@@ -223,9 +235,12 @@ internal fun LiveTvPlayerScreen(
     val rootFocusRequester = remember { FocusRequester() }
     val overlayFocusRequester = remember { FocusRequester() }
     val infoButtonFocusRequester = remember { FocusRequester() }
+    val audioButtonFocusRequester = remember { FocusRequester() }
+    val firstAudioFocusRequester = remember { FocusRequester() }
     val epgBackFocusRequester = remember { FocusRequester() }
     val programInfoFocusRequester = remember { FocusRequester() }
     val exitConfirmFocusRequester = remember { FocusRequester() }
+    val audioPreferences = remember(context) { LiveTvAudioPreferences(context) }
     val player = remember { ExoPlayer.Builder(context).build().apply { playWhenReady = true } }
     val currentIndex = LiveTvZapping.indexForServiceReference(
         serviceReferences = channels.map(LiveTvChannel::serviceReference),
@@ -236,18 +251,18 @@ internal fun LiveTvPlayerScreen(
         epgState.guide(selectedEpgServiceReference).firstOrNull { it.startUtcMillis == start }
     }
     val currentProgram = currentChannel?.let { channel ->
-        val now = System.currentTimeMillis()
         epgState.guide(channel.serviceReference)
-            .firstOrNull { now >= it.startUtcMillis && now < it.endUtcMillis }
+            .firstOrNull { clockNowMillis >= it.startUtcMillis && clockNowMillis < it.endUtcMillis }
             ?: channel.now
     }
 
     val infoChannel = channels.firstOrNull { it.serviceReference == infoFocusedServiceReference } ?: currentChannel
     val infoProgram = infoChannel?.let { channel ->
-        val now = System.currentTimeMillis()
         epgState.guide(channel.serviceReference)
-            .firstOrNull { now >= it.startUtcMillis && now < it.endUtcMillis }
-            ?: channel.now?.takeIf { now >= it.startUtcMillis && now < it.endUtcMillis }
+            .firstOrNull { clockNowMillis >= it.startUtcMillis && clockNowMillis < it.endUtcMillis }
+            ?: channel.now?.takeIf {
+                clockNowMillis >= it.startUtcMillis && clockNowMillis < it.endUtcMillis
+            }
     }
 
     LaunchedEffect(showProgramInfo, infoChannel?.serviceReference, infoProgram?.startUtcMillis) {
@@ -258,8 +273,27 @@ internal fun LiveTvPlayerScreen(
         }
     }
 
+    fun applyAudioTrack(track: LiveTvAudioTrack) {
+        val group = player.currentTracks.groups.getOrNull(track.groupIndex) ?: return
+        if (group.type != C.TRACK_TYPE_AUDIO || track.trackIndex !in 0 until group.length ||
+            !group.isTrackSupported(track.trackIndex)
+        ) return
+        val existing = player.trackSelectionParameters.overrides[group.mediaTrackGroup]
+        if (existing?.trackIndices?.singleOrNull() == track.trackIndex) return
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, track.trackIndex))
+            .build()
+    }
+
+    fun closeAudioPicker() {
+        audioPickerVisible = false
+        restoreAudioButtonFocus = channelOverviewPinned
+    }
+
     fun resetForChannelChange() {
         joynFallbackRepository.releasePlayback()
+        audioPickerVisible = false
+        manualAudioChoice = null
         channelOverviewPinned = false
         overlayVisible = true
         showExitConfirmation = false
@@ -363,6 +397,7 @@ internal fun LiveTvPlayerScreen(
 
     fun openProgramInfo() {
         val channel = currentChannel ?: return
+        audioPickerVisible = false
         infoFocusedServiceReference = channel.serviceReference
         showExitConfirmation = false
         channelOverviewPinned = true
@@ -372,6 +407,7 @@ internal fun LiveTvPlayerScreen(
 
     fun openEpg() {
         val channel = currentChannel ?: return
+        audioPickerVisible = false
         val now = System.currentTimeMillis()
         selectedEpgServiceReference = channel.serviceReference
         selectedEpgProgramStartUtcMillis = epgState.guide(channel.serviceReference)
@@ -383,6 +419,7 @@ internal fun LiveTvPlayerScreen(
     }
 
     fun requestExit() {
+        audioPickerVisible = false
         showEpg = false
         showProgramInfo = false
         channelOverviewPinned = false
@@ -392,6 +429,7 @@ internal fun LiveTvPlayerScreen(
 
     BackHandler {
         when {
+            audioPickerVisible -> closeAudioPicker()
             showExitConfirmation -> showExitConfirmation = false
             showProgramInfo -> {
                 showProgramInfo = false
@@ -492,6 +530,24 @@ internal fun LiveTvPlayerScreen(
 
     DisposableEffect(player, playbackSource, currentServiceReference, autoFallbackEnabled, manualSourceOverride) {
         val listener = object : Player.Listener {
+            override fun onTracksChanged(tracks: Tracks) {
+                if (preparedServiceReference != currentServiceReference) {
+                    audioTracks = emptyList()
+                    return
+                }
+                val available = LiveTvAudioSelection.fromMedia3(tracks)
+                audioTracks = available
+                val target = manualAudioChoice?.let { LiveTvAudioSelection.findManual(available, it) }
+                    ?: LiveTvAudioSelection.chooseAutomatic(
+                        available,
+                        audioPreferences.preferredLanguage.value,
+                        audioPreferences.avoidSpecialTracks.value,
+                        audioPreferences.audioQuality.value,
+                        audioPreferences.preferSurround.value,
+                    )
+                if (target != null && !target.selected) applyAudioTrack(target)
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
                 isBuffering = playbackState == Player.STATE_BUFFERING
                 loading = playbackState == Player.STATE_BUFFERING ||
@@ -593,6 +649,15 @@ internal fun LiveTvPlayerScreen(
         errorMessage = null
         preparedServiceReference = null
         isBuffering = false
+        audioTracks = emptyList()
+        audioPickerVisible = false
+        if (retryAttemptForStart == 0 || sourceForStart != LiveTvPlaybackSource.SATELLITE) {
+            manualAudioChoice = null
+        }
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+            .setPreferredAudioLanguage(audioPreferences.preferredLanguage.value.languageTag)
+            .build()
         player.stop()
         player.clearMediaItems()
 
@@ -665,6 +730,16 @@ internal fun LiveTvPlayerScreen(
         if (channels.isNotEmpty()) zapListState.animateScrollToItem((currentIndex - 2).coerceAtLeast(0))
     }
 
+    // Only update wall-clock presentation while user-facing programme information is visible.
+    // Playback and channel selection remain independent of this clock ticker.
+    LaunchedEffect(overlayVisible, showProgramInfo, showEpg) {
+        if ((!overlayVisible && !showProgramInfo) || showEpg) return@LaunchedEffect
+        while (true) {
+            clockNowMillis = System.currentTimeMillis()
+            delay(15_000L)
+        }
+    }
+
     LaunchedEffect(
         overlayVisible,
         channelOverviewPinned,
@@ -690,15 +765,21 @@ internal fun LiveTvPlayerScreen(
         showEpg,
         showProgramInfo,
         showExitConfirmation,
+        audioPickerVisible,
         currentIndex,
         selectedEpgProgramStartUtcMillis,
     ) {
         withFrameNanos { }
         when {
             showExitConfirmation -> runCatching { exitConfirmFocusRequester.requestFocus() }
+            audioPickerVisible -> runCatching { firstAudioFocusRequester.requestFocus() }
             showProgramInfo -> runCatching { overlayFocusRequester.requestFocus() }
             showEpg && selectedEpgProgramStartUtcMillis == null -> runCatching { epgBackFocusRequester.requestFocus() }
             showEpg -> Unit
+            channelOverviewPinned && restoreAudioButtonFocus -> {
+                runCatching { audioButtonFocusRequester.requestFocus() }
+                restoreAudioButtonFocus = false
+            }
             channelOverviewPinned -> runCatching { overlayFocusRequester.requestFocus() }
             else -> runCatching { rootFocusRequester.requestFocus() }
         }
@@ -728,7 +809,7 @@ internal fun LiveTvPlayerScreen(
                         }
                     }
                 }
-                if (showEpg || showProgramInfo || showExitConfirmation) return@onPreviewKeyEvent false
+                if (showEpg || showProgramInfo || showExitConfirmation || audioPickerVisible) return@onPreviewKeyEvent false
                 val nativeEvent = keyEvent.nativeKeyEvent
                 val isConfirmKey = nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
                     nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
@@ -824,6 +905,7 @@ internal fun LiveTvPlayerScreen(
                 LiveTvProgramHero(
                     channel = channel,
                     program = infoProgram,
+                    nowUtcMillis = clockNowMillis,
                     onClose = {
                         showProgramInfo = false
                         openChannelOverview()
@@ -863,9 +945,44 @@ internal fun LiveTvPlayerScreen(
                             modifier = Modifier.size(width = 92.dp, height = 50.dp),
                         )
                     }
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("${currentIndex + 1} · ${channel.name}", style = MaterialTheme.typography.titleLarge)
-                        channel.now?.let { Text(it.title, style = MaterialTheme.typography.titleMedium) }
+                    Column(
+                        // Measure against the longest text line instead of letting the
+                        // progress bar force a screen-wide information panel.
+                        // Long SAT/OSCam diagnostics wrap at this compact upper bound.
+                        modifier = Modifier
+                            .widthIn(max = 520.dp)
+                            .width(IntrinsicSize.Max),
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "${currentIndex + 1} · ${channel.name}",
+                                style = MaterialTheme.typography.titleLarge,
+                            )
+                            Text(
+                                formatLiveTvStartTime(clockNowMillis),
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        val programme = currentProgram ?: channel.now
+                        programme?.let {
+                            Text(it.title, style = MaterialTheme.typography.titleMedium)
+                            LiveTvTimelinePolicy.snapshot(it, clockNowMillis)?.let { timeline ->
+                                Text(
+                                    "${formatLiveTvStartTime(it.startUtcMillis)}–" +
+                                        "${formatLiveTvStartTime(it.endUtcMillis)} · ${timeline.timeLabel}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (timeline.endingSoon) MaterialTheme.colorScheme.error
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                LiveTvTimelineBar(timeline.progress, Modifier.padding(top = 2.dp, bottom = 3.dp))
+                            }
+                        }
                         channel.next?.let {
                             Text(
                                 "${formatLiveTvStartTime(it.startUtcMillis)} · ${it.title}",
@@ -981,6 +1098,7 @@ internal fun LiveTvPlayerScreen(
                                 channel = channel,
                                 channelNumber = index + 1,
                                 selected = index == currentIndex,
+                                nowUtcMillis = clockNowMillis,
                                 onClick = { selectChannel(index) },
                                 modifier = (if (index == currentIndex) {
                                     Modifier.focusRequester(overlayFocusRequester)
@@ -1008,6 +1126,12 @@ internal fun LiveTvPlayerScreen(
                         }
                         TouchButton(onClick = ::openEpg) {
                             Text("EPG")
+                        }
+                        TouchButton(
+                            onClick = { audioPickerVisible = true },
+                            modifier = Modifier.focusRequester(audioButtonFocusRequester),
+                        ) {
+                            Text("Tonspur")
                         }
                         TouchButton(onClick = ::toggleAutoFallback) {
                             Text(if (autoFallbackEnabled) "Auto-Fallback: EIN" else "Auto-Fallback: AUS")
@@ -1094,6 +1218,88 @@ internal fun LiveTvPlayerScreen(
                     programListState = epgProgramListState,
                     modifier = Modifier.weight(1f),
                 )
+            }
+        }
+
+        if (audioPickerVisible && !showEpg && !showExitConfirmation) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.78f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(560.dp)
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.28f),
+                            RoundedCornerShape(20.dp),
+                        )
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Tonspur auswählen", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        "Verfügbare Tonspuren des aktuellen Senders",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    val firstSupportedIndex = audioTracks.indexOfFirst { it.supported }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (audioTracks.isEmpty()) {
+                            Text("Der Stream liefert noch keine Audioinformationen.")
+                        }
+                        audioTracks.forEachIndexed { index, track ->
+                            TouchButton(
+                                onClick = {
+                                    manualAudioChoice = track
+                                    applyAudioTrack(track)
+                                    closeAudioPicker()
+                                },
+                                enabled = track.supported,
+                                modifier = if (index == firstSupportedIndex) {
+                                    Modifier.focusRequester(firstAudioFocusRequester)
+                                } else Modifier,
+                            ) {
+                                Text(
+                                    (if (track.selected) "✓  " else "") +
+                                        LiveTvAudioSelection.displayLabel(track, index + 1) +
+                                        (if (!track.supported) " (nicht unterstützt)" else ""),
+                                )
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TouchButton(
+                            onClick = {
+                                manualAudioChoice = null
+                                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                                    .build()
+                                val automatic = LiveTvAudioSelection.chooseAutomatic(
+                                    audioTracks,
+                                    audioPreferences.preferredLanguage.value,
+                                    audioPreferences.avoidSpecialTracks.value,
+                                    audioPreferences.audioQuality.value,
+                                    audioPreferences.preferSurround.value,
+                                )
+                                if (automatic != null) applyAudioTrack(automatic)
+                                closeAudioPicker()
+                            },
+                            modifier = if (firstSupportedIndex < 0) {
+                                Modifier.focusRequester(firstAudioFocusRequester)
+                            } else Modifier,
+                        ) { Text("Voreinstellung") }
+                        TouchButton(onClick = ::closeAudioPicker) { Text("Zurück") }
+                    }
+                }
             }
         }
 
@@ -1207,11 +1413,13 @@ private fun CompactLiveTvCard(
     channel: LiveTvChannel,
     channelNumber: Int,
     selected: Boolean,
+    nowUtcMillis: Long,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(12.dp)
     val artwork = channel.now?.preferredArtworkUri
+    val timeline = LiveTvTimelinePolicy.snapshot(channel.now, nowUtcMillis)
     TouchCard(
         onClick = onClick,
         modifier = modifier
@@ -1255,10 +1463,19 @@ private fun CompactLiveTvCard(
                             .size(width = 52.dp, height = 26.dp),
                     )
                 }
+                // The thin progress indicator sits on the artwork edge instead of
+                // adding a third row and extra height to every channel card.
+                timeline?.let {
+                    LiveTvTimelineBar(
+                        progress = it.progress,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                        thickness = 2.dp,
+                    )
+                }
             }
             Column(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalArrangement = Arrangement.spacedBy(1.dp),
             ) {
                 Text(
                     "$channelNumber · ${channel.name}",
@@ -1266,13 +1483,28 @@ private fun CompactLiveTvCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    channel.now?.title ?: "Keine EPG-Daten",
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        channel.now?.title ?: "Keine EPG-Daten",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    timeline?.let {
+                        Text(
+                            it.compactLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            color = if (it.endingSoon) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
     }
