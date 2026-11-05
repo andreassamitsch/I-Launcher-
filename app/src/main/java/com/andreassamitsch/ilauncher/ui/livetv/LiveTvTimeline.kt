@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
@@ -16,6 +17,7 @@ internal data class LiveTvTimeline(
     val progress: Float,
     val timeLabel: String,
     val endingSoon: Boolean,
+    val compactLabel: String,
 )
 
 internal object LiveTvTimelinePolicy {
@@ -26,15 +28,15 @@ internal object LiveTvTimelinePolicy {
         if (end <= start) return null
         val progress = ((nowUtcMillis - start).toDouble() / program.durationMillis.toDouble())
             .coerceIn(0.0, 1.0).toFloat()
-        val label = when {
+        val (label, compactLabel) = when {
             nowUtcMillis < start -> {
                 val minutes = (start - nowUtcMillis + 59_999L) / 60_000L
-                "Beginnt in $minutes Min."
+                "Beginnt in $minutes Min." to "in ${minutes}m"
             }
-            nowUtcMillis >= end -> "Sendung beendet"
+            nowUtcMillis >= end -> "Sendung beendet" to "Ende"
             else -> {
                 val minutes = (end - nowUtcMillis + 59_999L) / 60_000L
-                "Noch $minutes Min."
+                "Noch $minutes Min." to "${minutes}m"
             }
         }
         return LiveTvTimeline(
@@ -42,6 +44,7 @@ internal object LiveTvTimelinePolicy {
             timeLabel = label,
             endingSoon = nowUtcMillis >= start && nowUtcMillis < end &&
                 end - nowUtcMillis <= 5 * 60_000L,
+            compactLabel = compactLabel,
         )
     }
 }
@@ -50,18 +53,19 @@ internal object LiveTvTimelinePolicy {
 internal fun LiveTvTimelineBar(
     progress: Float,
     modifier: Modifier = Modifier,
+    thickness: Dp = 4.dp,
 ) {
     val shape = RoundedCornerShape(3.dp)
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(4.dp)
+            .height(thickness)
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f), shape),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth(progress.coerceIn(0f, 1f))
-                .height(4.dp)
+                .height(thickness)
                 .background(MaterialTheme.colorScheme.primary, shape),
         )
     }
