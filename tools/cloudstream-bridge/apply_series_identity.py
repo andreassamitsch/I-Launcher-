@@ -31,12 +31,14 @@ def main(root: Path) -> None:
           "val currentProgramIds = data.mapNotNull",
           "val currentProgramIds = com.lagradost.cloudstream3.ILauncherSeriesIdentity.forWatchNext(data).mapNotNull")
     patch(base / "ILauncherWatchNextIntent.kt",
-          "        val exactEpisodeId = target.episodeId ?: base.id",
+          """        if (isOlderEpisode(target.season, target.episode, base.season, base.episode)) return base
+        val exactEpisodeId = target.episodeId ?: base.id""",
           """        val preferred = ILauncherSeriesIdentity.preferredResume(base, cards)
         if (preferred !== base &&
             !isOlderEpisode(preferred.season, preferred.episode, target.season, target.episode)) {
             return preferred
         }
+        if (isOlderEpisode(target.season, target.episode, base.season, base.episode)) return base
         val exactEpisodeId = target.episodeId ?: base.id""")
 
 
