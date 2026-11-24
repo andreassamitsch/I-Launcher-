@@ -88,7 +88,7 @@ def main() -> None:
         '''        appContext.addProgramsToContinueWatching(resumeWatching)
         Log.i(TAG, "flush reason=$reason count=${resumeWatching.size}")''',
         '''        appContext.addProgramsToContinueWatching(resumeWatching)
-        ILauncherNextEpisodeMonitor.refresh(appContext)
+        ILauncherNextEpisodeMonitor.refresh(appContext, resumeWatching)
         Log.i(TAG, "flush reason=$reason count=${resumeWatching.size}")''')
 
     home = base / 'ui/home/HomeViewModel.kt'
@@ -100,7 +100,7 @@ def main() -> None:
             }
         }''',
         '''                activity?.addProgramsToContinueWatching(resumeWatchingResult)
-                activity?.let { ILauncherNextEpisodeMonitor.refresh(it.applicationContext) }
+                activity?.let { ILauncherNextEpisodeMonitor.refresh(it.applicationContext, resumeWatchingResult) }
             }
         }''')
 
@@ -134,7 +134,7 @@ def main() -> None:
             // Ensures synced watch next progress by deleting all old programs.''',
         '''            // These are CloudStream-owned announcements. Keep their provider-specific links
             // in the same write transaction or the normal resume cleanup would immediately delete them.
-            val upcomingProgramIds = ILauncherNextEpisodeMonitor.snapshot(context).mapNotNull { (key, upcoming) ->
+            val upcomingProgramIds = ILauncherNextEpisodeMonitor.snapshot(context, data).mapNotNull { (key, upcoming) ->
                 try {
                     val (_, existingId) = getWatchNextProgramByVideoId(key, context)
                     if (existingId != null) {

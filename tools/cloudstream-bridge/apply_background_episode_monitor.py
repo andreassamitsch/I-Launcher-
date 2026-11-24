@@ -39,7 +39,7 @@ def main(root):
     fun dueProviders(context: Context, account: String): List<String> {
         val now = System.currentTimeMillis()
         return read(accountPrefs(context, account))
-            .filter { it.nextEpisode == null && it.lastCheck + REFRESH_INTERVAL <= now }
+            .filter { isDue(it, now) }
             .sortedBy { it.lastCheck }.take(6).map { it.apiName }.distinct()
     }
 
@@ -51,9 +51,31 @@ def main(root):
     patch(monitor, "val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)",
           "val account = DataStoreHelper.currentAccount\n            val prefs = accountPrefs(context, account)")
     patch(monitor, "            val updated = read(prefs).toMutableList()",
-          "            val original = read(prefs)\n            val updated = original.toMutableList()")
+          """            val original = read(prefs)
+            val updated = original.toMutableList()
+            // For old active resumes, a matching title only nominates a metadata lookup.
+            // The actual merge always requires a verified external ID. Share the scan budget.
+            var identityLoads = 0
+            identityAttempts.entries.removeIf { it.value + REFRESH_INTERVAL <= now }
+            for (card in resumeCards) {
+                if (identityLoads >= 2 || DataStoreHelper.currentAccount != account) break
+                val parent = card.parentId ?: continue
+                if (card.type != com.lagradost.cloudstream3.TvType.TvSeries || card.isFromDownload ||
+                    card.apiName !in active || ILauncherSeriesIdentity.cachedIdentity(parent, card.apiName) != null ||
+                    original.none { it.nextEpisode != null && it.title.trim().equals(card.name.trim(), ignoreCase = true) }) continue
+                val key = "$account|${card.apiName}|$parent"
+                val api = apis.withLock { apis.firstOrNull { it.name == card.apiName } } ?: continue
+                if (identityAttempts.putIfAbsent(key, now) != null) continue
+                identityLoads++
+                val result = withTimeoutOrNull(10_000) { APIRepository(api).load(card.url) }
+                val series = (result as? Resource.Success<*>)?.value as? TvSeriesLoadResponse
+                if (series != null && series.apiName == card.apiName && DataStoreHelper.currentAccount == account) {
+                    ILauncherSeriesIdentity.remember(parent, series)
+                    if (ILauncherSeriesIdentity.cachedIdentity(parent, card.apiName) != null) changed = true
+                }
+            }""")
     patch(monitor, "            }.take(6).forEach { index ->\n                val state = updated[index]",
-          "            }.sortedBy { updated[it].lastCheck }.take(6).forEach { index ->\n                currentCoroutineContext().ensureActive()\n                if (DataStoreHelper.currentAccount != account) return\n                val state = updated[index]")
+          "            }.sortedBy { updated[it].lastCheck }.take((6 - identityLoads).coerceAtLeast(0)).forEach { index ->\n                currentCoroutineContext().ensureActive()\n                if (DataStoreHelper.currentAccount != account) return\n                val state = updated[index]")
     patch(monitor, """            if (changed) {
                 write(prefs, updated)
                 val resume = HomeViewModel.getResumeWatching().orEmpty()

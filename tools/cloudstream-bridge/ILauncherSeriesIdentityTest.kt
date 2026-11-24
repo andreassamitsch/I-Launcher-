@@ -26,6 +26,43 @@ class ILauncherSeriesIdentityTest {
             candidate(1, "b", "tt123", "22", 1, 7))))
     }
 
+    private fun publication(provider: String, parent: Int, imdb: String?, tmdb: String?, season: Int, episode: Int, time: Long = 0) =
+        ILauncherSeriesIdentity.Publication(provider, parent,
+            if (imdb == null && tmdb == null) null else ILauncherSeriesIdentity.Identity(imdb, tmdb),
+            season, episode, time)
+
+    @Test fun activeResumeSuppressesVerifiedAnnouncementAcrossProviders() {
+        val resume = publication("a", 1, "tt123", "11", 4, 5)
+        val next = publication("b", 2, "tt123", null, 4, 6)
+        assertEquals(emptySet<Int>(), ILauncherSeriesIdentity.announcementWinners(listOf(resume), listOf(next)))
+    }
+
+    @Test fun announcementsSelectOneVerifiedSuccessorAndPreserveUnknown() {
+        val first = publication("a", 1, null, "11", 4, 5)
+        val later = publication("b", 2, null, "11", 4, 6)
+        val unknown = publication("c", 3, null, null, 4, 6)
+        assertEquals(setOf(1, 2), ILauncherSeriesIdentity.announcementWinners(emptyList(), listOf(first, later, unknown)))
+    }
+
+    @Test fun conflictsAndUnknownProvidersAreNotMerged() {
+        val resume = publication("a", 1, "tt123", "11", 4, 5)
+        val conflict = publication("b", 2, "tt123", "22", 4, 6)
+        val unknown = publication("c", 3, null, null, 4, 6)
+        assertEquals(setOf(0, 1), ILauncherSeriesIdentity.announcementWinners(listOf(resume), listOf(conflict, unknown)))
+    }
+
+    @Test fun sameProviderParentSuppressesAnnouncementEvenWithoutExternalIds() {
+        val resume = publication("a", 1, null, null, 4, 5)
+        val next = publication("a", 1, null, null, 4, 6)
+        assertEquals(emptySet<Int>(), ILauncherSeriesIdentity.announcementWinners(listOf(resume), listOf(next)))
+    }
+
+    @Test fun equalAnnouncementUsesLatestCompletion() {
+        val first = publication("a", 1, null, "11", 4, 5, 10)
+        val second = publication("b", 2, null, "11", 4, 5, 20)
+        assertEquals(setOf(1), ILauncherSeriesIdentity.announcementWinners(emptyList(), listOf(first, second)))
+    }
+
     @Test fun differentIdentityAndSameProviderStaySeparate() {
         assertEquals(setOf(0, 1, 2), ILauncherSeriesIdentity.winners(listOf(
             candidate(0, "a", "tt123", null, 1, 3),

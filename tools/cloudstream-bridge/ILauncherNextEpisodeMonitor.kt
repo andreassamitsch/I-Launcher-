@@ -8,6 +8,7 @@ import androidx.tvprovider.media.tv.TvContractCompat
 import androidx.tvprovider.media.tv.WatchNextProgram
 import com.lagradost.cloudstream3.APIHolder.apis
 import com.lagradost.cloudstream3.TvSeriesLoadResponse
+import com.lagradost.cloudstream3.ILauncherSeriesIdentity
 import com.lagradost.cloudstream3.mvvm.Resource
 import com.lagradost.cloudstream3.ui.APIRepository
 import com.lagradost.cloudstream3.ui.result.ResultEpisode
@@ -52,6 +53,7 @@ internal object ILauncherNextEpisodeMonitor {
         val nextPoster: String? = null,
         val nextDescription: String? = null,
         val newlyAvailable: Boolean = false,
+        val identityCheckedAt: Long = 0L,
     )
 
     internal fun normalizedAirDate(value: Long?): Long? = value?.takeIf { it > 0L }?.let {
@@ -64,6 +66,13 @@ internal object ILauncherNextEpisodeMonitor {
     internal fun nextCoordinates(season: Int, episode: Int, candidates: List<Pair<Int, Int>>): Pair<Int, Int>? =
         candidates.asSequence().filter { (s, e) -> s > season || s == season && e > episode }
             .minWithOrNull(compareBy<Pair<Int, Int>> { it.first }.thenBy { it.second })
+
+    private fun isDue(state: Tracked, now: Long): Boolean =
+        if (state.nextEpisode == null) state.lastCheck + REFRESH_INTERVAL <= now
+        else ILauncherSeriesIdentity.cachedIdentity(state.parentId, state.apiName) == null &&
+            state.identityCheckedAt + REFRESH_INTERVAL <= now
+
+    private val identityAttempts = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     fun recordCompleted(context: Context?, episode: ResultEpisode) {
         val appContext = context?.applicationContext ?: return
@@ -88,9 +97,23 @@ internal object ILauncherNextEpisodeMonitor {
     }
 
     /** No network work in the TvProvider write lock. A later scan fills the saved announcement. */
-    fun snapshot(context: Context): List<Pair<String, WatchNextProgram>> {
+    fun snapshot(
+        context: Context,
+        resumeCards: List<DataStoreHelper.ResumeWatchingResult>,
+    ): List<Pair<String, WatchNextProgram>> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return emptyList()
-        return read(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)).mapNotNull { state ->
+        val states = read(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)).filter {
+            it.nextSeason != null && it.nextEpisode != null && getLastWatched(it.parentId) == null
+        }
+        val resumes = resumeCards.mapNotNull(ILauncherSeriesIdentity::resumePublication)
+        val upcoming = states.map {
+            ILauncherSeriesIdentity.Publication(it.apiName, it.parentId,
+                ILauncherSeriesIdentity.cachedIdentity(it.parentId, it.apiName),
+                it.nextSeason ?: 0, it.nextEpisode ?: 0, it.completedAt)
+        }
+        val winners = ILauncherSeriesIdentity.announcementWinners(resumes, upcoming)
+        Log.i(TAG, "publication resume=${resumes.size} announcements=${states.size} selected=${winners.size}")
+        return states.filterIndexed { index, _ -> index in winners }.mapNotNull { state ->
             val season = state.nextSeason ?: return@mapNotNull null
             val episode = state.nextEpisode ?: return@mapNotNull null
             // The next episode is already a normal resume card once playback begins.
@@ -123,7 +146,10 @@ internal object ILauncherNextEpisodeMonitor {
     }
 
     /** Runs only after the installed extensions are active. Failure is not evidence of absence. */
-    suspend fun refresh(context: Context) {
+    suspend fun refresh(
+        context: Context,
+        resumeCards: List<DataStoreHelper.ResumeWatchingResult> = emptyList(),
+    ) {
         if (!isLayout(TV) || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         if (!mutex.tryLock()) return
         try {
@@ -134,15 +160,24 @@ internal object ILauncherNextEpisodeMonitor {
             val updated = read(prefs).toMutableList()
             updated.indices.filter { index ->
                 val state = updated[index]
-                state.apiName in active && state.lastCheck + REFRESH_INTERVAL <= now &&
-                    state.nextEpisode == null
+                state.apiName in active && isDue(state, now)
             }.take(6).forEach { index ->
                 val state = updated[index]
                 val api = apis.withLock { apis.firstOrNull { it.name == state.apiName } } ?: return@forEach
                 val result = runCatching {
                     withTimeoutOrNull(12_000) { APIRepository(api).load(state.seriesUrl) }
                 }.getOrNull()
-                val series = (result as? Resource.Success<*>)?.value as? TvSeriesLoadResponse ?: return@forEach
+                val series = (result as? Resource.Success<*>)?.value as? TvSeriesLoadResponse
+                if (series != null && DataStoreHelper.currentAccount == account && series.apiName == state.apiName) {
+                    ILauncherSeriesIdentity.remember(state.parentId, series)
+                }
+                // Previously confirmed announcements only need identity hydration, not another link probe.
+                if (state.nextEpisode != null) {
+                    updated[index] = state.copy(identityCheckedAt = now)
+                    changed = true
+                    return@forEach
+                }
+                if (series == null) return@forEach
                 val seasons = series.seasonNames?.associate { it.season to it.displaySeason }.orEmpty()
                 val candidates = series.episodes.mapNotNull { ep ->
                     val season = ep.season?.let { seasons[it] ?: it } ?: return@mapNotNull null
@@ -227,6 +262,7 @@ internal object ILauncherNextEpisodeMonitor {
                     nextPoster = item.optString("nextPoster").takeIf(String::isNotBlank),
                     nextDescription = item.optString("nextDescription").takeIf(String::isNotBlank),
                     newlyAvailable = item.optBoolean("newlyAvailable"),
+                    identityCheckedAt = item.optLong("identityCheckedAt"),
                 )
                 if (System.currentTimeMillis() - state.completedAt <= MAX_AGE) add(state)
             }
@@ -246,6 +282,7 @@ internal object ILauncherNextEpisodeMonitor {
                 put("nextSeason", state.nextSeason ?: 0); put("nextEpisode", state.nextEpisode ?: 0)
                 put("nextPoster", state.nextPoster ?: ""); put("nextDescription", state.nextDescription ?: "")
                 put("newlyAvailable", state.newlyAvailable)
+                put("identityCheckedAt", state.identityCheckedAt)
             })
         }
         prefs.edit().putString(KEY, items.toString()).apply()

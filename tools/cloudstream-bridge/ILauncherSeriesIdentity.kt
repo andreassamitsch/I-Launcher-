@@ -62,13 +62,55 @@ internal object ILauncherSeriesIdentity {
             "${identity.imdb.orEmpty()}|${identity.tmdb.orEmpty()}")?.apply()
     }
 
+    fun cachedIdentity(parent: Int, provider: String): Identity? {
+        val saved = prefs()?.getString(key(parent, provider), null)?.split('|', limit = 2) ?: return null
+        return normalize(saved.getOrNull(0), saved.getOrNull(1))
+    }
+
+    internal data class Publication(
+        val provider: String, val parent: Int, val identity: Identity?,
+        val season: Int, val episode: Int, val engagement: Long = 0L,
+    )
+
+    /**
+     * Resume rows already passed the regular resume selection. An announcement must not compete
+     * with a resume for the same verified series. If no resume exists, keep the furthest verified
+     * announced episode, then the most recent completion. Never merge conflicting external IDs.
+     */
+    internal fun announcementWinners(resume: List<Publication>, announcements: List<Publication>): Set<Int> {
+        val all = resume + announcements
+        fun ambiguous(a: Publication): Boolean = a.identity?.let { id ->
+            all.any { b -> b.identity?.let { id.sharesId(it) && id.conflicts(it) } == true }
+        } ?: false
+        fun same(a: Publication, b: Publication): Boolean {
+            if (a.provider == b.provider && a.parent == b.parent) return true
+            if (ambiguous(a) || ambiguous(b)) return false
+            return a.identity?.let { id -> b.identity?.let(id::matches) } == true
+        }
+        val ranking = compareBy<Publication> { it.season }.thenBy { it.episode }.thenBy { it.engagement }
+        return announcements.indices.filter { index ->
+            val candidate = announcements[index]
+            resume.none { same(candidate, it) } && announcements.indices.none { other ->
+                other != index && same(candidate, announcements[other]) &&
+                    (ranking.compare(announcements[other], candidate) > 0 ||
+                        ranking.compare(announcements[other], candidate) == 0 && other < index)
+            }
+        }.toSet()
+    }
+
+    fun resumePublication(card: DataStoreHelper.ResumeWatchingResult): Publication? {
+        if (card.type != TvType.TvSeries || card.isFromDownload) return null
+        val parent = card.parentId ?: return null
+        return Publication(card.apiName, parent, cachedIdentity(parent, card.apiName),
+            card.season ?: 0, card.episode ?: 0)
+    }
+
     private fun candidate(index: Int, card: DataStoreHelper.ResumeWatchingResult): Candidate? {
         if (card.type != TvType.TvSeries || card.isFromDownload) return null
         val parent = card.parentId ?: return null
         val season = card.season?.takeIf { it > 0 } ?: return null
         val episode = card.episode?.takeIf { it > 0 } ?: return null
-        val saved = prefs()?.getString(key(parent, card.apiName), null)?.split('|', limit = 2) ?: return null
-        val identity = normalize(saved.getOrNull(0), saved.getOrNull(1)) ?: return null
+        val identity = cachedIdentity(parent, card.apiName) ?: return null
         return Candidate(index, card.apiName, identity, season, episode)
     }
 
