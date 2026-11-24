@@ -65,6 +65,15 @@ internal object ILauncherWatchNextIntent {
         )
     }
 
+    internal fun isOlderEpisode(
+        requestedSeason: Int?, requestedEpisode: Int?, currentSeason: Int?, currentEpisode: Int?,
+    ): Boolean {
+        if (requestedSeason == null || requestedEpisode == null ||
+            currentSeason == null || currentEpisode == null) return false
+        return requestedSeason < currentSeason ||
+            (requestedSeason == currentSeason && requestedEpisode < currentEpisode)
+    }
+
     fun resolve(
         cards: List<DataStoreHelper.ResumeWatchingResult>,
         target: Target,
@@ -73,6 +82,9 @@ internal object ILauncherWatchNextIntent {
         val base = cards.firstOrNull { it.parentId == target.seriesKey }
             ?: cards.firstOrNull { it.id == target.seriesKey }
             ?: return null
+        // Android may still expose an obsolete row after playback advanced. Never rewind
+        // the same provider's series solely because that cached Watch Next intent was tapped.
+        if (isOlderEpisode(target.season, target.episode, base.season, base.episode)) return base
         val exactEpisodeId = target.episodeId ?: base.id
         return base.copy(
             id = exactEpisodeId,

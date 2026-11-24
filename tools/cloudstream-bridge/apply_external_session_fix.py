@@ -35,7 +35,8 @@ def main(root: Path) -> None:
         '''                            ILauncherBridgeNavigation.navigateExternal(targetActivity, launchToken) {
                                 targetActivity.loadSearchResult(
                                     resumeWatchingCard,
-                                    START_ACTION_RESUME_LATEST
+                                    com.lagradost.cloudstream3.ui.result.START_ACTION_LOAD_EP,
+                                    resumeWatchingCard.id
                                 )
                             }''')
 

@@ -41,6 +41,15 @@ def main() -> None:
         str(root),
     ], check=True)
 
+    # Exact episode fallback: upstream compared the season with the episode number.
+    result_vm = root / "app/src/main/java/com/lagradost/cloudstream3/ui/result/ResultViewModel2.kt"
+    old = "it.episode == ep && it.season == autostart.episode"
+    new = "it.episode == ep && it.season == autostart.season"
+    source = result_vm.read_text(encoding="utf-8")
+    if source.count(old) != 2:
+        raise RuntimeError("Unexpected exact-episode fallback anchors")
+    result_vm.write_text(source.replace(old, new), encoding="utf-8")
+
     replace_once(
         build_gradle,
         """        versionCode = libs.versions.versionCode.get().toInt()\n        versionName = libs.versions.versionName.get()""",

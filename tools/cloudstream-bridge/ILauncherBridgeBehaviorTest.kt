@@ -25,6 +25,15 @@ class ILauncherBridgeBehaviorTest {
     }
 
     @Test
+    fun staleWatchNextCoordinatesNeverRewindWithinProvider() {
+        assertEquals(true, ILauncherWatchNextIntent.isOlderEpisode(1, 3, 1, 7))
+        assertEquals(true, ILauncherWatchNextIntent.isOlderEpisode(1, 10, 2, 1))
+        assertEquals(false, ILauncherWatchNextIntent.isOlderEpisode(2, 1, 1, 10))
+        assertEquals(false, ILauncherWatchNextIntent.isOlderEpisode(2, 3, 2, 3))
+        assertEquals(false, ILauncherWatchNextIntent.isOlderEpisode(null, 3, 2, 3))
+    }
+
+    @Test
     fun legacyWatchNextIntentStillParses() {
         val target = ILauncherWatchNextIntent.parse("cloudstreamcontinuewatching://404")
         requireNotNull(target)
