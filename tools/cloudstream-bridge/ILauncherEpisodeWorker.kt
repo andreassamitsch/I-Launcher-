@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.preference.PreferenceManager
 import androidx.work.*
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.R
 import com.lagradost.cloudstream3.APIHolder.apis
 import com.lagradost.cloudstream3.network.initClient
 import com.lagradost.cloudstream3.plugins.PluginManager
