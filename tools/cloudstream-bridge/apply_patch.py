@@ -5,7 +5,7 @@ import shutil
 import sys
 from pathlib import Path
 
-BASE_COMMIT = "a72f9e6c3f2e25eb74ce0e7d6cc56dc33c130288"
+BASE_COMMIT = "a28e6468f54cfe420feebd205d3d21d08ed0cde8"
 
 
 def replace_once(path: Path, old: str, new: str) -> None:

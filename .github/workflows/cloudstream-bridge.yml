@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: recloudstream/cloudstream
-          ref: a72f9e6c3f2e25eb74ce0e7d6cc56dc33c130288
+          ref: a28e6468f54cfe420feebd205d3d21d08ed0cde8
           path: cloudstream
           submodules: recursive
           fetch-depth: 1
@@ -84,7 +84,7 @@ jobs:
           echo "SIGNING_KEY_ALIAS=$DEV_KEY_ALIAS" >> "$GITHUB_ENV"
           echo "SIGNING_KEY_PASSWORD=$DEV_KEY_PASSWORD" >> "$GITHUB_ENV"
           BRIDGE_VERSION_CODE=$((30000000 + GITHUB_RUN_NUMBER))
-          BRIDGE_VERSION_NAME="4.8.0-PRE-I-Launcher.${GITHUB_RUN_NUMBER}"
+          BRIDGE_VERSION_NAME="4.9.1-PRE-I-Launcher.${GITHUB_RUN_NUMBER}"
           echo "IL_BRIDGE_VERSION_CODE=$BRIDGE_VERSION_CODE" >> "$GITHUB_ENV"
           echo "IL_BRIDGE_VERSION_NAME=$BRIDGE_VERSION_NAME" >> "$GITHUB_ENV"
           echo "BRIDGE_VERSION_CODE=$BRIDGE_VERSION_CODE" >> "$GITHUB_ENV"
@@ -163,7 +163,7 @@ jobs:
           - Version: ${BRIDGE_VERSION_NAME} (${BRIDGE_VERSION_CODE})
           - Source: ${GITHUB_SHA}
 
-          Die APK wird aus dem fixierten CloudStream-Upstream-Commit a72f9e6c3f2e25eb74ce0e7d6cc56dc33c130288 plus den versionierten Bridge-Patches gebaut und mit dem stabilen I-Launcher-Development-Key signiert.
+          Die APK wird aus dem fixierten CloudStream-Upstream-Commit a28e6468f54cfe420feebd205d3d21d08ed0cde8 plus den versionierten Bridge-Patches gebaut und mit dem stabilen I-Launcher-Development-Key signiert.
           EOF
           git add CloudStream-I-Launcher-Bridge.apk CloudStream-I-Launcher-Bridge.sha256 update.json README.md .nojekyll
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "Publish CloudStream I Launcher Bridge ${BRIDGE_VERSION_NAME}"
