@@ -41,6 +41,12 @@ def main() -> None:
         str(root),
     ], check=True)
 
+    subprocess.run([
+        sys.executable,
+        str(Path(__file__).with_name("apply_series_identity.py")),
+        str(root),
+    ], check=True)
+
     # Exact episode fallback: upstream compared the season with the episode number.
     result_vm = root / "app/src/main/java/com/lagradost/cloudstream3/ui/result/ResultViewModel2.kt"
     old = "it.episode == ep && it.season == autostart.episode"
