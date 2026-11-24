@@ -1,0 +1,7 @@
+# Verified cross-provider Watch Next reconciliation (candidate)
+
+The current bridge stores provider-specific parent IDs and episode IDs. Cross-provider duplicate cards can therefore be stale. This candidate records loaded TV-series metadata IDs in account-scoped local preferences, filters only verified duplicate resume rows when publishing Android Watch Next, and resolves an obsolete provider row to a later verified resume target. It keeps each provider's local viewing history intact. No title-only merges, no downloads, no changes to movies/anime, no launcher-side progress database. Unknown/conflicting identities remain separate.
+
+Limitations: IDs need to be available in provider metadata and known from a provider load (or pending resume validation); existing in-progress rows without IDs are not automatically enriched. New-episode announcement reconciliation, canonical completion/rewatch state, and .92 legacy direct-play synthetic episode ID migration remain open. Native ResultViewModel2 uses parentId + season*100000 + episode + 1; bridge direct play currently uses a hash of provider, parent, index and data, so manual watched states may disagree. Preserve legacy data and migrate non-destructively before changing direct-play IDs.
+
+TV tests: different providers and same external ID, older/newer season, equal coordinate, ambiguous IDs, account switch, no ID, explicit rewatch, old link after duplicate cleanup. CI must pass before publication.
