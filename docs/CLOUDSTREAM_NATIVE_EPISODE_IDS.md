@@ -1,0 +1,3 @@
+# Native episode identity migration
+
+Direct playback now uses native ResultViewModel2 season/episode IDs and ordering. For explicitly numbered unique episodes, migrate legacy hash-keyed data once per account, provider and mapping, preserve native data, retain legacy keys and preserve resume engagement time. Ambiguous catalogue entries are not migrated. Existing native watched flags and progress take priority. A previously cleared native flag without any other state is not distinguishable from missing data in upstream storage. Verify in-place update and manual watched/unwatched behaviour on TV; no destructive cleanup.
