@@ -5,6 +5,8 @@ It creates a private, on-demand JSON snapshot without launching the TV UI or sen
 
 ```sh
 adb shell am broadcast -a com.andreassamitsch.ilauncher.action.DUMP_TV_PROVIDER -n com.andreassamitsch.ilauncher/.diagnostics.TvProviderDumpReceiver
+adb shell content read --uri content://com.andreassamitsch.ilauncher.diagnostics/snapshot
+# Alternative on a normal debuggable build only:
 adb shell run-as com.andreassamitsch.ilauncher cat files/tvprovider-diagnostic.json
 ```
 
@@ -17,3 +19,5 @@ Check for broadcast result=1 and the snapshot timestamp. The report contains raw
 - Verify a Watch Next duplicate can be inspected without changing the order or removing data.
 - Check update popup on the Home screen with a newer compatible manifest: download, progress, install, Android confirmation; dismiss with Back/Später; ensure the current version is not offered again in the same session and newer versions can prompt.
 - Check no popup interrupts Live TV or detail navigation; confirm Home focus restoration after dismissing.
+
+The optimized development APK is non-debuggable (run-as is disabled). Its debug-source-set provider exposes only the fixed, already-created snapshot to ADB shell/root, protected by DUMP permission and UID validation; no other files or write operations are supported. Ordinary release builds do not include this provider.

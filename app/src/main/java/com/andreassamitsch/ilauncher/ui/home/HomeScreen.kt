@@ -26,8 +26,8 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -211,7 +211,7 @@ fun HomeScreen(
         if (!restoreVerticalRow(HomePreferences.ROW_WATCH_NEXT)) return@LaunchedEffect
         watchNextListState.scrollToItem(targetIndex)
         withFrameNanos { }
-        watchNextRestoreFocusRequester.requestFocus()
+        runCatching { watchNextRestoreFocusRequester.requestFocus() }
     }
 
     LaunchedEffect(liveTvFocusRestoreServiceReference, liveTvFocusRestoreGeneration) {
@@ -291,10 +291,10 @@ fun HomeScreen(
                     .touchScrollFallback(contentScrollState, Orientation.Vertical),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(visibleRowOrder, key = { it }) { rowKey ->
+                itemsIndexed(visibleRowOrder, key = { _, key -> key }) { rowIndex, rowKey ->
                         AnchoredHomeRow(
                             listState = contentScrollState,
-                            rowIndex = visibleRowOrder.indexOf(rowKey),
+                            rowIndex = rowIndex,
                         ) { onRowFocused ->
                             when (rowKey) {
                                 HomePreferences.ROW_WATCH_NEXT -> WatchNextHomeRow(

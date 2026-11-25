@@ -6,6 +6,8 @@ on:
     paths:
       - "app/src/main/java/com/andreassamitsch/ilauncher/ui/**"
       - "app/src/debug/**"
+      - "app/build.gradle.kts"
+      - "app/proguard-development.pro"
       - ".github/workflows/tv-visual-smoke.yml"
 
 permissions:
@@ -49,7 +51,7 @@ jobs:
             -noaudio -no-boot-anim
           disable-animations: true
           script: |
-            gradle :app:assembleDebug --stacktrace
+            gradle :app:assembleDebug -PiLauncherOptimizedDevelopment=true --stacktrace
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             mkdir -p build/tv-visual
 
