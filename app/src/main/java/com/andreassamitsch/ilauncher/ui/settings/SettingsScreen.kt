@@ -71,6 +71,10 @@ import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import com.andreassamitsch.ilauncher.ui.components.touchTap
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.profileinstaller.ProfileVerifier
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.launch
 
 private const val TMDB_APPROVED_LOGO_URL =
@@ -971,6 +975,19 @@ private fun SettingsAboutPane(
 ) {
     val scope = rememberCoroutineScope()
     val updateCheckBusy = updateState is UpdateState.Checking || updateState is UpdateState.Downloading
+    var profileStatus by remember { mutableStateOf("Wird geprüft …") }
+    LaunchedEffect(Unit) {
+        profileStatus = withContext(Dispatchers.IO) {
+            runCatching {
+                val status = ProfileVerifier.getCompilationStatusAsync().get(3, TimeUnit.SECONDS)
+                when {
+                    status.isCompiledWithProfile() -> "Profilbasierte Kompilierung aktiv"
+                    status.hasProfileEnqueuedForCompilation() -> "Profil wartet auf Android-Optimierung"
+                    else -> "Nicht bestätigt (Code ${status.profileInstallResultCode})"
+                }
+            }.getOrDefault("Nicht verfügbar")
+        }
+    }
 
     SettingsContentPane(
         title = "Über I Launcher",
@@ -980,6 +997,10 @@ private fun SettingsAboutPane(
         SettingsInfoRow(
             title = "Installierte Version",
             value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+        )
+        SettingsInfoRow(
+            title = "ART / Baseline Profile",
+            value = profileStatus,
         )
         SettingsInfoRow(
             title = "Update-Status",

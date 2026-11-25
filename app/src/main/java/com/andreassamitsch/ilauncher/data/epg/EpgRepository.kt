@@ -417,8 +417,7 @@ class EpgRepository(
             .take(MAX_CURRENT_TMDB_ITEMS)
         for ((serviceReference, program) in candidates) {
             if (program.tmdbId != null) continue
-            val enriched = resolveTmdb(serviceReference, program) ?: continue
-            applyProgramEnrichment(serviceReference, program.startUtcMillis, enriched)
+            enrichProgram(serviceReference, program.startUtcMillis)
         }
     }
 

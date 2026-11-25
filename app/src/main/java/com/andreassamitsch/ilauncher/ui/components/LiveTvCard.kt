@@ -1,6 +1,7 @@
 package com.andreassamitsch.ilauncher.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -19,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -38,6 +40,13 @@ fun LiveTvCard(
     modifier: Modifier = Modifier,
 ) {
     val artwork = channel.now?.preferredArtworkUri
+    // Never display an older airing's image after a programme boundary.
+    var displayedPainter by remember(channel.serviceReference, channel.now?.startUtcMillis, channel.now?.title) {
+        mutableStateOf<Painter?>(null)
+    }
+    var displayedUri by remember(channel.serviceReference, channel.now?.startUtcMillis, channel.now?.title) {
+        mutableStateOf<String?>(null)
+    }
     var focused by remember(channel.serviceReference) { mutableStateOf(false) }
     val breath = rememberFocusedCardBreath(focused)
 
@@ -52,7 +61,7 @@ fun LiveTvCard(
                 .height(97.dp),
         ) {
             FocusedArtworkGlow(
-                artworkUri = artwork,
+                artworkUri = displayedUri,
                 focused = focused,
                 breath = breath,
             )
@@ -78,39 +87,67 @@ fun LiveTvCard(
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 ) {
-                    if (!artwork.isNullOrBlank()) {
-                        AsyncImage(
-                            model = artwork,
+                    val previous = displayedPainter
+                    if (previous != null) {
+                        Image(
+                            painter = previous,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
                         )
-                    } else if (!channel.piconUri.isNullOrBlank()) {
+                    } else if (previous == null) {
+                        if (!channel.piconUri.isNullOrBlank()) {
+                            AsyncImage(
+                                model = channel.piconUri,
+                                contentDescription = channel.name,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.align(Alignment.Center).padding(12.dp)
+                                    .size(width = 122.dp, height = 42.dp),
+                            )
+                        } else {
+                            Text(
+                                text = channel.name.take(1).uppercase(),
+                                style = MaterialTheme.typography.displayMedium,
+                                modifier = Modifier.align(Alignment.Center),
+                            )
+                        }
+                        val source = channel.now?.imageUri?.takeIf { it.isNotBlank() && it != artwork }
+                        if (source != null) {
+                            AsyncImage(
+                                model = source,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                onSuccess = {
+                                    if (displayedPainter == null) {
+                                        displayedPainter = it.painter
+                                        displayedUri = source
+                                    }
+                                },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+
+                    if (!artwork.isNullOrBlank()) {
+                        // Keep the old painter underneath until Coil confirms the new image is ready.
                         AsyncImage(
-                            model = channel.piconUri,
-                            contentDescription = channel.name,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .padding(12.dp)
-                                .size(width = 122.dp, height = 42.dp),
-                        )
-                    } else {
-                        Text(
-                            text = channel.name.take(1).uppercase(),
-                            style = MaterialTheme.typography.displayMedium,
-                            modifier = Modifier.align(Alignment.Center),
+                            model = artwork,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            onSuccess = {
+                                displayedPainter = it.painter
+                                displayedUri = artwork
+                            },
+                            modifier = Modifier.fillMaxSize().alpha(if (displayedUri == artwork) 1f else 0f),
                         )
                     }
 
-                    if (!artwork.isNullOrBlank() && !channel.piconUri.isNullOrBlank()) {
+                    if (displayedPainter != null && !channel.piconUri.isNullOrBlank()) {
                         AsyncImage(
                             model = channel.piconUri,
                             contentDescription = channel.name,
                             contentScale = ContentScale.Fit,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(5.dp)
+                            modifier = Modifier.align(Alignment.TopEnd).padding(5.dp)
                                 .size(width = 46.dp, height = 20.dp),
                         )
                     }

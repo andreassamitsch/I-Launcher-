@@ -41,6 +41,8 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -68,6 +70,9 @@ import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
 import com.andreassamitsch.ilauncher.data.home.HeroTextScrollSpeed
 import com.andreassamitsch.ilauncher.data.home.HomePreferences
 import com.andreassamitsch.ilauncher.data.home.WatchNextArtworkMode
@@ -93,6 +98,7 @@ import java.util.Date
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
 
 private val HOME_HERO_HEIGHT = 360.dp
 private val HOME_FIRST_RAIL_TOP = 275.dp
@@ -568,11 +574,50 @@ private fun LiveTvHomeRow(
     onRowFocused: () -> Unit,
     onFocused: (HomeHeroContent) -> Unit,
 ) {
-    var stableFocusChannel by remember { mutableStateOf<LiveTvChannel?>(null) }
-    LaunchedEffect(stableFocusChannel?.serviceReference, stableFocusChannel?.now?.startUtcMillis) {
-        val channel = stableFocusChannel ?: return@LaunchedEffect
-        delay(180)
-        onChannelFocused(channel)
+    val latestChannels = rememberUpdatedState(state.channels)
+    val latestEnrich = rememberUpdatedState(onChannelFocused)
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val width = with(density) { 172.dp.roundToPx() }
+    val height = with(density) { 97.dp.roundToPx() }
+    // Only inspect the visible rail and two adjacent cards; never load an entire bouquet.
+    // The effect is disposed with the vertical row, and collectLatest cancels obsolete prefetches.
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val channels = latestChannels.value
+            val visible = listState.layoutInfo.visibleItemsInfo.map { it.index }
+            if (visible.isEmpty()) emptyList()
+            else (visible + (visible.first() - 2 until visible.first()).toList() +
+                (visible.last() + 1..visible.last() + 2).toList())
+                .distinct().mapNotNull { channels.getOrNull(it) }
+                .map { Triple(it.serviceReference, it.now?.startUtcMillis, it.now?.tmdbId) }
+        }.collectLatest { candidates ->
+            delay(180)
+            candidates.forEach { (ref, start, tmdbId) ->
+                if (start != null && tmdbId == null) {
+                    latestChannels.value.firstOrNull {
+                        it.serviceReference == ref && it.now?.startUtcMillis == start
+                    }?.let(latestEnrich.value)
+                }
+            }
+        }
+    }
+    LaunchedEffect(listState, context, width, height) {
+        snapshotFlow {
+            val visible = listState.layoutInfo.visibleItemsInfo.map { it.index }
+            val channels = latestChannels.value
+            if (visible.isEmpty()) emptyList()
+            else ((visible.first() - 2 until visible.first()).toList() +
+                (visible.last() + 1..visible.last() + 2).toList())
+                .mapNotNull { channels.getOrNull(it)?.now?.preferredArtworkUri }
+                .filter { it.isNotBlank() }.distinct()
+        }.collectLatest { uris ->
+            delay(180)
+            val loader = SingletonImageLoader.get(context)
+            uris.forEach { uri ->
+                loader.execute(ImageRequest.Builder(context).data(uri).size(width, height).build())
+            }
+        }
     }
     HomeRowHeader("Jetzt im TV")
     when {
@@ -598,7 +643,6 @@ private fun LiveTvHomeRow(
                     onClick = { onPlay(channel) },
                     onFocused = {
                         onRowFocused()
-                        stableFocusChannel = channel
                         onFocused(liveTvHero(channel))
                     },
                     modifier = railFocus.cardModifier(rowKey, channel.serviceReference).then(cardModifier),
