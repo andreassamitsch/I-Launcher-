@@ -1,7 +1,6 @@
 package com.andreassamitsch.ilauncher.ui.components
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -12,12 +11,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.BlurMaskFilter
+import android.graphics.RectF
+import android.util.LruCache
+import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
@@ -121,44 +130,65 @@ internal fun BoxScope.FocusedArtworkGlow(
     if (!focused || artworkUri.isNullOrBlank()) return
 
     val sampled = rememberArtworkGlowColor(artworkUri, focused)
-    val outerAlpha = 0.24f + breath * 0.06f
-    val innerAlpha = 0.34f + breath * 0.07f
-
-    // Static shadow parameters and a remembered modifier let the draw node reuse its
-    // shadow resources. Do not alter shadow alpha/radius on each animation frame.
-    val glowModifier = remember(sampled, outerAlpha, innerAlpha) {
-        Modifier
+    Box(
+        modifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
                 scaleX = 1.025f
                 scaleY = 1.04f
             }
-            // Compose dropShadow is independent of Android's single-light-source elevation shadow,
-            // so the artwork tint is preserved consistently. Two low-alpha layers produce the
-            // broad Google-TV-like aura without a visible rectangular layer edge.
-            .dropShadow(
-                shape = MediaCardShape,
-                shadow = Shadow(
-                    radius = 20.dp,
-                    spread = 7.dp,
-                    color = sampled.copy(alpha = outerAlpha),
-                    offset = DpOffset.Zero,
-                ),
+            .drawWithCache {
+                // Cache a half-resolution neutral alpha mask per geometry/density, then tint
+                // during drawing. Changing focus colour never regenerates the blur.
+                val width = size.width.roundToInt().coerceAtLeast(1)
+                val height = size.height.roundToInt().coerceAtLeast(1)
+                val padding = 30.dp.toPx().roundToInt().coerceAtLeast(1)
+                val corner = 10.dp.toPx().roundToInt()
+                val mask = GlowMasks.get(width, height, padding, corner)
+                val tint = ColorFilter.tint(sampled)
+                onDrawBehind {
+                    drawImage(
+                        image = mask,
+                        dstOffset = IntOffset(-padding, -padding),
+                        dstSize = IntSize(width + 2 * padding, height + 2 * padding),
+                        alpha = 0.9f + breath * 0.1f,
+                        colorFilter = tint,
+                    )
+                }
+            },
+    )
+}
+
+private data class GlowMaskKey(val width: Int, val height: Int, val padding: Int, val corner: Int)
+
+/** Reuse a small alpha mask across cards, including across focus changes. */
+private object GlowMasks {
+    private val cache = LruCache<GlowMaskKey, ImageBitmap>(8)
+
+    fun get(width: Int, height: Int, padding: Int, corner: Int): ImageBitmap {
+        val key = GlowMaskKey(width, height, padding, corner)
+        cache.get(key)?.let { return it }
+        val bitmap = Bitmap.createBitmap(
+            ((width + 2 * padding + 1) / 2).coerceAtLeast(1),
+            ((height + 2 * padding + 1) / 2).coerceAtLeast(1),
+            Bitmap.Config.ARGB_8888,
+        )
+        val canvas = Canvas(bitmap)
+        canvas.scale(0.5f, 0.5f)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE }
+        fun halo(radius: Float, spread: Float, alpha: Int) {
+            paint.alpha = alpha
+            paint.maskFilter = BlurMaskFilter(radius.coerceAtLeast(1f), BlurMaskFilter.Blur.NORMAL)
+            val rect = RectF(
+                padding - spread, padding - spread,
+                padding + width + spread, padding + height + spread,
             )
-            .dropShadow(
-                shape = MediaCardShape,
-                shadow = Shadow(
-                    radius = 8.dp,
-                    spread = 3.dp,
-                    color = sampled.copy(alpha = innerAlpha),
-                    offset = DpOffset.Zero,
-                ),
-            )
-            // The actual card is rendered above this source surface; keep the source almost
-            // transparent so the user sees a halo, not a second tinted card.
-            .background(sampled.copy(alpha = 0.018f), MediaCardShape)
+            canvas.drawRoundRect(rect, corner + spread, corner + spread, paint)
+        }
+        halo(padding * 0.67f, padding * 0.23f, 75)
+        halo(padding * 0.27f, padding * 0.10f, 95)
+        return bitmap.asImageBitmap().also { cache.put(key, it) }
     }
-    Box(modifier = glowModifier)
 }
 
 /**

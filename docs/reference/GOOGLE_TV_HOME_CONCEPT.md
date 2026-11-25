@@ -250,3 +250,8 @@ Priorität bleibt gemäß `AGENTS.md`:
 ## 13. Merksatz
 
 > **Google-TV-artige Home-Navigation bleibt ruhig, wenn jede Ebene nur ihre eigene Aufgabe besitzt: Row bewegt Y, LazyRow bewegt X, Focus-Decoration zeichnet, Hero bleibt unter der Rail und die Top-Navigation besitzt einen expliziten Fokus-Edge.**
+
+
+## 14. Performance phase 2
+
+Home now uses a keyed vertical LazyColumn and row-index alignment instead of an eager vertical Column and root-coordinate observers. The vertical stage still owns Y, the horizontal rail owns X, and the top-row UP edge remains explicit. Hero state reads are isolated from rails. The colored halo uses a reusable neutral alpha bitmap tinted in the draw phase. Hardware acceptance: zero horizontal Y drift, stable row keyline including final row, one-step navigation return, stable source-ID restoration and repeatable 30-second frame measurements. These are required checks, not assumed test results.

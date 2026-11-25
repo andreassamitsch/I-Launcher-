@@ -95,3 +95,7 @@ Der Google-TV-/TCL-Home-Fallback basiert auf einem `AccessibilityService` mit `B
 Application ID: `com.andreassamitsch.ilauncher`.
 
 Sie bleibt stabil, damit Updates installierbar bleiben.
+
+
+### Home performance phase 2
+The vertical home stage uses a keyed LazyColumn, with row-entry index alignment instead of per-row root-coordinate observation. HomeHeroStage owns the read scope of pending/displayed hero state. Focus glow uses a bounded reusable neutral bitmap mask and draw-time tint; the mask is independent of content and focus geometry. The updater opts into the optimized non-debuggable development build; debug source set and signing identity are unchanged. A normal debuggable build remains available for private-file ADB diagnostics. Baseline Profiles require a representative hardware/benchmark workflow and remain a follow-up.
