@@ -132,14 +132,17 @@ class HomeHeroArtworkTest {
     }
 
     @Test
-    fun genericSeriesBackdropDoesNotReplaceEpgArtwork() {
+    fun matchedSeriesBackdropPreferredUnlessFactual() {
         val program = LiveTvProgram(
             eventId = 1, title = "Serie", startUtcMillis = 1_000, durationMillis = 3_600_000,
             imageUri = "epg-image", tmdbId = 10, tmdbType = MediaType.Series,
             backdropUri = "series-backdrop",
         )
-        assertEquals("epg-image", program.preferredArtworkUri)
-        assertEquals("epg-image" to true, liveTvHeroArtwork(program))
+        assertEquals("series-backdrop", program.preferredArtworkUri)
+        assertEquals("series-backdrop" to false, liveTvHeroArtwork(program))
+        val news = program.copy(categories = listOf("Nachrichten"))
+        assertEquals("epg-image", news.preferredArtworkUri)
+        assertEquals("epg-image" to true, liveTvHeroArtwork(news))
         val episode = program.copy(episodeStillUri = "episode-still")
         assertEquals("episode-still", episode.preferredArtworkUri)
         assertEquals("episode-still" to false, liveTvHeroArtwork(episode))

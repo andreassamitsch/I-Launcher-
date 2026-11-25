@@ -82,6 +82,8 @@ import com.andreassamitsch.ilauncher.model.AppContentProgram
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
+import com.andreassamitsch.ilauncher.model.LiveTvArtworkSource
+import com.andreassamitsch.ilauncher.model.selectArtwork
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.MediaSource
 import com.andreassamitsch.ilauncher.model.MediaType
@@ -1297,12 +1299,8 @@ private fun liveTvHero(channel: LiveTvChannel): HomeHeroContent {
 
 internal fun liveTvHeroArtwork(program: LiveTvProgram?): Pair<String?, Boolean> {
     if (program == null) return null to false
-    if (program.tmdbId == null) return program.imageUri to true
-    program.episodeStillUri?.takeIf { it.isNotBlank() }?.let { return it to false }
-    program.backdropUri?.takeIf { program.tmdbType == MediaType.Movie && it.isNotBlank() }
-        ?.let { return it to false }
-    program.imageUri?.takeIf { it.isNotBlank() }?.let { return it to true }
-    return program.backdropUri?.takeIf { it.isNotBlank() } to false
+    val artwork = program.selectArtwork(forHero = true)
+    return artwork?.uri to (artwork?.source == LiveTvArtworkSource.Epg || program.tmdbId == null)
 }
 
 private fun liveProgramMedia(channel: LiveTvChannel, program: LiveTvProgram): MediaItem = MediaItem(

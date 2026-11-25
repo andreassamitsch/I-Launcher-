@@ -30,11 +30,7 @@ data class LiveTvProgram(
         get() = startUtcMillis + durationMillis
 
     val preferredArtworkUri: String?
-        get() = episodeStillUri?.takeIf { it.isNotBlank() }
-            ?: backdropUri?.takeIf { tmdbType == MediaType.Movie && it.isNotBlank() }
-            ?: imageUri?.takeIf { it.isNotBlank() }
-            ?: backdropUri?.takeIf { it.isNotBlank() }
-            ?: posterUri?.takeIf { it.isNotBlank() }
+        get() = selectArtwork()?.uri
 }
 
 data class LiveTvChannel(
