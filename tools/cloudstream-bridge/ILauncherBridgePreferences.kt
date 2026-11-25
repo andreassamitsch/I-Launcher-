@@ -47,6 +47,29 @@ internal object ILauncherBridgePreferences {
 
         addPriority(ILauncherDirectPlay.MediaKind.Movie, "Provider-Priorität · Filme")
         addPriority(ILauncherDirectPlay.MediaKind.Series, "Provider-Priorität · Serien")
+        category.addPreference(
+            Preference(context).apply {
+                key = "i_launcher_serienstream_language"
+                title = "Serienstream · Quellensprache"
+                isPersistent = false
+                val modes = listOf("prefer", "only", "all")
+                val labels = arrayOf("Deutsch bevorzugen", "Nur Deutsch", "Alle Sprachen")
+                fun updateSummary() { summary = labels[modes.indexOf(serienstreamLanguage(context)).coerceAtLeast(0)] }
+                updateSummary()
+                setOnPreferenceClickListener {
+                    AlertDialog.Builder(context, R.style.AlertDialogCustom)
+                        .setTitle(title)
+                        .setSingleChoiceItems(labels, modes.indexOf(serienstreamLanguage(context))) { dialog, which ->
+                            preferences(context).edit().putString(key, modes[which]).apply()
+                            updateSummary()
+                            dialog.dismiss()
+                        }
+                        .setNegativeButton("Abbrechen", null)
+                        .show()
+                    true
+                }
+            }
+        )
 
         category.addPreference(
             SwitchPreferenceCompat(context).apply {
@@ -77,6 +100,10 @@ internal object ILauncherBridgePreferences {
             },
         )
     }
+
+    fun serienstreamLanguage(context: Context): String =
+        preferences(context).getString("i_launcher_serienstream_language", "prefer")
+            ?.takeIf { it in setOf("prefer", "only", "all") } ?: "prefer"
 
     fun isAutoUpdateEnabled(context: Context): Boolean =
         preferences(context).getBoolean(PREF_AUTO_UPDATE, true)

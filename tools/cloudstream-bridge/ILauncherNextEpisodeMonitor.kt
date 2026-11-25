@@ -169,7 +169,7 @@ internal object ILauncherNextEpisodeMonitor {
                 }.getOrNull()
                 val series = (result as? Resource.Success<*>)?.value as? TvSeriesLoadResponse
                 if (series != null && DataStoreHelper.currentAccount == account && series.apiName == state.apiName) {
-                    ILauncherSeriesIdentity.remember(state.parentId, series)
+                    ILauncherSeriesIdentity.resolveMissing(state.parentId, series)
                 }
                 // Previously confirmed announcements only need identity hydration, not another link probe.
                 if (state.nextEpisode != null) {
@@ -262,7 +262,7 @@ internal object ILauncherNextEpisodeMonitor {
                     nextPoster = item.optString("nextPoster").takeIf(String::isNotBlank),
                     nextDescription = item.optString("nextDescription").takeIf(String::isNotBlank),
                     newlyAvailable = item.optBoolean("newlyAvailable"),
-                    identityCheckedAt = item.optLong("identityCheckedAt"),
+                    identityCheckedAt = item.optLong("identityCheckedAtV2"),
                 )
                 if (System.currentTimeMillis() - state.completedAt <= MAX_AGE) add(state)
             }
@@ -282,7 +282,7 @@ internal object ILauncherNextEpisodeMonitor {
                 put("nextSeason", state.nextSeason ?: 0); put("nextEpisode", state.nextEpisode ?: 0)
                 put("nextPoster", state.nextPoster ?: ""); put("nextDescription", state.nextDescription ?: "")
                 put("newlyAvailable", state.newlyAvailable)
-                put("identityCheckedAt", state.identityCheckedAt)
+                put("identityCheckedAtV2", state.identityCheckedAt)
             })
         }
         prefs.edit().putString(KEY, items.toString()).apply()

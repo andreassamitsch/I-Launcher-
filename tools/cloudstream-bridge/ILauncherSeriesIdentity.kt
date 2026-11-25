@@ -62,6 +62,87 @@ internal object ILauncherSeriesIdentity {
             "${identity.imdb.orEmpty()}|${identity.tmdb.orEmpty()}")?.apply()
     }
 
+    private const val RESOLVE_RETRY_MS = 6L * 60 * 60 * 1000
+
+    internal fun normalizedTitle(value: String?): String =
+        value.orEmpty().lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+
+    internal fun sameTitle(title: String, name: String?, original: String?): Boolean {
+        val expected = normalizedTitle(title)
+        return expected.isNotBlank() && (expected == normalizedTitle(name) || expected == normalizedTitle(original))
+    }
+
+    internal fun yearMatch(source: Int?, result: Int?): Boolean =
+        source != null && result != null && source == result
+
+    internal fun meaningfulEpisodeName(value: String?): String? =
+        normalizedTitle(value).takeIf {
+            it.length >= 4 && !it.matches(Regex("(episode|folge|episod|part|teil) ?[0-9]+")) &&
+                !it.matches(Regex("[0-9]+"))
+        }
+
+    /** Only metadata requests, never playback or provider URLs. Keep existing verified IDs. */
+    suspend fun resolveMissing(parent: Int, series: TvSeriesLoadResponse): Boolean {
+        val account = DataStoreHelper.currentAccount
+        if (series.type != TvType.TvSeries) return false
+        remember(parent, series)
+        if (cachedIdentity(parent, series.apiName) != null) return true
+        val storage = prefs() ?: return false
+        val cacheKey = key(parent, series.apiName)
+        val retryKey = "resolve_attempt_v2:$cacheKey"
+        val now = System.currentTimeMillis()
+        if (storage.getLong(retryKey, 0L) + RESOLVE_RETRY_MS > now) return false
+        storage.edit().putLong(retryKey, now).apply()
+        val match = try {
+            kotlinx.coroutines.withTimeoutOrNull(8000L) {
+                val provider = com.lagradost.cloudstream3.metaproviders.TmdbProvider()
+                val exact = provider.bridgeSearchTvIdentity(series.name).filter {
+                    it.id != null && sameTitle(series.name, it.name, it.originalName)
+                }.distinctBy { it.id }
+                val byYear = exact.filter { yearMatch(series.year, it.year) }
+                if (byYear.size == 1) byYear.single()
+                else if (byYear.size > 1) null
+                else {
+                    // Missing year: require two distinct, matching named episodes at the same
+                    // coordinates, in either German or English. Never merge solely by title.
+                    val displaySeasons = series.seasonNames?.associate { it.season to it.displaySeason }.orEmpty()
+                    val named = series.episodes.mapNotNull { ep ->
+                        val season = ep.season?.let { displaySeasons[it] ?: it } ?: return@mapNotNull null
+                        val number = ep.episode ?: return@mapNotNull null
+                        val name = meaningfulEpisodeName(ep.name) ?: return@mapNotNull null
+                        Triple(season, number, name)
+                    }.distinctBy { it.first to it.second }.groupBy { it.first }
+                    val sample = named.entries.filter { it.key > 0 && it.value.size >= 2 }
+                        .minByOrNull { it.key }
+                    if (sample == null || exact.size > 3) null else {
+                        exact.filter { candidate ->
+                            if (series.year != null && candidate.year != null && series.year != candidate.year) return@filter false
+                            val id = candidate.id ?: return@filter false
+                            val german = provider.bridgeTvIdentitySeason(id, sample.key, "de-DE")
+                            val english = provider.bridgeTvIdentitySeason(id, sample.key, "en-US")
+                            sample.value.filter { (_, number, name) ->
+                                (german + english).any { it.episodeNumber == number && meaningfulEpisodeName(it.name) == name }
+                            }.map { it.third }.distinct().size >= 2
+                        }.singleOrNull()
+                    }
+                }
+            }
+        } catch (cancel: kotlinx.coroutines.CancellationException) {
+            throw cancel
+        } catch (_: Exception) { null }
+        if (DataStoreHelper.currentAccount != account) return false
+        val tmdb = match?.id?.takeIf { it > 0 }?.toString()
+        if (tmdb == null) {
+            android.util.Log.i("ILauncherSeriesIdentity", "provider=${series.apiName} parent=$parent outcome=unresolved")
+            return false
+        }
+        if (cachedIdentity(parent, series.apiName) == null) {
+            storage.edit().putString(cacheKey, "|$tmdb").apply()
+        }
+        android.util.Log.i("ILauncherSeriesIdentity", "provider=${series.apiName} parent=$parent outcome=resolved tmdb=$tmdb")
+        return true
+    }
+
     fun cachedIdentity(parent: Int, provider: String): Identity? {
         val saved = prefs()?.getString(key(parent, provider), null)?.split('|', limit = 2) ?: return null
         return normalize(saved.getOrNull(0), saved.getOrNull(1))

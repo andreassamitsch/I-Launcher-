@@ -70,8 +70,7 @@ def main(root):
                 val result = withTimeoutOrNull(10_000) { APIRepository(api).load(card.url) }
                 val series = (result as? Resource.Success<*>)?.value as? TvSeriesLoadResponse
                 if (series != null && series.apiName == card.apiName && DataStoreHelper.currentAccount == account) {
-                    ILauncherSeriesIdentity.remember(parent, series)
-                    if (ILauncherSeriesIdentity.cachedIdentity(parent, card.apiName) != null) changed = true
+                    if (ILauncherSeriesIdentity.resolveMissing(parent, series)) changed = true
                 }
             }""")
     patch(monitor, "            }.take(6).forEach { index ->\n                val state = updated[index]",

@@ -63,6 +63,20 @@ class ILauncherSeriesIdentityTest {
         assertEquals(setOf(1), ILauncherSeriesIdentity.announcementWinners(emptyList(), listOf(first, second)))
     }
 
+    @Test fun metadataMatchRequiresExactNormalizedTitleAndKnownYear() {
+        assertEquals(true, ILauncherSeriesIdentity.sameTitle("Ted Lasso", "Ted Lasso", null))
+        assertEquals(false, ILauncherSeriesIdentity.sameTitle("Ted Lasso", "Ted Lasso Returns", null))
+        assertEquals(true, ILauncherSeriesIdentity.yearMatch(2020, 2020))
+        assertEquals(false, ILauncherSeriesIdentity.yearMatch(null, 2020))
+        assertEquals(false, ILauncherSeriesIdentity.yearMatch(2020, 2021))
+    }
+
+    @Test fun genericEpisodeNamesAreNotEvidence() {
+        assertEquals(null, ILauncherSeriesIdentity.meaningfulEpisodeName("Episode 1"))
+        assertEquals(null, ILauncherSeriesIdentity.meaningfulEpisodeName("Folge 12"))
+        assertEquals("the diamond dogs", ILauncherSeriesIdentity.meaningfulEpisodeName("The Diamond Dogs"))
+    }
+
     @Test fun differentIdentityAndSameProviderStaySeparate() {
         assertEquals(setOf(0, 1, 2), ILauncherSeriesIdentity.winners(listOf(
             candidate(0, "a", "tt123", null, 1, 3),
