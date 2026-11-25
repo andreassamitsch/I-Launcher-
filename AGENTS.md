@@ -402,6 +402,11 @@ Bei größeren Änderungen:
 
 Keine großen unkontrollierten Änderungen direkt auf `main`.
 
+### Automatische Development-Freigabe
+
+Wenn der Benutzer die Umsetzung und Bereitstellung einer Development-APK beauftragt, kennzeichne eigene, nicht als Draft angelegte PRs auf `release/live-tv-audio-selection` bei Erstellung mit `auto-publish-development`. Die Freigabe wartet auf Android CI und die tatsächlich benötigten UI-/Profiltests des exakten PR-Standes. Erfolgreiche Tests führen automatisch zum Squash-Merge und zum signierten Downloader-Publisher. Keine zusätzliche manuelle Statusabfrage oder Freigabe des Benutzers erforderlich. Bei fehlerhaften, fehlenden oder abgebrochenen Checks, geändertem Head/Basisstand, Konflikten oder fehlender Berechtigung nicht automatisch mergen. Fremde/Fork-PRs und Änderungen an CI-/Publishing-Workflows oder deren Freigabe-Implementierung müssen bewusst geprüft werden. Bei Fehlerbehebung neue Commits testen; für erneute Versuche ohne Commit das Label erneut setzen. Eine Veröffentlichung erst nach Bestätigung des Download-Manifests als erfolgt bezeichnen. Geräteinstallation und Hardwareabnahme bleiben getrennt; keine automatische Installation auf dem TV.
+
+
 Commit-Beispiele:
 
 - `feat: add Android TV watch next provider`
