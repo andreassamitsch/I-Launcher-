@@ -19,6 +19,12 @@ val optimizedDevelopment = providers.gradleProperty("iLauncherOptimizedDevelopme
     .map { it.toBoolean() }
     .orElse(false)
 
+// Capture profiles on a non-debuggable, unminified build so ART signatures match
+// the source DEX prior to R8 rewriting. Never used by the internal publisher.
+val profileCapture = providers.gradleProperty("iLauncherProfileCapture")
+    .map { it.toBoolean() }
+    .orElse(false)
+
 val developmentSigningStoreFile = System.getenv("IL_SIGNING_STORE_FILE")?.takeIf { it.isNotBlank() }
 val developmentSigningStorePassword = System.getenv("IL_SIGNING_STORE_PASSWORD")?.takeIf { it.isNotBlank() }
 val developmentSigningKeyAlias = System.getenv("IL_SIGNING_KEY_ALIAS")?.takeIf { it.isNotBlank() }
@@ -80,6 +86,9 @@ android {
 
     buildTypes {
         debug {
+            if (profileCapture.get()) {
+                isDebuggable = false
+            }
             if (optimizedDevelopment.get()) {
                 isDebuggable = false
                 isMinifyEnabled = true
@@ -104,6 +113,7 @@ dependencies {
     implementation(composeBom)
 
     implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")

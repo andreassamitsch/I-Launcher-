@@ -1,8 +1,10 @@
 package com.andreassamitsch.ilauncher.ui.home
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -47,6 +49,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -462,7 +465,9 @@ private fun WatchNextHomeRow(
         )
         else -> LazyRow(
             state = listState,
-            modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
+            modifier = Modifier
+                .focusRestorer()
+                .touchScrollFallback(listState, Orientation.Horizontal),
             contentPadding = PaddingValues(
                 start = 38.dp,
                 end = 18.dp,
@@ -514,11 +519,19 @@ private fun LiveTvHomeRow(
     onRowFocused: () -> Unit,
     onFocused: (HomeHeroContent) -> Unit,
 ) {
+    var stableFocusChannel by remember { mutableStateOf<LiveTvChannel?>(null) }
+    LaunchedEffect(stableFocusChannel?.serviceReference, stableFocusChannel?.now?.startUtcMillis) {
+        val channel = stableFocusChannel ?: return@LaunchedEffect
+        delay(180)
+        onChannelFocused(channel)
+    }
     HomeRowHeader("Jetzt im TV")
     when {
         state.channels.isNotEmpty() -> LazyRow(
             state = listState,
-            modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
+            modifier = Modifier
+                .focusRestorer()
+                .touchScrollFallback(listState, Orientation.Horizontal),
             contentPadding = PaddingValues(
                 start = 38.dp,
                 end = 18.dp,
@@ -536,7 +549,7 @@ private fun LiveTvHomeRow(
                     onClick = { onPlay(channel) },
                     onFocused = {
                         onRowFocused()
-                        onChannelFocused(channel)
+                        stableFocusChannel = channel
                         onFocused(liveTvHero(channel))
                     },
                     modifier = cardModifier,
@@ -570,7 +583,9 @@ private fun PreviewHomeRow(
         HomeRowHeader(channel.title, sourceApp)
         LazyRow(
             state = listState,
-            modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
+            modifier = Modifier
+                .focusRestorer()
+                .touchScrollFallback(listState, Orientation.Horizontal),
             contentPadding = PaddingValues(
                 start = 38.dp,
                 end = 18.dp,
@@ -616,7 +631,9 @@ private fun AppsHomeRow(
     } else {
         LazyRow(
             state = listState,
-            modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
+            modifier = Modifier
+                .focusRestorer()
+                .touchScrollFallback(listState, Orientation.Horizontal),
             contentPadding = PaddingValues(start = 38.dp, end = 18.dp, top = 3.dp, bottom = 5.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -755,6 +772,7 @@ private fun HomeRowHeader(title: String, sourceApp: InstalledApp? = null) {
     }
 }
 
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 internal fun HomeHero(
     content: HomeHeroContent,
@@ -774,10 +792,11 @@ internal fun HomeHero(
         modifier = modifier.onFocusChanged { if (it.isFocused) onFocused() },
         scale = CardDefaults.scale(focusedScale = 1.0f),
     ) {
-        Crossfade(
-            targetState = content,
+        // Metadata updates of the same content/artwork must not instantiate a second
+        // full-screen image and text tree. Keep the existing fade for a genuine visual change.
+        updateTransition(targetState = content, label = "home-hero").Crossfade(
             animationSpec = tween(durationMillis = 120),
-            label = "home-hero",
+            contentKey = { Triple(it.key, it.artworkUri, it.fitArtwork) },
         ) { heroContent ->
             var fitArtworkAspectRatio by remember(heroContent.artworkUri) { mutableStateOf<Float?>(null) }
             BoxWithConstraints(

@@ -25,6 +25,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -72,6 +74,7 @@ fun WatchNextCard(
                 handleTvLongClick = false,
                 modifier = modifier
                     .fillMaxSize()
+                    .semantics { contentDescription = item.title }
                     .onFocusChanged { focusState ->
                         focused = focusState.isFocused
                         if (focusState.isFocused) onFocused?.invoke()

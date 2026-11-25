@@ -99,3 +99,7 @@ Sie bleibt stabil, damit Updates installierbar bleiben.
 
 ### Home performance phase 2
 The vertical home stage uses a keyed LazyColumn, with row-entry index alignment instead of per-row root-coordinate observation. HomeHeroStage owns the read scope of pending/displayed hero state. Focus glow uses a bounded reusable neutral bitmap mask and draw-time tint; the mask is independent of content and focus geometry. The updater opts into the optimized non-debuggable development build; debug source set and signing identity are unchanged. On-demand TvProvider diagnostics remain accessible through a DUMP-protected, shell/root-only snapshot provider; a normal debuggable build also remains available. Baseline Profiles require a representative hardware/benchmark workflow and remain a follow-up.
+
+
+### Home performance phase 3
+Horizontal rails preserve child focus with Compose focusRestorer, independent from the vertical stage. Same-key/same-artwork Hero metadata updates avoid another full crossfade. Stable Live-TV focus gates enrichment. A small baseline profile is seeded from real dev.562 TCL ART observations; a non-debuggable unminified TV capture workflow produces candidates for review. ProfileInstaller supports local installation; actual ART compilation and hardware improvements require verification.
