@@ -13,6 +13,12 @@ val iLauncherVersionName = providers.gradleProperty("iLauncherVersionName")
     ?.takeIf { it.isNotBlank() }
     ?: "0.1.0"
 
+// Keep the established debug source set, manifest and signing key, but let the
+// signed updater publish a non-debuggable, R8-optimized development APK.
+val optimizedDevelopment = providers.gradleProperty("iLauncherOptimizedDevelopment")
+    .map { it.toBoolean() }
+    .orElse(false)
+
 val developmentSigningStoreFile = System.getenv("IL_SIGNING_STORE_FILE")?.takeIf { it.isNotBlank() }
 val developmentSigningStorePassword = System.getenv("IL_SIGNING_STORE_PASSWORD")?.takeIf { it.isNotBlank() }
 val developmentSigningKeyAlias = System.getenv("IL_SIGNING_KEY_ALIAS")?.takeIf { it.isNotBlank() }
@@ -74,6 +80,14 @@ android {
 
     buildTypes {
         debug {
+            if (optimizedDevelopment.get()) {
+                isDebuggable = false
+                isMinifyEnabled = true
+                proguardFiles(
+                    getDefaultProguardFile("proguard-android-optimize.txt"),
+                    "proguard-development.pro",
+                )
+            }
             if (developmentSigningConfigured) {
                 signingConfig = signingConfigs.getByName("development")
             }

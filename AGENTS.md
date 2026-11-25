@@ -423,7 +423,7 @@ Mindestens relevant:
 - CloudStream-Direct-Play-Protokollaufbau inklusive Film/Serie/Episode und Fallback-Erkennung
 - Kodi-/TMDb-Helper-Pfaderzeugung ohne UI-Timingannahmen
 
-Bei UI zusätzlich reale D-Pad-Navigation, Back-Navigation, TV-Auflösung, Focus-Verhalten sowie Glow/Breath und Hero-/Rail-Überlagerung prüfen.
+Bei jeder Änderung den APK-Build und die vollständigen schnellen Unit-Tests ausführen. Zeitaufwendige Emulator-/UI-Tests abhängig von den tatsächlich betroffenen Funktionen auswählen. Vollständige UI-/Regressionstests bei großen funktionsübergreifenden Änderungen oder vor stabilen Releases ausführen. Bei Home-/Focus-Änderungen zusätzlich reale D-Pad-Navigation, Back-Navigation, TV-Auflösung, Focus-Verhalten sowie Glow/Breath und Hero-/Rail-Überlagerung prüfen.
 
 ## 27. Build und Hardwaretests
 

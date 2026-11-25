@@ -105,6 +105,7 @@ jobs:
           gradle :app:testDebugUnitTest :app:assembleDebug \
             -PiLauncherVersionCode="$VERSION_CODE" \
             -PiLauncherVersionName="$VERSION_NAME" \
+            -PiLauncherOptimizedDevelopment=true \
             --stacktrace 2>&1 | tee /tmp/gradle-build.log
           STATUS=${PIPESTATUS[0]}
           # Retry only the observed plugin-resolution failure, never a compiler/test failure.
@@ -116,6 +117,7 @@ jobs:
             gradle :app:testDebugUnitTest :app:assembleDebug \
               -PiLauncherVersionCode="$VERSION_CODE" \
               -PiLauncherVersionName="$VERSION_NAME" \
+              -PiLauncherOptimizedDevelopment=true \
               --refresh-dependencies --stacktrace 2>&1 | tee /tmp/gradle-build.log
             STATUS=${PIPESTATUS[0]}
           fi
