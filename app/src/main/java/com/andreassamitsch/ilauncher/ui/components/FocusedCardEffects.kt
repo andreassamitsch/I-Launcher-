@@ -1,11 +1,5 @@
 package com.andreassamitsch.ilauncher.ui.components
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.Color
@@ -32,6 +27,10 @@ import coil3.toBitmap
 import java.util.LinkedHashMap
 import kotlin.math.max
 import kotlin.math.min
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 private val MediaCardShape = RoundedCornerShape(10.dp)
 private const val FocusedCardScale = 1.045f
@@ -55,24 +54,10 @@ private object GlowColorCache {
     }
 }
 
+// Keep the existing card API and the mid-point look, but do not run a frame clock
+// on a stationary TV screen. The focus scale remains animated by the TV card itself.
 @Composable
-internal fun rememberFocusedCardBreath(focused: Boolean): Float {
-    // Only the single focused card owns an infinite animation. Keeping a transition alive for every
-    // off-screen/unfocused rail item is unnecessary work on TV hardware.
-    if (!focused) return 0f
-
-    val transition = rememberInfiniteTransition(label = "media-card-breath")
-    val breath by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1_850, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "media-card-breath-alpha",
-    )
-    return breath
-}
+internal fun rememberFocusedCardBreath(focused: Boolean): Float = if (focused) 0.5f else 0f
 
 @Composable
 private fun rememberArtworkGlowColor(
@@ -92,6 +77,9 @@ private fun rememberArtworkGlowColor(
             return@produceState
         }
 
+        // Rapid DPAD movement should not start a new software decode for every card.
+        delay(160L)
+
         // The display image may be a hardware bitmap. Pixel sampling therefore uses a tiny,
         // dedicated software request that reuses Coil's normal caches. Some DrawableImage sources
         // (including Android resources) report no positive intrinsic size, so toBitmap must receive
@@ -104,14 +92,19 @@ private fun rememberArtworkGlowColor(
                 .build()
             val result = SingletonImageLoader.get(context).execute(request)
             if (result is SuccessResult) {
-                val bitmap = result.image.toBitmap(GlowSampleWidth, GlowSampleHeight)
-                val pixels = IntArray(bitmap.width * bitmap.height)
-                bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-                extractArtworkGlowColor(pixels) ?: GlowFallbackColor
+                withContext(Dispatchers.Default) {
+                    val bitmap = result.image.toBitmap(GlowSampleWidth, GlowSampleHeight)
+                    val pixels = IntArray(bitmap.width * bitmap.height)
+                    bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+                    extractArtworkGlowColor(pixels) ?: GlowFallbackColor
+                }
             } else {
                 GlowFallbackColor
             }
-        }.getOrDefault(GlowFallbackColor).let { sampled ->
+        }.getOrElse { error ->
+            if (error is CancellationException) throw error
+            GlowFallbackColor
+        }.let { sampled ->
             GlowColorCache.put(uri, sampled)
             value = sampled
         }
@@ -131,8 +124,10 @@ internal fun BoxScope.FocusedArtworkGlow(
     val outerAlpha = 0.24f + breath * 0.06f
     val innerAlpha = 0.34f + breath * 0.07f
 
-    Box(
-        modifier = Modifier
+    // Static shadow parameters and a remembered modifier let the draw node reuse its
+    // shadow resources. Do not alter shadow alpha/radius on each animation frame.
+    val glowModifier = remember(sampled, outerAlpha, innerAlpha) {
+        Modifier
             .fillMaxSize()
             .graphicsLayer {
                 scaleX = 1.025f
@@ -161,8 +156,9 @@ internal fun BoxScope.FocusedArtworkGlow(
             )
             // The actual card is rendered above this source surface; keep the source almost
             // transparent so the user sees a halo, not a second tinted card.
-            .background(sampled.copy(alpha = 0.018f), MediaCardShape),
-    )
+            .background(sampled.copy(alpha = 0.018f), MediaCardShape)
+    }
+    Box(modifier = glowModifier)
 }
 
 /**

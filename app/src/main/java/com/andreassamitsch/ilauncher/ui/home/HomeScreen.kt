@@ -170,13 +170,30 @@ fun HomeScreen(
         )
     }
     var hero by remember { mutableStateOf(defaultHero) }
+    var pendingHero by remember { mutableStateOf<HomeHeroContent?>(null) }
     var heroSelectedByUser by remember { mutableStateOf(false) }
     var movingAppPackage by remember { mutableStateOf<String?>(null) }
 
     fun selectHero(content: HomeHeroContent) {
         heroSelectedByUser = true
-        hero = content
+        if (homeHeroFocusDelayMillis(hero.key, content.key) == 0L) {
+            pendingHero = null
+            hero = content
+        } else {
+            pendingHero = content
+        }
         onNavigationVisibilityChange(false)
+    }
+
+    // Coalesce rapid card focus changes without delaying the actual DPAD focus or playback.
+    // Same-identity metadata changes stay immediate; only the presentation is deferred.
+    LaunchedEffect(pendingHero) {
+        val candidate = pendingHero ?: return@LaunchedEffect
+        delay(homeHeroFocusDelayMillis(hero.key, candidate.key))
+        if (pendingHero == candidate) {
+            hero = candidate
+            pendingHero = null
+        }
     }
 
     LaunchedEffect(defaultHero, heroSelectedByUser) {
@@ -248,7 +265,10 @@ fun HomeScreen(
             content = hero,
             onOpenMediaDetails = onOpenMediaDetails,
             onOpenApp = onOpenApp,
-            onFocused = { onNavigationVisibilityChange(true) },
+            onFocused = {
+                pendingHero = null
+                onNavigationVisibilityChange(true)
+            },
             textScrollSpeed = heroTextScrollSpeed,
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -320,7 +340,10 @@ fun HomeScreen(
                                     restoreKey = appsFocusRestoreKey,
                                     restoreRequester = appsRestoreFocusRequester,
                                     onRowFocused = onRowFocused,
-                                    onFocused = { onNavigationVisibilityChange(false) },
+                                    onFocused = {
+                                        pendingHero = null
+                                        onNavigationVisibilityChange(false)
+                                    },
                                 )
 
                                 else -> previewByRowKey[rowKey]?.let { channel ->
@@ -704,7 +727,7 @@ internal fun HomeHero(
     ) {
         Crossfade(
             targetState = content,
-            animationSpec = tween(durationMillis = 230),
+            animationSpec = tween(durationMillis = 120),
             label = "home-hero",
         ) { heroContent ->
             var fitArtworkAspectRatio by remember(heroContent.artworkUri) { mutableStateOf<Float?>(null) }
