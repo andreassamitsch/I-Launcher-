@@ -1,0 +1,7 @@
+# CloudStream provider startup readiness
+
+Hardware evidence on .109, 2026-11-25: external episode request at 19:15:17, bridge reported zero ordered providers at 19:15:19, while installed plugins continued loading; Serienstream registered at 19:15:21 and Huhu at 19:15:22. Only one CloudStream package installed. Previous awaitProviders returned on the first active API, but the episode monitor's provider-pinned request was subsequently filtered to an empty list.
+
+Wait for the exact pinned provider, or for the initial online and local load passes for unpinned requests. Track initial online load completion independently from optional network updates, including when auto-update is disabled. Preserve provider pin; don't silently change episode catalogue. Existing 90-second bounded wait and external launch cancellation remain. True empty configuration requires completed load and zero installed/active providers; unavailable, timeout and safe mode use retry/extension dialog, not the setup message. Unpinned partial availability at timeout permits existing matching fallback. No app data changes.
+
+Tests: five JVM cases for first-provider race, unpinned priority, empty cold start, genuine empty vs installed unavailable, timeout/pinning. Real TV: update in place; cold-start a pinned Watch Next entry from launcher, verify it waits until the exact provider loads, no false setup dialog; warm start, cancel and repeat, non-pinned launch, and actual unavailability. Verify ILauncherBridge logs startup decision and no false setup. Device test remains pending.
