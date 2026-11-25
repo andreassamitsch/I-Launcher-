@@ -1,0 +1,18 @@
+# Seed rules derived from the actual TCL ART profile of dev.562 (2026-11-25).
+# Use source-level method-name patterns because the observed optimized DEX
+# contains R8-rewritten signatures (GapComposer, synthetic lambdas).
+# No fabricated generated profile. Refresh using the TV profile capture workflow.
+HPLcom/andreassamitsch/ilauncher/ui/GoogleTvTopNavigationKt;->GoogleTvTopNavigation(**)**
+HPLcom/andreassamitsch/ilauncher/ui/components/FocusedCardEffectsKt;->FocusedArtworkGlow(**)**
+HPLcom/andreassamitsch/ilauncher/ui/components/FocusedCardEffectsKt;->FocusedBreathingBorder(**)**
+HPLcom/andreassamitsch/ilauncher/ui/home/HomeRowFocusAnchorKt;->AnchoredHomeRow(**)**
+HPLcom/andreassamitsch/ilauncher/ui/home/HomeScreenKt;->HomeScreen(**)**
+HPLcom/andreassamitsch/ilauncher/ui/home/HomeScreenKt;->HomeHeroStage(**)**
+HPLcom/andreassamitsch/ilauncher/ui/home/HomeScreenKt;->HomeHero(**)**
+HPLcom/andreassamitsch/ilauncher/ui/home/HomeScreenKt;->HomeRowHeader(**)**
+HPLcom/andreassamitsch/ilauncher/ui/home/HomeScreenKt;->AutoScrollingHeroDescription(**)**
+HPLcom/andreassamitsch/ilauncher/ui/home/HomeScreenKt;->mediaHero(**)**
+HPLcom/andreassamitsch/ilauncher/ui/home/HomeScreenKt;->liveTvHero(**)**
+HPLcom/andreassamitsch/ilauncher/ui/home/HomeHeroContent;->equals(Ljava/lang/Object;)Z
+HPLcom/andreassamitsch/ilauncher/ui/home/HomeHeroContent;->hashCode()I
+PLcom/andreassamitsch/ilauncher/MainActivity;->onCreate(Landroid/os/Bundle;)V

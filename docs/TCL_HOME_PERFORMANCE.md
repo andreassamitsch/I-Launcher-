@@ -17,3 +17,9 @@ Next phases if indicated by measurements: reduce preview query/invalidations and
 - Custom app Baseline Profiles are deferred until a representative navigation trace and Macrobenchmark device/test setup can be validated; do not invent profile entries.
 
 Required device checks: same 30s UP/DOWN and LEFT/RIGHT sequence as dev.561, 6s idle; zero Y drift on horizontal navigation; one UP from first row; last-row keyline; restore Watch Next, Live TV, Apps and configuration after returning; verify artwork glow and TMDB/EPG parsing in optimized build. No APK considered hardware tested until these pass.
+
+## Phase 3 – exact rail re-entry and ART compilation
+
+Device observation: dev.562, 688 frames/346 janky (50.29%), median 65 ms, p95 89 ms, p99 105 ms, 0 frames during 6s idle. The TCL ART package status was verify after install; a real runtime profile was readable via pm dump-profiles. Seed Baseline Profile rules use observed hot method names (wildcard signatures to avoid copying R8-rewritten descriptors). ProfileInstaller is explicit. TV Baseline Profile Capture collects a source-compatible non-debuggable/unminified profile in the existing TV emulator, for later review; it does not automatically publish unreviewed rules. Validate assets/dexopt/baseline.prof and device speed-profile status, compare navigation on the same device. No isolated profile performance gain claimed yet.
+
+Each horizontal Home rail uses native Compose focusRestorer with existing stable lazy keys, independent of row scroll alignment. The optimized smoke compares the focused accessible title before and after UP/DOWN on a later media card. Same-artwork/same-identity metadata updates do not crossfade the full Hero again. Live-TV EPG focus enrichment waits 180ms for stable channel focus. Existing Coil constraint-based image sizes remain unchanged pending evidence of an image-size issue.

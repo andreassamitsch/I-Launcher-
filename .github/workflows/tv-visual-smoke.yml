@@ -110,6 +110,32 @@ jobs:
             sleep 1
             adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedActivity' | grep -q 'com.andreassamitsch.ilauncher/.ui.preview.UiPreviewActivity' || (adb logcat -d -v time > build/tv-visual/logcat-failure.txt; adb shell dumpsys activity activities > build/tv-visual/activity-failure.txt; exit 1)
             adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-3.png
+
+            # Verify identity, not merely that the UI is alive or that some card is focused.
+            # The preview rail uses the same WatchNextCard and focusRestorer as Watch Next.
+            adb shell uiautomator dump /sdcard/home-focus-before.xml
+            adb pull /sdcard/home-focus-before.xml build/tv-visual/home-focus-before.xml
+            adb shell input keyevent 19
+            sleep 1
+            adb shell input keyevent 20
+            sleep 1
+            adb shell uiautomator dump /sdcard/home-focus-after.xml
+            adb pull /sdcard/home-focus-after.xml build/tv-visual/home-focus-after.xml
+            python3 - <<'PY'
+            import xml.etree.ElementTree as ET
+            def focused_card(path):
+                nodes = ET.parse(path).findall(".//node[@focused='true']")
+                assert len(nodes) == 1, (path, nodes)
+                card = nodes[0].get("content-desc", "")
+                assert card, (path, "focused card has no accessible title")
+                return card
+            before = focused_card("build/tv-visual/home-focus-before.xml")
+            after = focused_card("build/tv-visual/home-focus-after.xml")
+            assert before == after, (before, after)
+            print("Restored exact card:", after)
+            PY
+            adb exec-out screencap -p > build/tv-visual/home-first-rail-restored-later-card.png
+
             adb shell input keyevent 21
             sleep 1
             adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-4.png

@@ -255,3 +255,7 @@ Priorität bleibt gemäß `AGENTS.md`:
 ## 14. Performance phase 2
 
 Home now uses a keyed vertical LazyColumn and row-index alignment instead of an eager vertical Column and root-coordinate observers. The vertical stage still owns Y, the horizontal rail owns X, and the top-row UP edge remains explicit. Hero state reads are isolated from rails. The colored halo uses a reusable neutral alpha bitmap tinted in the draw phase. Hardware acceptance: zero horizontal Y drift, stable row keyline including final row, one-step navigation return, stable source-ID restoration and repeatable 30-second frame measurements. These are required checks, not assumed test results.
+
+## 15. Re-entry from the top navigation
+
+Each horizontal rail owns its saved child focus through Compose focusRestorer; the row owns vertical alignment only. The top row UP edge still explicitly returns to the selected Home navigation tab. DOWN into the rail must restore the exact previously focused media card, including later horizontally scrolled cards. The TV smoke asserts accessible card identity before/after UP/DOWN; verify Watch Next and all rails on TCL, including when provider entries change.
