@@ -103,3 +103,6 @@ The vertical home stage uses a keyed LazyColumn, with row-entry index alignment 
 
 ### Home performance phase 3
 Horizontal rails preserve child focus with Compose focusRestorer, independent from the vertical stage. Same-key/same-artwork Hero metadata updates avoid another full crossfade. Stable Live-TV focus gates enrichment. A small baseline profile is seeded from real dev.562 TCL ART observations; a non-debuggable unminified TV capture workflow produces candidates for review. ProfileInstaller supports local installation; actual ART compilation and hardware improvements require verification.
+
+### EPG-first metadata quality
+The airing's XMLTV/OpenWebif metadata remains authoritative. TMDB series summaries are not airing descriptions; exact movie/episode text fills missing EPG fields only. Matching episode stills and film backdrops are preferred; a generic series backdrop is fallback behind an available EPG image. On refresh, successful TMDB metadata is retained only for matching service reference, start time, title and episode identity; the fresh airing's source fields remain authoritative.

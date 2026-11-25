@@ -273,9 +273,14 @@ class EpgRepository(
 
     suspend fun enrichProgram(serviceReference: String, startUtcMillis: Long) =
         withContext(Dispatchers.IO) {
-            val program = _state.value.guideByServiceReference[serviceReference]
-                ?.firstOrNull { it.startUtcMillis == startUtcMillis }
+            val snapshot = _state.value
+            val channel = snapshot.enrichedChannels.firstOrNull { it.serviceReference == serviceReference }
+            val program = listOfNotNull(channel?.now, channel?.next)
+                .firstOrNull { it.startUtcMillis == startUtcMillis }
+                ?: snapshot.guideByServiceReference[serviceReference]
+                    ?.firstOrNull { it.startUtcMillis == startUtcMillis }
                 ?: return@withContext
+            if (program.tmdbId != null) return@withContext
             val enriched = resolveTmdb(serviceReference, program) ?: return@withContext
             applyProgramEnrichment(serviceReference, program.startUtcMillis, enriched)
         }
@@ -374,19 +379,35 @@ class EpgRepository(
                 )
             }
 
-        _state.value = EpgState(
-            sourceUrl = source.sourceUrl,
-            sourceLabel = EpgSourceUrl.label(source.sourceUrl),
-            epgLabel = EpgSourceUrl.label(source.epgUrl),
-            sourceChannels = source.channels,
-            mappings = mappings,
-            mappingSuggestions = suggestions,
-            enrichedChannels = merge.channels,
-            guideByServiceReference = merge.guideByServiceReference,
-            isRefreshing = isRefreshing,
-            lastUpdatedUtcMillis = store.xmlTvUpdatedAtUtcMillis() ?: source.updatedAtUtcMillis,
-            errorMessage = error,
-        )
+        _state.update { previous ->
+            val oldChannels = previous.enrichedChannels.associateBy(LiveTvChannel::serviceReference)
+            val channels = merge.channels.map { channel ->
+                val old = oldChannels[channel.serviceReference]
+                val oldPrograms = listOfNotNull(old?.now, old?.next).associateBy(LiveTvProgram::startUtcMillis)
+                channel.copy(
+                    now = channel.now?.let { it.retainEpgEnrichment(oldPrograms[it.startUtcMillis]) },
+                    next = channel.next?.let { it.retainEpgEnrichment(oldPrograms[it.startUtcMillis]) },
+                )
+            }
+            val guide = merge.guideByServiceReference.mapValues { (ref, programs) ->
+                val oldPrograms = previous.guideByServiceReference[ref].orEmpty()
+                    .filter { it.tmdbId != null }.associateBy(LiveTvProgram::startUtcMillis)
+                programs.map { it.retainEpgEnrichment(oldPrograms[it.startUtcMillis]) }
+            }
+            EpgState(
+                sourceUrl = source.sourceUrl,
+                sourceLabel = EpgSourceUrl.label(source.sourceUrl),
+                epgLabel = EpgSourceUrl.label(source.epgUrl),
+                sourceChannels = source.channels,
+                mappings = mappings,
+                mappingSuggestions = suggestions,
+                enrichedChannels = channels,
+                guideByServiceReference = guide,
+                isRefreshing = isRefreshing,
+                lastUpdatedUtcMillis = store.xmlTvUpdatedAtUtcMillis() ?: source.updatedAtUtcMillis,
+                errorMessage = error,
+            )
+        }
     }
 
     private suspend fun enrichCurrentProgramsProgressively() {
@@ -395,6 +416,7 @@ class EpgRepository(
             .mapNotNull { channel -> channel.now?.let { channel.serviceReference to it } }
             .take(MAX_CURRENT_TMDB_ITEMS)
         for ((serviceReference, program) in candidates) {
+            if (program.tmdbId != null) continue
             val enriched = resolveTmdb(serviceReference, program) ?: continue
             applyProgramEnrichment(serviceReference, program.startUtcMillis, enriched)
         }
@@ -415,26 +437,7 @@ class EpgRepository(
                 episodeNumber = program.episodeNumber,
             ),
         ) ?: return null
-        val episode = metadata.episode
-        val tmdbOverview = episode?.overview ?: metadata.overview
-        val tmdbYear = episode?.airYear ?: metadata.releaseYear
-        return program.copy(
-            subtitle = episode?.title ?: program.subtitle,
-            longDescription = tmdbOverview ?: program.longDescription,
-            shortDescription = tmdbOverview ?: program.shortDescription,
-            releaseYear = tmdbYear ?: program.releaseYear,
-            tmdbId = metadata.tmdbId,
-            tmdbEpisodeId = episode?.tmdbEpisodeId,
-            tmdbType = metadata.mediaType,
-            tmdbTitle = metadata.title,
-            tmdbOverview = tmdbOverview,
-            tmdbReleaseYear = tmdbYear,
-            tmdbLogoUri = metadata.logoUri,
-            posterUri = metadata.posterUri,
-            backdropUri = metadata.backdropUri,
-            episodeStillUri = episode?.stillUri,
-            voteAverage = episode?.voteAverage ?: metadata.voteAverage,
-        )
+        return program.withTmdbEnrichment(metadata)
     }
 
     private fun applyProgramEnrichment(
@@ -447,13 +450,17 @@ class EpgRepository(
             guide[serviceReference] = guide[serviceReference]
                 .orEmpty()
                 .map { program ->
-                    if (program.startUtcMillis == startUtcMillis) enriched else program
+                    if (program.startUtcMillis == startUtcMillis) program.retainEpgEnrichment(enriched) else program
                 }
             val channels = current.enrichedChannels.map { channel ->
                 if (channel.serviceReference != serviceReference) return@map channel
                 channel.copy(
-                    now = if (channel.now?.startUtcMillis == startUtcMillis) enriched else channel.now,
-                    next = if (channel.next?.startUtcMillis == startUtcMillis) enriched else channel.next,
+                    now = channel.now?.let {
+                        if (it.startUtcMillis == startUtcMillis) it.retainEpgEnrichment(enriched) else it
+                    },
+                    next = channel.next?.let {
+                        if (it.startUtcMillis == startUtcMillis) it.retainEpgEnrichment(enriched) else it
+                    },
                 )
             }
             current.copy(

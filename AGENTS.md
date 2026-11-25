@@ -235,6 +235,8 @@ Nicht nur Senderlogos anzeigen, sondern möglichst Senderlogo, aktuelle Sendung,
 
 EPG-Daten kommen vom Gigablue/OpenWebif und können durch den TMDB-Resolver mit Postern, Backdrops oder Episodenbildern angereichert werden. Beim Fokus eines aktuellen Programms darf eine noch fehlende TMDB-Auflösung gezielt angestoßen werden. Der ausgewählte Home-Hero muss über die stabile Senderreferenz bzw. `serviceReference + startUtcMillis` an das Programm gebunden bleiben und sich aktualisieren, sobald die angereicherte Kopie vorliegt; kein Fokus-Neustart dafür.
 
+Für konkrete TV-Ausstrahlungen sind XMLTV und Gigablue/OpenWebif die führenden Quellen für Sendungstitel, Zeiten, Folgenangaben und sendungsspezifische Texte. TMDB ergänzt ausschließlich einen nachweisbaren Mehrwert: vorhandene EPG-Texte nicht mit allgemeinen Serienbeschreibungen überschreiben; fehlende Sendungsbeschreibungen nur mit eindeutig zugeordnetem Film- oder Episodentext ergänzen. Serienbilder sind Fallback, wenn kein sendungsspezifisches EPG-Bild vorliegt; ein eindeutig passendes Episodenbild oder Film-Backdrop darf bevorzugt werden. Bereits erfolgreiche Anreicherung bei Refresh derselben Ausstrahlung erhalten, nie auf eine andere Folge übertragen.
+
 Weitere mögliche Reihen: „Gleich im TV“, „Heute Abend“, „Meine Sender“.
 
 ## 15. Live-TV-Wiedergabe
@@ -317,7 +319,7 @@ Geeignete Bildgrößen laden, keine unnötig großen Originale.
 
 Für den **Home-Hero** gilt bewusst eine strengere Regel als für Karten und Detailseiten: TMDB-verknüpfte Filme und Serien verwenden ausschließlich ein breites TMDB-Backdrop als bildfüllenden Hintergrund; Episoden verwenden – abhängig von der Home-Bildpräferenz – Episoden-Still bzw. Serien-Backdrop zuerst und den jeweils anderen breiten Bildtyp als Fallback. Poster/Hochformatbilder sind im Home-Hero kein primäres TMDB-Fallback. Falls der primäre `backdrop_path` fehlt, darf aus den von TMDB gelieferten Backdrops ein geeigneter sprachneutraler Kandidat gewählt werden.
 
-Bildfüllende TMDB-Hero-Artworks werden `TopCenter` gecroppt. EPG-/Live-TV-Inhalte ohne TMDB-Verknüpfung verwenden ihr vorhandenes Quellbild möglichst unbeschnitten oben rechts. Der Verlauf setzt an den tatsächlich gerenderten `Fit`-Bildgrenzen an, sodass unterschiedliche Quellformate wie 2:3, 4:3 und 16:9 nach links und unten weich in den Hero-Hintergrund auslaufen, ohne das Bild zusätzlich als vergrößerten Vollflächen-Crop zu duplizieren.
+Bildfüllende TMDB-Hero-Artworks werden `TopCenter` gecroppt. EPG-/Live-TV-Inhalte dürfen gemäß Abschnitt 14 ein vorhandenes konkretes Quellbild auch bei TMDB-Verknüpfung bevorzugen und verwenden es möglichst unbeschnitten oben rechts. Der Verlauf setzt an den tatsächlich gerenderten `Fit`-Bildgrenzen an, sodass unterschiedliche Quellformate wie 2:3, 4:3 und 16:9 nach links und unten weich in den Hero-Hintergrund auslaufen, ohne das Bild zusätzlich als vergrößerten Vollflächen-Crop zu duplizieren.
 
 ## 20. Suche und App-Handoffs
 

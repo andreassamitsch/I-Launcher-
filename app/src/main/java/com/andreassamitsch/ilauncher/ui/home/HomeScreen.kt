@@ -1189,14 +1189,11 @@ private fun liveTvHero(channel: LiveTvChannel): HomeHeroContent {
 internal fun liveTvHeroArtwork(program: LiveTvProgram?): Pair<String?, Boolean> {
     if (program == null) return null to false
     if (program.tmdbId == null) return program.imageUri to true
-
-    return when (program.tmdbType ?: MediaType.Unknown) {
-        MediaType.Episode -> (program.episodeStillUri ?: program.backdropUri) to false
-        MediaType.Series,
-        MediaType.Movie,
-        -> program.backdropUri to false
-        MediaType.Unknown -> (program.backdropUri ?: program.episodeStillUri) to false
-    }
+    program.episodeStillUri?.takeIf { it.isNotBlank() }?.let { return it to false }
+    program.backdropUri?.takeIf { program.tmdbType == MediaType.Movie && it.isNotBlank() }
+        ?.let { return it to false }
+    program.imageUri?.takeIf { it.isNotBlank() }?.let { return it to true }
+    return program.backdropUri?.takeIf { it.isNotBlank() } to false
 }
 
 private fun liveProgramMedia(channel: LiveTvChannel, program: LiveTvProgram): MediaItem = MediaItem(
