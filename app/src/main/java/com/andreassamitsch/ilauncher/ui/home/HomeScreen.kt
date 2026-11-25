@@ -1,6 +1,7 @@
 package com.andreassamitsch.ilauncher.ui.home
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
@@ -771,6 +772,7 @@ private fun HomeRowHeader(title: String, sourceApp: InstalledApp? = null) {
     }
 }
 
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 internal fun HomeHero(
     content: HomeHeroContent,
