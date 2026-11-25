@@ -151,7 +151,7 @@ Die Google-TV-Analyse zeigte eine eigene visuelle Focus-/Glow-Ebene (`FocusFrame
 - fokussierte Karten brauchen ausreichend Draw-Space bzw. korrekte Z-Reihenfolge, damit Nachbarkarten den Halo nicht abschneiden,
 - visuelle Focus-Effekte sollen möglichst rendererfreundlich bleiben.
 
-I Launcher gewinnt die Glow-Farbe der einzelnen fokussierten Medienkarte aus einer winzigen gecachten Softwareprobe derselben Artwork-URI. Zwei explizite Compose-`dropShadow()`-Ebenen zeichnen daraus den farbigen Halo; der weiße Breath-Rahmen bleibt eine getrennte Focus-Decoration. Große Live-Blur-/Radial-Layer werden vermieden, nachdem sie im SwiftShader-Smoke reproduzierbar Rendererprobleme verursacht hatten.
+I Launcher gewinnt die Glow-Farbe der einzelnen fokussierten Medienkarte aus einer winzigen gecachten Softwareprobe derselben Artwork-URI. Zwei explizite Compose-`dropShadow()`-Ebenen zeichnen daraus den farbigen Halo; der weiße Rahmen bleibt eine getrennte Focus-Decoration. Im Performance-Teststand sind Glow und Kontur statisch; nur die TV-Kartenskalierung beim Fokuswechsel bleibt animiert. Die Farbabtastung wartet 160 ms auf stabilen Fokus. Große Live-Blur-/Radial-Layer werden vermieden, nachdem sie im SwiftShader-Smoke reproduzierbar Rendererprobleme verursacht hatten.
 
 ## 8. Top-Navigation und Fokusgraph
 
