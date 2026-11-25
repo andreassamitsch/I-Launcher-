@@ -1,5 +1,6 @@
 package com.andreassamitsch.ilauncher.ui.components
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +33,8 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
+import com.andreassamitsch.ilauncher.model.LiveTvArtworkSource
+import com.andreassamitsch.ilauncher.model.selectArtwork
 
 @Composable
 fun LiveTvCard(
@@ -39,13 +43,26 @@ fun LiveTvCard(
     onFocused: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    val artwork = channel.now?.preferredArtworkUri
+    val program = channel.now
+    val selection = program?.selectArtwork()
+    val artwork = selection?.uri
     // Never display an older airing's image after a programme boundary.
     var displayedPainter by remember(channel.serviceReference, channel.now?.startUtcMillis, channel.now?.title) {
         mutableStateOf<Painter?>(null)
     }
     var displayedUri by remember(channel.serviceReference, channel.now?.startUtcMillis, channel.now?.title) {
         mutableStateOf<String?>(null)
+    }
+    var displayedSource by remember(channel.serviceReference, program?.startUtcMillis, program?.title) {
+        mutableStateOf<LiveTvArtworkSource?>(null)
+    }
+    LaunchedEffect(channel.serviceReference, program?.startUtcMillis, program?.tmdbId, selection?.source, displayedSource) {
+        val shown = displayedSource ?: if (channel.piconUri.isNullOrBlank()) {
+            LiveTvArtworkSource.None
+        } else LiveTvArtworkSource.SenderLogo
+        Log.d("LIVE_TV_ARTWORK", "station=${channel.name} start=${program?.startUtcMillis} " +
+            "tmdb=${program?.tmdbId} type=${program?.tmdbType} " +
+            "candidate=${selection?.source ?: LiveTvArtworkSource.None} displayed=$shown")
     }
     var focused by remember(channel.serviceReference) { mutableStateOf(false) }
     val breath = rememberFocusedCardBreath(focused)
@@ -121,6 +138,7 @@ fun LiveTvCard(
                                     if (displayedPainter == null) {
                                         displayedPainter = it.painter
                                         displayedUri = source
+                                        displayedSource = LiveTvArtworkSource.Epg
                                     }
                                 },
                                 modifier = Modifier.fillMaxSize(),
@@ -137,6 +155,12 @@ fun LiveTvCard(
                             onSuccess = {
                                 displayedPainter = it.painter
                                 displayedUri = artwork
+                                displayedSource = selection?.source
+                                Log.d("LIVE_TV_ARTWORK", "loaded station=${channel.name} source=${selection?.source} " +
+                                    "decoded=${it.result.image.width}x${it.result.image.height}")
+                            },
+                            onError = {
+                                Log.d("LIVE_TV_ARTWORK", "load failed station=${channel.name} source=${selection?.source}")
                             },
                             modifier = Modifier.fillMaxSize().alpha(0f),
                         )

@@ -29,7 +29,7 @@ class EpgEnrichmentTest {
         assertEquals(airing.shortDescription, result.shortDescription)
         assertEquals(airing.releaseYear, result.releaseYear)
         assertEquals(airing.subtitle, result.subtitle)
-        assertEquals(airing.imageUri, result.preferredArtworkUri)
+        assertEquals("series.jpg", result.preferredArtworkUri)
         assertEquals(123, result.tmdbId)
         assertNull(result.tmdbOverview)
         assertNull(airing.copy(longDescription = null, shortDescription = null)
@@ -51,7 +51,7 @@ class EpgEnrichmentTest {
         assertEquals("TMDB Folge", empty.subtitle)
         val wrong = airing.withTmdbEnrichment(metadata.copy(episode = episode.copy(episodeNumber = 4)))
         assertNull(wrong.tmdbEpisodeId)
-        assertEquals("epg.jpg", wrong.preferredArtworkUri)
+        assertEquals("series.jpg", wrong.preferredArtworkUri)
     }
 
     @Test fun movieFillsMissingTextAndUsesSpecificBackdrop() {
