@@ -40,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -48,6 +49,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
@@ -88,6 +91,8 @@ import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 private val HOME_HERO_HEIGHT = 360.dp
 private val HOME_FIRST_RAIL_TOP = 275.dp
@@ -143,6 +148,10 @@ fun HomeScreen(
     val appsRestoreFocusRequester = remember { FocusRequester() }
     val liveTvConfigRestoreFocusRequester = remember { FocusRequester() }
     val contentScrollState = rememberLazyListState()
+    val railFocus = remember { HomeRailFocusMemory() }
+    val navigationScope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val verticalMove = remember { mutableStateOf<Job?>(null) }
     val appLabels = remember(apps) { apps.associate { it.packageName to it.label } }
     val appsByPackage = remember(apps) { apps.associateBy { it.packageName } }
     val visiblePreviewChannels = remember(previewChannels) {
@@ -160,6 +169,33 @@ fun HomeScreen(
             }
         }
     }
+    fun restoreAdjacentRow(fromIndex: Int, delta: Int): Boolean {
+        val targetIndex = fromIndex + delta
+        val row = visibleRowOrder.getOrNull(targetIndex) ?: return false
+        val selected = railFocus.selectedKey(row) ?: return false
+        val (keys, horizontal) = when (row) {
+            HomePreferences.ROW_WATCH_NEXT -> watchNextItems.map(::watchNextRailKey) to watchNextListState
+            HomePreferences.ROW_LIVE_TV -> liveTvState.channels.map { it.serviceReference } to liveTvListState
+            HomePreferences.ROW_APPS -> (apps.map { it.packageName } + "all-apps") to appsListState
+            else -> (previewByRowKey[row]?.programs.orEmpty().map { it.media.id }) to railFocus.previewState(row)
+        }
+        val index = keys.indexOf(selected)
+        if (index < 0) return false
+        if (verticalMove.value?.isActive == true) return true
+        if (railFocus.requestAttached(row, selected)) return true
+        verticalMove.value = navigationScope.launch {
+            contentScrollState.scrollToItem(targetIndex)
+            if (horizontal.layoutInfo.visibleItemsInfo.none { it.key == selected }) {
+                horizontal.scrollToItem(index)
+            }
+            withFrameNanos { }
+            if (!railFocus.awaitAttached(row, selected)) {
+                focusManager.moveFocus(if (delta < 0) FocusDirection.Up else FocusDirection.Down)
+            }
+        }
+        return true
+    }
+
     suspend fun restoreVerticalRow(rowKey: String): Boolean {
         val index = visibleRowOrder.indexOf(rowKey)
         if (index < 0) return false
@@ -298,9 +334,12 @@ fun HomeScreen(
                         AnchoredHomeRow(
                             listState = contentScrollState,
                             rowIndex = rowIndex,
+                            onVerticalMove = { delta -> restoreAdjacentRow(rowIndex, delta) },
                         ) { onRowFocused ->
                             when (rowKey) {
                                 HomePreferences.ROW_WATCH_NEXT -> WatchNextHomeRow(
+                                    railFocus = railFocus,
+                                    rowKey = rowKey,
                                     items = watchNextItems,
                                     error = watchNextError,
                                     hasTvListingsPermission = hasTvListingsPermission,
@@ -319,6 +358,8 @@ fun HomeScreen(
 
                                 HomePreferences.ROW_LIVE_TV -> if (liveTvState.configured) {
                                     LiveTvHomeRow(
+                                    railFocus = railFocus,
+                                    rowKey = rowKey,
                                         state = liveTvState,
                                         listState = liveTvListState,
                                         restoreServiceReference = liveTvFocusRestoreServiceReference,
@@ -333,6 +374,8 @@ fun HomeScreen(
                                 }
 
                                 HomePreferences.ROW_APPS -> AppsHomeRow(
+                                    railFocus = railFocus,
+                                    rowKey = rowKey,
                                     apps = apps,
                                     listState = appsListState,
                                     movingAppPackage = movingAppPackage,
@@ -351,6 +394,8 @@ fun HomeScreen(
 
                                 else -> previewByRowKey[rowKey]?.let { channel ->
                                     PreviewHomeRow(
+                                    railFocus = railFocus,
+                                    rowKey = rowKey,
                                         channel = channel,
                                         sourceApp = channel.packageName?.let(appsByPackage::get),
                                         sourceLabel = channel.packageName?.let(appLabels::get) ?: channel.title,
@@ -429,6 +474,8 @@ private fun HomeHeroStage(
 
 @Composable
 private fun WatchNextHomeRow(
+    railFocus: HomeRailFocusMemory,
+    rowKey: String,
     items: List<EnrichedWatchNextItem>,
     error: String?,
     hasTvListingsPermission: Boolean,
@@ -478,7 +525,7 @@ private fun WatchNextHomeRow(
         ) {
             items(
                 items = items,
-                key = { "watch-next-${it.sourceItem.id}-${it.sourceItem.sourceOrder}" },
+                key = ::watchNextRailKey,
             ) { item ->
                 val cardModifier = if (item.media.source.sourceId == restoreSourceId) {
                     Modifier.focusRequester(restoreRequester)
@@ -499,7 +546,7 @@ private fun WatchNextHomeRow(
                             ),
                         )
                     },
-                    modifier = cardModifier,
+                    modifier = railFocus.cardModifier(rowKey, watchNextRailKey(item)).then(cardModifier),
                 )
             }
         }
@@ -508,6 +555,8 @@ private fun WatchNextHomeRow(
 
 @Composable
 private fun LiveTvHomeRow(
+    railFocus: HomeRailFocusMemory,
+    rowKey: String,
     state: OpenWebifState,
     listState: LazyListState,
     restoreServiceReference: String?,
@@ -552,7 +601,7 @@ private fun LiveTvHomeRow(
                         stableFocusChannel = channel
                         onFocused(liveTvHero(channel))
                     },
-                    modifier = cardModifier,
+                    modifier = railFocus.cardModifier(rowKey, channel.serviceReference).then(cardModifier),
                 )
             }
         }
@@ -571,6 +620,8 @@ private fun LiveTvHomeRow(
 
 @Composable
 private fun PreviewHomeRow(
+    railFocus: HomeRailFocusMemory,
+    rowKey: String,
     channel: AppContentChannel,
     sourceApp: InstalledApp?,
     sourceLabel: String,
@@ -579,7 +630,7 @@ private fun PreviewHomeRow(
     onFocused: (HomeHeroContent) -> Unit,
 ) {
     key(channel.id) {
-        val listState = rememberLazyListState()
+        val listState = railFocus.previewState(rowKey)
         HomeRowHeader(channel.title, sourceApp)
         LazyRow(
             state = listState,
@@ -598,6 +649,7 @@ private fun PreviewHomeRow(
                 WatchNextCard(
                     item = program.media,
                     onClick = { onOpen(channel, program) },
+                    modifier = railFocus.cardModifier(rowKey, program.media.id),
                     onFocused = {
                         onRowFocused()
                         onFocused(mediaHero(program.media, sourceLabel))
@@ -610,6 +662,8 @@ private fun PreviewHomeRow(
 
 @Composable
 private fun AppsHomeRow(
+    railFocus: HomeRailFocusMemory,
+    rowKey: String,
     apps: List<InstalledApp>,
     listState: LazyListState,
     movingAppPackage: String?,
@@ -641,9 +695,9 @@ private fun AppsHomeRow(
                 val moveMode = movingAppPackage == app.packageName
                 AppCard(
                     app = app,
-                    modifier = if (restoreKey == app.packageName) {
-                        Modifier.focusRequester(restoreRequester)
-                    } else Modifier,
+                    modifier = railFocus.cardModifier(rowKey, app.packageName).then(
+                        if (restoreKey == app.packageName) Modifier.focusRequester(restoreRequester) else Modifier,
+                    ),
                     onClick = {
                         if (moveMode) onMoveMode(null) else onOpen(app)
                     },
@@ -659,9 +713,9 @@ private fun AppsHomeRow(
             item(key = "all-apps") {
                 AllAppsDockCard(
                     onClick = onOpenAllApps,
-                    modifier = if (restoreKey == "all-apps") {
-                        Modifier.focusRequester(restoreRequester)
-                    } else Modifier,
+                    modifier = railFocus.cardModifier(rowKey, "all-apps").then(
+                        if (restoreKey == "all-apps") Modifier.focusRequester(restoreRequester) else Modifier,
+                    ),
                     onFocused = {
                         onRowFocused()
                         onFocused()
