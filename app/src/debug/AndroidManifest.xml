@@ -13,5 +13,9 @@
             android:name=".ui.preview.SettingsPreviewActivity"
             android:exported="true"
             android:screenOrientation="landscape" />
+        <receiver
+            android:name=".diagnostics.TvProviderDumpReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
     </application>
 </manifest>
