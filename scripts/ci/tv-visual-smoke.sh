@@ -62,7 +62,7 @@ adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedA
 adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-3.png
 
 # Verify identity, not merely that the UI is alive or that some card is focused.
-# The preview rail uses the same WatchNextCard and focusRestorer as Watch Next.
+# The preview rail uses the same WatchNextCard and persistent focus memory as Watch Next.
 adb shell uiautomator dump /sdcard/home-focus-before.xml
 adb pull /sdcard/home-focus-before.xml build/tv-visual/home-focus-before.xml
 adb shell input keyevent 19
@@ -91,6 +91,41 @@ assert before == after, (before, after)
 print("Restored exact card and position:", after)
 PY
 adb exec-out screencap -p > build/tv-visual/home-first-rail-restored-later-card.png
+
+# Restore the later first-rail item after scrolling a different rail horizontally.
+for pass in 1 2; do
+    adb shell input keyevent 20
+    sleep 1
+    adb shell input keyevent 22
+    adb shell input keyevent 22
+    sleep 1
+    adb shell uiautomator dump /sdcard/home-focus-lower.xml
+    adb pull /sdcard/home-focus-lower.xml build/tv-visual/home-focus-lower-${pass}.xml
+    adb shell input keyevent 19
+    sleep 1
+    adb shell uiautomator dump /sdcard/home-focus-vertical.xml
+    adb pull /sdcard/home-focus-vertical.xml build/tv-visual/home-focus-vertical-${pass}.xml
+done
+adb logcat -d -s HOME_FOCUS > build/tv-visual/home-focus-trace.txt
+python3 - <<'PY'
+import xml.etree.ElementTree as ET
+def focused_card(path):
+    nodes = ET.parse(path).findall(".//node[@focused='true']")
+    assert len(nodes) == 1, (path, nodes)
+    labels = {n.get("content-desc", "").strip() for n in nodes[0].iter("node")
+              if n.get("content-desc", "").strip()}
+    assert len(labels) == 1, (path, labels)
+    return next(iter(labels)), nodes[0].get("bounds")
+before = focused_card("build/tv-visual/home-focus-before.xml")
+for n in (1, 2):
+    lower = focused_card(f"build/tv-visual/home-focus-lower-{n}.xml")
+    lower_root = ET.parse(f"build/tv-visual/home-focus-lower-{n}.xml")
+    assert lower_root.findall(".//node[@text='Für dich']"), ("second row not visible", lower)
+    assert not lower_root.findall(".//node[@text='Empfehlungen']"), ("first row still visible", lower)
+    after = focused_card(f"build/tv-visual/home-focus-vertical-{n}.xml")
+    assert before == after, (before, after)
+    print("Restored exact card after vertical navigation:", after)
+PY
 
 adb shell input keyevent 21
 sleep 1

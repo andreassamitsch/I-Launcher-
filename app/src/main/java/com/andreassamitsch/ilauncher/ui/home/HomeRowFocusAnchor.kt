@@ -48,6 +48,7 @@ private class RowFocusAnchor {
 internal fun AnchoredHomeRow(
     listState: LazyListState,
     rowIndex: Int,
+    onVerticalMove: (Int) -> Boolean = { false },
     content: @Composable (onRowFocused: () -> Unit) -> Unit,
 ) {
     val anchor = remember { RowFocusAnchor() }
@@ -63,6 +64,12 @@ internal fun AnchoredHomeRow(
                 ) {
                     HomeTopNavigationFocusRequester.requestFocus()
                     true
+                } else if (event.action == AndroidKeyEvent.ACTION_DOWN) {
+                    when (event.keyCode) {
+                        AndroidKeyEvent.KEYCODE_DPAD_UP -> onVerticalMove(-1)
+                        AndroidKeyEvent.KEYCODE_DPAD_DOWN -> onVerticalMove(1)
+                        else -> false
+                    }
                 } else false
             }
             .onFocusChanged { focusState ->

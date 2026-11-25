@@ -2,6 +2,9 @@ package com.andreassamitsch.ilauncher.data.tmdb
 
 import android.content.Context
 import android.util.Log
+import android.util.LruCache
+import android.os.SystemClock
+import retrofit2.HttpException
 import com.andreassamitsch.ilauncher.BuildConfig
 import com.andreassamitsch.ilauncher.data.database.ILauncherDatabase
 import com.andreassamitsch.ilauncher.data.database.TmdbEpisodeEntity
@@ -10,6 +13,11 @@ import com.andreassamitsch.ilauncher.data.database.TmdbMediaEntity
 import com.andreassamitsch.ilauncher.model.MediaType
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 private const val TAG = "TMDB_RESOLVER"
@@ -36,15 +44,49 @@ class TmdbRepository(
     private val network = TmdbNetworkClient(readAccessToken)
     private val imageConfigurationStore = TmdbImageConfigurationStore(appContext)
     private val cleanupStarted = AtomicBoolean(false)
+    private val resolveLocks = Array(32) { Mutex() }
+    private val resolvePermits = Semaphore(3)
+    private val imageConfigurationMutex = Mutex()
+    private val retryAfter = LruCache<String, Long>(512)
+    private val globalRetryAfter = java.util.concurrent.atomic.AtomicLong(0)
+
+    private fun networkAllowed(key: String): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        return network.isConfigured && now >= globalRetryAfter.get() && now >= (retryAfter.get(key) ?: 0L)
+    }
+
+    private fun recordFailure(key: String, operation: String, throwable: Throwable) {
+        if (throwable is CancellationException) throw throwable
+        val code = (throwable as? HttpException)?.code()
+        val now = SystemClock.elapsedRealtime()
+        val seconds = (throwable as? HttpException)?.response()?.headers()
+            ?.get("Retry-After")?.toLongOrNull()?.coerceIn(1L, 3600L)
+        val wait = seconds?.times(1000L) ?: when (code) {
+            401, 403 -> 300_000L
+            429 -> 60_000L
+            else -> 60_000L
+        }
+        retryAfter.put(key, now + wait)
+        if (code == 401 || code == 403 || code == 429) {
+            globalRetryAfter.updateAndGet { maxOf(it, now + wait) }
+        }
+        Log.w(TAG, "TMDB $operation failed (${throwable.javaClass.simpleName}, HTTP ${code ?: "-"}); retry delayed")
+    }
 
     val isConfigured: Boolean
         get() = network.isConfigured
 
-    suspend fun resolve(sourceKey: String, lookup: MediaLookup): TmdbMetadata? = withContext(Dispatchers.IO) {
+    suspend fun resolve(sourceKey: String, lookup: MediaLookup): TmdbMetadata? =
+        resolveLocks[(sourceKey.hashCode() and Int.MAX_VALUE) % resolveLocks.size].withLock {
+            resolvePermits.withPermit { resolveLocked(sourceKey, lookup) }
+        }
+
+    private suspend fun resolveLocked(sourceKey: String, lookup: MediaLookup): TmdbMetadata? = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         cleanExpiredCacheOnce(now)
         val parsed = MediaTitleParser.parse(lookup)
         if (parsed.normalizedTitle.isBlank()) return@withContext null
+        val retryKey = "$sourceKey|$parsed"
 
         val cachedMapping = dao.mapping(sourceKey)
             ?.takeIf { now - it.updatedAtUtcMillis <= MAPPING_MAX_AGE_MILLIS }
@@ -52,30 +94,30 @@ class TmdbRepository(
 
         if (cachedMapping != null) {
             if (cachedMapping.tmdbId == null || cachedMapping.mediaType == null) {
-                if (!network.isConfigured || !shouldRetryNegativeMapping(cachedMapping.updatedAtUtcMillis, now)) {
+                if (!networkAllowed(retryKey) || !shouldRetryNegativeMapping(cachedMapping.updatedAtUtcMillis, now)) {
                     return@withContext null
                 }
                 return@withContext runCatching {
                     resolveFromNetwork(sourceKey, parsed, now)
                 }.onFailure { throwable ->
-                    Log.w(TAG, "TMDB negative-mapping retry failed (${throwable.javaClass.simpleName})")
+                    recordFailure(retryKey, "negative-mapping retry", throwable)
                 }.getOrNull()
             }
 
             val cached = cachedMetadata(cachedMapping, parsed, now)
             if (cached != null && now - cached.second <= REFRESH_AFTER_MILLIS) return@withContext cached.first
-            if (!network.isConfigured) return@withContext cached?.first
+            if (!networkAllowed(retryKey)) return@withContext cached?.first
             val refreshed = runCatching {
                 refreshKnownMapping(cachedMapping, parsed, now)
             }.onFailure { throwable ->
-                Log.w(TAG, "TMDB refresh failed (${throwable.javaClass.simpleName})")
+                recordFailure(retryKey, "refresh", throwable)
             }.getOrNull()
             return@withContext refreshed ?: cached?.first
         }
 
-        if (!network.isConfigured) return@withContext null
+        if (!networkAllowed(retryKey)) return@withContext null
         runCatching { resolveFromNetwork(sourceKey, parsed, now) }
-            .onFailure { throwable -> Log.w(TAG, "TMDB lookup failed (${throwable.javaClass.simpleName})") }
+            .onFailure { throwable -> recordFailure(retryKey, "lookup", throwable) }
             .getOrNull()
     }
 
@@ -252,13 +294,14 @@ class TmdbRepository(
         }
     }
 
-    private suspend fun ensureImageConfiguration(now: Long): TmdbImageConfiguration? {
-        imageConfigurationStore.loadFresh(now)?.let { return it }
-        if (!network.isConfigured) return null
-        return runCatching { imageConfigurationStore.save(network.api.configuration().images, now) }
-            .onFailure { throwable -> Log.w(TAG, "TMDB image configuration failed (${throwable.javaClass.simpleName})") }
-            .getOrNull()
-    }
+    private suspend fun ensureImageConfiguration(now: Long): TmdbImageConfiguration? =
+        imageConfigurationMutex.withLock {
+            imageConfigurationStore.loadFresh(now)?.let { return@withLock it }
+            if (!networkAllowed("image-configuration")) return@withLock null
+            runCatching { imageConfigurationStore.save(network.api.configuration().images, now) }
+                .onFailure { throwable -> recordFailure("image-configuration", "image configuration", throwable) }
+                .getOrNull()
+        }
 
     private suspend fun cleanExpiredCacheOnce(now: Long) {
         if (!cleanupStarted.compareAndSet(false, true)) return
