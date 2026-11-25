@@ -73,6 +73,7 @@ import com.andreassamitsch.ilauncher.ui.livetv.LiveTvScreen
 import com.andreassamitsch.ilauncher.ui.search.SearchScreen
 import com.andreassamitsch.ilauncher.ui.settings.SettingsCategory
 import com.andreassamitsch.ilauncher.ui.settings.SettingsScreen
+import com.andreassamitsch.ilauncher.ui.settings.UpdatePopup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -151,6 +152,9 @@ fun LauncherApp(
     val movieBrowseListState = rememberLazyListState()
     val seriesBrowseListState = rememberLazyListState()
     val updateState by updateManager.state.collectAsState()
+    var launcherResumed by remember(activity) {
+        mutableStateOf(activity?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) ?: true)
+    }
     val openWebifState by openWebifRepository.state.collectAsState()
     val epgState by epgRepository.state.collectAsState()
     var hasTvListingsPermission by remember {
@@ -520,11 +524,14 @@ fun LauncherApp(
         if (activity == null) onDispose { } else {
             val observer = LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_RESUME) {
+                    launcherResumed = true
                     val granted = TvProviderPermissionManager.hasReadTvListings(context)
                     if (granted != hasTvListingsPermission) {
                         hasTvListingsPermission = granted
                         tvProviderRefreshGeneration += 1
                     }
+                } else if (event == Lifecycle.Event.ON_PAUSE) {
+                    launcherResumed = false
                 }
             }
             activity.lifecycle.addObserver(observer)
@@ -538,7 +545,26 @@ fun LauncherApp(
             tvListingsPermissionLauncher.launch(TvProviderPermissionManager.READ_TV_LISTINGS)
         }
     }
-    LaunchedEffect(updateManager) { updateManager.checkForUpdates() }
+    // Check on foreground return and periodically during long launcher sessions.
+    // Never replace an active download or a verified-ready installation with a network check.
+    LaunchedEffect(updateManager, launcherResumed) {
+        if (!launcherResumed) return@LaunchedEffect
+        while (true) {
+            when (updateManager.state.value) {
+                is UpdateState.Downloading, is UpdateState.ReadyToInstall -> updateManager.refreshDownloadState()
+                UpdateState.Checking -> Unit
+                else -> updateManager.checkForUpdates()
+            }
+            delay(30 * 60_000L)
+        }
+    }
+    LaunchedEffect(updateManager, launcherResumed, updateState is UpdateState.Downloading) {
+        if (!launcherResumed || updateState !is UpdateState.Downloading) return@LaunchedEffect
+        while (updateManager.state.value is UpdateState.Downloading) {
+            delay(1_000L)
+            updateManager.refreshDownloadState()
+        }
+    }
 
     val openApp: (InstalledApp) -> Unit = { app -> installedAppsRepository.launch(app) }
     val openWatchNext: (EnrichedWatchNextItem) -> Unit = { item -> watchNextRepository.launch(item.sourceItem) }
@@ -939,6 +965,13 @@ fun LauncherApp(
             }
         }
     }
+    UpdatePopup(
+        manager = updateManager,
+        state = updateState,
+        enabled = launcherResumed && section == LauncherSection.Home &&
+            !showHomeSettings && discoverySettingsSection == null &&
+            selectedDetailsMedia == null && selectedLiveTvServiceReference == null,
+    )
 }
 
 private fun orderBrowseSections(
