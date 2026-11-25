@@ -33,3 +33,5 @@ Reproducible navigation sampling: `bash scripts/benchmark-home-adb.sh` with a co
 
 ### dev.564 real TCL observation (2026-11-25)
 Manual Home navigation 14:39:19–14:40:31 CET: 1089 frames, 604 janky (55.46%), p50 61ms, p90 85ms, p95 89ms, p99 150ms; slow UI 372, slow bitmap uploads 4; ART verify/install. Post-navigation CPU sample sleeping 64 threads, RSS 263M, MemAvailable 838396 kB, SwapFree 268280 kB. Later six-second sample 1327→1359 frames; not proof of idle without verifying input/EPG activity. Compared with dev.563 manual 906-frame sample, p95 improved from 105ms; jank proportion increased. Not controlled A/B; GPU percentiles unreliable on this device. CSI: Miami showed episode metadata and TMDB rating via ADB; image source was not logged. New artwork policy requires real-device LIVE_TV_ARTWORK candidate/displayed verification.
+
+TCL user acceptance after dev.564: focus restoration works; subjective navigation speed unchanged compared with dev.563.
