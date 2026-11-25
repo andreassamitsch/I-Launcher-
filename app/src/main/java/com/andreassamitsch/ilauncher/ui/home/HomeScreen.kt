@@ -54,7 +54,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -188,15 +187,25 @@ fun HomeScreen(
         val index = keys.indexOf(selected)
         if (index < 0) return false
         if (verticalMove.value?.isActive == true) return true
-        if (railFocus.requestAttached(row, selected)) return true
+        railFocus.beginRestore(row, selected)
+        if (railFocus.requestAttached(row, selected)) {
+            railFocus.endRestore(row, selected)
+            return true
+        }
         verticalMove.value = navigationScope.launch {
-            contentScrollState.scrollToItem(targetIndex)
-            if (horizontal.layoutInfo.visibleItemsInfo.none { it.key == selected }) {
-                horizontal.scrollToItem(index)
-            }
-            withFrameNanos { }
-            if (!railFocus.awaitAttached(row, selected)) {
-                focusManager.moveFocus(if (delta < 0) FocusDirection.Up else FocusDirection.Down)
+            try {
+                contentScrollState.scrollToItem(targetIndex)
+                withFrameNanos { }
+                if (horizontal.layoutInfo.visibleItemsInfo.none { it.key == selected }) {
+                    horizontal.scrollToItem(index)
+                }
+                withFrameNanos { }
+                if (!railFocus.awaitAttached(row, selected)) {
+                    railFocus.endRestore(row, selected)
+                    focusManager.moveFocus(if (delta < 0) FocusDirection.Up else FocusDirection.Down)
+                }
+            } finally {
+                railFocus.endRestore(row, selected)
             }
         }
         return true
@@ -521,7 +530,7 @@ private fun WatchNextHomeRow(
         else -> LazyRow(
             state = listState,
             modifier = Modifier
-                .focusRestorer()
+                .then(railFocus.restoreOnEnter(rowKey))
                 .touchScrollFallback(listState, Orientation.Horizontal),
             contentPadding = PaddingValues(
                 start = 38.dp,
@@ -626,7 +635,7 @@ private fun LiveTvHomeRow(
         state.channels.isNotEmpty() -> LazyRow(
             state = listState,
             modifier = Modifier
-                .focusRestorer()
+                .then(railFocus.restoreOnEnter(rowKey))
                 .touchScrollFallback(listState, Orientation.Horizontal),
             contentPadding = PaddingValues(
                 start = 38.dp,
@@ -681,7 +690,7 @@ private fun PreviewHomeRow(
         LazyRow(
             state = listState,
             modifier = Modifier
-                .focusRestorer()
+                .then(railFocus.restoreOnEnter(rowKey))
                 .touchScrollFallback(listState, Orientation.Horizontal),
             contentPadding = PaddingValues(
                 start = 38.dp,
@@ -732,7 +741,7 @@ private fun AppsHomeRow(
         LazyRow(
             state = listState,
             modifier = Modifier
-                .focusRestorer()
+                .then(railFocus.restoreOnEnter(rowKey))
                 .touchScrollFallback(listState, Orientation.Horizontal),
             contentPadding = PaddingValues(start = 38.dp, end = 18.dp, top = 3.dp, bottom = 5.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),

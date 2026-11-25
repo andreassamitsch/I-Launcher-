@@ -62,7 +62,7 @@ adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity|ResumedA
 adb exec-out screencap -p > build/tv-visual/home-first-rail-horizontal-3.png
 
 # Verify identity, not merely that the UI is alive or that some card is focused.
-# The preview rail uses the same WatchNextCard and focusRestorer as Watch Next.
+# The preview rail uses the same WatchNextCard and persistent focus memory as Watch Next.
 adb shell uiautomator dump /sdcard/home-focus-before.xml
 adb pull /sdcard/home-focus-before.xml build/tv-visual/home-focus-before.xml
 adb shell input keyevent 19
@@ -106,6 +106,7 @@ for pass in 1 2; do
     adb shell uiautomator dump /sdcard/home-focus-vertical.xml
     adb pull /sdcard/home-focus-vertical.xml build/tv-visual/home-focus-vertical-${pass}.xml
 done
+adb logcat -d -s HOME_FOCUS > build/tv-visual/home-focus-trace.txt
 python3 - <<'PY'
 import xml.etree.ElementTree as ET
 def focused_card(path):
