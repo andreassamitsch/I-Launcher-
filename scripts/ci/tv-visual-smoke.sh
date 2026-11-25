@@ -118,7 +118,9 @@ def focused_card(path):
 before = focused_card("build/tv-visual/home-focus-before.xml")
 for n in (1, 2):
     lower = focused_card(f"build/tv-visual/home-focus-lower-{n}.xml")
-    assert lower[0] != before[0], ("did not enter another rail", lower)
+    lower_root = ET.parse(f"build/tv-visual/home-focus-lower-{n}.xml")
+    assert lower_root.findall(".//node[@text='Für dich']"), ("second row not visible", lower)
+    assert not lower_root.findall(".//node[@text='Empfehlungen']"), ("first row still visible", lower)
     after = focused_card(f"build/tv-visual/home-focus-vertical-{n}.xml")
     assert before == after, (before, after)
     print("Restored exact card after vertical navigation:", after)

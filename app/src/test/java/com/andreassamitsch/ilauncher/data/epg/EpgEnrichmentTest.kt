@@ -3,6 +3,7 @@ package com.andreassamitsch.ilauncher.data.epg
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbMetadata
 import com.andreassamitsch.ilauncher.data.tmdb.TmdbEpisodeMetadata
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
+import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.model.MediaType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -73,4 +74,26 @@ class EpgEnrichmentTest {
         assertNull(fresh.copy(startUtcMillis = 2000).retainEpgEnrichment(old).tmdbId)
         assertNull(fresh.copy(title = "Andere Sendung").retainEpgEnrichment(old).tmdbId)
     }
+    @Test fun clockKeepsReceiverAiringAcrossOffsetXmltvSchedule() {
+        val enriched = airing.withTmdbEnrichment(metadata)
+        val receiver = LiveTvChannel("service", "TV", now = airing.copy(episodeNumber = null))
+        val previous = receiver.copy(now = enriched)
+        val xml = airing.copy(startUtcMillis = 1100, shortDescription = "XML")
+        val result = advanceEpgChannel(receiver, previous, listOf(xml), 2000)
+        assertEquals(airing.startUtcMillis, result.now?.startUtcMillis)
+        assertEquals(enriched.tmdbId, result.now?.tmdbId)
+        assertEquals(airing.episodeNumber, result.now?.episodeNumber)
+    }
+
+    @Test fun clockDoesNotCarryOldArtworkToNewAiring() {
+        val enriched = airing.withTmdbEnrichment(metadata)
+        val next = airing.copy(startUtcMillis = airing.endUtcMillis, episodeNumber = 4, imageUri = "new.jpg")
+        val receiver = LiveTvChannel("service", "TV", now = airing, next = next)
+        val previous = receiver.copy(now = enriched)
+        val result = advanceEpgChannel(receiver, previous, listOf(next), next.startUtcMillis + 1)
+        assertEquals(4, result.now?.episodeNumber)
+        assertEquals("new.jpg", result.now?.preferredArtworkUri)
+        assertNull(result.now?.tmdbId)
+    }
+
 }

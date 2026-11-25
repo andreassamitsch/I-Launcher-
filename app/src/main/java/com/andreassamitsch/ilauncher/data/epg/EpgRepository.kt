@@ -76,37 +76,12 @@ class EpgRepository(
         _state.update { current ->
             val previousByRef = current.enrichedChannels.associateBy(LiveTvChannel::serviceReference)
             val advanced = channels.map { channel ->
-                val guide = current.guideByServiceReference[channel.serviceReference].orEmpty()
-                val guideNow = guide.firstOrNull {
-                    nowUtcMillis >= it.startUtcMillis && nowUtcMillis < it.endUtcMillis
-                }
-                val guideNext = guide.firstOrNull {
-                    it.startUtcMillis >= (guideNow?.endUtcMillis ?: nowUtcMillis)
-                }
-                val previous = previousByRef[channel.serviceReference]
-                val previousNow = previous?.now?.takeIf {
-                    nowUtcMillis >= it.startUtcMillis && nowUtcMillis < it.endUtcMillis
-                }
-                val receiverNow = channel.now?.takeIf {
-                    nowUtcMillis >= it.startUtcMillis && nowUtcMillis < it.endUtcMillis
-                }
-                val previousNext = previous?.next?.takeIf { it.endUtcMillis > nowUtcMillis }
-                val receiverNext = channel.next?.takeIf { it.endUtcMillis > nowUtcMillis }
-
-                val nowProgram = when {
-                    guideNow != null && previousNow?.startUtcMillis == guideNow.startUtcMillis -> previousNow
-                    guideNow != null -> guideNow
-                    previousNow != null -> previousNow
-                    else -> receiverNow
-                }
-                val nextProgram = when {
-                    guideNext != null && previousNext?.startUtcMillis == guideNext.startUtcMillis -> previousNext
-                    guideNext != null -> guideNext
-                    previousNext != null && previousNext.startUtcMillis >= (nowProgram?.endUtcMillis ?: nowUtcMillis) -> previousNext
-                    receiverNext != null && receiverNext.startUtcMillis >= (nowProgram?.endUtcMillis ?: nowUtcMillis) -> receiverNext
-                    else -> null
-                }
-                channel.copy(now = nowProgram, next = nextProgram)
+                advanceEpgChannel(
+                    receiver = channel,
+                    previous = previousByRef[channel.serviceReference],
+                    guide = current.guideByServiceReference[channel.serviceReference].orEmpty(),
+                    now = nowUtcMillis,
+                )
             }
             current.copy(enrichedChannels = advanced)
         }

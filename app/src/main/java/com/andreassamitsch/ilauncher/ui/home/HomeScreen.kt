@@ -460,11 +460,13 @@ private fun HomeHeroStage(
     LaunchedEffect(defaultHero, heroSelectedByUser.value) {
         if (!heroSelectedByUser.value) hero.value = defaultHero
     }
-    LaunchedEffect(liveTvChannels, displayed.key) {
-        val serviceReference = displayed.key.takeIf { it.startsWith("live:") }
-            ?.removePrefix("live:") ?: return@LaunchedEffect
-        val channel = liveTvChannels.firstOrNull { it.serviceReference == serviceReference }
-            ?: return@LaunchedEffect
+    val displayedChannel = remember(liveTvChannels, displayed.key) {
+        val serviceReference = displayed.key.takeIf { it.startsWith("live:") }?.removePrefix("live:")
+        liveTvChannels.firstOrNull { it.serviceReference == serviceReference }
+    }
+    LaunchedEffect(displayedChannel, displayed.key) {
+        val channel = displayedChannel ?: return@LaunchedEffect
+        if (hero.value.key != displayed.key) return@LaunchedEffect
         val updated = liveTvHero(channel)
         if (updated != hero.value) hero.value = updated
     }

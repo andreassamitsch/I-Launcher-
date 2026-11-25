@@ -129,7 +129,7 @@ fun LiveTvCard(
                     }
 
                     if (!artwork.isNullOrBlank()) {
-                        // Keep the old painter underneath until Coil confirms the new image is ready.
+                        // Decode the candidate invisibly; only the last successful painter is drawn.
                         AsyncImage(
                             model = artwork,
                             contentDescription = null,
@@ -138,7 +138,7 @@ fun LiveTvCard(
                                 displayedPainter = it.painter
                                 displayedUri = artwork
                             },
-                            modifier = Modifier.fillMaxSize().alpha(if (displayedUri == artwork) 1f else 0f),
+                            modifier = Modifier.fillMaxSize().alpha(0f),
                         )
                     }
 

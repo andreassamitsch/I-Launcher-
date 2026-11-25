@@ -46,6 +46,7 @@ class TmdbRepository(
     private val cleanupStarted = AtomicBoolean(false)
     private val resolveLocks = Array(32) { Mutex() }
     private val resolvePermits = Semaphore(3)
+    private val imageConfigurationMutex = Mutex()
     private val retryAfter = LruCache<String, Long>(512)
     private val globalRetryAfter = java.util.concurrent.atomic.AtomicLong(0)
 
@@ -293,13 +294,14 @@ class TmdbRepository(
         }
     }
 
-    private suspend fun ensureImageConfiguration(now: Long): TmdbImageConfiguration? {
-        imageConfigurationStore.loadFresh(now)?.let { return it }
-        if (!network.isConfigured) return null
-        return runCatching { imageConfigurationStore.save(network.api.configuration().images, now) }
-            .onFailure { throwable -> recordFailure("image-configuration", "image configuration", throwable) }
-            .getOrNull()
-    }
+    private suspend fun ensureImageConfiguration(now: Long): TmdbImageConfiguration? =
+        imageConfigurationMutex.withLock {
+            imageConfigurationStore.loadFresh(now)?.let { return@withLock it }
+            if (!networkAllowed("image-configuration")) return@withLock null
+            runCatching { imageConfigurationStore.save(network.api.configuration().images, now) }
+                .onFailure { throwable -> recordFailure("image-configuration", "image configuration", throwable) }
+                .getOrNull()
+        }
 
     private suspend fun cleanExpiredCacheOnce(now: Long) {
         if (!cleanupStarted.compareAndSet(false, true)) return
