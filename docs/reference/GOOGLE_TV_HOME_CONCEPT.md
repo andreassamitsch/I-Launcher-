@@ -158,7 +158,7 @@ I Launcher gewinnt die Glow-Farbe der einzelnen fokussierten Medienkarte aus ein
 Die Google-TV-artige Top-Navigation ist eine Overlay-Ebene und darf niemals Hero- oder Rail-Geometrie verschieben. Auf Home gilt:
 
 - Navigation sichtbar im oberen Fokusbereich,
-- `DOWN` in die Content-Rails blendet die Leiste visuell aus; nur ein kleines Chevron bleibt,
+- `DOWN` in die Content-Rails blendet die Navigationsziele visuell aus; ein kleines Chevron und die größere, nicht fokussierbare Uhr rechts oben bleiben als Overlay sichtbar,
 - das Ausblenden ist reine Alpha-/Decoration-Änderung, kein Entfernen aus dem Layout,
 - `UP` aus der obersten Rail muss mit **einem** Tastendruck direkt zur ausgewählten Home-Destination zurückkehren,
 - Hero und Navigation überlappen räumlich; deshalb darf dieser Rückweg nicht allein von geometrischer Fokus-Suche abhängen,
