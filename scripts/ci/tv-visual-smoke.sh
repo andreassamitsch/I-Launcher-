@@ -76,13 +76,19 @@ import xml.etree.ElementTree as ET
 def focused_card(path):
     nodes = ET.parse(path).findall(".//node[@focused='true']")
     assert len(nodes) == 1, (path, nodes)
-    card = nodes[0].get("content-desc", "")
-    assert card, (path, "focused card has no accessible title")
-    return card
+    # TV Material can expose the focusable surface and its semantics in separate
+    # accessibility nodes. Inspect only the focused surface's own subtree.
+    labels = {
+        node.get("content-desc", "").strip()
+        for node in nodes[0].iter("node")
+        if node.get("content-desc", "").strip()
+    }
+    assert len(labels) == 1, (path, "expected one focused card title", labels)
+    return next(iter(labels)), nodes[0].get("bounds")
 before = focused_card("build/tv-visual/home-focus-before.xml")
 after = focused_card("build/tv-visual/home-focus-after.xml")
 assert before == after, (before, after)
-print("Restored exact card:", after)
+print("Restored exact card and position:", after)
 PY
 adb exec-out screencap -p > build/tv-visual/home-first-rail-restored-later-card.png
 
