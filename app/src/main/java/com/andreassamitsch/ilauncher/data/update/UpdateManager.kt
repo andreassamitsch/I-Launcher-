@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.Settings
 import com.andreassamitsch.ilauncher.BuildConfig
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -77,6 +78,8 @@ class UpdateManager(context: Context) {
     val state: StateFlow<UpdateState> = _state.asStateFlow()
 
     suspend fun checkForUpdates() {
+        val previous = _state.value
+        if (previous is UpdateState.Checking) return
         _state.value = UpdateState.Checking
 
         val result = runCatching {
@@ -137,6 +140,10 @@ class UpdateManager(context: Context) {
                 _state.value = UpdateState.Available(info)
             }
         }.onFailure { throwable ->
+            if (throwable is CancellationException) {
+                if (_state.value == UpdateState.Checking) _state.value = previous
+                throw throwable
+            }
             _state.value = UpdateState.Error(
                 throwable.message ?: "Update-Prüfung fehlgeschlagen.",
             )
