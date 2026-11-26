@@ -80,14 +80,19 @@ import com.lagradost.cloudstream3.ILauncherPlaybackSession
                 )
                 else -> com.lagradost.cloudstream3.ILauncherPlaybackSession.metadata(null, null, false, null, null)
             }
+            val artworkUrl = com.lagradost.cloudstream3.ILauncherPlaybackSession.artworkUrl(
+                viewModel.state.generatorState?.response?.posterUrl,
+                (currentMeta as? ResultEpisode)?.poster,
+            )
             (player as? CS3IPlayer)?.bridgeMediaMetadata =
                 androidx.media3.common.MediaMetadata.Builder()
                     .setTitle(sessionMeta.title)
                     .setDisplayTitle(sessionMeta.title)
                     .setAlbumTitle(sessionMeta.series)
                     .setSubtitle(sessionMeta.subtitle)
+                    .setArtworkUri(artworkUrl?.let { android.net.Uri.parse(it) })
                     .build()
-            Log.i("ILauncherMediaSession", "metadata prepared title=${sessionMeta.title} episode=${sessionMeta.subtitle != null}")
+            Log.i("ILauncherMediaSession", "metadata prepared title=${sessionMeta.title} episode=${sessionMeta.subtitle != null} artwork=${artworkUrl != null}")
             player.loadPlayer(""")
     exo = base / "ui/player/CS3IPlayer.kt"
     replace_once(exo, """class CS3IPlayer : IPlayer {

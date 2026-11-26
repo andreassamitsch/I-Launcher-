@@ -28,6 +28,20 @@ class ILauncherPlaybackSessionTest {
         assertEquals("Chafa", echo.subtitle)
     }
 
+    @Test fun preferSeriesOrMoviePosterOverEpisodeStill() {
+        assertEquals("https://example.org/poster.jpg",
+            ILauncherPlaybackSession.artworkUrl("https://example.org/poster.jpg", "https://example.org/episode.jpg"))
+        assertEquals("https://example.org/episode.jpg",
+            ILauncherPlaybackSession.artworkUrl(null, "https://example.org/episode.jpg"))
+    }
+
+    @Test fun rejectInvalidOrPrivateLocalArtworkAndDoNotReusePreviousCover() {
+        assertEquals("https://example.org/episode.jpg",
+            ILauncherPlaybackSession.artworkUrl("file:///data/private.jpg", "https://example.org/episode.jpg"))
+        assertEquals(null, ILauncherPlaybackSession.artworkUrl("https://user:password@example.org/art.jpg", "not a URL"))
+        assertEquals(null, ILauncherPlaybackSession.artworkUrl(null, null))
+    }
+
     @Test fun movieAndMissingMetadataDoNotReuseSeries() {
         assertEquals(ILauncherPlaybackSession.Metadata("Film", null, null),
             ILauncherPlaybackSession.metadata("Film", "Film", false, 1, 1))

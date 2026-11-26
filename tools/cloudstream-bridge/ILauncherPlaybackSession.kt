@@ -13,6 +13,16 @@ internal object ILauncherPlaybackSession {
             Intent.FLAG_ACTIVITY_SINGLE_TOP
     }
 
+    /** Prefer the show/movie poster, then the current episode's artwork.
+     * Only public HTTP(S) image references belong in a platform media session.
+     */
+    fun artworkUrl(poster: String?, fallback: String?): String? =
+        sequenceOf(poster, fallback).filterNotNull().map { it.trim() }.firstOrNull { url ->
+            val uri = runCatching { java.net.URI(url) }.getOrNull()
+            uri != null && (uri.scheme.equals("https", true) || uri.scheme.equals("http", true)) &&
+                !uri.host.isNullOrBlank() && uri.userInfo == null
+        }
+
     data class Metadata(val title: String, val series: String?, val subtitle: String?)
 
     fun metadata(

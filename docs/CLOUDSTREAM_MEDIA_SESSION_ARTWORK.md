@@ -1,0 +1,7 @@
+# MediaSession cover artwork
+
+Extend .118's current-item Media3 metadata with the series/movie poster from the active generator's LoadResponse, falling back to the current ResultEpisode poster. Reject invalid URLs and non-HTTP(S) sources. Build fresh metadata for each load, so a missing cover does not retain the old media item's poster. No separate TMDB lookup, no dashboard-specific API, no new dependency.
+
+Verified Media3 1.9.3 source: MediaSession.Builder defaults to a cached, size-limited DataSourceBitmapLoader; MediaSessionLegacyStub loads artwork from current metadata asynchronously and publishes the resulting bitmap to the platform MediaSession. No synchronous cover download on the playback path. Provider URLs that require extra authentication or fail to load may not yield a bitmap; the player should continue without cover. Do not log artwork URLs.
+
+Add two unit tests for preferred poster/fallback and invalid or missing artwork. Hardware check: start a film and series, inspect current MediaSession metadata for artwork after load, confirm the Android TV HA Bridge exposes the image and the Family Dashboard displays it; switch series while paused and ensure artwork and title both change. If the downstream integration does not propagate artwork, inspect that integration separately.
