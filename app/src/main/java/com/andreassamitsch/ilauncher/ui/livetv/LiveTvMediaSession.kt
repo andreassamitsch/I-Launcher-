@@ -127,7 +127,6 @@ internal class LiveTvMediaSession(
     private fun publishMetadata() {
         val value = programme ?: return
         val metadata = MediaMetadata.Builder()
-            .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, value.serviceReference)
             .putString(MediaMetadata.METADATA_KEY_TITLE, value.title)
             .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, value.title)
             .putString(MediaMetadata.METADATA_KEY_ARTIST, value.channelName)
