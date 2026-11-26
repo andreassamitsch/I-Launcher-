@@ -38,15 +38,10 @@ internal object JoynSeriesWatchNextPolicy {
         return ea.compareTo(eb)
     }
 
-    fun eligible(entries: List<JoynContinueWatchingEntry>, completed: List<JoynCompletedSeries>): List<JoynContinueWatchingEntry> {
+    fun eligible(entries: List<JoynContinueWatchingEntry>): List<JoynContinueWatchingEntry> {
         val result = mutableListOf<JoynContinueWatchingEntry>()
         for (entry in entries.sortedByDescending { it.updatedAt }) {
             if (!JoynContinueWatchingPolicy.shouldContinue(entry.media, entry.positionMs, entry.durationMs)) continue
-            if (completed.any { state ->
-                    val previous = completedMedia(state)
-                    sameSeries(entry.media, previous) &&
-                        compareEpisodes(entry.media, previous)?.let { it <= 0 } == true
-                }) continue
             val index = result.indexOfFirst { sameSeries(it.media, entry.media) }
             if (index < 0) result.add(entry)
             else if (compareEpisodes(entry.media, result[index].media)?.let { it > 0 } == true) {
@@ -57,5 +52,5 @@ internal object JoynSeriesWatchNextPolicy {
     }
 
     fun resumeWins(resume: JoynMediaItem, next: JoynMediaItem): Boolean =
-        sameSeries(resume, next) && (compareEpisodes(resume, next)?.let { it >= 0 } ?: true)
+        sameSeries(resume, next)
 }

@@ -96,6 +96,7 @@ internal fun JoynHomeScreen(
     var liveFavoriteIds by remember { mutableStateOf(liveFavoritesStore.ids()) }
     var mediaFavorites by remember { mutableStateOf(mediaFavoritesStore.items()) }
     var continueWatching by remember { mutableStateOf(continueWatchingStore.items()) }
+    val visibleContinueWatching = JoynSeriesWatchNextPolicy.eligible(continueWatching)
     val mediaFavoriteKeys = mediaFavorites
         .mapTo(linkedSetOf()) { JoynMediaFavoritesStore.favoriteKey(it) }
     var selectedMedia by remember { mutableStateOf(initialCatalogue?.lanes?.firstOrNull()?.items?.firstOrNull()) }
@@ -237,6 +238,8 @@ internal fun JoynHomeScreen(
     fun removeContinueWatching(entry: JoynContinueWatchingEntry) {
         continueWatching = continueWatchingStore.remove(entry.assetId, pendingRemoteDelete = true)
         watchNextPublisher.remove(entry.assetId)
+        watchNextPublisher.sync(continueWatching)
+        JoynNextEpisodeScheduler.enqueueNow(context)
         scope.launch {
             val cleared = withContext(Dispatchers.IO) {
                 runCatching { repository.setResumePosition(entry.assetId, 0) }.getOrDefault(false)
@@ -541,11 +544,11 @@ internal fun JoynHomeScreen(
                 }
 
                 else -> {
-                    if (section == HomeSection.START && continueWatching.isNotEmpty()) {
+                    if (section == HomeSection.START && visibleContinueWatching.isNotEmpty()) {
                         item(key = "continue-watching") {
                             SectionTitle("Weiterschauen", compact)
                             ContinueWatchingRow(
-                                entries = continueWatching,
+                                entries = visibleContinueWatching,
                                 compact = compact,
                                 onFocused = {
                                     selectedMedia = it.media

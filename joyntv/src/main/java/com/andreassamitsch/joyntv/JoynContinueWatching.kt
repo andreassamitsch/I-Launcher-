@@ -296,14 +296,13 @@ internal class JoynWatchNextPublisher(context: Context) {
     }
 
     private fun eligible(entries: List<JoynContinueWatchingEntry>) =
-        JoynSeriesWatchNextPolicy.eligible(entries, JoynNextEpisodeStore(appContext).items())
-            .filterNot { isSuppressed(it.assetId) }
+        JoynSeriesWatchNextPolicy.eligible(entries.filterNot { isSuppressed(it.assetId) })
 
     fun publish(entry: JoynContinueWatchingEntry) {
         synchronized(PUBLISH_LOCK) {
             val candidates = eligible(JoynContinueWatchingStore(appContext).items())
             reconcileRows(candidates)
-            candidates.firstOrNull { it.assetId == entry.assetId }?.let(::publishRow)
+            candidates.filter { it.assetId == entry.assetId || rowId(it.assetId) == null }.forEach(::publishRow)
         }
     }
 
@@ -358,8 +357,8 @@ internal class JoynWatchNextPublisher(context: Context) {
         knownRows().keys
             .filter { !it.startsWith(NEXT_KEY_PREFIX) && it !in liveIds }
             .forEach(::remove)
-        // The announced follow-up is the first episode after the completed pointer.
-        // Any still-eligible resume in that series takes its place.
+        // An unfinished episode always takes precedence over an unstarted NEXT/NEW suggestion,
+        // even if the unfinished episode is chronologically older.
         JoynNextEpisodeStore(appContext).items().forEach { state ->
             if (candidates.any { JoynSeriesWatchNextPolicy.sameSeries(it.media, JoynSeriesWatchNextPolicy.completedMedia(state)) }) {
                 removeNextEpisode(state.seriesKey)
@@ -399,8 +398,6 @@ internal class JoynWatchNextPublisher(context: Context) {
                 removeNextEpisode(seriesKey)
                 return
             }
-            // A newer follow-up replaces an old resume row, not its stored playback position.
-            sameSeries.forEach { remove(it.assetId) }
             publishNextRow(seriesKey, media, isNew)
         }
     }

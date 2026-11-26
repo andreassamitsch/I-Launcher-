@@ -3,6 +3,8 @@ package com.andreassamitsch.joyntv
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -209,7 +211,7 @@ internal class JoynNextEpisodeRefresher(private val context: Context) {
     private val store = JoynNextEpisodeStore(context.applicationContext)
     private val publisher = JoynWatchNextPublisher(context.applicationContext)
 
-    suspend fun refresh(): Boolean {
+    suspend fun refresh(): Boolean = refreshMutex.withLock {
         publisher.sync(JoynContinueWatchingStore(context).items())
         var successful = true
         store.items().forEach { state ->
@@ -242,7 +244,11 @@ internal class JoynNextEpisodeRefresher(private val context: Context) {
             }
         }
         Log.i("JoynNextEpisode", "Background refresh finished; success=$successful")
-        return successful
+        successful
+    }
+
+    private companion object {
+        val refreshMutex = Mutex()
     }
 
     private suspend fun findNext(state: JoynCompletedSeries): JoynMediaItem? {
