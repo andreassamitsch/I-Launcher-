@@ -242,6 +242,7 @@ internal fun LiveTvPlayerScreen(
     val exitConfirmFocusRequester = remember { FocusRequester() }
     val audioPreferences = remember(context) { LiveTvAudioPreferences(context) }
     val player = remember { ExoPlayer.Builder(context).build().apply { playWhenReady = true } }
+    val mediaSession = remember(player) { LiveTvMediaSession(context, player) }
     val currentIndex = LiveTvZapping.indexForServiceReference(
         serviceReferences = channels.map(LiveTvChannel::serviceReference),
         currentServiceReference = currentServiceReference,
@@ -632,8 +633,23 @@ internal fun LiveTvPlayerScreen(
         onDispose { player.removeListener(listener) }
     }
 
-    DisposableEffect(player) {
-        onDispose { player.release() }
+    DisposableEffect(player, mediaSession) {
+        onDispose {
+            mediaSession.release()
+            player.release()
+        }
+    }
+
+    // Keep external now-playing metadata current even with the programme overlay hidden.
+    val sessionGuide = epgState.guide(currentChannel?.serviceReference)
+    LaunchedEffect(mediaSession, currentChannel, sessionGuide) {
+        val channel = currentChannel ?: return@LaunchedEffect
+        while (true) {
+            if (player.currentMediaItem?.mediaId == channel.serviceReference) {
+                mediaSession.updateProgramme(liveTvSessionProgramme(channel, sessionGuide, System.currentTimeMillis()))
+            }
+            delay(15_000L)
+        }
     }
 
     LaunchedEffect(currentChannel?.serviceReference, playbackRestartToken, playbackSource) {
@@ -682,6 +698,7 @@ internal fun LiveTvPlayerScreen(
                 }
             }
 
+            mediaSession.updateProgramme(liveTvSessionProgramme(channel, epgState.guide(channel.serviceReference), System.currentTimeMillis()))
             preparedServiceReference = channel.serviceReference
             player.setMediaSource(mediaSource)
             player.prepare()
