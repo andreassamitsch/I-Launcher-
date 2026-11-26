@@ -1,0 +1,7 @@
+# External task and media session lifecycle
+
+Observed on .115 on TCL, Nov 26: Echo started via AccountSelectActivity2 and MainActivity at 14:28:46–47. Subsequent Watch Next request at 14:29:32 returned Android START_TASK_TO_FRONT (2) for the exported account activity; no MainActivity dispatch, old paused Echo screen retained. Separate entry task affinity, singleTop intent handling, and explicit main task forwarding after account selection preserve the security gate and keep MainActivity non-exported. Internal account editing path is unchanged. No force-stop or data deletion.
+
+Home Assistant Smart TV Pro history showed old Percy Jackson title during Echo playback; Android dumpsys media_session showed current active CloudStream session with null title description. This proves missing media session title, but the complete downstream cache behavior is not yet verified. Set per-player Media3 metadata on source items before creation, including playlist fallback; release stale MediaSession on null player attachment. Series title/episode are derived from the active generator, not Watch Next. Existing playback and progress behavior unchanged.
+
+Four JVM regression tests for flag normalization, flag preservation, series switching and missing metadata. TV verification: start Echo, verify current Android and HA title while playing (without pause), pause and HOME then select Percy Jackson, verify incoming MainActivity intent and exact playback, repeat reverse direction, verify ordinary app launch and account selection. Real TV validation required.

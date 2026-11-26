@@ -86,6 +86,12 @@ def main() -> None:
         str(root),
     ], check=True)
 
+    subprocess.run([
+        sys.executable,
+        str(Path(__file__).with_name("apply_task_media_session_fix.py")),
+        str(root),
+    ], check=True)
+
     replace_once(
         build_gradle,
         """        versionCode = libs.versions.versionCode.get().toInt()\n        versionName = libs.versions.versionName.get()""",
