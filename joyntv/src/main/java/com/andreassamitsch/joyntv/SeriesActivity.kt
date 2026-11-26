@@ -115,8 +115,9 @@ private fun SeriesScreen(
         runCatching {
             withContext(Dispatchers.IO) { repository.loadSeriesDetails(initialItem) }
         }.onSuccess {
-            details = it
-            selectedSeason = it.seasons.firstOrNull()
+            val ordered = it.copy(seasons = JoynSeriesDisplayOrder.seasons(it.seasons))
+            details = ordered
+            selectedSeason = ordered.seasons.firstOrNull()
         }.onFailure { error = it.message ?: it.javaClass.simpleName }
         loading = false
     }
@@ -128,7 +129,7 @@ private fun SeriesScreen(
             withContext(Dispatchers.IO) { repository.loadSeasonEpisodes(season.id) }
         }.onSuccess { loaded ->
             val series = details?.series ?: initialItem
-            episodes = loaded.map { episode ->
+            episodes = JoynSeriesDisplayOrder.episodes(loaded).map { episode ->
                 episode.copy(
                     seriesTitle = episode.seriesTitle ?: series.title,
                     seriesId = episode.seriesId ?: series.id,
