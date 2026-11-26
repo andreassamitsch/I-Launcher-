@@ -108,6 +108,8 @@ internal fun JoynHomeScreen(
     var prewarmLive by remember { mutableStateOf<JoynLiveChannel?>(null) }
     var artworkEnrichedSection by remember { mutableStateOf<HomeSection?>(null) }
     val updateState by updateManager.state.collectAsState()
+    var dismissedUpdateVersion by remember { mutableStateOf<Int?>(null) }
+    var updateInstallMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val artworkDetailClient = remember(context) { JoynArtworkDetailClient(context.applicationContext) }
 
@@ -243,7 +245,7 @@ internal fun JoynHomeScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(resumeKey) {
         updateManager.checkForUpdates()
     }
 
@@ -611,13 +613,39 @@ internal fun JoynHomeScreen(
             ),
             onAction = {
                 when (val state = updateState) {
-                    is JoynUpdateState.Available -> updateManager.startDownload(state.info)
-                    is JoynUpdateState.ReadyToInstall -> scope.launch { updateManager.installDownloadedUpdate() }
+                    is JoynUpdateState.Available, is JoynUpdateState.ReadyToInstall -> {
+                        dismissedUpdateVersion = null
+                        updateInstallMessage = null
+                    }
                     is JoynUpdateState.Error -> scope.launch { updateManager.checkForUpdates() }
                     else -> Unit
                 }
             },
         )
+        val updateInfo = when (val state = updateState) {
+            is JoynUpdateState.Available -> state.info
+            is JoynUpdateState.Downloading -> state.info
+            is JoynUpdateState.ReadyToInstall -> state.info
+            else -> null
+        }
+        if (updateInfo != null && dismissedUpdateVersion != updateInfo.versionCode) {
+            JoynUpdatePopup(
+                state = updateState,
+                info = updateInfo,
+                message = updateInstallMessage,
+                onDismiss = { dismissedUpdateVersion = updateInfo.versionCode },
+                onDownload = { updateInstallMessage = null; updateManager.startDownload(updateInfo) },
+                onInstall = {
+                    scope.launch {
+                        when (val result = updateManager.installDownloadedUpdate()) {
+                            JoynInstallResult.Started -> dismissedUpdateVersion = updateInfo.versionCode
+                            JoynInstallResult.PermissionRequired -> updateInstallMessage = "Bitte Installation aus dieser Quelle erlauben und danach erneut installieren."
+                            is JoynInstallResult.Error -> updateInstallMessage = result.message
+                        }
+                    }
+                },
+            )
+        }
     }
 }
 

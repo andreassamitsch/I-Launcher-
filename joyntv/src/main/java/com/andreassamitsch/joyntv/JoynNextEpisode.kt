@@ -1,6 +1,8 @@
 package com.andreassamitsch.joyntv
 
 import android.content.Context
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -207,9 +209,11 @@ internal class JoynNextEpisodeRefresher(private val context: Context) {
     private val store = JoynNextEpisodeStore(context.applicationContext)
     private val publisher = JoynWatchNextPublisher(context.applicationContext)
 
-    suspend fun refresh() {
+    suspend fun refresh(): Boolean {
+        publisher.sync(JoynContinueWatchingStore(context).items())
+        var successful = true
         store.items().forEach { state ->
-            runCatching {
+            try {
                 val next = findNext(state)
                 if (next == null) {
                     if (state.announcedVideoId != null) {
@@ -223,14 +227,22 @@ internal class JoynNextEpisodeRefresher(private val context: Context) {
                         seriesPath = next.seriesPath ?: state.seriesPath,
                     )
                     val nextVideoId = enriched.videoId ?: enriched.id
-                    if (nextVideoId != state.announcedVideoId) {
-                        val newlyAvailable = JoynNextEpisodePolicy.isNewlyAvailable(state)
+                    val changed = nextVideoId != state.announcedVideoId
+                    if (changed || !publisher.hasNextEpisode(state.seriesKey)) {
+                        val newlyAvailable = if (changed) JoynNextEpisodePolicy.isNewlyAvailable(state) else state.announcedAsNew
                         publisher.publishNextEpisode(state.seriesKey, enriched, isNew = newlyAvailable)
-                        store.markAnnounced(state.seriesKey, nextVideoId, isNew = newlyAvailable)
+                        if (changed) store.markAnnounced(state.seriesKey, nextVideoId, isNew = newlyAvailable)
                     }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                successful = false
+                Log.w("JoynNextEpisode", "Episode refresh failed; will retry", error)
             }
         }
+        Log.i("JoynNextEpisode", "Background refresh finished; success=$successful")
+        return successful
     }
 
     private suspend fun findNext(state: JoynCompletedSeries): JoynMediaItem? {
@@ -300,7 +312,7 @@ internal object JoynNextEpisodeScheduler {
             .build()
         WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
             IMMEDIATE_WORK,
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
             request,
         )
     }
@@ -311,7 +323,7 @@ internal class JoynNextEpisodeWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
-        JoynNextEpisodeRefresher(applicationContext).refresh()
-        return Result.success()
+        return if (JoynNextEpisodeRefresher(applicationContext).refresh()) Result.success()
+        else Result.retry()
     }
 }

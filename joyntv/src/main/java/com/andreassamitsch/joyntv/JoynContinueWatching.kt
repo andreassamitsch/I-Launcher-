@@ -295,7 +295,19 @@ internal class JoynWatchNextPublisher(context: Context) {
         }
     }
 
+    private fun eligible(entries: List<JoynContinueWatchingEntry>) =
+        JoynSeriesWatchNextPolicy.eligible(entries, JoynNextEpisodeStore(appContext).items())
+            .filterNot { isSuppressed(it.assetId) }
+
     fun publish(entry: JoynContinueWatchingEntry) {
+        synchronized(PUBLISH_LOCK) {
+            val candidates = eligible(JoynContinueWatchingStore(appContext).items())
+            reconcileRows(candidates)
+            candidates.firstOrNull { it.assetId == entry.assetId }?.let(::publishRow)
+        }
+    }
+
+    private fun publishRow(entry: JoynContinueWatchingEntry) {
         if (!isSupportedDevice() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         if (!JoynContinueWatchingPolicy.shouldContinue(entry.media, entry.positionMs, entry.durationMs)) {
             remove(entry.assetId)
@@ -333,18 +345,33 @@ internal class JoynWatchNextPublisher(context: Context) {
     }
 
     fun sync(entries: List<JoynContinueWatchingEntry>) {
-        if (!isSupportedDevice() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val eligible = entries.filter {
-            JoynContinueWatchingPolicy.shouldContinue(it.media, it.positionMs, it.durationMs)
+        synchronized(PUBLISH_LOCK) {
+            if (!isSupportedDevice() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+            val candidates = eligible(entries)
+            reconcileRows(candidates)
+            candidates.forEach(::publishRow)
         }
-        val liveIds = eligible.mapTo(hashSetOf()) { it.assetId }
+    }
+
+    private fun reconcileRows(candidates: List<JoynContinueWatchingEntry>) {
+        val liveIds = candidates.mapTo(hashSetOf()) { it.assetId }
         knownRows().keys
             .filter { !it.startsWith(NEXT_KEY_PREFIX) && it !in liveIds }
             .forEach(::remove)
-        eligible.forEach(::publish)
+        // The announced follow-up is the first episode after the completed pointer.
+        // Any still-eligible resume in that series takes its place.
+        JoynNextEpisodeStore(appContext).items().forEach { state ->
+            if (candidates.any { JoynSeriesWatchNextPolicy.sameSeries(it.media, JoynSeriesWatchNextPolicy.completedMedia(state)) }) {
+                removeNextEpisode(state.seriesKey)
+            }
+        }
     }
 
     fun remove(assetId: String) {
+        synchronized(PUBLISH_LOCK) { removeRow(assetId) }
+    }
+
+    private fun removeRow(assetId: String) {
         val id = rowId(assetId)
         if (id != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             runCatching {
@@ -359,12 +386,34 @@ internal class JoynWatchNextPublisher(context: Context) {
     }
 
 
+    fun hasNextEpisode(seriesKey: String): Boolean =
+        synchronized(PUBLISH_LOCK) { rowId(NEXT_KEY_PREFIX + seriesKey) != null }
+
     fun publishNextEpisode(seriesKey: String, media: JoynMediaItem, isNew: Boolean = false) {
+        synchronized(PUBLISH_LOCK) {
+            if (!isSupportedDevice() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+            val candidates = eligible(JoynContinueWatchingStore(appContext).items())
+            reconcileRows(candidates)
+            val sameSeries = candidates.filter { JoynSeriesWatchNextPolicy.sameSeries(it.media, media) }
+            if (sameSeries.any { JoynSeriesWatchNextPolicy.resumeWins(it.media, media) }) {
+                removeNextEpisode(seriesKey)
+                return
+            }
+            // A newer follow-up replaces an old resume row, not its stored playback position.
+            sameSeries.forEach { remove(it.assetId) }
+            publishNextRow(seriesKey, media, isNew)
+        }
+    }
+
+    private fun publishNextRow(seriesKey: String, media: JoynMediaItem, isNew: Boolean) {
         if (!isSupportedDevice() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         if (media.type != JoynMediaType.EPISODE) return
         val storageKey = NEXT_KEY_PREFIX + seriesKey
         upgradeStill(media) {
-            if (rowId(storageKey) != null) publishNextEpisode(seriesKey, media, isNew = isNew)
+            val state = JoynNextEpisodeStore(appContext).items().firstOrNull { it.seriesKey == seriesKey }
+            if (state?.announcedVideoId == (media.videoId ?: media.id) && hasNextEpisode(seriesKey)) {
+                publishNextEpisode(seriesKey, media, isNew = isNew)
+            }
         }
         val title = media.seriesTitle?.takeIf(String::isNotBlank) ?: media.title
         val episodeText = buildList {
@@ -532,6 +581,7 @@ internal class JoynWatchNextPublisher(context: Context) {
     }.getOrDefault(emptySet())
 
     companion object {
+        private val PUBLISH_LOCK = Any()
         private const val PREFS_NAME = "joyn_watch_next_v1"
         private const val NEXT_KEY_PREFIX = "next:"
         private const val KEY_ROWS = "rows"
