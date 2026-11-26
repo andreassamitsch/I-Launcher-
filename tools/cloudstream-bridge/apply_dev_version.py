@@ -80,6 +80,12 @@ def main() -> None:
         raise RuntimeError("Unexpected exact-episode fallback anchors")
     result_vm.write_text(source.replace(old, new), encoding="utf-8")
 
+    subprocess.run([
+        sys.executable,
+        str(Path(__file__).with_name("apply_watchnext_resume_fix.py")),
+        str(root),
+    ], check=True)
+
     replace_once(
         build_gradle,
         """        versionCode = libs.versions.versionCode.get().toInt()\n        versionName = libs.versions.versionName.get()""",
