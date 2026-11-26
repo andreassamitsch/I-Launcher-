@@ -56,6 +56,9 @@ import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.BuildConfig
+import com.andreassamitsch.ilauncher.data.livetv.LiveTvAudioLanguage
+import com.andreassamitsch.ilauncher.data.livetv.LiveTvAudioQuality
+import com.andreassamitsch.ilauncher.data.livetv.LiveTvAudioPreferences
 import com.andreassamitsch.ilauncher.data.tv.EnrichedWatchNextItem
 import com.andreassamitsch.ilauncher.data.update.InstallResult
 import com.andreassamitsch.ilauncher.data.update.UpdateManager
@@ -68,6 +71,10 @@ import com.andreassamitsch.ilauncher.system.TvProviderPermissionManager
 import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import com.andreassamitsch.ilauncher.ui.components.touchTap
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.profileinstaller.ProfileVerifier
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.launch
 
 private const val TMDB_APPROVED_LOGO_URL =
@@ -734,6 +741,12 @@ private fun SettingsLiveTvPane(
     onOpenLiveTv: () -> Unit,
     focusRestoreGeneration: Int,
 ) {
+    val context = LocalContext.current
+    val audioPreferences = remember(context) { LiveTvAudioPreferences(context) }
+    val preferredAudioLanguage by audioPreferences.preferredLanguage.collectAsState()
+    val avoidSpecialTracks by audioPreferences.avoidSpecialTracks.collectAsState()
+    val audioQuality by audioPreferences.audioQuality.collectAsState()
+    val preferSurround by audioPreferences.preferSurround.collectAsState()
     val restoreRequester = remember { FocusRequester() }
     LaunchedEffect(focusRestoreGeneration) {
         if (focusRestoreGeneration <= 0) return@LaunchedEffect
@@ -752,8 +765,43 @@ private fun SettingsLiveTvPane(
             onClick = onOpenLiveTv,
             modifier = Modifier.focusRequester(restoreRequester),
         )
+        SettingsSectionHeader("Wiedergabe · Ton")
+        SettingsActionRow(
+            title = "Bevorzugte Tonspur",
+            subtitle = "Automatische Auswahl anhand der Sprache; im Player jederzeit manuell änderbar.",
+            value = preferredAudioLanguage.displayName,
+            actionLabel = "Ändern",
+            onClick = {
+                val values = LiveTvAudioLanguage.entries
+                audioPreferences.setPreferredLanguage(values[(preferredAudioLanguage.ordinal + 1) % values.size])
+            },
+        )
+        SettingsActionRow(
+            title = "Audioqualität",
+            subtitle = "Beste verfügbare: bevorzugt hochwertige unterstützte Tonformate vor der Sender-Standardspur.",
+            value = audioQuality.displayName,
+            actionLabel = "Ändern",
+            onClick = {
+                val values = LiveTvAudioQuality.entries
+                audioPreferences.setAudioQuality(values[(audioQuality.ordinal + 1) % values.size])
+            },
+        )
+        SettingsToggleRow(
+            title = "Surround-Sound bevorzugen",
+            subtitle = "Bevorzugt Dolby Atmos / 5.1 / 7.1 vor Stereo, sofern die Tonspur unterstützt wird.",
+            checked = preferSurround,
+            onClick = { audioPreferences.setPreferSurround(!preferSurround) },
+        )
+        SettingsToggleRow(
+            title = "Sondertonspuren vermeiden",
+            subtitle = "Bevorzugt normalen TV-Ton statt Hörfilm, Audiodeskription oder Kommentar, sofern er verfügbar ist.",
+            checked = avoidSpecialTracks,
+            onClick = { audioPreferences.setAvoidSpecialTracks(!avoidSpecialTracks) },
+        )
         SettingsNotice(
-            text = "Live TV bleibt direkt über OpenWebif angebunden. Die bestehende Live-TV-Seite enthält Verbindung, Senderliste und EPG-Konfiguration.",
+            text = "Bei gleicher Sprache wird normaler Ton vor Audiodeskription gewählt. " +
+                "Die tatsächliche Surround-/Atmos-Ausgabe hängt von Fernseher, Audioanlage und Stream ab. " +
+                "Im Player: OK → Tonspur für eine temporäre manuelle Auswahl.",
         )
     }
 }
@@ -927,6 +975,19 @@ private fun SettingsAboutPane(
 ) {
     val scope = rememberCoroutineScope()
     val updateCheckBusy = updateState is UpdateState.Checking || updateState is UpdateState.Downloading
+    var profileStatus by remember { mutableStateOf("Wird geprüft …") }
+    LaunchedEffect(Unit) {
+        profileStatus = withContext(Dispatchers.IO) {
+            runCatching {
+                val status = ProfileVerifier.getCompilationStatusAsync().get(3, TimeUnit.SECONDS)
+                when {
+                    status.isCompiledWithProfile() -> "Profilbasierte Kompilierung aktiv"
+                    status.hasProfileEnqueuedForCompilation() -> "Profil wartet auf Android-Optimierung"
+                    else -> "Nicht bestätigt (Code ${status.profileInstallResultCode})"
+                }
+            }.getOrDefault("Nicht verfügbar")
+        }
+    }
 
     SettingsContentPane(
         title = "Über I Launcher",
@@ -936,6 +997,10 @@ private fun SettingsAboutPane(
         SettingsInfoRow(
             title = "Installierte Version",
             value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+        )
+        SettingsInfoRow(
+            title = "ART / Baseline Profile",
+            value = profileStatus,
         )
         SettingsInfoRow(
             title = "Update-Status",

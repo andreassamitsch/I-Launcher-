@@ -1,8 +1,10 @@
 package com.andreassamitsch.ilauncher.ui.home
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -24,18 +26,23 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -44,6 +51,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -60,6 +69,9 @@ import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
 import com.andreassamitsch.ilauncher.data.home.HeroTextScrollSpeed
 import com.andreassamitsch.ilauncher.data.home.HomePreferences
 import com.andreassamitsch.ilauncher.data.home.WatchNextArtworkMode
@@ -70,6 +82,8 @@ import com.andreassamitsch.ilauncher.model.AppContentProgram
 import com.andreassamitsch.ilauncher.model.InstalledApp
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
+import com.andreassamitsch.ilauncher.model.LiveTvArtworkSource
+import com.andreassamitsch.ilauncher.model.selectArtwork
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.MediaSource
 import com.andreassamitsch.ilauncher.model.MediaType
@@ -83,6 +97,9 @@ import com.andreassamitsch.ilauncher.ui.components.touchScrollFallback
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
 
 private val HOME_HERO_HEIGHT = 360.dp
 private val HOME_FIRST_RAIL_TOP = 275.dp
@@ -137,7 +154,11 @@ fun HomeScreen(
     val homeHeroRestoreFocusRequester = remember { FocusRequester() }
     val appsRestoreFocusRequester = remember { FocusRequester() }
     val liveTvConfigRestoreFocusRequester = remember { FocusRequester() }
-    val contentScrollState = rememberScrollState()
+    val contentScrollState = rememberLazyListState()
+    val railFocus = remember { HomeRailFocusMemory() }
+    val navigationScope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val verticalMove = remember { mutableStateOf<Job?>(null) }
     val appLabels = remember(apps) { apps.associate { it.packageName to it.label } }
     val appsByPackage = remember(apps) { apps.associateBy { it.packageName } }
     val visiblePreviewChannels = remember(previewChannels) {
@@ -145,6 +166,59 @@ fun HomeScreen(
     }
     val previewByRowKey = remember(visiblePreviewChannels) {
         visiblePreviewChannels.associateBy { HomePreferences.previewRowKey(it.id) }
+    }
+    val visibleRowOrder = remember(homeRowOrder, previewByRowKey, liveTvState.configured) {
+        homeRowOrder.filter { rowKey ->
+            when (rowKey) {
+                HomePreferences.ROW_WATCH_NEXT, HomePreferences.ROW_APPS -> true
+                HomePreferences.ROW_LIVE_TV -> liveTvState.configured
+                else -> rowKey in previewByRowKey
+            }
+        }
+    }
+    fun restoreAdjacentRow(fromIndex: Int, delta: Int): Boolean {
+        val targetIndex = fromIndex + delta
+        val row = visibleRowOrder.getOrNull(targetIndex) ?: return false
+        val selected = railFocus.selectedKey(row) ?: return false
+        val (keys, horizontal) = when (row) {
+            HomePreferences.ROW_WATCH_NEXT -> watchNextItems.map(::watchNextRailKey) to watchNextListState
+            HomePreferences.ROW_LIVE_TV -> liveTvState.channels.map { it.serviceReference } to liveTvListState
+            HomePreferences.ROW_APPS -> (apps.map { it.packageName } + "all-apps") to appsListState
+            else -> (previewByRowKey[row]?.programs.orEmpty().map { it.media.id }) to railFocus.previewState(row)
+        }
+        val index = keys.indexOf(selected)
+        if (index < 0) return false
+        if (verticalMove.value?.isActive == true) return true
+        railFocus.beginRestore(row, selected)
+        if (railFocus.requestAttached(row, selected)) {
+            railFocus.endRestore(row, selected)
+            return true
+        }
+        verticalMove.value = navigationScope.launch {
+            try {
+                contentScrollState.scrollToItem(targetIndex)
+                withFrameNanos { }
+                if (horizontal.layoutInfo.visibleItemsInfo.none { it.key == selected }) {
+                    horizontal.scrollToItem(index)
+                }
+                withFrameNanos { }
+                if (!railFocus.awaitAttached(row, selected)) {
+                    railFocus.endRestore(row, selected)
+                    focusManager.moveFocus(if (delta < 0) FocusDirection.Up else FocusDirection.Down)
+                }
+            } finally {
+                railFocus.endRestore(row, selected)
+            }
+        }
+        return true
+    }
+
+    suspend fun restoreVerticalRow(rowKey: String): Boolean {
+        val index = visibleRowOrder.indexOf(rowKey)
+        if (index < 0) return false
+        contentScrollState.scrollToItem(index)
+        withFrameNanos { }
+        return true
     }
     val defaultHero = remember(
         watchNextItems,
@@ -169,28 +243,20 @@ fun HomeScreen(
             description = "Weiterschauen, App-Kanäle und Live-TV an einem Ort – ohne Werbung.",
         )
     }
-    var hero by remember { mutableStateOf(defaultHero) }
-    var heroSelectedByUser by remember { mutableStateOf(false) }
+    val hero = remember { mutableStateOf(defaultHero) }
+    val pendingHero = remember { mutableStateOf<HomeHeroContent?>(null) }
+    val heroSelectedByUser = remember { mutableStateOf(false) }
     var movingAppPackage by remember { mutableStateOf<String?>(null) }
 
     fun selectHero(content: HomeHeroContent) {
-        heroSelectedByUser = true
-        hero = content
+        heroSelectedByUser.value = true
+        if (homeHeroFocusDelayMillis(hero.value.key, content.key) == 0L) {
+            pendingHero.value = null
+            hero.value = content
+        } else {
+            pendingHero.value = content
+        }
         onNavigationVisibilityChange(false)
-    }
-
-    LaunchedEffect(defaultHero, heroSelectedByUser) {
-        if (!heroSelectedByUser) hero = defaultHero
-    }
-
-    LaunchedEffect(liveTvState.channels, hero.key) {
-        val serviceReference = hero.key.takeIf { it.startsWith("live:") }
-            ?.removePrefix("live:")
-            ?: return@LaunchedEffect
-        val channel = liveTvState.channels.firstOrNull { it.serviceReference == serviceReference }
-            ?: return@LaunchedEffect
-        val updated = liveTvHero(channel)
-        if (updated != hero) hero = updated
     }
 
     LaunchedEffect(watchNextFocusRestoreSourceId, watchNextFocusRestoreGeneration) {
@@ -198,9 +264,10 @@ fun HomeScreen(
         if (watchNextFocusRestoreGeneration <= 0) return@LaunchedEffect
         val targetIndex = watchNextItems.indexOfFirst { it.media.source.sourceId == sourceId }
         if (targetIndex < 0) return@LaunchedEffect
+        if (!restoreVerticalRow(HomePreferences.ROW_WATCH_NEXT)) return@LaunchedEffect
         watchNextListState.scrollToItem(targetIndex)
         withFrameNanos { }
-        watchNextRestoreFocusRequester.requestFocus()
+        runCatching { watchNextRestoreFocusRequester.requestFocus() }
     }
 
     LaunchedEffect(liveTvFocusRestoreServiceReference, liveTvFocusRestoreGeneration) {
@@ -208,6 +275,7 @@ fun HomeScreen(
         if (liveTvFocusRestoreGeneration <= 0) return@LaunchedEffect
         val targetIndex = liveTvState.channels.indexOfFirst { it.serviceReference == serviceReference }
         if (targetIndex < 0) return@LaunchedEffect
+        if (!restoreVerticalRow(HomePreferences.ROW_LIVE_TV)) return@LaunchedEffect
         liveTvListState.scrollToItem(targetIndex)
         withFrameNanos { }
         runCatching { liveTvRestoreFocusRequester.requestFocus() }
@@ -228,6 +296,7 @@ fun HomeScreen(
             apps.indexOfFirst { it.packageName == restoreKey }
         }
         if (targetIndex < 0) return@LaunchedEffect
+        if (!restoreVerticalRow(HomePreferences.ROW_APPS)) return@LaunchedEffect
         appsListState.scrollToItem(targetIndex)
         withFrameNanos { }
         runCatching { appsRestoreFocusRequester.requestFocus() }
@@ -235,6 +304,7 @@ fun HomeScreen(
 
     LaunchedEffect(liveTvState.channels, liveTvConfigFocusRestoreGeneration) {
         if (liveTvConfigFocusRestoreGeneration <= 0 || liveTvState.channels.isNotEmpty()) return@LaunchedEffect
+        if (!restoreVerticalRow(HomePreferences.ROW_LIVE_TV)) return@LaunchedEffect
         withFrameNanos { }
         runCatching { liveTvConfigRestoreFocusRequester.requestFocus() }
     }
@@ -244,11 +314,18 @@ fun HomeScreen(
             .fillMaxSize()
             .touchScrollFallback(contentScrollState, Orientation.Vertical),
     ) {
-        HomeHero(
-            content = hero,
+        HomeHeroStage(
+            hero = hero,
+            pendingHero = pendingHero,
+            heroSelectedByUser = heroSelectedByUser,
+            defaultHero = defaultHero,
+            liveTvChannels = liveTvState.channels,
             onOpenMediaDetails = onOpenMediaDetails,
             onOpenApp = onOpenApp,
-            onFocused = { onNavigationVisibilityChange(true) },
+            onFocused = {
+                pendingHero.value = null
+                onNavigationVisibilityChange(true)
+            },
             textScrollSpeed = heroTextScrollSpeed,
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -263,21 +340,23 @@ fun HomeScreen(
                 .padding(top = HOME_FIRST_RAIL_TOP)
                 .clipToBounds(),
         ) {
-            Column(
+            LazyColumn(
+                state = contentScrollState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(contentScrollState)
                     .touchScrollFallback(contentScrollState, Orientation.Vertical),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                homeRowOrder.forEach { rowKey ->
-                    key(rowKey) {
+                itemsIndexed(visibleRowOrder, key = { _, key -> key }) { rowIndex, rowKey ->
                         AnchoredHomeRow(
-                            scrollState = contentScrollState,
-                            targetTop = HOME_FIRST_RAIL_TOP,
+                            listState = contentScrollState,
+                            rowIndex = rowIndex,
+                            onVerticalMove = { delta -> restoreAdjacentRow(rowIndex, delta) },
                         ) { onRowFocused ->
                             when (rowKey) {
                                 HomePreferences.ROW_WATCH_NEXT -> WatchNextHomeRow(
+                                    railFocus = railFocus,
+                                    rowKey = rowKey,
                                     items = watchNextItems,
                                     error = watchNextError,
                                     hasTvListingsPermission = hasTvListingsPermission,
@@ -296,6 +375,8 @@ fun HomeScreen(
 
                                 HomePreferences.ROW_LIVE_TV -> if (liveTvState.configured) {
                                     LiveTvHomeRow(
+                                    railFocus = railFocus,
+                                    rowKey = rowKey,
                                         state = liveTvState,
                                         listState = liveTvListState,
                                         restoreServiceReference = liveTvFocusRestoreServiceReference,
@@ -310,6 +391,8 @@ fun HomeScreen(
                                 }
 
                                 HomePreferences.ROW_APPS -> AppsHomeRow(
+                                    railFocus = railFocus,
+                                    rowKey = rowKey,
                                     apps = apps,
                                     listState = appsListState,
                                     movingAppPackage = movingAppPackage,
@@ -320,11 +403,16 @@ fun HomeScreen(
                                     restoreKey = appsFocusRestoreKey,
                                     restoreRequester = appsRestoreFocusRequester,
                                     onRowFocused = onRowFocused,
-                                    onFocused = { onNavigationVisibilityChange(false) },
+                                    onFocused = {
+                                        pendingHero.value = null
+                                        onNavigationVisibilityChange(false)
+                                    },
                                 )
 
                                 else -> previewByRowKey[rowKey]?.let { channel ->
                                     PreviewHomeRow(
+                                    railFocus = railFocus,
+                                    rowKey = rowKey,
                                         channel = channel,
                                         sourceApp = channel.packageName?.let(appsByPackage::get),
                                         sourceLabel = channel.packageName?.let(appLabels::get) ?: channel.title,
@@ -335,25 +423,78 @@ fun HomeScreen(
                                 }
                             }
                         }
-                    }
                 }
 
                 if (hasTvListingsPermission && previewChannelsError != null) {
-                    Text(
-                        text = previewChannelsError,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 38.dp),
-                    )
+                    item(key = "home-preview-error") {
+                        Text(
+                            text = previewChannelsError,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(horizontal = 38.dp),
+                        )
+                    }
                 }
-                Spacer(Modifier.height(HOME_BOTTOM_FOCUS_RESERVE))
+                item(key = "home-bottom-reserve") {
+                    Spacer(Modifier.height(HOME_BOTTOM_FOCUS_RESERVE))
+                }
             }
         }
     }
 }
 
+// Read hero state only in this isolated composition scope. Row composition must
+// not subscribe to pending or displayed hero values.
+@Composable
+private fun HomeHeroStage(
+    hero: MutableState<HomeHeroContent>,
+    pendingHero: MutableState<HomeHeroContent?>,
+    heroSelectedByUser: MutableState<Boolean>,
+    defaultHero: HomeHeroContent,
+    liveTvChannels: List<LiveTvChannel>,
+    onOpenMediaDetails: (MediaItem, String?) -> Unit,
+    onOpenApp: (InstalledApp) -> Unit,
+    onFocused: () -> Unit,
+    textScrollSpeed: HeroTextScrollSpeed,
+    modifier: Modifier,
+) {
+    val displayed = hero.value
+    val pending = pendingHero.value
+    LaunchedEffect(pending) {
+        val candidate = pending ?: return@LaunchedEffect
+        delay(homeHeroFocusDelayMillis(hero.value.key, candidate.key))
+        if (pendingHero.value == candidate) {
+            hero.value = candidate
+            pendingHero.value = null
+        }
+    }
+    LaunchedEffect(defaultHero, heroSelectedByUser.value) {
+        if (!heroSelectedByUser.value) hero.value = defaultHero
+    }
+    val displayedChannel = remember(liveTvChannels, displayed.key) {
+        val serviceReference = displayed.key.takeIf { it.startsWith("live:") }?.removePrefix("live:")
+        liveTvChannels.firstOrNull { it.serviceReference == serviceReference }
+    }
+    LaunchedEffect(displayedChannel, displayed.key) {
+        val channel = displayedChannel ?: return@LaunchedEffect
+        if (hero.value.key != displayed.key) return@LaunchedEffect
+        val updated = liveTvHero(channel)
+        if (updated != hero.value) hero.value = updated
+    }
+    HomeHero(
+        content = displayed,
+        onOpenMediaDetails = onOpenMediaDetails,
+        onOpenApp = onOpenApp,
+        onFocused = onFocused,
+        textScrollSpeed = textScrollSpeed,
+        modifier = modifier,
+    )
+}
+
 @Composable
 private fun WatchNextHomeRow(
+    railFocus: HomeRailFocusMemory,
+    rowKey: String,
     items: List<EnrichedWatchNextItem>,
     error: String?,
     hasTvListingsPermission: Boolean,
@@ -390,7 +531,9 @@ private fun WatchNextHomeRow(
         )
         else -> LazyRow(
             state = listState,
-            modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
+            modifier = Modifier
+                .then(railFocus.restoreOnEnter(rowKey))
+                .touchScrollFallback(listState, Orientation.Horizontal),
             contentPadding = PaddingValues(
                 start = 38.dp,
                 end = 18.dp,
@@ -401,7 +544,7 @@ private fun WatchNextHomeRow(
         ) {
             items(
                 items = items,
-                key = { "watch-next-${it.sourceItem.id}-${it.sourceItem.sourceOrder}" },
+                key = ::watchNextRailKey,
             ) { item ->
                 val cardModifier = if (item.media.source.sourceId == restoreSourceId) {
                     Modifier.focusRequester(restoreRequester)
@@ -422,7 +565,7 @@ private fun WatchNextHomeRow(
                             ),
                         )
                     },
-                    modifier = cardModifier,
+                    modifier = railFocus.cardModifier(rowKey, watchNextRailKey(item)).then(cardModifier),
                 )
             }
         }
@@ -431,6 +574,8 @@ private fun WatchNextHomeRow(
 
 @Composable
 private fun LiveTvHomeRow(
+    railFocus: HomeRailFocusMemory,
+    rowKey: String,
     state: OpenWebifState,
     listState: LazyListState,
     restoreServiceReference: String?,
@@ -442,11 +587,58 @@ private fun LiveTvHomeRow(
     onRowFocused: () -> Unit,
     onFocused: (HomeHeroContent) -> Unit,
 ) {
+    val latestChannels = rememberUpdatedState(state.channels)
+    val latestEnrich = rememberUpdatedState(onChannelFocused)
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val width = with(density) { 172.dp.roundToPx() }
+    val height = with(density) { 97.dp.roundToPx() }
+    // Only inspect the visible rail and two adjacent cards; never load an entire bouquet.
+    // The effect is disposed with the vertical row, and collectLatest cancels obsolete prefetches.
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val channels = latestChannels.value
+            val visible = listState.layoutInfo.visibleItemsInfo.map { it.index }
+            if (visible.isEmpty()) emptyList()
+            else (visible + (visible.first() - 2 until visible.first()).toList() +
+                (visible.last() + 1..visible.last() + 2).toList())
+                .distinct().mapNotNull { channels.getOrNull(it) }
+                .map { Triple(it.serviceReference, it.now?.startUtcMillis, it.now?.tmdbId) }
+        }.collectLatest { candidates ->
+            delay(180)
+            candidates.forEach { (ref, start, tmdbId) ->
+                if (start != null && tmdbId == null) {
+                    latestChannels.value.firstOrNull {
+                        it.serviceReference == ref && it.now?.startUtcMillis == start
+                    }?.let(latestEnrich.value)
+                }
+            }
+        }
+    }
+    LaunchedEffect(listState, context, width, height) {
+        snapshotFlow {
+            val visible = listState.layoutInfo.visibleItemsInfo.map { it.index }
+            val channels = latestChannels.value
+            if (visible.isEmpty()) emptyList()
+            else ((visible.first() - 2 until visible.first()).toList() +
+                (visible.last() + 1..visible.last() + 2).toList())
+                .mapNotNull { channels.getOrNull(it)?.now?.preferredArtworkUri }
+                .filter { it.isNotBlank() }.distinct()
+        }.collectLatest { uris ->
+            delay(180)
+            val loader = SingletonImageLoader.get(context)
+            uris.forEach { uri ->
+                loader.execute(ImageRequest.Builder(context).data(uri).size(width, height).build())
+            }
+        }
+    }
     HomeRowHeader("Jetzt im TV")
     when {
         state.channels.isNotEmpty() -> LazyRow(
             state = listState,
-            modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
+            modifier = Modifier
+                .then(railFocus.restoreOnEnter(rowKey))
+                .touchScrollFallback(listState, Orientation.Horizontal),
             contentPadding = PaddingValues(
                 start = 38.dp,
                 end = 18.dp,
@@ -464,10 +656,9 @@ private fun LiveTvHomeRow(
                     onClick = { onPlay(channel) },
                     onFocused = {
                         onRowFocused()
-                        onChannelFocused(channel)
                         onFocused(liveTvHero(channel))
                     },
-                    modifier = cardModifier,
+                    modifier = railFocus.cardModifier(rowKey, channel.serviceReference).then(cardModifier),
                 )
             }
         }
@@ -486,6 +677,8 @@ private fun LiveTvHomeRow(
 
 @Composable
 private fun PreviewHomeRow(
+    railFocus: HomeRailFocusMemory,
+    rowKey: String,
     channel: AppContentChannel,
     sourceApp: InstalledApp?,
     sourceLabel: String,
@@ -494,11 +687,13 @@ private fun PreviewHomeRow(
     onFocused: (HomeHeroContent) -> Unit,
 ) {
     key(channel.id) {
-        val listState = rememberLazyListState()
+        val listState = railFocus.previewState(rowKey)
         HomeRowHeader(channel.title, sourceApp)
         LazyRow(
             state = listState,
-            modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
+            modifier = Modifier
+                .then(railFocus.restoreOnEnter(rowKey))
+                .touchScrollFallback(listState, Orientation.Horizontal),
             contentPadding = PaddingValues(
                 start = 38.dp,
                 end = 18.dp,
@@ -511,6 +706,7 @@ private fun PreviewHomeRow(
                 WatchNextCard(
                     item = program.media,
                     onClick = { onOpen(channel, program) },
+                    modifier = railFocus.cardModifier(rowKey, program.media.id),
                     onFocused = {
                         onRowFocused()
                         onFocused(mediaHero(program.media, sourceLabel))
@@ -523,6 +719,8 @@ private fun PreviewHomeRow(
 
 @Composable
 private fun AppsHomeRow(
+    railFocus: HomeRailFocusMemory,
+    rowKey: String,
     apps: List<InstalledApp>,
     listState: LazyListState,
     movingAppPackage: String?,
@@ -544,7 +742,9 @@ private fun AppsHomeRow(
     } else {
         LazyRow(
             state = listState,
-            modifier = Modifier.touchScrollFallback(listState, Orientation.Horizontal),
+            modifier = Modifier
+                .then(railFocus.restoreOnEnter(rowKey))
+                .touchScrollFallback(listState, Orientation.Horizontal),
             contentPadding = PaddingValues(start = 38.dp, end = 18.dp, top = 3.dp, bottom = 5.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -552,9 +752,9 @@ private fun AppsHomeRow(
                 val moveMode = movingAppPackage == app.packageName
                 AppCard(
                     app = app,
-                    modifier = if (restoreKey == app.packageName) {
-                        Modifier.focusRequester(restoreRequester)
-                    } else Modifier,
+                    modifier = railFocus.cardModifier(rowKey, app.packageName).then(
+                        if (restoreKey == app.packageName) Modifier.focusRequester(restoreRequester) else Modifier,
+                    ),
                     onClick = {
                         if (moveMode) onMoveMode(null) else onOpen(app)
                     },
@@ -570,9 +770,9 @@ private fun AppsHomeRow(
             item(key = "all-apps") {
                 AllAppsDockCard(
                     onClick = onOpenAllApps,
-                    modifier = if (restoreKey == "all-apps") {
-                        Modifier.focusRequester(restoreRequester)
-                    } else Modifier,
+                    modifier = railFocus.cardModifier(rowKey, "all-apps").then(
+                        if (restoreKey == "all-apps") Modifier.focusRequester(restoreRequester) else Modifier,
+                    ),
                     onFocused = {
                         onRowFocused()
                         onFocused()
@@ -683,6 +883,7 @@ private fun HomeRowHeader(title: String, sourceApp: InstalledApp? = null) {
     }
 }
 
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 internal fun HomeHero(
     content: HomeHeroContent,
@@ -702,10 +903,11 @@ internal fun HomeHero(
         modifier = modifier.onFocusChanged { if (it.isFocused) onFocused() },
         scale = CardDefaults.scale(focusedScale = 1.0f),
     ) {
-        Crossfade(
-            targetState = content,
-            animationSpec = tween(durationMillis = 230),
-            label = "home-hero",
+        // Metadata updates of the same content/artwork must not instantiate a second
+        // full-screen image and text tree. Keep the existing fade for a genuine visual change.
+        updateTransition(targetState = content, label = "home-hero").Crossfade(
+            animationSpec = tween(durationMillis = 120),
+            contentKey = { Triple(it.key, it.artworkUri, it.fitArtwork) },
         ) { heroContent ->
             var fitArtworkAspectRatio by remember(heroContent.artworkUri) { mutableStateOf<Float?>(null) }
             BoxWithConstraints(
@@ -1097,15 +1299,8 @@ private fun liveTvHero(channel: LiveTvChannel): HomeHeroContent {
 
 internal fun liveTvHeroArtwork(program: LiveTvProgram?): Pair<String?, Boolean> {
     if (program == null) return null to false
-    if (program.tmdbId == null) return program.imageUri to true
-
-    return when (program.tmdbType ?: MediaType.Unknown) {
-        MediaType.Episode -> (program.episodeStillUri ?: program.backdropUri) to false
-        MediaType.Series,
-        MediaType.Movie,
-        -> program.backdropUri to false
-        MediaType.Unknown -> (program.backdropUri ?: program.episodeStillUri) to false
-    }
+    val artwork = program.selectArtwork(forHero = true)
+    return artwork?.uri to (artwork?.source == LiveTvArtworkSource.Epg || program.tmdbId == null)
 }
 
 private fun liveProgramMedia(channel: LiveTvChannel, program: LiveTvProgram): MediaItem = MediaItem(

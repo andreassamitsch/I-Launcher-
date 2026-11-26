@@ -15,6 +15,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.ButtonDefaults
@@ -125,7 +126,8 @@ internal fun GoogleTvTopNavigation(
                     text = clockText,
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.90f),
-                    modifier = Modifier.padding(horizontal = 8.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                        .then(if (collapsed) Modifier.clearAndSetSemantics { } else Modifier),
                     maxLines = 1,
                 )
                 NavDestination(
@@ -150,6 +152,21 @@ internal fun GoogleTvTopNavigation(
         }
         GoogleTvCollapsedNavigationCue(
             Modifier.align(Alignment.TopCenter).padding(top = 7.dp).graphicsLayer { alpha = cueAlpha },
+        )
+        // Keep the clock in a separate, non-focusable overlay when the navigation
+        // fades out. No change to the navigation row's size or focus graph.
+        Text(
+            text = clockText,
+            style = MaterialTheme.typography.titleLarge.copy(
+                shadow = Shadow(color = Color.Black.copy(alpha = 0.85f), blurRadius = 8f),
+            ),
+            color = Color.White,
+            maxLines = 1,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 30.dp)
+                .graphicsLayer { alpha = cueAlpha }
+                .then(if (collapsed) Modifier else Modifier.clearAndSetSemantics { }),
         )
     }
 }

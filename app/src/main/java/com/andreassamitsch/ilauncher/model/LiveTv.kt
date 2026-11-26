@@ -30,10 +30,7 @@ data class LiveTvProgram(
         get() = startUtcMillis + durationMillis
 
     val preferredArtworkUri: String?
-        get() = episodeStillUri
-            ?: backdropUri
-            ?: imageUri
-            ?: posterUri
+        get() = selectArtwork()?.uri
 }
 
 data class LiveTvChannel(

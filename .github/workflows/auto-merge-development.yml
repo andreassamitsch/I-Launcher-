@@ -1,0 +1,37 @@
+name: Auto publish validated development PR
+
+on:
+  pull_request_target:
+    types: [labeled, synchronize, reopened, ready_for_review]
+    branches: [release/live-tv-audio-selection]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: development-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login == github.repository_owner &&
+      !github.event.pull_request.draft &&
+      contains(github.event.pull_request.labels.*.name, 'auto-publish-development')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      # Deliberately use the trusted base, not the pull request's code or artifacts.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Verify exact PR head, wait for relevant checks, merge and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/auto_publish_development.py

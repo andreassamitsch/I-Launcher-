@@ -235,6 +235,8 @@ Nicht nur Senderlogos anzeigen, sondern möglichst Senderlogo, aktuelle Sendung,
 
 EPG-Daten kommen vom Gigablue/OpenWebif und können durch den TMDB-Resolver mit Postern, Backdrops oder Episodenbildern angereichert werden. Beim Fokus eines aktuellen Programms darf eine noch fehlende TMDB-Auflösung gezielt angestoßen werden. Der ausgewählte Home-Hero muss über die stabile Senderreferenz bzw. `serviceReference + startUtcMillis` an das Programm gebunden bleiben und sich aktualisieren, sobald die angereicherte Kopie vorliegt; kein Fokus-Neustart dafür.
 
+Für konkrete TV-Ausstrahlungen sind XMLTV und Gigablue/OpenWebif die führenden Quellen für Sendungstitel, Zeiten, Folgenangaben und sendungsspezifische Texte. TMDB ergänzt ausschließlich einen nachweisbaren Mehrwert: vorhandene EPG-Texte nicht mit allgemeinen Serienbeschreibungen überschreiben; fehlende Sendungsbeschreibungen nur mit eindeutig zugeordnetem Film- oder Episodentext ergänzen. Bild- und Textqualität getrennt behandeln: bei sicher zugeordneten Filmen/Serien/Episoden ein passendes TMDB-Episodenbild bzw. breites Film-/Serien-Backdrop bevorzugen; EPG-Bild als Fallback. Bei Nachrichten, Magazinen, Sport und anderen eindeutig faktischen Formaten vorhandenes EPG-Bild bevorzugen. Die Typ-/Breitbildregel ist eine Formatpräferenz, keine verifizierte Pixelqualitätsmessung; keine zusätzlichen Originalbild-Downloads allein zum Qualitätsvergleich. Quelle, TMDB-Zuordnung und tatsächlich geladenes Kartenbild ohne private URLs unter LIVE_TV_ARTWORK diagnostizieren. Bereits erfolgreiche Anreicherung bei Refresh derselben Ausstrahlung erhalten, nie auf eine andere Folge übertragen.
+
 Weitere mögliche Reihen: „Gleich im TV“, „Heute Abend“, „Meine Sender“.
 
 ## 15. Live-TV-Wiedergabe
@@ -280,6 +282,7 @@ Besonders beachten:
 - Position beim Zurückkehren erhalten
 - der physische `HOME`-Button führt innerhalb von I Launcher immer zur Home-Ansicht zurück; interne Detail-/Unterseitenzustände werden dabei beendet, ohne den Launcher-Prozess oder die lokalen Home-Listen neu zu starten
 - `Zurück` aus Detail- und internen Unterseiten kehrt in den vorherigen Kontext zurück und stellt den zuletzt gewählten Eintrag über eine stabile Inhalts-/Source-ID wieder her, sofern dieser noch existiert; reine Listenindizes sind dafür nicht ausreichend
+- jede Home-Reihe merkt sich die letzte fokussierte stabile Karten-ID unabhängig vom Lebenszyklus der LazyColumn; bei Rückkehr wird diese Karte wiederhergestellt, sofern vorhanden
 - keine unnötigen Focus-Sprünge
 - horizontale Listen sauber scrollen
 - kein Touch voraussetzen
@@ -313,11 +316,11 @@ Serie/Episode:
 3. Serienposter
 4. Quellbild
 
-Geeignete Bildgrößen laden, keine unnötig großen Originale.
+Geeignete Bildgrößen laden, keine unnötig großen Originale. Live-TV-Karten behalten bei derselben Ausstrahlung das erfolgreich geladene Bild bis zum erfolgreichen Ersatz; bei Fehlern bleibt das bisherige Bild bzw. Senderlogo. Nachbarbilder begrenzt und abbrechbar vorladen.
 
 Für den **Home-Hero** gilt bewusst eine strengere Regel als für Karten und Detailseiten: TMDB-verknüpfte Filme und Serien verwenden ausschließlich ein breites TMDB-Backdrop als bildfüllenden Hintergrund; Episoden verwenden – abhängig von der Home-Bildpräferenz – Episoden-Still bzw. Serien-Backdrop zuerst und den jeweils anderen breiten Bildtyp als Fallback. Poster/Hochformatbilder sind im Home-Hero kein primäres TMDB-Fallback. Falls der primäre `backdrop_path` fehlt, darf aus den von TMDB gelieferten Backdrops ein geeigneter sprachneutraler Kandidat gewählt werden.
 
-Bildfüllende TMDB-Hero-Artworks werden `TopCenter` gecroppt. EPG-/Live-TV-Inhalte ohne TMDB-Verknüpfung verwenden ihr vorhandenes Quellbild möglichst unbeschnitten oben rechts. Der Verlauf setzt an den tatsächlich gerenderten `Fit`-Bildgrenzen an, sodass unterschiedliche Quellformate wie 2:3, 4:3 und 16:9 nach links und unten weich in den Hero-Hintergrund auslaufen, ohne das Bild zusätzlich als vergrößerten Vollflächen-Crop zu duplizieren.
+Bildfüllende TMDB-Hero-Artworks werden `TopCenter` gecroppt. EPG-/Live-TV-Inhalte dürfen gemäß Abschnitt 14 ein vorhandenes konkretes Quellbild auch bei TMDB-Verknüpfung bevorzugen und verwenden es möglichst unbeschnitten oben rechts. Der Verlauf setzt an den tatsächlich gerenderten `Fit`-Bildgrenzen an, sodass unterschiedliche Quellformate wie 2:3, 4:3 und 16:9 nach links und unten weich in den Hero-Hintergrund auslaufen, ohne das Bild zusätzlich als vergrößerten Vollflächen-Crop zu duplizieren.
 
 ## 20. Suche und App-Handoffs
 
@@ -399,6 +402,11 @@ Bei größeren Änderungen:
 
 Keine großen unkontrollierten Änderungen direkt auf `main`.
 
+### Automatische Development-Freigabe
+
+Wenn der Benutzer die Umsetzung und Bereitstellung einer Development-APK beauftragt, kennzeichne eigene, nicht als Draft angelegte PRs auf `release/live-tv-audio-selection` bei Erstellung mit `auto-publish-development`. Die Freigabe wartet auf Android CI und die tatsächlich benötigten UI-/Profiltests des exakten PR-Standes. Erfolgreiche Tests führen automatisch zum Squash-Merge und zum signierten Downloader-Publisher. Keine zusätzliche manuelle Statusabfrage oder Freigabe des Benutzers erforderlich. Bei fehlerhaften, fehlenden oder abgebrochenen Checks, geändertem Head/Basisstand, Konflikten oder fehlender Berechtigung nicht automatisch mergen. Fremde/Fork-PRs und Änderungen an CI-/Publishing-Workflows oder deren Freigabe-Implementierung müssen bewusst geprüft werden. Bei Fehlerbehebung neue Commits testen; für erneute Versuche ohne Commit das Label erneut setzen. Eine Veröffentlichung erst nach Bestätigung des Download-Manifests als erfolgt bezeichnen. Geräteinstallation und Hardwareabnahme bleiben getrennt; keine automatische Installation auf dem TV.
+
+
 Commit-Beispiele:
 
 - `feat: add Android TV watch next provider`
@@ -423,7 +431,7 @@ Mindestens relevant:
 - CloudStream-Direct-Play-Protokollaufbau inklusive Film/Serie/Episode und Fallback-Erkennung
 - Kodi-/TMDb-Helper-Pfaderzeugung ohne UI-Timingannahmen
 
-Bei UI zusätzlich reale D-Pad-Navigation, Back-Navigation, TV-Auflösung, Focus-Verhalten sowie Glow/Breath und Hero-/Rail-Überlagerung prüfen.
+Bei jeder Änderung den APK-Build und die vollständigen schnellen Unit-Tests ausführen. Zeitaufwendige Emulator-/UI-Tests abhängig von den tatsächlich betroffenen Funktionen auswählen. Vollständige UI-/Regressionstests bei großen funktionsübergreifenden Änderungen oder vor stabilen Releases ausführen. Bei Home-/Focus-Änderungen zusätzlich reale D-Pad-Navigation, Back-Navigation, TV-Auflösung, Focus-Verhalten sowie Glow/Breath und Hero-/Rail-Überlagerung prüfen.
 
 ## 27. Build und Hardwaretests
 

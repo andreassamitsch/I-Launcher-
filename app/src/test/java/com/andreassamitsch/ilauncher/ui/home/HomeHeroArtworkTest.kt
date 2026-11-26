@@ -113,7 +113,7 @@ class HomeHeroArtworkTest {
     }
 
     @Test
-    fun tmdbLiveTvNeverFallsBackToPoster() {
+    fun tmdbLiveTvUsesEpgImageInsteadOfPoster() {
         val program = LiveTvProgram(
             eventId = 1,
             title = "Movie",
@@ -127,8 +127,25 @@ class HomeHeroArtworkTest {
 
         val (uri, fit) = liveTvHeroArtwork(program)
 
-        assertNull(uri)
-        assertFalse(fit)
+        assertEquals("epg-image", uri)
+        assertTrue(fit)
+    }
+
+    @Test
+    fun matchedSeriesBackdropPreferredUnlessFactual() {
+        val program = LiveTvProgram(
+            eventId = 1, title = "Serie", startUtcMillis = 1_000, durationMillis = 3_600_000,
+            imageUri = "epg-image", tmdbId = 10, tmdbType = MediaType.Series,
+            backdropUri = "series-backdrop",
+        )
+        assertEquals("series-backdrop", program.preferredArtworkUri)
+        assertEquals("series-backdrop" to false, liveTvHeroArtwork(program))
+        val news = program.copy(categories = listOf("Nachrichten"))
+        assertEquals("epg-image", news.preferredArtworkUri)
+        assertEquals("epg-image" to true, liveTvHeroArtwork(news))
+        val episode = program.copy(episodeStillUri = "episode-still")
+        assertEquals("episode-still", episode.preferredArtworkUri)
+        assertEquals("episode-still" to false, liveTvHeroArtwork(episode))
     }
 
     private fun mediaItem(

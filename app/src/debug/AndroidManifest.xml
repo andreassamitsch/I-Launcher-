@@ -13,5 +13,16 @@
             android:name=".ui.preview.SettingsPreviewActivity"
             android:exported="true"
             android:screenOrientation="landscape" />
+        <provider
+            android:name=".diagnostics.TvProviderSnapshotProvider"
+            android:authorities="com.andreassamitsch.ilauncher.diagnostics"
+            android:exported="true"
+            android:readPermission="android.permission.DUMP"
+            android:writePermission="android.permission.DUMP"
+            android:grantUriPermissions="false" />
+        <receiver
+            android:name=".diagnostics.TvProviderDumpReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
     </application>
 </manifest>
