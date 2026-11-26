@@ -30,6 +30,7 @@ import com.andreassamitsch.servusprovider.data.ServusNewsRepository
 import com.andreassamitsch.servusprovider.data.ServusShow
 import com.andreassamitsch.servusprovider.update.ServusInstallResult
 import com.andreassamitsch.servusprovider.update.ServusUpdateManager
+import com.andreassamitsch.servusprovider.update.ServusUpdatePopupPolicy
 import com.andreassamitsch.servusprovider.update.ServusUpdateState
 import com.andreassamitsch.servusprovider.work.ServusRefreshWorker
 import kotlinx.coroutines.CoroutineScope
@@ -64,6 +65,12 @@ class MainActivity : Activity() {
     private lateinit var devInfoButton: ImageButton
     private var developerInfoVisible = false
     private var updatePollingJob: Job? = null
+    private var updatePopup: ServusUpdatePopup? = null
+    private val updatePopupPolicy = ServusUpdatePopupPolicy()
+    private var updateInstallMessage: String? = null
+    private var updateInstallJob: Job? = null
+    private var updateCheckJob: Job? = null
+    private var resumed = false
     private var cachedDataRenderJob: Job? = null
     private val newsPreferences by lazy { getSharedPreferences("servus_news", MODE_PRIVATE) }
     private val hubPreferences by lazy { getSharedPreferences("servus_hub", MODE_PRIVATE) }
@@ -99,17 +106,31 @@ class MainActivity : Activity() {
         newsPreferences.registerOnSharedPreferenceChangeListener(cachedDataListener)
         hubPreferences.registerOnSharedPreferenceChangeListener(cachedDataListener)
         observeUpdates()
-        scope.launch { updateManager.checkForUpdates() }
         refresh(forceCatalog = false)
     }
 
     override fun onResume() {
         super.onResume()
         if (::contentContainer.isInitialized) renderCached()
-        if (::updateManager.isInitialized) updateManager.refreshDownloadState()
+        resumed = true
+        if (::updateManager.isInitialized) {
+            updateManager.refreshDownloadState()
+            syncUpdatePopup(updateManager.state.value)
+            when (updateManager.state.value) {
+                is ServusUpdateState.Downloading, is ServusUpdateState.ReadyToInstall -> Unit
+                else -> checkForUpdates()
+            }
+        }
+    }
+
+    override fun onPause() {
+        resumed = false
+        closeUpdatePopup()
+        super.onPause()
     }
 
     override fun onDestroy() {
+        closeUpdatePopup()
         updatePollingJob?.cancel()
         cachedDataRenderJob?.cancel()
         newsPreferences.unregisterOnSharedPreferenceChangeListener(cachedDataListener)
@@ -472,6 +493,7 @@ class MainActivity : Activity() {
         scope.launch {
             updateManager.state.collectLatest { state ->
                 renderUpdateState(state)
+                syncUpdatePopup(state)
                 if (state is ServusUpdateState.Downloading) startUpdatePolling() else stopUpdatePolling()
             }
         }
@@ -496,18 +518,18 @@ class MainActivity : Activity() {
             }
             is ServusUpdateState.Available -> {
                 updateStatusText.text = "Update ${state.info.versionName} verfügbar."
-                updateButton.contentDescription = "Update herunterladen"
+                updateButton.contentDescription = "Update anzeigen"
                 updateButton.isEnabled = true
             }
             is ServusUpdateState.Downloading -> {
                 updateStatusText.text = state.progressPercent?.let { "Update wird heruntergeladen: $it %" }
                     ?: "Update wird heruntergeladen …"
-                updateButton.contentDescription = "Update wird heruntergeladen"
-                updateButton.isEnabled = false
+                updateButton.contentDescription = "Downloadfortschritt anzeigen"
+                updateButton.isEnabled = true
             }
             is ServusUpdateState.ReadyToInstall -> {
                 updateStatusText.text = "Update ${state.info.versionName} ist bereit."
-                updateButton.contentDescription = "Update installieren"
+                updateButton.contentDescription = "Update anzeigen"
                 updateButton.isEnabled = true
             }
             is ServusUpdateState.Error -> {
@@ -559,25 +581,77 @@ class MainActivity : Activity() {
         button.scaleY = if (focused && isTvDevice) 1.06f else 1f
     }
 
+    private fun checkForUpdates() {
+        if (updateCheckJob?.isActive == true) return
+        updateCheckJob = scope.launch { updateManager.checkForUpdates() }
+    }
+
     private fun handleUpdateAction() {
         when (val state = updateManager.state.value) {
-            ServusUpdateState.Idle,
-            is ServusUpdateState.UpToDate,
-            is ServusUpdateState.Error,
-            -> scope.launch { updateManager.checkForUpdates() }
-
+            ServusUpdateState.Idle, is ServusUpdateState.UpToDate, is ServusUpdateState.Error -> checkForUpdates()
             ServusUpdateState.Checking -> Unit
-            is ServusUpdateState.Available -> updateManager.startDownload(state.info)
-            is ServusUpdateState.Downloading -> updateManager.refreshDownloadState()
-            is ServusUpdateState.ReadyToInstall -> scope.launch {
-                when (val result = updateManager.installDownloadedUpdate()) {
-                    ServusInstallResult.Started -> updateStatusText.text = "Android-Systeminstaller geöffnet."
-                    ServusInstallResult.PermissionRequired -> {
-                        updateStatusText.text = "Bitte 'Installation aus dieser Quelle' für ServusTV erlauben und anschließend erneut installieren."
-                    }
-                    is ServusInstallResult.Error -> updateStatusText.text = "Update: ${result.message}"
-                }
+            else -> {
+                updatePopupPolicy.reopen()
+                updateInstallMessage = null
+                syncUpdatePopup(state)
             }
+        }
+    }
+
+    private fun closeUpdatePopup() {
+        updatePopup?.close()
+        updatePopup = null
+    }
+
+    private fun syncUpdatePopup(state: ServusUpdateState) {
+        val info = ServusUpdatePopupPolicy.info(state)
+        if (!resumed || isFinishing || isDestroyed || info == null ||
+            !updatePopupPolicy.shouldShow(info.versionCode)
+        ) {
+            closeUpdatePopup()
+            return
+        }
+        if (updatePopup?.versionCode != info.versionCode) {
+            closeUpdatePopup()
+            updatePopup = ServusUpdatePopup(
+                activity = this,
+                info = info,
+                onLater = {
+                    updatePopupPolicy.dismiss(info.versionCode)
+                    closeUpdatePopup()
+                },
+                onPrimary = {
+                    when (val current = updateManager.state.value) {
+                        is ServusUpdateState.Available -> {
+                            updateInstallMessage = null
+                            updateManager.startDownload(current.info)
+                        }
+                        is ServusUpdateState.ReadyToInstall -> installUpdate(current.info.versionCode)
+                        else -> Unit
+                    }
+                },
+            )
+        }
+        updatePopup?.render(state, updateInstallMessage, updateInstallJob?.isActive == true)
+    }
+
+    private fun installUpdate(versionCode: Int) {
+        if (updateInstallJob?.isActive == true) return
+        updateInstallJob = scope.launch {
+            updatePopup?.render(updateManager.state.value, null, true)
+            when (val result = updateManager.installDownloadedUpdate()) {
+                ServusInstallResult.Started -> {
+                    updatePopupPolicy.dismiss(versionCode)
+                    updateInstallMessage = null
+                    updateStatusText.text = "Android-Systeminstaller geöffnet."
+                }
+                ServusInstallResult.PermissionRequired -> {
+                    updateInstallMessage = "Bitte Installation aus dieser Quelle erlauben und danach erneut installieren."
+                }
+                is ServusInstallResult.Error -> updateInstallMessage = result.message
+            }
+            updateInstallJob = null
+            syncUpdatePopup(updateManager.state.value)
         }
     }
 

@@ -13,6 +13,17 @@ class ServusUpdatePolicyTest {
     }
 
     @Test
+    fun popupDeferralOnlyAppliesToTheDismissedVersion() {
+        val policy = ServusUpdatePopupPolicy()
+        assertTrue(policy.shouldShow(12))
+        policy.dismiss(12)
+        assertFalse(policy.shouldShow(12))
+        assertTrue(policy.shouldShow(13))
+        policy.reopen()
+        assertTrue(policy.shouldShow(12))
+    }
+
+    @Test
     fun metadataUrlGetsCacheBuster() {
         val url = buildServusUpdateMetadataUrl(123456L)
         assertTrue(url.startsWith("https://raw.githubusercontent.com/andreassamitsch/I-Launcher-/servustv-downloads/update.json"))
