@@ -293,17 +293,19 @@ internal class JoynNextEpisodeRefresher(private val context: Context) {
 internal object JoynNextEpisodeScheduler {
     private const val PERIODIC_WORK = "joyn-next-episode-periodic"
     private const val IMMEDIATE_WORK = "joyn-next-episode-now"
+    private const val REFRESH_INTERVAL_MINUTES = 15L
 
     fun install(context: Context) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
-        val periodic = PeriodicWorkRequestBuilder<JoynNextEpisodeWorker>(6, TimeUnit.HOURS)
+        val periodic = PeriodicWorkRequestBuilder<JoynNextEpisodeWorker>(REFRESH_INTERVAL_MINUTES, TimeUnit.MINUTES)
             .setConstraints(constraints)
             .build()
         WorkManager.getInstance(context.applicationContext).enqueueUniquePeriodicWork(
             PERIODIC_WORK,
-            ExistingPeriodicWorkPolicy.KEEP,
+            // UPDATE migrates the previously installed six-hour job without creating a duplicate.
+            ExistingPeriodicWorkPolicy.UPDATE,
             periodic,
         )
     }
