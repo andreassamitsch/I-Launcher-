@@ -34,7 +34,7 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.model.LiveTvArtworkSource
-import com.andreassamitsch.ilauncher.model.selectArtwork
+import com.andreassamitsch.ilauncher.model.artworkCandidates
 
 @Composable
 fun LiveTvCard(
@@ -44,16 +44,18 @@ fun LiveTvCard(
     modifier: Modifier = Modifier,
 ) {
     val program = channel.now
-    val selection = program?.selectArtwork()
+    val candidates = program?.artworkCandidates().orEmpty()
+    var candidateIndex by remember(channel.serviceReference, program?.startUtcMillis, candidates) { mutableStateOf(0) }
+    val selection = candidates.getOrNull(candidateIndex)
     val artwork = selection?.uri
     // Never display an older airing's image after a programme boundary.
-    var displayedPainter by remember(channel.serviceReference, channel.now?.startUtcMillis, channel.now?.title) {
+    var displayedPainter by remember(channel.serviceReference, program?.startUtcMillis, program?.title, program?.seasonNumber, program?.episodeNumber, program?.releaseYear) {
         mutableStateOf<Painter?>(null)
     }
-    var displayedUri by remember(channel.serviceReference, channel.now?.startUtcMillis, channel.now?.title) {
+    var displayedUri by remember(channel.serviceReference, program?.startUtcMillis, program?.title, program?.seasonNumber, program?.episodeNumber, program?.releaseYear) {
         mutableStateOf<String?>(null)
     }
-    var displayedSource by remember(channel.serviceReference, program?.startUtcMillis, program?.title) {
+    var displayedSource by remember(channel.serviceReference, program?.startUtcMillis, program?.title, program?.seasonNumber, program?.episodeNumber, program?.releaseYear) {
         mutableStateOf<LiveTvArtworkSource?>(null)
     }
     LaunchedEffect(channel.serviceReference, program?.startUtcMillis, program?.tmdbId, selection?.source, displayedSource) {
@@ -61,6 +63,7 @@ fun LiveTvCard(
             LiveTvArtworkSource.None
         } else LiveTvArtworkSource.SenderLogo
         Log.d("LIVE_TV_ARTWORK", "station=${channel.name} start=${program?.startUtcMillis} " +
+            "title=${program?.title} year=${program?.releaseYear} season=${program?.seasonNumber} episode=${program?.episodeNumber} " +
             "tmdb=${program?.tmdbId} type=${program?.tmdbType} " +
             "candidate=${selection?.source ?: LiveTvArtworkSource.None} displayed=$shown")
     }
@@ -128,22 +131,7 @@ fun LiveTvCard(
                                 modifier = Modifier.align(Alignment.Center),
                             )
                         }
-                        val source = channel.now?.imageUri?.takeIf { it.isNotBlank() && it != artwork }
-                        if (source != null) {
-                            AsyncImage(
-                                model = source,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                onSuccess = {
-                                    if (displayedPainter == null) {
-                                        displayedPainter = it.painter
-                                        displayedUri = source
-                                        displayedSource = LiveTvArtworkSource.Epg
-                                    }
-                                },
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
+
                     }
 
                     if (!artwork.isNullOrBlank()) {
@@ -161,6 +149,7 @@ fun LiveTvCard(
                             },
                             onError = {
                                 Log.d("LIVE_TV_ARTWORK", "load failed station=${channel.name} source=${selection?.source}")
+                                if (candidates.getOrNull(candidateIndex)?.uri == artwork) candidateIndex++
                             },
                             modifier = Modifier.fillMaxSize().alpha(0f),
                         )
