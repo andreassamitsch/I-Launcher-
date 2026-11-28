@@ -35,7 +35,10 @@ internal fun LiveTvProgram.withTmdbEnrichment(metadata: TmdbMetadata): LiveTvPro
 
 /** Call only within a single service reference; never transfer metadata to a different airing. */
 internal fun LiveTvProgram.retainEpgEnrichment(previous: LiveTvProgram?): LiveTvProgram {
-    if (previous?.tmdbId == null || startUtcMillis != previous.startUtcMillis ||
+    if (!hasValidAiring || previous?.tmdbId == null || !previous.hasValidAiring || startUtcMillis != previous.startUtcMillis ||
+        (releaseYear != null && previous.releaseYear != null && releaseYear != previous.releaseYear) ||
+        (!subtitle.isNullOrBlank() && !previous.subtitle.isNullOrBlank() &&
+            EpgChannelMatcher.normalizeName(subtitle) != EpgChannelMatcher.normalizeName(previous.subtitle)) ||
         EpgChannelMatcher.normalizeName(title) != EpgChannelMatcher.normalizeName(previous.title) ||
         seasonNumber != previous.seasonNumber || episodeNumber != previous.episodeNumber ||
         (eventId != null && previous.eventId != null && eventId != previous.eventId) ||

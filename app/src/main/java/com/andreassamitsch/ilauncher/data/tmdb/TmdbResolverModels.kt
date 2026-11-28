@@ -8,6 +8,9 @@ data class MediaLookup(
     val releaseYear: Int? = null,
     val seasonNumber: Int? = null,
     val episodeNumber: Int? = null,
+    val strictAiringIdentity: Boolean = false,
+    val episodeAirYear: Int? = null,
+    val episodeTitle: String? = null,
 )
 
 data class ParsedMediaLookup(
@@ -17,6 +20,9 @@ data class ParsedMediaLookup(
     val releaseYear: Int?,
     val seasonNumber: Int?,
     val episodeNumber: Int?,
+    val strictAiringIdentity: Boolean = false,
+    val episodeAirYear: Int? = null,
+    val episodeTitle: String? = null,
 )
 
 data class TmdbCandidate(

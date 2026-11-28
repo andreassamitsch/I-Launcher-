@@ -404,13 +404,16 @@ class EpgRepository(
         if (!program.hasValidAiring) return null
         if (program.tmdbId != null) return program
         val metadata = tmdbRepository.resolve(
-            sourceKey = "epg:$serviceReference:${program.startUtcMillis}",
+            sourceKey = "epg:v2:$serviceReference:${program.startUtcMillis}:${program.releaseYear}:${program.subtitle.hashCode()}",
             lookup = MediaLookup(
                 rawTitle = program.title,
                 typeHint = epgMediaTypeHint(program),
                 releaseYear = epgTmdbReleaseYearHint(program),
                 seasonNumber = program.seasonNumber,
                 episodeNumber = program.episodeNumber,
+                strictAiringIdentity = true,
+                episodeAirYear = program.releaseYear.takeIf { epgMediaTypeHint(program) == MediaType.Episode },
+                episodeTitle = program.subtitle,
             ),
         ) ?: return null
         return program.withTmdbEnrichment(metadata)
