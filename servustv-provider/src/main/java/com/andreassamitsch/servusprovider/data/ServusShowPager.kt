@@ -37,7 +37,7 @@ class ServusShowPager(
         val hasMore: Boolean,
     )
 
-    suspend fun refresh(cachedShow: ServusShow): PageResult {
+    suspend fun refresh(cachedShow: ServusShow, onPreview: suspend (PageResult) -> Unit = {}): PageResult {
         val session = sessionStore.get()
         val detail = runCatching { api.product(session.countryCode, cachedShow.id) }.getOrNull()
         val title = detail?.title?.takeIf { !it.isNullOrBlank() } ?: cachedShow.title
@@ -107,7 +107,43 @@ class ServusShowPager(
             )
         }
         states[cachedShow.id] = state
+        // Usable first-page episode cards are visible before optional product details or
+        // further pagination. Incomplete cards remain in sourceCards for normal hydration.
+        val previewEpisodes = eligibleCandidates(state)
+            .take(ServusShowPagingPolicy.PAGE_SIZE)
+            .mapNotNull { candidate ->
+                val card = candidate.card
+                val existing = state.show.episodes.firstOrNull { it.id == card.id }
+                if (card.duration?.let { it > 0L } != true ||
+                    (card.longDescription.isNullOrBlank() && card.shortDescription.isNullOrBlank()) ||
+                    (card.sunriseTimestamp.isNullOrBlank() && existing?.publishedAtMillis == null)
+                ) return@mapNotNull null
+                val parentId = candidate.contentShowId ?: state.show.id
+                val parentTitle = candidate.contentShowTitle ?: state.show.title
+                ServusCatalogPolicy.toShowEpisode(
+                    candidate = candidate,
+                    showId = parentId,
+                    showTitle = parentTitle,
+                    categoryId = state.show.categoryId,
+                    categoryTitle = state.show.categoryTitle,
+                    showLogoUri = if (parentId == state.show.id) state.show.logoUri
+                        else ServusBranding.logoUriForShow(parentId, null),
+                    nowMillis = System.currentTimeMillis(),
+                )?.let(ServusBranding::canonicalizeEpisode)
+            }
+        if (previewEpisodes.isNotEmpty()) {
+            val merged = ServusShowPagingPolicy.mergeEpisodes(state.show.episodes, previewEpisodes)
+            state.show = state.show.copy(
+                episodes = merged,
+                collections = state.show.collections.map { collection ->
+                    if (collection.role != ServusCollectionRole.CONTENT) collection else collection.copy(
+                        episodes = merged.filter { it.sourceCollectionId == collection.id },
+                    )
+                },
+            )
+        }
         persistShow(state.show)
+        onPreview(PageResult(state.show, hasMore = true))
         return loadNextInternal(state)
     }
 

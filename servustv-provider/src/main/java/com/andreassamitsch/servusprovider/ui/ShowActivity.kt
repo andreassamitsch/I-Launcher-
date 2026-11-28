@@ -58,6 +58,7 @@ class ShowActivity : Activity() {
     private lateinit var loadStateText: TextView
 
     private var currentShow: ServusShow? = null
+    private var displayedEpisodes: List<ServusNewsEpisode> = emptyList()
     private var hasMoreEpisodes = false
     private var loadingMore = false
 
@@ -87,7 +88,21 @@ class ShowActivity : Activity() {
         loadingMore = true
         updateLoadState()
         scope.launch {
-            val result = runCatching { withContext(Dispatchers.IO) { pager.refresh(cachedShow) } }
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    pager.refresh(cachedShow) { preview ->
+                        withContext(Dispatchers.Main) {
+                            if (!isFinishing && !isDestroyed) {
+                                val focusId = currentFocus?.tag as? String
+                                currentShow = preview.show
+                                updateHeader(preview.show)
+                                replaceEpisodeCards(preview.show.episodes, focusId)
+                                updateLoadState()
+                            }
+                        }
+                    }
+                }
+            }
             if (isFinishing || isDestroyed) return@launch
             loadingMore = false
             val page = result.getOrNull()
@@ -375,6 +390,8 @@ class ShowActivity : Activity() {
     }
 
     private fun replaceEpisodeCards(episodes: List<ServusNewsEpisode>, focusId: String?) {
+        if (displayedEpisodes == episodes && episodeCardsContainer.childCount == episodes.size) return
+        displayedEpisodes = episodes
         episodeCardsContainer.removeAllViews()
         var focusTarget: View? = null
         episodes.forEachIndexed { index, episode ->

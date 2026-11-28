@@ -58,6 +58,9 @@ sealed interface ServusInstallResult {
 
 object ServusUpdateVersionPolicy {
     fun isNewer(remoteVersionCode: Int, localVersionCode: Int): Boolean = remoteVersionCode > localVersionCode
+
+    fun shouldRestoreDownload(info: ServusUpdateInfo, localVersionCode: Int): Boolean =
+        isNewer(info.versionCode, localVersionCode)
 }
 
 internal fun buildServusUpdateMetadataUrl(cacheBuster: Long): String =
@@ -98,7 +101,7 @@ class ServusUpdateManager(context: Context) {
 
         result.onSuccess { info ->
             if (!ServusUpdateVersionPolicy.isNewer(info.versionCode, BuildConfig.VERSION_CODE)) {
-                clearStoredDownload(removeDownload = false)
+                clearStoredDownload(removeDownload = true)
                 _state.value = ServusUpdateState.UpToDate(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)
                 return@onSuccess
             }
@@ -117,6 +120,7 @@ class ServusUpdateManager(context: Context) {
     }
 
     fun startDownload(info: ServusUpdateInfo) {
+        if (discardInstalledUpdate(info)) return
         clearStoredDownload(removeDownload = true)
         appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             ?.resolve(UPDATE_FILE_NAME)
@@ -154,6 +158,9 @@ class ServusUpdateManager(context: Context) {
             is ServusUpdateState.ReadyToInstall -> current.info
             else -> readStoredInfo()
         }
+        // DownloadManager and preferences survive package replacement. Never restore an APK
+        // that is already installed (or older), even before the online version check.
+        if (info != null && discardInstalledUpdate(info)) return
         if (downloadId > 0L && info != null) queryDownloadState(info, downloadId)
     }
 
@@ -208,7 +215,15 @@ class ServusUpdateManager(context: Context) {
         }
     }
 
+    private fun discardInstalledUpdate(info: ServusUpdateInfo): Boolean {
+        if (ServusUpdateVersionPolicy.shouldRestoreDownload(info, BuildConfig.VERSION_CODE)) return false
+        clearStoredDownload(removeDownload = true)
+        _state.value = ServusUpdateState.UpToDate(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)
+        return true
+    }
+
     private fun queryDownloadState(info: ServusUpdateInfo, downloadId: Long) {
+        if (discardInstalledUpdate(info)) return
         val cursor = runCatching {
             downloadManager.query(DownloadManager.Query().setFilterById(downloadId))
         }.getOrNull() ?: run {

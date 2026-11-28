@@ -8,6 +8,7 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -26,6 +27,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
@@ -34,12 +36,19 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
+import androidx.media3.session.MediaSession
 import com.andreassamitsch.servusprovider.R
 import com.andreassamitsch.servusprovider.api.ServusNetwork
 import com.andreassamitsch.servusprovider.data.ServusPlaybackResolver
+import com.andreassamitsch.servusprovider.data.ServusPlaybackMetadata
+import com.andreassamitsch.servusprovider.data.ServusHubStore
+import com.andreassamitsch.servusprovider.data.ServusNewsStore
+import com.andreassamitsch.servusprovider.data.ServusSessionStore
+import com.andreassamitsch.servusprovider.data.ServusCatalogPolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -49,6 +58,8 @@ class PlaybackActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val handler = Handler(Looper.getMainLooper())
     private var player: ExoPlayer? = null
+    private var mediaSession: MediaSession? = null
+    private var playbackJob: Job? = null
     private var settingsDialog: Dialog? = null
     private lateinit var rootView: FrameLayout
     private lateinit var playerView: PlayerView
@@ -351,19 +362,60 @@ class PlaybackActivity : Activity() {
     }
 
     private fun resolveAndPlay(contentId: String) {
-        scope.launch {
+        playbackJob = scope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
                     ServusPlaybackResolver(applicationContext).resolve(contentId)
                 }
             }
-            result.onSuccess(::startPlayer).onFailure { throwable ->
+            val url = result.getOrElse { throwable ->
                 showError(throwable.message ?: "Stream konnte nicht aufgelöst werden")
+                return@launch
+            }
+            // Playback must not depend on catalog metadata being available.
+            startPlayer(contentId, url)
+            val metadata = withContext(Dispatchers.IO) {
+                runCatching { resolveMetadata(contentId) }.getOrNull()
+            }
+            val activePlayer = player ?: return@launch
+            if (metadata != null) {
+                val item = activePlayer.currentMediaItem ?: return@launch
+                if (item.mediaId == contentId) {
+                    activePlayer.replaceMediaItem(activePlayer.currentMediaItemIndex,
+                        item.buildUpon().setMediaMetadata(metadata.toMediaMetadata()).build())
+                }
             }
         }
     }
 
-    private fun startPlayer(url: String) {
+    private suspend fun resolveMetadata(contentId: String): ServusPlaybackMetadata {
+        val hub = ServusHubStore(applicationContext)
+        hub.findLiveChannel(contentId)?.let { return ServusPlaybackMetadata.live(it, System.currentTimeMillis()) }
+        val news = ServusNewsStore(applicationContext).loadEpisodes()
+        val shows = hub.loadCategories().flatMap { it.shows }
+        ServusPlaybackMetadata.findEpisode(contentId, news, shows)?.let {
+            return ServusPlaybackMetadata.episode(it)
+        }
+        // A direct link may point to content not yet cached. Only fetch the specific product.
+        val market = ServusSessionStore(applicationContext, ServusNetwork.api).get().countryCode
+        val card = ServusNetwork.api.product(market, contentId)
+        return ServusPlaybackMetadata(
+            title = card.title?.takeIf { it.isNotBlank() } ?: "ServusTV",
+            contextTitle = card.showName,
+            artworkUri = ServusCatalogPolicy.landscapeArtwork(contentId, card.mediaResources),
+        )
+    }
+
+    private fun ServusPlaybackMetadata.toMediaMetadata(): MediaMetadata =
+        MediaMetadata.Builder()
+            .setTitle(title)
+            .setDisplayTitle(title)
+            .setArtist(contextTitle)
+            .setSubtitle(contextTitle)
+            .setArtworkUri(artworkUri?.let(Uri::parse))
+            .build()
+
+    private fun startPlayer(contentId: String, url: String) {
         val dataSourceFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(ServusNetwork.WEB_USER_AGENT)
             .setDefaultRequestProperties(
@@ -396,6 +448,8 @@ class PlaybackActivity : Activity() {
 
                         override fun onPlayerError(error: PlaybackException) {
                             Log.e(TAG, "Media3 playback error: ${error.errorCodeName}", error)
+                            mediaSession?.release()
+                            mediaSession = null
                             showError("Wiedergabefehler: ${error.errorCodeName}")
                         }
 
@@ -410,7 +464,12 @@ class PlaybackActivity : Activity() {
                     },
                 )
                 playerView.player = exoPlayer
-                exoPlayer.setMediaItem(MediaItem.fromUri(url))
+                exoPlayer.setMediaItem(MediaItem.Builder()
+                    .setMediaId(contentId)
+                    .setUri(url)
+                    .setMediaMetadata(ServusPlaybackMetadata("ServusTV").toMediaMetadata())
+                    .build())
+                mediaSession = MediaSession.Builder(this, exoPlayer).build()
                 exoPlayer.playWhenReady = true
                 exoPlayer.prepare()
             }
@@ -597,6 +656,10 @@ class PlaybackActivity : Activity() {
     }
 
     private fun releasePlayer() {
+        playbackJob?.cancel()
+        playbackJob = null
+        mediaSession?.release()
+        mediaSession = null
         handler.removeCallbacks(progressRunnable)
         handler.removeCallbacks(hideControlsRunnable)
         playerView.player = null
