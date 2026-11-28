@@ -15,8 +15,12 @@ class LiveTvArtworkTest {
         assertEquals(LiveTvArtwork("wide", LiveTvArtworkSource.TmdbSeries), programme.selectArtwork())
         assertEquals(LiveTvArtwork("wide", LiveTvArtworkSource.TmdbFilm),
             programme.copy(tmdbType = MediaType.Movie).selectArtwork(forHero = true))
-        assertEquals(LiveTvArtwork("still", LiveTvArtworkSource.TmdbEpisode),
-            programme.copy(episodeStillUri = "still").selectArtwork())
+        val episode = programme.copy(episodeStillUri = "still", alternateBackdropUri = "fanart")
+        assertEquals("wide", episode.selectArtwork()?.uri)
+        assertEquals("still", episode.selectArtwork(forHero = true)?.uri)
+        assertEquals(listOf("wide", "still", "fanart", "epg", "poster"), episode.artworkCandidates().map { it.uri })
+        assertEquals("fanart", episode.copy(episodeStillUri = null).selectArtwork(forHero = true)?.uri)
+        assertNull(episode.copy(startUtcMillis = 0).selectArtwork())
     }
 
     @Test fun factualCategoriesKeepSourceArtwork() {
