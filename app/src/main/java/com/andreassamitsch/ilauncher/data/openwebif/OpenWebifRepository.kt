@@ -138,7 +138,13 @@ class OpenWebifRepository(context: Context) {
                 services = servicesResponse.services,
                 events = epgResponse.events,
                 nowUtcMillis = now,
-            )
+            ).map { fresh ->
+                val previous = _state.value.channels.firstOrNull { it.serviceReference == fresh.serviceReference }
+                val active = listOfNotNull(previous?.now, previous?.next).firstOrNull {
+                    it.hasValidAiring && it.startUtcMillis <= now && now < it.endUtcMillis
+                }
+                fresh.copy(now = fresh.now ?: active)
+            }
             val snapshot = OpenWebifCachedSnapshot(
                 baseUrl = config.baseUrl,
                 bouquets = bouquets,

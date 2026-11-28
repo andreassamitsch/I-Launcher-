@@ -25,7 +25,11 @@ data class LiveTvProgram(
     val backdropUri: String? = null,
     val episodeStillUri: String? = null,
     val voteAverage: Double? = null,
+    val alternateBackdropUri: String? = null,
 ) {
+    val hasValidAiring: Boolean
+        get() = startUtcMillis > 0L && durationMillis > 0L && title.isNotBlank()
+
     val endUtcMillis: Long
         get() = startUtcMillis + durationMillis
 

@@ -32,20 +32,22 @@ internal object OpenWebifMapper {
             val name = service.serviceName?.cleanInline()?.takeIf { it.isNotBlank() }
                 ?: return@mapNotNull null
             val matchingEvents = events
-                .filter { event -> referencesMatch(reference, event.sref) }
+                .filter { event -> referencesMatch(reference, event.sref) &&
+                    (event.beginTimestamp ?: 0L) > 0L && (event.durationSec ?: 0L) > 0L &&
+                    !event.title.isNullOrBlank() }
                 .sortedBy { it.beginTimestamp ?: Long.MAX_VALUE }
 
             val currentDto = matchingEvents.firstOrNull { event ->
                 val start = event.beginTimestamp ?: return@firstOrNull false
                 val duration = event.durationSec ?: 0L
                 duration > 0L && nowSeconds >= start && nowSeconds < start + duration
-            } ?: matchingEvents.firstOrNull()
+            }
 
             val currentIndex = currentDto?.let(matchingEvents::indexOf) ?: -1
             val nextDto = if (currentIndex >= 0) {
                 matchingEvents.drop(currentIndex + 1).firstOrNull()
             } else {
-                null
+                matchingEvents.firstOrNull { (it.beginTimestamp ?: 0L) >= nowSeconds }
             }
 
             LiveTvChannel(
@@ -61,8 +63,8 @@ internal object OpenWebifMapper {
     fun sanitizeChannels(channels: List<LiveTvChannel>): List<LiveTvChannel> = channels.map { channel ->
         channel.copy(
             name = channel.name.cleanInline().ifBlank { channel.name },
-            now = channel.now?.sanitizeText(),
-            next = channel.next?.sanitizeText(),
+            now = channel.now?.sanitizeText()?.takeIf { it.hasValidAiring },
+            next = channel.next?.sanitizeText()?.takeIf { it.hasValidAiring },
         )
     }
 

@@ -255,7 +255,7 @@ class EpgRepository(
                 ?: snapshot.guideByServiceReference[serviceReference]
                     ?.firstOrNull { it.startUtcMillis == startUtcMillis }
                 ?: return@withContext
-            if (program.tmdbId != null) return@withContext
+            if (!program.hasValidAiring || program.tmdbId != null) return@withContext
             val enriched = resolveTmdb(serviceReference, program) ?: return@withContext
             applyProgramEnrichment(serviceReference, program.startUtcMillis, enriched)
         }
@@ -359,9 +359,10 @@ class EpgRepository(
             val channels = merge.channels.map { channel ->
                 val old = oldChannels[channel.serviceReference]
                 val oldPrograms = listOfNotNull(old?.now, old?.next).associateBy(LiveTvProgram::startUtcMillis)
-                channel.copy(
-                    now = channel.now?.let { it.retainEpgEnrichment(oldPrograms[it.startUtcMillis]) },
-                    next = channel.next?.let { it.retainEpgEnrichment(oldPrograms[it.startUtcMillis]) },
+                val stable = advanceEpgChannel(channel, old, merge.guideByServiceReference[channel.serviceReference].orEmpty(), now)
+                stable.copy(
+                    now = stable.now?.let { it.retainEpgEnrichment(oldPrograms[it.startUtcMillis]) },
+                    next = stable.next?.let { it.retainEpgEnrichment(oldPrograms[it.startUtcMillis]) },
                 )
             }
             val guide = merge.guideByServiceReference.mapValues { (ref, programs) ->
@@ -388,7 +389,7 @@ class EpgRepository(
     private suspend fun enrichCurrentProgramsProgressively() {
         if (!tmdbRepository.isConfigured) return
         val candidates = _state.value.enrichedChannels
-            .mapNotNull { channel -> channel.now?.let { channel.serviceReference to it } }
+            .mapNotNull { channel -> channel.now?.takeIf { it.hasValidAiring }?.let { channel.serviceReference to it } }
             .take(MAX_CURRENT_TMDB_ITEMS)
         for ((serviceReference, program) in candidates) {
             if (program.tmdbId != null) continue
@@ -400,6 +401,7 @@ class EpgRepository(
         serviceReference: String,
         program: LiveTvProgram,
     ): LiveTvProgram? {
+        if (!program.hasValidAiring) return null
         if (program.tmdbId != null) return program
         val metadata = tmdbRepository.resolve(
             sourceKey = "epg:$serviceReference:${program.startUtcMillis}",
