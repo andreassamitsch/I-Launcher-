@@ -604,7 +604,7 @@ class MainActivity : Activity() {
     }
 
     private fun syncUpdatePopup(state: ServusUpdateState) {
-        val info = ServusUpdatePopupPolicy.info(state)
+        val info = ServusUpdatePopupPolicy.info(state, BuildConfig.VERSION_CODE)
         if (!resumed || isFinishing || isDestroyed || info == null ||
             !updatePopupPolicy.shouldShow(info.versionCode)
         ) {

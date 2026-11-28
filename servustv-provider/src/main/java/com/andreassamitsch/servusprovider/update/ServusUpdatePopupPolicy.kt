@@ -9,11 +9,14 @@ internal class ServusUpdatePopupPolicy {
     fun reopen() { dismissedVersion = null }
 
     companion object {
-        fun info(state: ServusUpdateState): ServusUpdateInfo? = when (state) {
-            is ServusUpdateState.Available -> state.info
-            is ServusUpdateState.Downloading -> state.info
-            is ServusUpdateState.ReadyToInstall -> state.info
-            else -> null
+        fun info(state: ServusUpdateState, localVersionCode: Int): ServusUpdateInfo? {
+            val info = when (state) {
+                is ServusUpdateState.Available -> state.info
+                is ServusUpdateState.Downloading -> state.info
+                is ServusUpdateState.ReadyToInstall -> state.info
+                else -> null
+            }
+            return info?.takeIf { ServusUpdateVersionPolicy.isNewer(it.versionCode, localVersionCode) }
         }
     }
 }
