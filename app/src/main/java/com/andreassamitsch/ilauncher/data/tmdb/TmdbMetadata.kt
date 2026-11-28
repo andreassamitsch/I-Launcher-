@@ -20,6 +20,7 @@ data class TmdbMetadata(
     val trailerYoutubeId: String? = null,
     val episode: TmdbEpisodeMetadata? = null,
     val confidence: Float,
+    val alternateBackdropUri: String? = null,
 )
 
 data class TmdbEpisodeMetadata(

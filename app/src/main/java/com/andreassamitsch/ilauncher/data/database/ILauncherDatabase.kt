@@ -14,7 +14,7 @@ import androidx.room.migration.Migration
         EpgChannelMappingEntity::class,
         EpgProgramEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class ILauncherDatabase : RoomDatabase() {
@@ -70,6 +70,10 @@ abstract class ILauncherDatabase : RoomDatabase() {
             )
         }
 
+        private val MIGRATION_3_4 = Migration(3, 4) { db ->
+            db.execSQL("ALTER TABLE tmdb_media ADD COLUMN alternateBackdropPath TEXT")
+        }
+
         @Volatile
         private var instance: ILauncherDatabase? = null
 
@@ -80,7 +84,7 @@ abstract class ILauncherDatabase : RoomDatabase() {
                     ILauncherDatabase::class.java,
                     "i-launcher.db",
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { instance = it }
             }

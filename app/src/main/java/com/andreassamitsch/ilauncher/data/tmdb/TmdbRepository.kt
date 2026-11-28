@@ -365,6 +365,9 @@ class TmdbRepository(
             runtimeMinutes = runtime ?: episodeRunTime?.firstOrNull(),
             posterPath = posterPath,
             backdropPath = preferredHeroBackdropPath(),
+            alternateBackdropPath = images?.backdrops.orEmpty()
+                .filter { !it.filePath.isNullOrBlank() && it.filePath != preferredHeroBackdropPath() && it.language == null }
+                .maxByOrNull { it.voteAverage }?.filePath,
             logoPath = preferredLogo,
             voteAverage = voteAverage,
             imdbId = externalIds?.imdbId,
@@ -412,6 +415,7 @@ class TmdbRepository(
         runtimeMinutes = runtimeMinutes,
         posterUri = imageConfiguration?.url(TmdbImageKind.Poster, posterPath),
         backdropUri = imageConfiguration?.url(TmdbImageKind.Backdrop, backdropPath),
+        alternateBackdropUri = imageConfiguration?.url(TmdbImageKind.Backdrop, alternateBackdropPath),
         logoUri = imageConfiguration?.url(TmdbImageKind.Logo, logoPath),
         voteAverage = voteAverage,
         imdbId = imdbId,
@@ -451,7 +455,7 @@ class TmdbRepository(
         private const val MAPPING_MAX_AGE_MILLIS = 30L * 24L * 60L * 60L * 1_000L
         private const val CACHE_MAX_AGE_MILLIS = 180L * 24L * 60L * 60L * 1_000L
         private const val TRAILER_LANGUAGE_POLICY_CUTOFF_UTC_MILLIS = 1_786_233_600_000L
-        private const val HERO_BACKDROP_POLICY_CUTOFF_UTC_MILLIS = 1_786_467_600_000L
+        private const val HERO_BACKDROP_POLICY_CUTOFF_UTC_MILLIS = 1_795_824_000_000L
         internal const val RESOLVER_POLICY_CUTOFF_UTC_MILLIS = 1_786_476_000_000L
         internal const val NEGATIVE_MAPPING_RETRY_MILLIS = 6L * 60L * 60L * 1_000L
 

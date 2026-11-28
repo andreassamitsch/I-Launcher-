@@ -28,6 +28,7 @@ internal fun LiveTvProgram.withTmdbEnrichment(metadata: TmdbMetadata): LiveTvPro
         tmdbLogoUri = metadata.logoUri,
         posterUri = metadata.posterUri,
         backdropUri = metadata.backdropUri,
+        alternateBackdropUri = metadata.alternateBackdropUri,
         episodeStillUri = episode?.stillUri,
         voteAverage = episode?.voteAverage ?: metadata.voteAverage,
     )
@@ -60,6 +61,7 @@ internal fun LiveTvProgram.retainEpgEnrichment(previous: LiveTvProgram?): LiveTv
         tmdbLogoUri = previous.tmdbLogoUri,
         posterUri = previous.posterUri,
         backdropUri = previous.backdropUri,
+        alternateBackdropUri = previous.alternateBackdropUri,
         episodeStillUri = previous.episodeStillUri,
         voteAverage = previous.voteAverage,
     )
