@@ -86,3 +86,14 @@ object TmdbMatcher {
         return previous[right.length]
     }
 }
+
+/** Episode dates are not series premiere dates. Require independent airing evidence. */
+internal fun airingEpisodeEvidence(lookup: ParsedMediaLookup, title: String?, airYear: Int?): Int {
+    val expectedTitle = lookup.episodeTitle?.let(MediaTitleParser::normalizeTitle).orEmpty()
+    val actualTitle = title?.let(MediaTitleParser::normalizeTitle).orEmpty()
+    val titleMatches = expectedTitle.isNotBlank() && expectedTitle == actualTitle
+    val yearMatches = lookup.episodeAirYear != null && airYear != null &&
+        kotlin.math.abs(lookup.episodeAirYear - airYear) <= 1
+    if (lookup.episodeAirYear != null && airYear != null && !yearMatches) return 0
+    return (if (titleMatches) 2 else 0) + (if (yearMatches) 1 else 0)
+}

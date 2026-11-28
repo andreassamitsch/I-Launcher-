@@ -63,6 +63,19 @@ class EpgMergerTest {
     }
 
     @Test
+    fun `placeholder never overrides current XMLTV and incomplete refresh retains valid airing`() {
+        val now = 100000L
+        val placeholder = LiveTvProgram(null, "No event", startUtcMillis = 0, durationMillis = 0)
+        val receiver = LiveTvChannel("ref", "Sender", now = placeholder)
+        val xml = XmlTvProgram("test", 90000L, 120000L, "Live", imageUri = "epg")
+        val mapping = EpgChannelMapping("ref", "test", EpgChannelMatcher.METHOD_EXACT_NAME, 1f)
+        val merged = EpgMerger.merge(listOf(receiver), listOf(mapping), listOf(xml), now).channels.single()
+        assertEquals("epg", merged.now?.imageUri)
+        assertEquals("Live", advanceEpgChannel(receiver, merged, emptyList(), now).now?.title)
+        assertNull(advanceEpgChannel(receiver, merged, emptyList(), 120000L).now)
+    }
+
+    @Test
     fun `does not merge different current programmes on weak time overlap`() {
         val now = 10_000_000L
         val base = LiveTvProgram(

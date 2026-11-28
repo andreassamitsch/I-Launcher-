@@ -66,6 +66,17 @@ class OpenWebifMapperTest {
         assertEquals(0.5f, channel.progressFraction(nowMillis)!!, 0.001f)
     }
 
+    @Test fun `placeholder does not suppress valid future programme`() {
+        val ref = "test"
+        val channel = OpenWebifMapper.channels("http://receiver/",
+            listOf(OpenWebifServiceDto(serviceName = "Test", serviceReference = ref)),
+            listOf(OpenWebifEventDto(beginTimestamp = 0, durationSec = 0, title = "No event", sref = ref),
+                OpenWebifEventDto(beginTimestamp = 1100, durationSec = 100, title = "Next", sref = ref)),
+            nowUtcMillis = 1000000).single()
+        assertEquals(null, channel.now)
+        assertEquals("Next", channel.next?.title)
+    }
+
     @Test fun `decodes HTML entities and escaped newlines in EPG text`() {
         val nowMillis = 1_000_000L
         val channelRef = "1:0:1:ATV:HD:1:0:0:0:0:"

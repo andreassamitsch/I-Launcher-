@@ -25,7 +25,11 @@ internal object EpgMerger {
             .mapValues { (_, values) -> values.sortedBy(XmlTvProgram::startUtcMillis) }
         val guide = linkedMapOf<String, List<LiveTvProgram>>()
 
-        val enriched = channels.map { channel ->
+        val enriched = channels.map { raw ->
+            val channel = raw.copy(
+                now = raw.now?.takeIf { it.hasValidAiring && it.startUtcMillis <= nowUtcMillis && nowUtcMillis < it.endUtcMillis },
+                next = raw.next?.takeIf { it.hasValidAiring && it.startUtcMillis >= nowUtcMillis },
+            )
             val mapping = mappingByServiceRef[channel.serviceReference] ?: return@map channel
             val xmlPrograms = programmesByChannel[mapping.xmltvChannelId].orEmpty()
             if (xmlPrograms.isEmpty()) return@map channel

@@ -53,6 +53,9 @@ object MediaTitleParser {
             releaseYear = releaseYear,
             seasonNumber = seasonNumber,
             episodeNumber = episodeNumber,
+            strictAiringIdentity = lookup.strictAiringIdentity,
+            episodeAirYear = lookup.episodeAirYear,
+            episodeTitle = lookup.episodeTitle,
         )
     }
 

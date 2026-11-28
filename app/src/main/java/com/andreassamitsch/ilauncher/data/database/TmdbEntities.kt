@@ -44,6 +44,7 @@ data class TmdbMediaEntity(
     val trailerYoutubeId: String?,
     @ColumnInfo(defaultValue = "0") val videoLookupComplete: Boolean,
     val updatedAtUtcMillis: Long,
+    val alternateBackdropPath: String? = null,
 )
 
 @Entity(

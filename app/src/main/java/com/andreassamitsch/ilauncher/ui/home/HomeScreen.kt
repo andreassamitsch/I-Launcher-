@@ -84,6 +84,7 @@ import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
 import com.andreassamitsch.ilauncher.model.LiveTvArtworkSource
 import com.andreassamitsch.ilauncher.model.selectArtwork
+import com.andreassamitsch.ilauncher.model.artworkCandidates
 import com.andreassamitsch.ilauncher.model.MediaItem
 import com.andreassamitsch.ilauncher.model.MediaSource
 import com.andreassamitsch.ilauncher.model.MediaType
@@ -909,7 +910,15 @@ internal fun HomeHero(
             animationSpec = tween(durationMillis = 120),
             contentKey = { Triple(it.key, it.artworkUri, it.fitArtwork) },
         ) { heroContent ->
-            var fitArtworkAspectRatio by remember(heroContent.artworkUri) { mutableStateOf<Float?>(null) }
+            val choices = listOfNotNull(heroContent.artworkUri?.let { it to heroContent.fitArtwork }) + heroContent.artworkFallbacks
+            var artworkIndex by remember(heroContent.key, choices) { mutableStateOf(0) }
+            val activeArtwork = choices.getOrNull(artworkIndex)
+            val fitArtwork = activeArtwork?.second ?: false
+            var fitArtworkAspectRatio by remember(activeArtwork) { mutableStateOf<Float?>(null) }
+            LaunchedEffect(heroContent.key, heroContent.title, artworkIndex, heroContent.artworkSourceLabels) {
+                if (heroContent.key.startsWith("live:")) android.util.Log.d("LIVE_TV_ARTWORK",
+                    "hero title=${heroContent.title} source=${heroContent.artworkSourceLabels.getOrNull(artworkIndex) ?: "None"}")
+            }
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
@@ -930,8 +939,8 @@ internal fun HomeHero(
                 val fitHeightRatio = (renderedFitHeight / heroHeight).coerceIn(0.01f, 1f)
                 val fitBottomFadeStartRatio = (fitBottomRatio - fitHeightRatio * 0.28f).coerceIn(0f, fitBottomRatio - 0.01f)
 
-                heroContent.artworkUri?.takeIf { it.isNotBlank() }?.let { artwork ->
-                    if (heroContent.fitArtwork) {
+                activeArtwork?.first?.takeIf { it.isNotBlank() }?.let { artwork ->
+                    if (fitArtwork) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
@@ -945,6 +954,7 @@ internal fun HomeHero(
                                 contentDescription = null,
                                 contentScale = ContentScale.Fit,
                                 alignment = Alignment.TopEnd,
+                                onError = { if (choices.getOrNull(artworkIndex)?.first == artwork) artworkIndex++ },
                                 onSuccess = { state ->
                                     val intrinsic = state.painter.intrinsicSize
                                     if (
@@ -963,6 +973,7 @@ internal fun HomeHero(
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             alignment = Alignment.TopCenter,
+                            onError = { if (choices.getOrNull(artworkIndex)?.first == artwork) artworkIndex++ },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -973,7 +984,7 @@ internal fun HomeHero(
                         .fillMaxSize()
                         .background(
                             Brush.horizontalGradient(
-                                colorStops = if (heroContent.fitArtwork) {
+                                colorStops = if (fitArtwork) {
                                     arrayOf(
                                         0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.99f),
                                         fitLeftRatio to MaterialTheme.colorScheme.background.copy(alpha = 0.99f),
@@ -999,7 +1010,7 @@ internal fun HomeHero(
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
-                                colorStops = if (heroContent.fitArtwork) {
+                                colorStops = if (fitArtwork) {
                                     arrayOf(
                                         0.00f to MaterialTheme.colorScheme.background.copy(alpha = 0.02f),
                                         fitBottomFadeStartRatio to MaterialTheme.colorScheme.background.copy(alpha = 0.02f),
@@ -1140,6 +1151,8 @@ internal data class HomeHeroContent(
     val detailsMedia: MediaItem? = null,
     val sourceLabel: String? = null,
     val app: InstalledApp? = null,
+    val artworkFallbacks: List<Pair<String, Boolean>> = emptyList(),
+    val artworkSourceLabels: List<String> = emptyList(),
 )
 
 internal fun mediaHero(
@@ -1291,6 +1304,10 @@ private fun liveTvHero(channel: LiveTvChannel): HomeHeroContent {
         description = description,
         artworkUri = artwork.first,
         fitArtwork = artwork.second,
+        artworkFallbacks = now?.artworkCandidates(forHero = true).orEmpty().drop(1).map {
+            it.uri to (it.source == LiveTvArtworkSource.Epg)
+        },
+        artworkSourceLabels = now?.artworkCandidates(forHero = true).orEmpty().map { it.source.name },
         logoUri = channel.piconUri,
         detailsMedia = now?.let { liveProgramMedia(channel, it) },
         sourceLabel = channel.name,

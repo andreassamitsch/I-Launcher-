@@ -5,6 +5,7 @@ import com.andreassamitsch.ilauncher.data.tmdb.TmdbEpisodeMetadata
 import com.andreassamitsch.ilauncher.model.LiveTvProgram
 import com.andreassamitsch.ilauncher.model.LiveTvChannel
 import com.andreassamitsch.ilauncher.model.MediaType
+import com.andreassamitsch.ilauncher.model.selectArtwork
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -44,7 +45,8 @@ class EpgEnrichmentTest {
         )
         val result = airing.withTmdbEnrichment(metadata.copy(episode = episode))
         assertEquals(airing.longDescription, result.longDescription)
-        assertEquals("still.jpg", result.preferredArtworkUri)
+        assertEquals("series.jpg", result.preferredArtworkUri)
+        assertEquals("still.jpg", result.selectArtwork(forHero = true)?.uri)
         val empty = airing.copy(shortDescription = null, longDescription = null, subtitle = null)
             .withTmdbEnrichment(metadata.copy(episode = episode))
         assertEquals("Exakte Handlung", empty.longDescription)

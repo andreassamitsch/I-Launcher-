@@ -10,9 +10,10 @@ internal fun advanceEpgChannel(
     guide: List<LiveTvProgram>,
     now: Long,
 ): LiveTvChannel {
-    fun LiveTvProgram.active(): Boolean = startUtcMillis <= now && now < endUtcMillis
+    fun LiveTvProgram.active(): Boolean = hasValidAiring && startUtcMillis <= now && now < endUtcMillis
     fun sameAiring(a: LiveTvProgram, b: LiveTvProgram): Boolean =
-        a.startUtcMillis == b.startUtcMillis &&
+        a.hasValidAiring && b.hasValidAiring && a.startUtcMillis == b.startUtcMillis &&
+            (a.releaseYear == null || b.releaseYear == null || a.releaseYear == b.releaseYear) &&
             EpgChannelMatcher.normalizeName(a.title) == EpgChannelMatcher.normalizeName(b.title) &&
             (a.eventId == null || b.eventId == null || a.eventId == b.eventId) &&
             (a.seasonNumber == null || b.seasonNumber == null || a.seasonNumber == b.seasonNumber) &&

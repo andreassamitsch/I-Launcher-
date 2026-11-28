@@ -163,7 +163,7 @@ class TmdbRepository(
 
     private suspend fun searchBestMatch(parsed: ParsedMediaLookup): TmdbMatch? {
         if (parsed.typeHint == MediaType.Unknown) {
-            return TmdbMatcher.bestMatch(parsed, searchCandidates(parsed, null))
+            return selectSearchMatch(parsed, searchCandidates(parsed, null))
         }
 
         // Source years are useful hints but are not always the TMDB premiere year. For example,
@@ -172,10 +172,35 @@ class TmdbRepository(
         // filter only when no confident match was found. The original parsed year remains in the
         // matcher and still contributes to confidence (including the existing +/-1 tolerance).
         for (searchYear in tmdbSearchYearAttempts(parsed.releaseYear)) {
-            val match = TmdbMatcher.bestMatch(parsed, searchCandidates(parsed, searchYear))
+            val match = selectSearchMatch(parsed, searchCandidates(parsed, searchYear))
             if (match != null) return match
         }
         return null
+    }
+
+    private suspend fun selectSearchMatch(parsed: ParsedMediaLookup, candidates: List<TmdbCandidate>): TmdbMatch? {
+        val best = TmdbMatcher.bestMatch(parsed, candidates) ?: return null
+        if (!parsed.strictAiringIdentity) return best
+        val ambiguous = candidates.filter { candidate ->
+            candidate.type == best.candidate.type &&
+                TmdbMatcher.confidence(parsed, candidate) >= TmdbMatcher.CONFIDENT_MATCH_THRESHOLD &&
+                kotlin.math.abs(TmdbMatcher.confidence(parsed, candidate) - best.confidence) < 0.001f
+        }.distinctBy { it.id }
+        if (ambiguous.size <= 1) return best
+        if (best.candidate.type != MediaType.Series || parsed.seasonNumber == null || parsed.episodeNumber == null || ambiguous.size > 4) return null
+        if (parsed.episodeAirYear == null && parsed.episodeTitle.isNullOrBlank()) return null
+        val evidence = ambiguous.mapNotNull { candidate ->
+            val dto = try {
+                network.api.episodeDetails(seriesId = candidate.id, seasonNumber = parsed.seasonNumber, episodeNumber = parsed.episodeNumber, language = LANGUAGE)
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() == 404) return@mapNotNull null else throw e
+            }
+            val score = airingEpisodeEvidence(parsed, dto.name, yearOf(dto.airDate))
+            if (score > 0) candidate to score else null
+        }
+        val max = evidence.maxOfOrNull { it.second } ?: return null
+        val winner = evidence.filter { it.second == max }.singleOrNull()?.first ?: return null
+        return TmdbMatch(winner, TmdbMatcher.confidence(parsed, winner))
     }
 
     private suspend fun refreshKnownMapping(
@@ -340,6 +365,9 @@ class TmdbRepository(
             runtimeMinutes = runtime ?: episodeRunTime?.firstOrNull(),
             posterPath = posterPath,
             backdropPath = preferredHeroBackdropPath(),
+            alternateBackdropPath = images?.backdrops.orEmpty()
+                .filter { !it.filePath.isNullOrBlank() && it.filePath != preferredHeroBackdropPath() && it.language == null }
+                .maxByOrNull { it.voteAverage }?.filePath,
             logoPath = preferredLogo,
             voteAverage = voteAverage,
             imdbId = externalIds?.imdbId,
@@ -387,6 +415,7 @@ class TmdbRepository(
         runtimeMinutes = runtimeMinutes,
         posterUri = imageConfiguration?.url(TmdbImageKind.Poster, posterPath),
         backdropUri = imageConfiguration?.url(TmdbImageKind.Backdrop, backdropPath),
+        alternateBackdropUri = imageConfiguration?.url(TmdbImageKind.Backdrop, alternateBackdropPath),
         logoUri = imageConfiguration?.url(TmdbImageKind.Logo, logoPath),
         voteAverage = voteAverage,
         imdbId = imdbId,
@@ -426,7 +455,7 @@ class TmdbRepository(
         private const val MAPPING_MAX_AGE_MILLIS = 30L * 24L * 60L * 60L * 1_000L
         private const val CACHE_MAX_AGE_MILLIS = 180L * 24L * 60L * 60L * 1_000L
         private const val TRAILER_LANGUAGE_POLICY_CUTOFF_UTC_MILLIS = 1_786_233_600_000L
-        private const val HERO_BACKDROP_POLICY_CUTOFF_UTC_MILLIS = 1_786_467_600_000L
+        private const val HERO_BACKDROP_POLICY_CUTOFF_UTC_MILLIS = 1_795_824_000_000L
         internal const val RESOLVER_POLICY_CUTOFF_UTC_MILLIS = 1_786_476_000_000L
         internal const val NEGATIVE_MAPPING_RETRY_MILLIS = 6L * 60L * 60L * 1_000L
 

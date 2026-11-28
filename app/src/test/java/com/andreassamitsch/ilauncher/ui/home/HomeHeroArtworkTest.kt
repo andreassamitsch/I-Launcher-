@@ -144,7 +144,7 @@ class HomeHeroArtworkTest {
         assertEquals("epg-image", news.preferredArtworkUri)
         assertEquals("epg-image" to true, liveTvHeroArtwork(news))
         val episode = program.copy(episodeStillUri = "episode-still")
-        assertEquals("episode-still", episode.preferredArtworkUri)
+        assertEquals("series-backdrop", episode.preferredArtworkUri)
         assertEquals("episode-still" to false, liveTvHeroArtwork(episode))
     }
 
